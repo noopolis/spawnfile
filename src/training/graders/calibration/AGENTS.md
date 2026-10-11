@@ -19,7 +19,9 @@ Missing local decisions remain in split/evidence denominators, never enter fitti
 and count wrong for accuracy/cascade with Brier error 1 and ECE error contribution 1.
 These conservative penalties are reported as missing, not invented probabilities;
 the fit-split base-rate baseline still predicts every golden record.
-Global ordered calls across questions share each output budget; overflow counts wrong.
+The shared neutral admission planner budgets all requested projections in expansion
+order, including forced fallback and ready instances lacking golden truth. Overflow
+counts wrong; only golden rows enter fitting and accuracy denominators.
 Teacher fallback excludes golden answers contributed to by that teacher; callers may
 rederive those answers from other labelers and then supply their independent provenance.
 Agreement compares exact goldenAnswer and teacherAnswer options, including score integers;

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
 import type { DecisionBackend, DecisionRequest } from '../../contracts/grading.js';
 import { main } from '../commands.js';
-import { parseGrader, parseLabels, stableDigest, type Labels } from '../../graders/index.js';
+import { parseGrader, parseLabels, stableDigest, allQuestions, type Labels } from '../../graders/index.js';
 import { teacherPolicyDigest } from '../../graders/labeling/index.js';
 import { runCalibrate } from './calibrate.js';
 import { runValidate } from './validate.js';
@@ -23,7 +23,9 @@ async function fixture(backend = 'jev-http', count = 80) {
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.good'], ask: 'Is it good?' }], score: { method: 'weighted' } });
   const labels = parseLabels({ schema: 'paideia.labels.v1', grader: 'quality', labelers: { human: { kind: 'human', name: 'Reader' } },
     labels: Array.from({ length: count }, (_, i) => ({ id: `o${i}`, lineage: `g${i}`, example: { dataset: 'train', id: `e${i}` },
-      output: { good: i % 2 === 0 }, context: {}, votes: { q: { human: i % 2 === 0 ? 'yes' : 'no' }, gate: { human: i % 2 === 0 ? 'yes' : 'no' } }, provenance: {} })) }, grader);
+      output: { good: i % 2 === 0 }, context: {}, votes: { q: { human: i % 2 === 0 ? 'yes' : 'no' }, gate: { human: i % 2 === 0 ? 'yes' : 'no' } }, provenance: { human: { votes: Object.fromEntries(allQuestions(grader).map(question => [question.id, {
+        question_digest: stableDigest(question), projection_digest: stableDigest({ 'output.good': i % 2 === 0 }),
+      }])) } } })) }, grader);
   await writeFile(graderFile, stringify(grader)); await writeFile(join(root, 'labels.yaml'), stringify(labels));
   const score = vi.fn(async (requests: DecisionRequest[]) => requests.map(request => {
     const good = request.projection['output.good'] === true;
@@ -48,7 +50,8 @@ describe('grader calibration commands', () => {
     expect(f.score).toHaveBeenCalledTimes(calls);
     expect(await runValidate(f.graderFile, f.dependencies)).toEqual({ status: 'valid', calibration: true });
     f.grader.questions[0]!.ask = 'Changed'; await writeFile(f.graderFile, stringify(f.grader));
-    await expect(runValidate(f.graderFile, f.dependencies)).rejects.toThrow('questions');
+    await expect(runValidate(f.graderFile, f.dependencies)).rejects.toThrow('re-adjudicate');
+    await expect(runCalibrate({ graderFile: f.graderFile }, f.dependencies)).rejects.toThrow('re-adjudicate');
   });
 
   it('validates before calibration without contacting a model, and rejects changed golden/exclusions/backend identities', async () => {
@@ -57,7 +60,7 @@ describe('grader calibration commands', () => {
     expect(await runValidate(f.graderFile, { backend: factory })).toEqual({ status: 'valid', calibration: false });
     expect(factory).not.toHaveBeenCalled();
     const excluded = join(f.root, 'test.yaml');
-    await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', records: [{ id: 'e0' }] }));
+    await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', id: 'train', records: [{ id: 'e0' }] }));
     const first = await runCalibrate({ graderFile: f.graderFile, excludeDatasets: [excluded] }, f.dependencies);
     expect(first.calibration.identity.exclusions).toHaveLength(1);
     expect(f.score.mock.calls.flatMap(call => call[0]).every(request => !request.key.startsWith('o0:'))).toBe(true);
@@ -72,10 +75,41 @@ describe('grader calibration commands', () => {
     await expect(runValidate(f.graderFile, f.dependencies)).rejects.toThrow();
   });
 
+  it('excludes all revisions of dataset group lineage before backend calls and splitting', async () => {
+    const f = await fixture();
+    f.labels.labels[0]!.lineage = 'story-7';
+    delete f.labels.labels[0]!.example;
+    f.labels.labels[1]!.lineage = 'story-7';
+    delete f.labels.labels[1]!.example;
+    await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
+    const excluded = join(f.root, 'sealed.yaml');
+    await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', id: 'sealed', records: [{ id: 'story-7-r2', group: 'story-7' }] }));
+    const result = await runCalibrate({ graderFile: f.graderFile, excludeDatasets: [excluded] }, f.dependencies);
+    const requests = f.score.mock.calls.flatMap(call => call[0]);
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.some(request => /^(o0|o1):/.test(request.key))).toBe(false);
+    expect(result.calibration.questions.q!.metrics.groups).toBe(39);
+  });
+
+  it('propagates calibration cancellation to identity and scoring before writing artifacts', async () => {
+    const f = await fixture(); const controller = new AbortController();
+    const identity = f.runtime.identity;
+    let probed = false, scored = false;
+    f.runtime.identity = async signal => { expect(signal).toBe(controller.signal); probed = true; return identity(signal); };
+    f.runtime.score = async (_requests, signal) => {
+      expect(signal).toBe(controller.signal); scored = true;
+      controller.abort(new Error('calibration deadline')); signal!.throwIfAborted(); return [];
+    };
+    await expect(runCalibrate({ graderFile: f.graderFile, signal: controller.signal }, f.dependencies)).rejects.toThrow('calibration deadline');
+    expect(probed && scored).toBe(true);
+    await expect(readFile(join(f.root, 'calibration.json'))).rejects.toThrow('ENOENT');
+  });
+
   it('reports missing scores, disputed labels and unavailable projections without inventing evidence', async () => {
     const f = await fixture('jev-http', 8);
     f.labels.labels[0]!.votes = {};
     f.labels.labels[1]!.output = {};
+    f.labels.labels[1]!.votes = {};
     await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
     f.runtime.score = async requests => requests.map(request => ({ key: request.key, status: 'missing', probabilities: null }));
     const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
@@ -125,6 +159,40 @@ describe('grader calibration commands', () => {
     const empty = await fixture('ollama-logprobs', 0);
     const emptyResult = await runCalibrate({ graderFile: empty.graderFile }, empty.dependencies);
     expect(emptyResult.calibration.questions.q!.status).toBe('insufficient-evidence');
+  });
+
+  it('reserves forced-teacher calls before simulating the held-out budget for later questions', async () => {
+    const f = await fixture();
+    f.grader.uncalibrated = 'teacher';
+    // The first question has no golden truth, yet its ready projection consumes
+    // a forced-teacher call before the later gate can escalate.
+    const gate = f.grader.gates[0]!;
+    if ('check' in gate) throw Error('Expected question gate');
+    f.grader.questions[0]!.reads = ['output.other'];
+    f.labels.labelers.teacher = { kind: 'model', provider: 'claude', model: 'opus' };
+    for (const label of f.labels.labels) {
+      const good = (label.output as { good: boolean }).good;
+      (label.output as { good: boolean; other: boolean }).other = good;
+      label.votes.q = {};
+      label.votes.gate!.teacher = good ? 'yes' : 'no';
+      const votes = Object.fromEntries(allQuestions(f.grader).map(question => [question.id, {
+        question_digest: stableDigest(question),
+        projection_digest: stableDigest({ [question.id === 'q' ? 'output.other' : 'output.good']: good }),
+      }]));
+      label.provenance.human = { votes };
+      label.provenance.teacher = { votes: Object.fromEntries(Object.entries(votes).map(([key, value]) =>
+        [key, { ...value, teacher_policy_digest: teacherPolicyDigest(f.grader.teachers[0]!) }])) };
+    }
+    await writeFile(f.graderFile, stringify(f.grader));
+    await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
+    f.runtime.score = async requests => requests.map(request => request.key.endsWith(':q')
+      ? { key: request.key, status: 'missing', probabilities: null }
+      : { key: request.key, status: 'ok', probabilities: { yes: 0.5, no: 0.5 } });
+    const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+    expect(result.calibration.questions.gate!.metrics.cascadeAccuracy).toBe(0);
+    expect(result.calibration.questions.q!.status).toBe('insufficient-evidence');
+    const report = await readFile(result.reportFile, 'utf8');
+    expect(report).toContain('"overflowCalls": 40');
   });
 
   it('refuses backend identity drift and cancellation before publishing calibration', async () => {

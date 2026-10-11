@@ -54,3 +54,16 @@ it('refuses missing identity and model changes', async () => {
   await backend.identity(); model = 'second';
   await expect(backend.score([request])).rejects.toThrow(/model changed/);
 });
+
+it('cancels identity probes using the caller signal', async () => {
+  const controller = new AbortController();
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => new Promise((_resolve, reject) => {
+    init!.signal!.addEventListener('abort', () => reject(new Error('cancelled')), { once: true });
+    controller.abort();
+  }));
+  const backend = createJevDecision({ ...options, fetch });
+  await expect(backend.identity(controller.signal)).rejects.toThrow('cancelled');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await expect(backend.identity(controller.signal)).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

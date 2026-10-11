@@ -9,3 +9,6 @@ projection isolation guards require negative tests.
 Compact provenance stores call receipts once and per-vote call references plus
 question digests. Resolve both compact and legacy receipts through voteProvenance;
 missing references, stale policies and mismatched projections refuse reuse.
+
+Human votes require current question and projection digests too; only teacher
+policy checks are exempt. Changed meaning/evidence requires re-adjudication.

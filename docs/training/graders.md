@@ -60,7 +60,9 @@ score: { method: weighted, pass_at: 0.75 }
 - Gates are article-level questions without weights, or ordinary `check:` nodes.
   Tool gates must prove artifact-bound acceptance: unbound `tool-called` and
   `tool-count` gates are rejected. `tool-sequence` needs an `accepted-call` ending
-  and a final condition using an earlier argument binding.
+  and a final condition requiring argument equality to an earlier binding.
+  The equality must be a positive conjunct; a binding mention or an equality
+  bypassed by another Boolean branch is rejected.
 - Weights default to 1 and cannot be negative; their total must be positive.
   `fitted-weights` is recognized but refused as unimplemented.
 
@@ -80,8 +82,16 @@ labels:
       supported: { editor: yes }
       clear: { editor: yes }
       connection@p0: { editor: no-connection }
-    provenance: {}
+    provenance:
+      editor:
+        votes:
+          supported: { question_digest: <current-question-digest>, projection_digest: <current-projection-digest> }
+          clear: { question_digest: <current-question-digest>, projection_digest: <current-projection-digest> }
+          connection@p0: { question_digest: <current-question-digest>, projection_digest: <current-projection-digest> }
 ```
+
+Replace the illustrative digest placeholders with `stableDigest(question)` and
+that instance’s `projectionDigest` from `expandInstances` for the resolved evidence.
 
 `golden` may instead contain this labels body inline; `grader` is implied by the
 enclosing file. Label writing requires a separate labels file and refuses inline
@@ -104,7 +114,9 @@ writes a local sheet containing sampled consensus instances and every dispute.
 
 Completed outputs are persisted atomically and labeling resumes from saved votes.
 Changed content, question or teacher policy makes votes stale; use `--relabel`
-to replace selected teachers' votes. Provenance stores each grouped teacher call
+to replace selected teachers' votes. Human votes also require current question and
+projection digests; changed questions or evidence require explicit re-adjudication.
+Humans are exempt only from teacher-policy freshness. Provenance stores each grouped teacher call
 once, referenced by its votes; partial resumes retain earlier receipts. Records
 retain requested/reported model, provider, CLI version (null when unknown), prompt
 digest, timing and usage. Older repeated call records
@@ -130,6 +142,10 @@ omitted context makes affected instances missing. Standalone grading has no tria
 snapshot, so mechanical check gates remain unknown. `validate` accepts a grader
 before calibration exists; `grade` requires calibration.
 
+`label`, `calibrate` and `grade` accept `--timeout-ms N` (default 180000, maximum
+3600000). The deadline covers identity probes, scoring and teacher calls. A label
+deadline preserves completed output checkpoints; rerunning resumes their votes.
+
 ## Calibration and escalation
 
 Raw `p_good` sums probabilities of expected options. Platt scaling computes
@@ -139,7 +155,10 @@ Raw `p_good` sums probabilities of expected options. Platt scaling computes
 otherwise parameters pool by question type. Seeded lineage groups split 50/50
 into fitting and held-out sets. Exclusions happen before inference and splitting.
 Pass every validation/test dataset through `--exclude-dataset`; recorded
-exclusions are part of calibration identity.
+exclusions are part of calibration identity. An excluded record’s `group` or `id`
+matching a label’s `lineage` excludes the lineage, as does an exact
+`example: {dataset, id}` match (dataset ID or absolute dataset path). Spawnfile
+examples without groups use their IDs and exact example matches.
 Native training requires exclusions matching the current dataset source digests.
 Internal validation shares its source file with training, so exclude that whole
 training dataset as well as the sealed-test dataset. This conservatively removes
@@ -160,7 +179,9 @@ questions additionally report false passes.
 `uncalibrated: teacher` always routes such questions to the escalation teacher.
 Identity mismatches always refuse: question definitions, prompt version,
 segmenter, option mapping, backend/model, golden set, split seed and exclusions.
-Results additionally identify escalation, teacher and scoring policies.
+Calibration also pins the escalation teacher policy, escalation configuration
+(`to`, band or target accuracy, and call limit), and `uncalibrated` policy. Any
+change requires recalibration. Results additionally identify the scoring policy.
 
 `between: [lo, hi]` escalates calibrated probabilities inside the inclusive band.
 Alternatively `target_accuracy: 0.90` chooses the narrowest fitting band on a
@@ -171,13 +192,15 @@ The independent golden answer excludes the escalation teacher; insufficient
 independent groups means unverified, never a calibration pass.
 
 Escalations share one teacher call per output/projection, bounded by
-`max_calls_per_trial`. Overflow and teacher failures become missing. Teacher
-answers map to 1 or 0 by expected membership. Calls report actual provider,
+`max_calls_per_trial`. Overflow and teacher failures become missing. Calls are admitted in the order of their first requested instance in expansion
+order, including forced-teacher routing. Calibration and runtime share this planner.
+Teacher answers map to 1 or 0 by expected membership. Calls report actual provider,
 models, usage and wall time; calibration cost projections are estimates.
 
 ## Aggregation and dataset integration
 
-A failed gate forces score 0 and fail. An unknown/error gate or any missing
+A failed mechanical gate returns score 0 and fail before backend or teacher
+inference, preserving gate evidence and calls. An unknown/error gate or any missing
 question instance prevents pass. Each question averages applicable instances,
 counting missing values as zero; every declared question weight stays in the
 denominator. Complete results pass when weighted score reaches `pass_at` (default
@@ -209,10 +232,16 @@ backend endpoint. Local decision billing is `local`; teacher usage stays visible
 - **ollama-logprobs:** an operator-supplied model/endpoint; no downloads. One
   instance per call, options A–P, temperature 0, `think: false`, `num_predict: 1`,
   `top_logprobs: 20`. Exact `X` and ` X` token masses combine. Generated tokens
-  must be option letters and option mass at least 0.5. Missing options have a
-  summed probability bound at most 0.01; retained bounded results use the
-  conservative lower `p_good`. Others are missing. Reports include missing,
+  must be option letters and observed option mass at least 0.5. Each omitted exact
+  variant (`X` or ` X`) has probability bounded individually by `p_min`, the
+  smallest returned candidate probability. Keep the instance only when the sum
+  of these bounds is at most 0.01. Preserve observed mass, add zero for each omitted
+  expected variant and `p_min` for each omitted unexpected variant, then renormalize
+  to obtain conservative `p_good`. Any omitted variant sets `bounded: true`;
+  instances exceeding the bound are missing. Reports include missing,
   bounded and reversed-option permutation rates. Model digest comes from tags.
+  Prompt/probability protocol v2 ignores v1 cached scores and requires fresh
+  calibration so earlier optimistic probability bounds cannot be reused.
 - **jev-http:** POST `{state, questions}` to an operator-run DecisionEngine wrapper
   using raw `temperature=1`; shared state is a JSON-encoded projection and batches
   contain at most 16 questions. Each question has `type`, `instructions`, `criteria`.

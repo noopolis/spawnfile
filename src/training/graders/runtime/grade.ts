@@ -1,5 +1,6 @@
 import type { DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { allQuestions, expectedOptions, optionsFor, stableDigest, type DecisionQuestion } from '../format/index.js';
+import { planCallAdmission } from '../admission.js';
 import { expandInstances } from '../instances.js';
 import { aggregateGrader, type InstanceOutcome } from '../aggregation.js';
 import { checkCalibration, createCalibrationIdentity } from '../identity.js';
@@ -23,7 +24,11 @@ function goodProbability(question: DecisionQuestion, result: DecisionResult): nu
 export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
   const { grader, calibration, backend, signal } = options;
   signal?.throwIfAborted();
-  const backendModel = await decisionBackendIdentity(grader, backend);
+  if (grader.gates.some(gate => 'check' in gate && options.gateOutcomes?.[gate.id] === 'fail')) {
+    return { ...aggregateGrader(grader, expandInstances(grader, options.output, options.context), {}, options.gateOutcomes),
+      judgeCalls: [], ...resultIdentity(options) };
+  }
+  const backendModel = await decisionBackendIdentity(grader, backend, signal);
   const identity = createCalibrationIdentity(grader, { ...calibration.identity, backendModel,
     segmenter: undefined, golden: options.goldenDigest, promptTemplateVersion: options.promptTemplateVersion });
   const checked = checkCalibration(grader, calibration, identity);
@@ -73,17 +78,16 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
     if (grader.model.backend !== 'teacher' && inEscalationBand(pGood, fitted.band!)) escalate(instance);
     else outcomes[instance.key] = { pGood };
   }
-  // Expansion order agrees with calibration's per-output projection admission order.
-  const ordered = [...groups.values()].sort((a, b) =>
-    instances.findIndex(i => i.projectionDigest === a.projectionDigest) - instances.findIndex(i => i.projectionDigest === b.projectionDigest));
-  let calls = 0;
-  for (const group of ordered) {
-    if (!options.teacher || calls >= (grader.escalate.max_calls_per_trial ?? Number.MAX_SAFE_INTEGER)) continue;
+  const calls = planCallAdmission(instances.filter(instance => outcomes[instance.key]?.escalated)
+    .map(instance => ({ outputId: 'trial', projectionDigest: instance.projectionDigest })), grader.escalate.max_calls_per_trial);
+  for (const call of calls) {
+    if (!options.teacher || !call.admitted) continue;
+    const group = groups.get(call.projectionDigest)!;
+    group.instances.sort((a, b) => instances.indexOf(a.instance) - instances.indexOf(b.instance));
     const definition = grader.teachers.find(teacher => teacher.id === grader.escalate.to)!;
     if (options.teacher.model !== definition.model || options.teacher.provider.id !== `${definition.provider}-subscription`) {
       throw new Error('Escalation teacher route does not match declared policy');
     }
-    calls++;
     const result = await escalateGroup(group, options.teacher, definition.id, signal);
     judgeCalls.push(result.call);
     for (const { instance, question } of group.instances) {
@@ -93,8 +97,14 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
     }
   }
   signal?.throwIfAborted();
-  if (await decisionBackendIdentity(grader, backend) !== backendModel) throw new Error('Backend identity changed during grading');
+  if (await decisionBackendIdentity(grader, backend, signal) !== backendModel) throw new Error('Backend identity changed during grading');
   return { ...aggregateGrader(grader, instances, outcomes, options.gateOutcomes), judgeCalls,
+    ...resultIdentity(options, identity) };
+}
+
+function resultIdentity(options: GradeOptions, identity = options.calibration.identity): Pick<GradeResult, 'identity' | 'backendBilling'> {
+  const { grader, calibration } = options;
+  return {
     backendBilling: grader.model.backend === 'teacher' ? 'subscription' : 'local',
     identity: { calibration: identity, calibrationDigest: stableDigest(calibration), escalation: stableDigest(grader.escalate),
       teacherPolicy: stableDigest({ escalation: teacherPolicyDigest(grader.teachers.find(t => t.id === grader.escalate.to)!),

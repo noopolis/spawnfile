@@ -14,7 +14,7 @@ export interface GradeOptions {
 export async function runGrade(options: GradeOptions, dependencies: GraderDependencies = {}) {
   options.signal?.throwIfAborted();
   const output: unknown = JSON.parse(await readFile(options.outputFile, 'utf8'));
-  const runtime = await buildGradingRuntime(options.graderFile, dependencies);
+  const runtime = await buildGradingRuntime(options.graderFile, dependencies, options.signal);
   const context: Record<string, unknown> = {};
   for (const [name, file] of Object.entries(options.contextFiles ?? {})) {
     if (!Object.hasOwn(runtime.grader.context, name)) throw new Error(`Unknown grader context ${name}`);

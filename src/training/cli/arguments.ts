@@ -12,9 +12,9 @@ const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'r
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const graderFlags: Record<string, readonly string[]> = {
   validate: ['grader'],
-  label: ['grader', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit'],
-  calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency'],
-  grade: ['grader', 'output', 'context'],
+  label: ['grader', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
+  calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
+  grade: ['grader', 'output', 'context', 'timeout-ms'],
 };
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
@@ -24,9 +24,9 @@ const flags: Record<string, readonly string[]> = {
 export const helpText = `Paideia — explicit local native-agent experiments
 
 grader validate --grader FILE
-grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N]
-grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N]
-grader grade --grader FILE --output FILE.json [--context NAME=FILE]...
+grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N] [--timeout-ms N]
+grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N] [--timeout-ms N]
+grader grade --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
 evaluate DATASET --runtime codex|daimon --model MODEL --instructions FILE --out DIRECTORY
@@ -53,7 +53,7 @@ train --repair-measurements PARENT --out FRESH forks verified development eviden
 Repair preserves valid grades and native work; its dry-run conservatively estimates a full run without importing evidence.
 --cost-config FILE selects a paideia.cost-config.v1 YAML with token assumptions and explicit model prices.
 Dry-run requires no --out or --bridge-command. Unknown costs are reported, never priced at zero.
---timeout-ms N (default 180000 for evaluate/train, ceiling 3600000) is the whole-command deadline.
+--timeout-ms N (default 180000 for evaluate/train/grader, ceiling 3600000) is the whole-command deadline.
 Output stays local. An invocation index identifies immutable stored report and candidate blobs.
 --view PORT enables persisted live observation during evaluate/train (0 selects a free port).
 view reads a saved invocation with its recorded frozen-candidate authorization and has no default deadline.

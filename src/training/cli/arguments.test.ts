@@ -56,3 +56,11 @@ it('parses grader commands and rejects unsupported/missing/repeated flags', () =
     expect(() => parseArguments(argv)).toThrow();
   }
 });
+
+it.each(['label', 'calibrate', 'grade'])('accepts the bounded whole-command deadline for grader %s', command => {
+  const required = command === 'label' ? ['--inputs', 'inputs.yaml', '--teachers', 'teacher']
+    : command === 'grade' ? ['--output', 'output.json'] : [];
+  const args = parseArguments(['grader', command, '--grader', 'grader.yaml', ...required, '--timeout-ms', '3600000']);
+  expect(count(args, 'timeout-ms', 180000, 3600000)).toBe(3600000);
+  expect(() => count({ ...args, flags: { ...args.flags, 'timeout-ms': ['3600001'] } }, 'timeout-ms', 180000, 3600000)).toThrow('integer');
+});

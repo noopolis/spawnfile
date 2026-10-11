@@ -39,3 +39,5 @@ snapshot and supplies `gradedArtifact` to project evaluators. Grader results ret
 coverage, per-question results, identity and actual judge calls. Shared backend
 resources and nested gate resources serialize; gates without concurrency opt-in
 make the enclosing grader sequential. No inference or CLI imports belong here.
+Failed mechanical gates stop grader inference immediately, retaining gate evidence
+and calls; unknown gates continue grading with an unknown aggregate status.

@@ -19,3 +19,4 @@ export { splitCalibration, fitPlatt, applyPlatt, calibrateQuestions, seededRando
 export type { QuestionType, GoldenSource, CalibrationRecord, Exclusions, PlattParams, PlattFit,
   ScoredRecord, EvidenceCounts, Interval, CalibrationMetrics, CalibrationStatus, BarResult,
   QuestionCalibration, TeacherAgreementRecord, EscalationBand, BandPolicy, CascadeRecord, BandPlan, EscalationTeacherReport, EscalationCall } from './calibration/index.js';
+export { planCallAdmission, escalationCallKey } from './admission.js';

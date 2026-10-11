@@ -18,7 +18,7 @@ export type { GraderDependencies } from './backend.js';
 export async function runGraderCommand(args: CliArguments, io: CliIO, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<number> {
   const graderFile = resolve(io.cwd, one(args, 'grader'));
   if (args.graderCommand === 'validate') {
-    io.stdout(`${JSON.stringify(await runValidate(graderFile, dependencies))}\n`);
+    io.stdout(`${JSON.stringify(await runValidate(graderFile, dependencies, signal))}\n`);
     return 0;
   }
   if (args.graderCommand === 'grade') {

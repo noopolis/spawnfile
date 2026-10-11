@@ -85,7 +85,7 @@ export function voteProvenance(label: Label | undefined, teacher: string, instan
   return { ...call, question_digest: vote.question_digest };
 }
 
-/** Human adjudication is independent of a model policy; model votes require both identities. */
+/** All votes pin question/evidence; only model votes additionally pin teacher policy. */
 export function validateStoredVotes(grader: Grader, labels: Labels, options: { resolved?: boolean } = {}): void {
   const questions = new Map(allQuestions(grader).map(q => [q.id, q]));
   const teachers = new Map(grader.teachers.map(t => [t.id, t]));
@@ -93,14 +93,14 @@ export function validateStoredVotes(grader: Grader, labels: Labels, options: { r
     const instances = options.resolved ? new Map(expandInstances(grader, label.output, label.context).map(instance => [instance.key, instance])) : null;
     for (const [key, votes] of Object.entries(label.votes)) {
     for (const name of Object.keys(votes)) {
-      if (labels.labelers[name]?.kind === 'human') continue;
+      const human = labels.labelers[name]?.kind === 'human';
       const teacher = teachers.get(name);
       const question = questions.get(key.split('@')[0]!);
       const entry = voteProvenance(label, name, key);
-      if (!teacher || !question || entry?.question_digest !== stableDigest(question) ||
-        entry.teacher_policy_digest !== teacherPolicyDigest(teacher) ||
+      if (!question || entry?.question_digest !== stableDigest(question) ||
+        !human && (!teacher || entry.teacher_policy_digest !== teacherPolicyDigest(teacher)) ||
         instances !== null && (instances.get(key)?.state !== 'ready' || entry.projection_digest !== instances.get(key)?.projectionDigest)) {
-        throw new Error(`Stale vote ${label.id}/${key}/${name}; use --relabel`);
+        throw new Error(`Stale vote ${label.id}/${key}/${name}; ${human ? 're-adjudicate with current question and projection digests' : 'use --relabel'}`);
       }
     }
   }

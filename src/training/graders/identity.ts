@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { teacherPolicyDigest } from './labeling/index.js';
 import { segmenterIdentity } from './instances.js';
 import { allQuestions, optionsFor, parseSchema, identifier, probability, stableDigest, type Grader, type Labels } from './format/index.js';
 
@@ -12,6 +13,9 @@ export const calibrationIdentitySchema = z.strictObject({
   backendModel: z.string().min(1),
   golden: digest,
   seed: z.string(),
+  escalation: digest,
+  escalationTeacher: digest,
+  uncalibrated: z.enum(['refuse', 'teacher']),
   exclusions: z.array(z.strictObject({ dataset: z.string().min(1), digest })),
 });
 export type CalibrationIdentity = z.infer<typeof calibrationIdentitySchema>;
@@ -41,10 +45,13 @@ export function parseCalibration(value: unknown): CalibrationFile { return parse
 export function parseCalibrationJson(source: string): CalibrationFile { return parseCalibration(JSON.parse(source)); }
 export { segmenterIdentity } from './instances.js';
 
-export function createCalibrationIdentity(grader: Grader, supplied: Omit<CalibrationIdentity, 'questions' | 'optionMapping' | 'segmenter'> & { segmenter?: string }): CalibrationIdentity {
+export function createCalibrationIdentity(grader: Grader, supplied: Omit<CalibrationIdentity, 'questions' | 'optionMapping' | 'segmenter' | 'escalation' | 'escalationTeacher' | 'uncalibrated'> & { segmenter?: string }): CalibrationIdentity {
   const questions = allQuestions(grader);
   return parseSchema(calibrationIdentitySchema, {
     ...supplied,
+    escalation: stableDigest(grader.escalate),
+    escalationTeacher: teacherPolicyDigest(grader.teachers.find(teacher => teacher.id === grader.escalate.to)!),
+    uncalibrated: grader.uncalibrated,
     questions: Object.fromEntries(questions.map(question => [question.id, stableDigest(question)])),
     // Fixed A–P ordering; backend token extraction is owned by inference.
     optionMapping: Object.fromEntries(questions.map(question => [question.id, stableDigest(optionsFor(question).map((option, index) =>
@@ -62,7 +69,7 @@ export interface CalibrationCheck {
 }
 
 /** Identity mismatches always refuse, including when teacher fallback is selected. */
-export function checkCalibration(grader: Grader, calibration: CalibrationFile, identity: CalibrationIdentity): CalibrationCheck {
+export function checkCalibration(grader: Grader, calibration: CalibrationFile, identity: CalibrationIdentity, options: { quality?: boolean } = {}): CalibrationCheck {
   const refusals: string[] = [];
   const current = createCalibrationIdentity(grader, identity);
   for (const component of Object.keys(current) as (keyof CalibrationIdentity)[]) {
@@ -71,7 +78,7 @@ export function checkCalibration(grader: Grader, calibration: CalibrationFile, i
     }
   }
   const notCalibrated = allQuestions(grader).filter(question => calibration.questions[question.id]?.status !== 'calibrated').map(question => question.id);
-  if (grader.uncalibrated === 'refuse') {
+  if (options.quality !== false && grader.uncalibrated === 'refuse') {
     for (const id of notCalibrated) refusals.push(`question ${id}: ${calibration.questions[id]?.failures.join(', ') || 'not calibrated'}`);
   }
   return { ok: refusals.length === 0, refusals, notCalibrated };

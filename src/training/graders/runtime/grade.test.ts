@@ -59,6 +59,7 @@ it('refuses uncalibrated questions or always routes them to teacher', async () =
   f.calibration.questions.q!.failures = ['independent groups'];
   await expect(gradeOutput(f)).rejects.toThrow('question q: independent groups');
   f.grader.uncalibrated = 'teacher';
+  await reidentify(f);
   const result = await gradeOutput(f);
   expect(result).toMatchObject({ status: 'pass', score: 1, questions: [{ escalated: 1 }] });
   expect(f.backend.score).not.toHaveBeenCalled();
@@ -169,4 +170,44 @@ it('does not claim requested model assumptions and retains measured failure prov
   expect((await gradeOutput(f)).judgeCalls[0]).toMatchObject({ usage, responseModel: 'actual', responseRoute: 'r' });
   f.teacher!.provider.generate = async () => { throw null; };
   expect((await gradeOutput(f)).judgeCalls[0]!.usage).toBeNull();
+});
+
+it.each([false, true])('admits the first requested escalation, skipping earlier local projections (forced=%s)', async forced => {
+  const f = await fixture(0.5);
+  f.grader.questions.push({ ...f.grader.questions[0]!, id: 'b', reads: ['context.evidence'] },
+    { ...f.grader.questions[0]!, id: 'a' });
+  for (const id of ['b', 'a']) f.calibration.questions[id] = structuredClone(f.calibration.questions.q!);
+  f.backend.score = vi.fn(async (requests: DecisionRequest[]) => requests.map(request => ({ key: request.key, status: 'ok' as const,
+    probabilities: request.key === 'q' ? { yes: 0.9, no: 0.1 } : { yes: 0.5, no: 0.5 } })));
+  if (forced) {
+    f.grader.uncalibrated = 'teacher';
+    f.calibration.questions.a!.status = 'uncalibrated';
+  }
+  await reidentify(f);
+  const result = await gradeOutput(f);
+  const prompt = JSON.parse(vi.mocked(f.teacher!.provider.generate).mock.calls[0]![0].prompt) as { questions: { key: string }[] };
+  expect(prompt.questions.map(q => q.key)).toEqual(['b']);
+  expect(result.questions.map(q => q.missing)).toEqual([0, 0, 1]);
+});
+it('short-circuits a decisive failed mechanical gate before backend identity or teacher calls', async () => {
+  const f = await fixture(0.5);
+  f.grader.gates = [{ id: 'hard', check: { eval: 'project/check' } }];
+  vi.mocked(f.backend.identity).mockClear().mockRejectedValue(Error('HTTP 503'));
+  expect(await gradeOutput({ ...f, gateOutcomes: { hard: 'fail' } })).toMatchObject({
+    status: 'fail', score: 0, gates: [{ id: 'hard', status: 'fail' }], judgeCalls: [] });
+  expect(f.backend.identity).not.toHaveBeenCalled();
+  expect(f.backend.score).not.toHaveBeenCalled();
+  expect(f.teacher!.provider.generate).not.toHaveBeenCalled();
+});
+
+it('orders mixed forced and calibrated instances in a shared teacher prompt by expansion order', async () => {
+  const f = await fixture(0.5);
+  f.grader.questions.push({ ...f.grader.questions[0]!, id: 'forced' });
+  f.grader.uncalibrated = 'teacher';
+  f.calibration.questions.forced = { ...structuredClone(f.calibration.questions.q!), status: 'uncalibrated' };
+  await reidentify(f);
+  const result = await gradeOutput(f);
+  const prompt = JSON.parse(vi.mocked(f.teacher!.provider.generate).mock.calls[0]![0].prompt) as { questions: { key: string }[] };
+  expect(prompt.questions.map(q => q.key)).toEqual(['q', 'forced']);
+  expect(result).toMatchObject({ status: 'pass', coverage: 1 });
 });

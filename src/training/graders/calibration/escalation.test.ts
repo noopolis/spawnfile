@@ -124,6 +124,13 @@ describe('escalation planning', () => {
       independentGroups: 40, escalationRate: 0, status: 'escalation-infeasible' });
     expect(planEscalation(held.map(row => ({ ...row, missing: true })), held, { target_accuracy: 1 }).band).toBeUndefined();
   });
+  it('simulates forced teacher requests even with missing local scores or no feasible band', () => {
+    const held = rows().map(row => ({ ...row, missing: true, teacherGood: row.good }));
+    expect(planEscalation([], held, { target_accuracy: 1 }, { forceTeacher: true, maxCallsPerTrial: 1 }))
+      .toMatchObject({ heldOutAccuracy: 1, escalationRate: 1, coverage: 0 });
+    const earlier = held.map(row => ({ outputId: row.outputId!, projectionDigest: 'earlier' }));
+    expect(planEscalation([], held, { target_accuracy: 1 }, { forceTeacher: true, maxCallsPerTrial: 1, calls: earlier }).heldOutAccuracy).toBe(0);
+  });
   it('rejects invalid configuration and probabilities', () => {
     for (const between of [[0.5, 0.5], [-1, 0.5], [0, 1.1], [0, NaN]] as const) {
       expect(() => planEscalation([], [], { between })).toThrow('between');

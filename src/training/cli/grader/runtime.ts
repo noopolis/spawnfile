@@ -10,7 +10,7 @@ import { readExclusions } from './exclusions.js';
 /** Endpoint tokens are shared across separately constructed grader routes. */
 const resources = new Map<string, object>();
 
-export async function buildGradingRuntime(graderFile: string, dependencies: GraderDependencies = {}): Promise<GradingRuntime> {
+export async function buildGradingRuntime(graderFile: string, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<GradingRuntime> {
   const source = await readFile(graderFile, 'utf8');
   const grader = await loadGrader(graderFile);
   const calibrationSource = await readFile(grader.calibration, 'utf8');
@@ -19,7 +19,7 @@ export async function buildGradingRuntime(graderFile: string, dependencies: Grad
   validateStoredVotes(grader, golden.labels, { resolved: true });
   const exclusions = await readExclusions(calibration.identity.exclusions.map(item => item.dataset));
   const backend = graderBackend(grader, dependencies);
-  const identity = createCalibrationIdentity(grader, { backendModel: await backendIdentity(grader, backend),
+  const identity = createCalibrationIdentity(grader, { backendModel: await backendIdentity(grader, backend, signal),
     promptTemplateVersion: DECISION_PROMPT_VERSION, golden: golden.goldenDigest,
     seed: calibration.identity.seed, exclusions: exclusions.identities });
   const check = checkCalibration(grader, calibration, identity);

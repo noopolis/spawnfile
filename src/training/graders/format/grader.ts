@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { labelsSchema, parseLabels } from './labels.js';
 import { identifier, probability, provider, parseSchema, parseYaml, rememberSourceDirectory } from './common.js';
 import { questionSchema, gateQuestionSchema, validateQuestion, allQuestions } from './questions.js';
+import { requiresArgumentBinding } from './binding.js';
 
 const between = z.tuple([probability, probability]).refine(([lo, hi]) => lo < hi, 'requires lo < hi');
 const escalation = z.union([
@@ -38,9 +39,8 @@ function checkBinding(check: Record<string, unknown>, location: string): void {
     const steps = Array.isArray(check.steps) ? check.steps as { bind?: Record<string, unknown>; where?: { cel?: unknown } }[] : [];
     const cel = steps.at(-1)?.where?.cel;
     const bound = new Set(steps.slice(0, -1).flatMap(step => Object.keys(step?.bind ?? {})));
-    const references = typeof cel === 'string' ? [...cel.matchAll(/\bbindings\.([A-Za-z_][A-Za-z0-9_]*)/g)] : [];
-    if (!references.some(match => bound.has(match[1]!))) {
-      throw new Error(`${location}.steps: final where.cel must reference bindings from an earlier step bind`);
+    if (!requiresArgumentBinding(cel, bound)) {
+      throw new Error(`${location}.steps: final where.cel must require argument equality to an earlier step binding`);
     }
   }
   for (const op of ['all', 'any', 'not']) {

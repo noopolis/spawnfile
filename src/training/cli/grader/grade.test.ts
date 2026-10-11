@@ -93,3 +93,22 @@ it('refuses malformed input, unknown contexts, cancellation and calibration drif
   expect(errors.join('')).toContain('backendModel');
   expect(await readFile(f.grader.calibration, 'utf8')).toBe(JSON.stringify(f.calibration));
 });
+
+it('propagates cancellation through grade identity probes, scoring and teacher calls', async () => {
+  const f = await fixture(); const controller = new AbortController();
+  const identity = f.backend.identity;
+  const probes: AbortSignal[] = [];
+  f.backend.identity = async signal => { expect(signal).toBe(controller.signal); probes.push(signal!); return identity(signal); };
+  f.backend.score = async (requests, signal) => {
+    expect(signal).toBe(controller.signal);
+    return requests.map(request => ({ key: request.key, status: 'ok', probabilities: { yes: 0.5, no: 0.5 } }));
+  };
+  const generate = vi.fn(async ({ signal }: { signal?: AbortSignal }) => {
+    expect(signal).toBe(controller.signal);
+    controller.abort(new Error('teacher deadline')); throw new Error('teacher deadline');
+  });
+  await expect(runGrade({ ...f, signal: controller.signal }, { ...f.dependencies, provider: () => ({ id: 'claude-subscription',
+    capabilities: { billing: 'subscription', tools: 'disabled', seed: false, temperature: false }, generate }) })).rejects.toThrow('teacher deadline');
+  expect(probes.length).toBeGreaterThanOrEqual(2);
+  expect(generate).toHaveBeenCalledOnce();
+});

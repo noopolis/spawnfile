@@ -58,13 +58,14 @@ describe('label planning', () => {
     label.provenance.t!.votes = { q: 'invalid' };
     expect(voteProvenance(label, 't', 'q')).toBeUndefined();
   });
-  it('refuses legacy and stale per-vote identities but exempts humans', () => {
+  it('refuses legacy and stale per-vote identities and exempts humans only from teacher policy', () => {
     const g = grader();
     const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { t: { kind: 'model', provider: 'grok', model: 'm' }, h: { kind: 'human', name: 'H' } },
       labels: [{ id: 'a', lineage: 'a', output: {}, context: {}, votes: { q: { t: 'yes', h: 'yes' } }, provenance: {} }] };
     expect(() => validateStoredVotes(g, labels)).toThrow('Stale vote');
     const metadata = { question_digest: stableDigest(g.questions[0]), teacher_policy_digest: teacherPolicyDigest(g.teachers[0]!) };
     labels.labels[0]!.provenance.t = { votes: { q: metadata } };
+    labels.labels[0]!.provenance.h = { votes: { q: metadata } };
     expect(() => validateStoredVotes(g, labels)).not.toThrow();
     labels.labels[0]!.output = { body: ['original'] };
     Object.assign(metadata, { projection_digest: groupLabelInstances(g, labels.labels[0]!.output, {})[0]!.projectionDigest });
@@ -84,4 +85,27 @@ describe('label planning', () => {
     delete labels.labels[0]!.votes.q!.t;
     expect(() => validateStoredVotes(g, labels)).not.toThrow();
   });
+  it('requires human re-adjudication when the question or evidence changes', () => {
+    const g = grader(); g.questions[0]!.ask = 'Is it correct?';
+    const output = { body: ['original'] };
+    const vote = { question_digest: stableDigest(g.questions[0]),
+      projection_digest: groupLabelInstances(g, output, {})[0]!.projectionDigest };
+    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { human: { kind: 'human', name: 'Reader' } },
+      labels: [{ id: 'human-truth', lineage: 'story', output, context: {}, votes: { q: { human: 'yes' } },
+        provenance: { human: { votes: { q: vote } } } }] };
+    expect(() => validateStoredVotes(g, labels, { resolved: true })).not.toThrow();
+    g.teachers = [];
+    expect(() => validateStoredVotes(g, labels, { resolved: true })).not.toThrow();
+    g.questions[0]!.ask = 'Is it incorrect?';
+    expect(() => validateStoredVotes(g, labels, { resolved: true })).toThrow('re-adjudicate');
+    vote.question_digest = stableDigest(g.questions[0]);
+    expect(() => validateStoredVotes(g, labels, { resolved: true })).not.toThrow();
+    labels.labels[0]!.output = { body: ['changed'] };
+    expect(() => validateStoredVotes(g, labels, { resolved: true })).toThrow('re-adjudicate');
+    vote.projection_digest = groupLabelInstances(g, labels.labels[0]!.output, {})[0]!.projectionDigest;
+    expect(() => validateStoredVotes(g, labels, { resolved: true })).not.toThrow();
+    delete labels.labels[0]!.provenance.human;
+    expect(() => validateStoredVotes(g, labels)).toThrow('re-adjudicate');
+  });
+
 });

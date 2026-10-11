@@ -113,6 +113,9 @@ it('enforces calibration quality policy and detects definition edits during prov
   await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('question q: held-out groups');
   f.source.uncalibrated = 'teacher';
   await writeFile(f.graderFile, stringify(f.source));
+  await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('identity mismatch: uncalibrated');
+  f.calibration.identity = createCalibrationIdentity({ ...f.grader, uncalibrated: 'teacher' }, f.calibration.identity);
+  await writeFile(f.grader.calibration, JSON.stringify(f.calibration));
   expect((await buildGradingRuntime(f.graderFile, f.dependencies)).grader.uncalibrated).toBe('teacher');
   f.backend.identity = async () => {
     await writeFile(f.graderFile, `${stringify(f.source)}\n# edited while loading\n`);

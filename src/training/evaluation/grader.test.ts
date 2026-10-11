@@ -5,7 +5,7 @@ import type { EvaluationContext, JudgeCall } from '../contracts/evaluation.js';
 import type { DecisionBackend, DecisionRequest } from '../contracts/grading.js';
 import { parseDatasetYaml, resolveDataset } from '../cases/index.js';
 import { createCalibrationIdentity, decisionBackendIdentity, parseGrader, sha256, type GradingRuntime } from '../graders/index.js';
-import { artifact, evaluationContext, snapshot } from '../testing/index.js';
+import { artifact, evaluationContext, snapshot, observation } from '../testing/index.js';
 import { createEvaluationRegistry, evaluateNode, evaluatePlan } from './index.js';
 import { evaluateGrader } from './grader.js';
 
@@ -71,21 +71,53 @@ describe('grader builtin evaluation', () => {
     expect(backend.score).not.toHaveBeenCalled();
   });
   it('hard-fails failed gates, passes authentic artifact bytes to project gates and preserves gate calls', async () => {
-    const { context, check } = await fixture([{ id: 'valid', check: { eval: 'project-gate' } }]);
+    const { context, check, backend } = await fixture([{ id: 'valid', check: { eval: 'project-gate' } },
+      { id: 'later', check: { eval: 'project-gate' } }]);
     let observed: EvaluationContext | undefined;
     const gateCall: JudgeCall = { id: 'gate-call', judge: 'gate', providerId: 'provider', requestedModel: 'm', responseModel: 'm',
       responseRoute: 'provider', outcome: 'completed', usage: { inputTokens: 2, cachedInputTokens: null, outputTokens: 1, reasoningTokens: null, source: 'reported' } };
     const registry = createEvaluationRegistry({ 'project-gate': { definition: { version: '1', kind: 'mechanical', incremental: true, stopProof: true, validate() {} },
-      async evaluate(_check, local) { observed = local; return { status: 'fail', finality: 'final', reason: 'Rejected', evidence: [], judgeCalls: [gateCall] }; } } });
+      async evaluate(_check, local) { observed = local; return { status: 'fail', finality: 'final', reason: 'Rejected',
+        evidence: [{ kind: 'event', id: 'gate-receipt' }], judgeCalls: [gateCall] }; } } });
+    const originalScore = vi.mocked(backend.score).getMockImplementation()!;
+    vi.mocked(backend.score).mockRejectedValue(new Error('HTTP 503'));
+    const identityProbe = vi.spyOn(backend, 'identity').mockRejectedValue(new Error('Identity HTTP 503'));
     const result = await evaluateNode(check, context, registry);
-    expect(result).toMatchObject({ status: 'fail', score: 0, grading: { gates: [{ id: 'valid', status: 'fail' }] } });
-    expect(result.judgeCalls).toHaveLength(2);
+    expect(result).toMatchObject({ status: 'fail', score: 0, grading: { gates: [{ id: 'valid', status: 'fail' }, { id: 'later', status: 'unknown' }] } });
+    expect(result.children).toHaveLength(1);
+    expect(result.evidence).toContainEqual({ kind: 'event', id: 'gate-receipt' });
+    expect(result.judgeCalls).toEqual([gateCall]);
+    expect(backend.score).not.toHaveBeenCalled();
+    expect(identityProbe).not.toHaveBeenCalled();
     expect(result.usage).toEqual([gateCall.usage]);
     expect(observed!.gradedArtifact).toEqual(artifact());
     expect(observed!.snapshot).toEqual(context.snapshot);
     expect(registry.grader!.concurrency!(check, context)).toBeUndefined();
     await expect(evaluateGrader(check, context)).rejects.toThrow('evaluation engine');
+    vi.mocked(backend.score).mockImplementation(originalScore);
+    identityProbe.mockRestore();
     expect((await evaluateGrader(check, { ...context, evaluateCheck: async () => ({ status: 'skipped', finality: 'final', reason: 'skipped', evidence: [] }) })).status).toBe('unknown');
+    expect(backend.score).toHaveBeenCalledTimes(1);
+  });
+  it('requires validated bytes at resolution and rejects mismatched filing through evaluation', async () => {
+    const sequence = (cel: string) => ({ id: 'bound', check: { eval: 'tool-sequence', order: 'happens-before',
+      ending_at: { artifact: 'article', event: 'accepted-call' },
+      steps: [{ tool: 'validate', bind: { article: 'call.args.article' } }, { tool: 'file', where: { cel } }] } });
+    for (const cel of ['bindings.article != null', 'call.args.article == bindings.article || true']) {
+      await expect(fixture([sequence(cel)])).rejects.toThrow('must require argument equality');
+    }
+    const { context, check, backend } = await fixture([sequence('call.args.article == bindings.article')]);
+    const events = (filed: string) => [
+      observation({ id: 'validated', callId: 'validation', tool: 'validate', seq: 1, args: { article: 'SAFE' } }),
+      observation({ id: 'validated-result', callId: 'validation', tool: 'validate', seq: 2, type: 'tool.complete', success: true }),
+      observation({ id: 'filed', callId: 'file', tool: 'file', seq: 3, args: { article: filed } }),
+      observation({ id: 'filed-result', callId: 'file', tool: 'file', seq: 4, type: 'tool.complete', success: true }),
+    ];
+    const registry = createEvaluationRegistry();
+    const failed = await evaluateNode(check, { ...context, snapshot: snapshot({ events: events('UNVALIDATED') }) }, registry);
+    expect(failed).toMatchObject({ status: 'fail', score: 0, children: [{ id: 'bound', status: 'fail' }] });
+    expect(backend.score).not.toHaveBeenCalled();
+    expect((await evaluateNode(check, { ...context, snapshot: snapshot({ events: events('SAFE') }) }, registry)).status).toBe('pass');
   });
   it('serializes shared backend resources and includes nested resource declarations', async () => {
     const { context, check, runtime } = await fixture([{ id: 'gate', check: { any: [{ not: { eval: 'equals', input: 'artifact:article', value: 'wrong' } }] } }]);

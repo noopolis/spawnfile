@@ -25,7 +25,7 @@ describe('calibration identities', () => {
     expect(parseCalibrationJson(JSON.stringify(calibration()))).toEqual(calibration());
     expect(goldenIdentity({ labels: [] } as unknown as Labels)).not.toBe(goldenIdentity({ labels: [1] } as unknown as Labels));
   });
-  it.each(['questions', 'optionMapping', 'promptTemplateVersion', 'segmenter', 'backendModel', 'golden', 'seed', 'exclusions'] as const)(
+  it.each(['questions', 'optionMapping', 'promptTemplateVersion', 'segmenter', 'backendModel', 'golden', 'seed', 'exclusions', 'escalation', 'escalationTeacher', 'uncalibrated'] as const)(
     'refuses a mismatch naming %s', component => {
       const file = calibration();
       const mutated = { ...file, identity: { ...file.identity, [component]: component === 'questions' || component === 'optionMapping'
@@ -41,9 +41,35 @@ describe('calibration identities', () => {
     delete file.questions['q.applies'];
     expect(checkCalibration(grader, file, identity)).toEqual({ ok: false, notCalibrated: ['q', 'q.applies'],
       refusals: ['question q: evidence.groups >= 15', 'question q.applies: not calibrated'] });
-    expect(checkCalibration({ ...grader, uncalibrated: 'teacher' }, file, identity)).toMatchObject({ ok: true, notCalibrated: ['q', 'q.applies'] });
+    expect(checkCalibration(grader, file, identity, { quality: false }).ok).toBe(true);
+    const fallback = { ...grader, uncalibrated: 'teacher' as const };
+    expect(checkCalibration(fallback, file, identity).ok).toBe(false);
+    file.identity = createCalibrationIdentity(fallback, supplied);
+    expect(checkCalibration(fallback, file, file.identity)).toMatchObject({ ok: true, notCalibrated: ['q', 'q.applies'] });
     file.identity.seed = 'other';
     expect(checkCalibration({ ...grader, uncalibrated: 'teacher' }, file, identity).ok).toBe(false);
+  });
+  it('pins every escalation route, band, target, budget, teacher policy and fallback change', () => {
+    const original = { ...grader, teachers: [...grader.teachers, { id: 'other', provider: 'grok' as const, model: 'grok' }] };
+    const file = calibration();
+    file.identity = createCalibrationIdentity(original, supplied);
+    const changed = [
+      { ...original, escalate: { ...original.escalate, to: 'other' } },
+      { ...original, escalate: { ...original.escalate, max_calls_per_trial: 1 } },
+      { ...original, escalate: { to: 't', between: [0.2, 0.8] as [number, number] } },
+      { ...original, escalate: { to: 't', target_accuracy: 0.99 } },
+      { ...original, teachers: original.teachers.map(t => ({ ...t, model: 'changed' })) },
+      { ...original, uncalibrated: 'teacher' as const },
+    ];
+    for (const definition of changed) {
+      expect(checkCalibration(definition, file, file.identity).ok).toBe(false);
+      const fresh = createCalibrationIdentity(definition, supplied);
+      expect(checkCalibration(definition, { ...file, identity: fresh }, fresh).ok).toBe(true);
+    }
+    const target = { ...original, escalate: { to: 't', target_accuracy: 0.85, max_calls_per_trial: 2 } };
+    file.identity = createCalibrationIdentity(target, supplied);
+    expect(checkCalibration({ ...target, escalate: { ...target.escalate, target_accuracy: 0.99 } }, file, file.identity).ok).toBe(false);
+    expect(checkCalibration({ ...target, escalate: { ...target.escalate, max_calls_per_trial: 1 } }, file, file.identity).ok).toBe(false);
   });
   it('rejects invalid schema version, probabilities, bands and unsafe IDs', () => {
     const file = calibration();

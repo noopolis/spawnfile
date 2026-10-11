@@ -66,6 +66,14 @@ describe('grader resolution', () => {
       readCriterionFile: name => resources[name]!, registry: { rulesets: { hidden: { version: '1', expand: () => ({ eval: 'tool-called', tool: 'save' }) } } },
     })).toThrow('unbound tool gate');
   });
+  it('rejects binding mentions and bypassable equalities in resolved grader files', () => {
+    for (const cel of ['bindings.article != null', 'call.args.article == bindings.article || true']) {
+      expect(() => resolve({}, { ...grader, gates: [{ id: 'bound', check: {
+        eval: 'tool-sequence', order: 'happens-before', ending_at: { artifact: 'article', event: 'accepted-call' },
+        steps: [{ tool: 'validate', bind: { article: 'call.args.article' } }, { tool: 'file', where: { cel } }],
+      } }] })).toThrow('must require argument equality');
+    }
+  });
   it('resolves nested gates using the existing registry and authentic artifact name', () => {
     const gate = { id: 'valid', check: { all: [{ not: { eval: 'equals', input: 'artifact:article', value: 'bad' } }] } };
     expect((resolve({}, { ...grader, gates: [gate] }).sharedStages[0]!.checks[0]!.grader_binding as { gates: unknown[] }).gates).toHaveLength(1);

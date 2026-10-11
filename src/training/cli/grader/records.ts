@@ -43,7 +43,7 @@ export function goldenInstances(grader: Grader, labels: Labels): { rows: GoldenI
   return { rows, disputed, unavailable };
 }
 
-export function rawGood(row: GoldenInstance, result: DecisionResult): number | undefined {
+export function rawGood(row: Pick<GoldenInstance, 'request' | 'question'>, result: DecisionResult): number | undefined {
   if (result.status !== 'ok' || result.probabilities === null) return undefined;
   const values = row.request.optionLabels.map(option => result.probabilities![String(option)]);
   if (values.some(value => !Number.isFinite(value) || value! < 0 || value! > 1) ||

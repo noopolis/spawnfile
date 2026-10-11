@@ -1,3 +1,5 @@
+import { planCallAdmission, escalationCallKey as callKey, type EscalationCall } from '../admission.js';
+export type { EscalationCall } from '../admission.js';
 import { deriveConsensus } from '../consensus.js';
 import type { Labels, Option } from '../format/index.js';
 import { wilson90 } from './metrics.js';
@@ -5,7 +7,6 @@ import type { Interval, ScoredRecord } from './types.js';
 
 export type EscalationBand = readonly [number, number];
 export type BandPolicy = { between: EscalationBand } | { target_accuracy: number };
-export interface EscalationCall { outputId: string; projectionDigest: string }
 export interface CascadeRecord extends ScoredRecord {
   teacherGood?: boolean;
   goldenLabelers?: readonly string[];
@@ -80,25 +81,13 @@ export function escalationTeacherReport(heldOut: readonly CascadeRecord[], teach
     agreement: sample.length ? sample.filter(row => teacherAnswer(row, teacherId) !== undefined && teacherAnswer(row, teacherId) === independentGood(row, teacherId)).length / sample.length : 0 };
 }
 
-function callKey(call: EscalationCall): string { return JSON.stringify([call.outputId, call.projectionDigest]); }
 function callFor(row: CascadeRecord): EscalationCall | undefined {
   return row.outputId !== undefined && row.projectionDigest !== undefined
     ? { outputId: row.outputId, projectionDigest: row.projectionDigest } : undefined;
 }
-function allowedCalls(calls: readonly EscalationCall[], limit: number): Set<string> {
-  const perOutput = new Map<string, Set<string>>(), allowed = new Set<string>();
-  for (const call of calls) {
-    const projections = perOutput.get(call.outputId) ?? new Set<string>();
-    if (projections.has(call.projectionDigest) || projections.size < limit) {
-      projections.add(call.projectionDigest); allowed.add(callKey(call));
-    }
-    perOutput.set(call.outputId, projections);
-  }
-  return allowed;
-}
 
 export function planEscalation(fit: readonly CascadeRecord[], heldOut: readonly CascadeRecord[], policy: BandPolicy,
-  options: { teacherId?: string; maxCallsPerTrial?: number; gate?: boolean; calls?: readonly EscalationCall[] } = {}): BandPlan {
+  options: { teacherId?: string; maxCallsPerTrial?: number; gate?: boolean; calls?: readonly EscalationCall[]; forceTeacher?: boolean } = {}): BandPlan {
   if ([...fit, ...heldOut].some(row => !row.missing && (!Number.isFinite(row.p) || row.p < 0 || row.p > 1))) {
     throw new Error('p: expected finite probability');
   }
@@ -127,25 +116,27 @@ export function planEscalation(fit: readonly CascadeRecord[], heldOut: readonly 
       }
     }
   }
+  if (!band && options.forceTeacher) band = [0, 1];
   if (!band) return { status: 'escalation-infeasible', fitAccuracy: 0, heldOutAccuracy: 0, cascadeInterval: [0, 1],
     independentGroups: 0, escalationRate: 0, coverage: 0, failures: ['fit.target_accuracy and retainedCoverage >= 0.30'], ...report };
   const chosen = band;
-  const escalated = heldOut.filter(row => !row.missing && inEscalationBand(row.p, chosen));
+  const escalated = heldOut.filter(row => options.forceTeacher || !row.missing && inEscalationBand(row.p, chosen));
   const calls = options.calls ?? escalated.flatMap(row => { const call = callFor(row); return call ? [call] : []; });
-  const allowed = allowedCalls(calls, limit);
+  const allowed = new Set(planCallAdmission(calls, limit).filter(call => call.admitted).map(callKey));
   const independent = heldOut.flatMap(row => {
     const good = independentGood(row, options.teacherId);
     if (good === undefined) return [];
     const call = callFor(row);
     const permitted = limit === Infinity || (call !== undefined && allowed.has(callKey(call)));
-    const answer = row.missing ? undefined : inEscalationBand(row.p, chosen) ? (permitted ? teacherAnswer(row, options.teacherId) : undefined) : row.p >= 0.5;
+    const answer = options.forceTeacher || !row.missing && inEscalationBand(row.p, chosen)
+      ? (permitted ? teacherAnswer(row, options.teacherId) : undefined) : row.missing ? undefined : row.p >= 0.5;
     return [{ ...row, good, answer }];
   });
   const independentGroups = new Set(independent.map(row => row.group)).size;
   const correct = independent.filter(row => row.answer !== undefined && row.answer === row.good).length;
   const heldOutAccuracy = independent.length ? correct / independent.length : 0;
   const cascadeInterval = wilson90(correct, independent.length);
-  const coverage = retainedCoverage(independent, chosen);
+  const coverage = options.forceTeacher ? 0 : retainedCoverage(independent, chosen);
   const failures: string[] = [];
   if (independentGroups < 15) failures.push('heldOut.independentGroups >= 15');
   if ('target_accuracy' in policy) {

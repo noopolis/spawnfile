@@ -92,6 +92,14 @@ test('computed imports fail closed; lexical constant literals are checked like s
   expect(await f.check("namespace Local { export const x = 1; } import Alias = Local.x;")).toEqual([]);
 });
 
+test('graders stay neutral across all runtime integration owners', async () => {
+  const f = await fixture();
+  for (const owner of ['inference', 'adapters', 'experiments', 'optimization', 'cli']) {
+    expect(await f.check(`import '../${owner}/index.js';`, 'src/graders/consensus.ts'))
+      .toEqual([expect.objectContaining({ messageId: 'neutral' })]);
+  }
+});
+
 test('new unsaved paths remain absolute and unowned paths do not acquire a module', async () => {
   expect(canonicalPath('./a-file-that-does-not-exist')).toBe(path.resolve('./a-file-that-does-not-exist'));
   expect(owner([])).toBeUndefined();

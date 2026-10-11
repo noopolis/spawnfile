@@ -2,16 +2,17 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { stringify, parse } from 'yaml';
-import { afterEach, describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
 import { loadGrader, loadLabels, type Labels } from '../../graders/index.js';
 import { voteProvenance } from '../../graders/labeling/index.js';
 import { InferenceFailure } from '../../inference/index.js';
+import { main } from '../commands.js';
 import { runLabel, createGraderTeacher } from './label.js';
 import { loadLabelInputs, resolveStoredLabels } from './label-inputs.js';
 
 const directories: string[] = [];
-afterEach(async () => { await Promise.all(directories.splice(0).map(d => rm(d, { recursive: true, force: true }))); });
+afterEach(async () => { vi.useRealTimers(); await Promise.all(directories.splice(0).map(d => rm(d, { recursive: true, force: true }))); });
 async function fixture() {
   const dir = await mkdtemp(path.join(tmpdir(), 'grader-label-')); directories.push(dir);
   const grader = { schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'c.json',
@@ -65,6 +66,35 @@ describe('teacher labeling runner', () => {
     expect(checkpoint.labels[0]!.votes.q!.t).toBe('yes');
     expect(checkpoint.labels[1]!.votes.q).toEqual({});
     expect(await runLabel({ ...f, concurrency: 1 }, { provider: () => provider() })).toMatchObject({ calls: 1, votes: 2 });
+  });
+  it('extends the label deadline beyond three minutes and checkpoints before a later deadline', async () => {
+    const f = await fixture(); const errors: string[] = [];
+    const io = { cwd: f.dir, stdout: () => undefined, stderr: (text: string) => errors.push(text) };
+    const argv = ['grader', 'label', '--grader', f.graderFile, '--inputs', f.inputsFile, '--teachers', 't', '--concurrency', '1'];
+    vi.useFakeTimers();
+    let calls = 0;
+    const dependencies = { grader: { provider: () => provider(async request => {
+      expect(request.signal).toBeDefined();
+      if (++calls === 1) {
+        await vi.advanceTimersByTimeAsync(180001);
+        request.signal!.throwIfAborted();
+        return '{"q":"yes","q2":"no"}';
+      }
+      expect((await saved(f.dir)).labels[0]!.votes.q!.t).toBe('yes');
+      const aborted = new Promise<never>((_resolve, reject) => request.signal!.addEventListener('abort',
+        () => reject(new Error('deadline')), { once: true }));
+      // Attach before advancing so the deliberate rejection is observed immediately.
+      const observed = aborted.catch(error => error as Error);
+      await vi.advanceTimersByTimeAsync(3_600_000);
+      throw await observed;
+    }) } };
+    expect(await main([...argv, '--timeout-ms', '3600000'], io, dependencies)).toBe(2);
+    expect(errors).toEqual(['CLI command deadline exceeded\n']);
+    expect(calls).toBe(2);
+    expect((await saved(f.dir)).labels[0]!.votes).toEqual({ q: { t: 'yes' }, q2: { t: 'no' } });
+    expect((await saved(f.dir)).labels[1]!.votes.q).toEqual({});
+    const resumed = await runLabel({ ...f, concurrency: 1 }, { provider: () => provider() });
+    expect(resumed).toMatchObject({ calls: 1, votes: 2 });
   });
   it('refuses writes to inline golden labels before opening inputs or providers', async () => {
     const f = await fixture();

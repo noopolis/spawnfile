@@ -20,6 +20,6 @@ export function graderBackend(grader: Grader, dependencies: GraderDependencies =
 }
 
 /** Include routing and teacher policy as well as the backend's reported identity. */
-export async function backendIdentity(grader: Grader, backend: DecisionBackend): Promise<string> {
-  return decisionBackendIdentity(grader, backend);
+export async function backendIdentity(grader: Grader, backend: DecisionBackend, signal?: AbortSignal): Promise<string> {
+  return decisionBackendIdentity(grader, backend, signal);
 }

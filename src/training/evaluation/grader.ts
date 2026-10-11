@@ -36,7 +36,9 @@ export async function evaluateGrader(check: CheckNode, context: EvaluationContex
     if (!context.evaluateCheck) throw new Error('Grader gates require the evaluation engine');
     const evaluated = await context.evaluateCheck(gate.check, artifact);
     children.push({ ...evaluated, id: gate.id });
+    evidence.push(...evaluated.evidence);
     gateOutcomes[gate.id] = evaluated.status === 'skipped' ? 'unknown' : evaluated.status;
+    if (evaluated.status === 'fail') break;
   }
   const graded = await gradeOutput({ ...runtime, output: selected.value, context: bound, gateOutcomes, signal: context.signal });
   const judgeCalls = collectJudgeCalls([...children, { ...result(graded.status, 'Grader'), judgeCalls: graded.judgeCalls }]);

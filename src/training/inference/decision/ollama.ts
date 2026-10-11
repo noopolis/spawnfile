@@ -64,14 +64,17 @@ export function decodeLogprobs(request: DecisionRequest, raw: unknown): Decision
   }
   const mass = letters.map(letter => (tokenMass.get(letter) ?? 0) + (tokenMass.get(` ${letter}`) ?? 0));
   if (mass.reduce((sum, p) => sum + p, 0) < 0.5) return missing(request, 'Option mass below 0.5');
-  const absent = letters.map((letter, i) => !tokenMass.has(letter) && !tokenMass.has(` ${letter}`) ? i : -1).filter(i => i >= 0);
-  if (absent.length) {
+  const omitted = letters.map(letter => Number(!tokenMass.has(letter)) + Number(!tokenMass.has(` ${letter}`)));
+  const omittedCount = omitted.reduce((sum, count) => sum + count, 0);
+  if (omittedCount) {
     const pMin = Math.min(...tokenMass.values());
-    if (pMin * absent.length > 0.01) return missing(request, 'Absent option bound exceeds 0.01');
+    if (pMin * omittedCount > 0.01) return missing(request, 'Omitted token variant bound exceeds 0.01');
     if (!request.expectedOptions?.length) return missing(request, 'Expected options required for conservative bound');
-    for (const i of absent) mass[i] = request.expectedOptions.includes(request.optionLabels[i]!) ? 0 : pMin;
+    for (const [i, count] of omitted.entries()) {
+      if (!request.expectedOptions.includes(request.optionLabels[i]!)) mass[i]! += count * pMin;
+    }
   }
   const total = mass.reduce((sum, p) => sum + p, 0);
   return { key: request.key, status: 'ok', probabilities: Object.fromEntries(request.optionLabels.map((label, i) => [String(label), mass[i]! / total])),
-    bounded: absent.length > 0 };
+    bounded: omittedCount > 0 };
 }

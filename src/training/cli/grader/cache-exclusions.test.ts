@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
-import { sha256, type Label } from '../../graders/index.js';
+import { sha256, stableDigest, type Label } from '../../graders/index.js';
 import { cachedScores } from './cache.js';
 import { readExclusions, excludeLabels } from './exclusions.js';
 
@@ -22,6 +22,21 @@ function backend(score: DecisionBackend['score']): DecisionBackend {
 }
 
 describe('raw decision cache', () => {
+  it('rescores legacy v1 probabilities instead of reusing optimistic cached values', async () => {
+    const dir = await temporary(), input = request('one');
+    const { key: _key, ...content } = input;
+    const root = join(dir, '.paideia/grader-cache');
+    await mkdir(root, { recursive: true });
+    const optimistic = { ...result(input.key), probabilities: { yes: 0.99, no: 0.01 } };
+    const legacyDigest = stableDigest({ content, identity: 'm', prompt: 'paideia.grader-prompt.v1' });
+    await writeFile(join(root, 'm.jsonl'), `${JSON.stringify({ digest: legacyDigest, result: optimistic })}\n`);
+    let calls = 0;
+    const provider = backend(async requests => { calls++; return requests.map(r => result(r.key)); });
+    expect(await cachedScores(dir, provider, 'm', [input], 1)).toEqual([result(input.key)]);
+    expect(calls).toBe(1);
+    expect(await cachedScores(dir, provider, 'm', [input], 1)).toEqual([result(input.key)]);
+    expect(calls).toBe(1);
+  });
   it('persists raw results, reuses content under new keys, and separates question/model/projection identity', async () => {
     const dir = await temporary(), calls: DecisionRequest[][] = [];
     const provider = backend(async requests => { calls.push(requests); return requests.map(r => result(r.key)); });
@@ -88,13 +103,24 @@ describe('dataset exclusions', () => {
     expect([...excluded.ids]).toEqual(['example-a', 'example-b']);
     expect(excluded.identities).toEqual([{ dataset: resolve(a), digest: sha256(content) },
       { dataset: resolve(b), digest: sha256(await readFile(b)) }]);
-    expect(await readExclusions([])).toEqual({ ids: new Set(), identities: [] });
+    expect(await readExclusions([])).toEqual({ ids: new Set(), examples: new Set(), identities: [] });
   });
-  it('rejects malformed YAML, schema and record IDs', async () => {
+  it('excludes dataset groups across revision IDs and namespaces example matches', async () => {
+    const dir = await temporary(), file = join(dir, 'sealed.yaml');
+    await writeFile(file, 'schema: paideia.dataset.v1\nid: sealed\nrecords:\n  - {id: story-7-r2, group: story-7}\n');
+    const exclusions = await readExclusions([file]);
+    const label = (id: string, lineage: string, dataset?: string): Label => ({ id, lineage,
+      ...(dataset ? { example: { dataset, id: 'story-7-r2' } } : {}), output: null, context: {}, votes: {}, provenance: {} });
+    const labels = [label('revision', 'story-7'), label('record-id', 'story-7-r2'),
+      label('example', 'another-lineage', 'sealed'), label('sibling', 'another-lineage'),
+      label('path', 'path-lineage', file), label('unrelated', 'other', 'different-dataset')];
+    expect(excludeLabels(labels, exclusions).map(label => label.id)).toEqual(['unrelated']);
+  });
+  it('rejects malformed YAML, schema and record IDs' , async () => {
     const dir = await temporary(), file = join(dir, 'bad.yaml');
     for (const content of ['schema: x\nschema: y', '!unknown {}', 'null', '[]', '42', 'schema: other',
       'schema: paideia.dataset.v1', 'schema: paideia.dataset.v1\nrecords: {}',
-      ...['null', '42', '{}', '{ id: 1 }', '{ id: " " }'].map(record => `schema: paideia.dataset.v1\nrecords: [${record}]`)]) {
+      ...['null', '42', '{}', '{ id: 1 }', '{ id: " " }', '{ id: good, group: 1 }', '{ id: good, group: " " }'].map(record => `schema: paideia.dataset.v1\nrecords: [${record}]`)]) {
       await writeFile(file, content);
       await expect(readExclusions([file])).rejects.toThrow();
     }
@@ -106,7 +132,7 @@ describe('dataset exclusions', () => {
       output: null, context: {}, votes: {}, provenance: {} });
     const labels = [label('a', 'first', 'test-id'), label('b', 'first'), label('c', 'direct'),
       label('d', 'kept', 'other'), label('e', 'unreferenced')];
-    expect(excludeLabels(labels, new Set(['test-id', 'direct'])).map(row => row.id)).toEqual(['d', 'e']);
-    expect(excludeLabels(labels, new Set())).toEqual(labels);
+    expect(excludeLabels(labels, { ids: new Set(['direct']), examples: new Set([JSON.stringify(['any', 'test-id'])]), identities: [] }).map(row => row.id)).toEqual(['d', 'e']);
+    expect(excludeLabels(labels, { ids: new Set(), examples: new Set(), identities: [] })).toEqual(labels);
   });
 });

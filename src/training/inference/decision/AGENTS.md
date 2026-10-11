@@ -6,9 +6,10 @@ Public factories and prompt identity are exported through index.ts. Tests inject
 fetch/providers; no network or subscription calls in tests.
 
 Ollama matches only literal letter tokens, sums their space-prefixed variants,
-and renormalizes observed mass. Absent options are accepted only if their summed
-p_min bound is <= 0.01. Set absent expected options to zero and absent unexpected
-options to p_min before renormalizing: this lowers p_good conservatively. No
+and renormalizes option mass. Each omitted exact token variant has a p_min bound;
+accept only when the sum across all omitted variants is <= 0.01. Preserve observed
+mass, adding zero per omitted expected variant and p_min per omitted unexpected
+variant before renormalizing; flag any omission bounded. This lowers p_good conservatively. No
 expected-option metadata enters prompts. Missing expected metadata fails closed
 when a bound is needed. Option order must remain part of caller cache identity.
 

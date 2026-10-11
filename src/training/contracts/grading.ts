@@ -22,6 +22,6 @@ export interface DecisionResult {
 }
 export interface DecisionIdentity { backend: string; model: string; digest?: string }
 export interface DecisionBackend {
-  identity(): Promise<DecisionIdentity>;
+  identity(signal?: AbortSignal): Promise<DecisionIdentity>;
   score(requests: DecisionRequest[], signal?: AbortSignal): Promise<DecisionResult[]>;
 }

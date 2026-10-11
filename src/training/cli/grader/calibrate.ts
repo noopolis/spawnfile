@@ -1,7 +1,7 @@
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
-  evidenceFailures, expectedOptions, inEscalationBand, loadGrader, loadLabels, parseCalibration,
+  evidenceFailures, expandInstances, expectedOptions, optionsFor, inEscalationBand, loadGrader, loadLabels, parseCalibration,
   planEscalation, splitCalibration, teacherAgreement, type CalibrationFile, type CalibrationRecord,
   type CascadeRecord, type BandPlan } from '../../graders/index.js';
 import { validateStoredVotes } from '../../graders/labeling/index.js';
@@ -25,14 +25,27 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
   const loaded = await loadLabels(grader.golden, grader);
   validateStoredVotes(grader, loaded.labels, { resolved: true });
   const exclusions = await readExclusions(options.excludeDatasets ?? []);
-  const labels = { ...loaded.labels, labels: excludeLabels(loaded.labels.labels, exclusions.ids) };
+  const labels = { ...loaded.labels, labels: excludeLabels(loaded.labels.labels, exclusions) };
   const seed = options.seed ?? '0';
   const backend = graderBackend(grader, dependencies);
   options.signal?.throwIfAborted();
-  const identity = await backendIdentity(grader, backend);
+  const identity = await backendIdentity(grader, backend, options.signal);
   const golden = goldenInstances(grader, labels);
-  const results = await cachedScores(dirname(options.graderFile), backend, identity,
-    golden.rows.map(row => row.request), options.concurrency ?? 2, options.signal);
+  // Routing observes every ready instance, including those without usable golden
+  // truth. Only golden rows enter fitting and accuracy denominators below.
+  const byQuestion = new Map(allQuestions(grader).map(question => [question.id, question]));
+  const observations = labels.labels.flatMap(label => expandInstances(grader, label.output, label.context)
+    .filter(instance => instance.state === 'ready').map(instance => {
+      const question = byQuestion.get(instance.questionId)!;
+      return { outputId: label.id, instance, question, request: {
+        key: `${label.id}:${instance.key}`, type: question.type, optionLabels: optionsFor(question),
+        expectedOptions: expectedOptions(question), instructions: question.ask ?? question.id, projection: instance.projection,
+      } };
+    }));
+  const observed = await cachedScores(dirname(options.graderFile), backend, identity,
+    observations.map(row => row.request), options.concurrency ?? 2, options.signal);
+  const byKey = new Map(observations.map((row, index) => [row.request.key, observed[index]!]));
+  const results = golden.rows.map(row => byKey.get(row.request.key)!);
   const valid = golden.rows.map((row, index) => {
     const raw = rawGood(row, results[index]!);
     return { row, record: { ...calibrationRecord(row, raw ?? 0), ...(raw === undefined ? { missing: true } : {}) } };
@@ -54,20 +67,43 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
   }
   const plans = new Map<string, BandPlan>();
   let costCalls: EscalationCostCall[] = [];
+  const forced = new Set<string>();
   const plan = (id: string, calls?: { outputId: string; projectionDigest: string }[]) => planEscalation(
     split.fit.filter(row => row.questionId === id).map(row => cascades.get(row)!),
     split.heldOut.filter(row => row.questionId === id).map(row => cascades.get(row)!), grader.escalate,
-    { teacherId: grader.escalate.to, maxCallsPerTrial: grader.escalate.max_calls_per_trial, gate: gates.includes(id), calls });
+    { teacherId: grader.escalate.to, maxCallsPerTrial: grader.escalate.max_calls_per_trial, gate: gates.includes(id), calls, forceTeacher: forced.has(id) });
   if (grader.model.backend !== 'teacher') {
     for (const question of allQuestions(grader)) plans.set(question.id, plan(question.id));
-    // Preserve output/instance expansion order; the same projection consumes only one call across questions.
-    const heldOut = new Set(split.heldOut);
-    const calls = valid.filter(({ record }) => {
-      const band = plans.get(record.questionId)?.band;
-      return !record.missing && heldOut.has(record) && band && inEscalationBand(cascades.get(record)!.p, band);
-    }).map(({ row }) => ({ outputId: row.label.id, projectionDigest: row.instance.projectionDigest, instanceKeys: [row.instance.key] }));
-    costCalls = calls;
-    for (const question of allQuestions(grader)) plans.set(question.id, plan(question.id, calls));
+    const heldOutputs = new Set(valid.filter(item => split.heldOut.includes(item.record)).map(item => item.row.label.id));
+    const failedPlans = new Map<string, BandPlan>();
+    // A newly failing cascade becomes forced-teacher and can consume earlier calls.
+    // The set only grows, so at most one round per question is needed to settle routing.
+    for (let round = 0; round <= plans.size; round++) {
+      const before = forced.size;
+      if (grader.uncalibrated === 'teacher') {
+        for (const [id, candidate] of plans) {
+          if (fitted.find(fit => fit.questionId === id)?.status !== 'calibrated' || candidate.status !== 'calibrated') {
+            forced.add(id);
+            if (!failedPlans.has(id)) failedPlans.set(id, candidate);
+          }
+        }
+      }
+      const calls = observations.filter(row => {
+        if (!heldOutputs.has(row.outputId)) return false;
+        if (forced.has(row.question.id)) return true;
+        const band = plans.get(row.question.id)?.band;
+        const raw = rawGood(row, byKey.get(row.request.key)!);
+        const fit = fitted.find(fit => fit.questionId === row.question.id);
+        return raw !== undefined && band && fit && inEscalationBand(applyPlatt(raw, fit.params), band);
+      }).map(row => ({ outputId: row.outputId, projectionDigest: row.instance.projectionDigest, instanceKeys: [row.instance.key] }));
+      costCalls = calls;
+      for (const question of allQuestions(grader)) {
+        const updated = plan(question.id, calls), failure = failedPlans.get(question.id);
+        plans.set(question.id, failure ? { ...updated, status: failure.status, failures: failure.failures } : updated);
+      }
+      if (grader.uncalibrated !== 'teacher' || before === forced.size &&
+        [...plans].every(([id, candidate]) => forced.has(id) || candidate.status === 'calibrated')) break;
+    }
   }
   for (const question of allQuestions(grader)) {
     const id = question.id, sample = golden.rows.filter(row => row.question.id === id);
@@ -129,7 +165,7 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
       diagnostics[id]!.permutation = { compared, missing: chosen.length - compared, flipRate: compared ? flips / compared : null };
     }
   }
-  if (await backendIdentity(grader, backend) !== identity) throw new Error('Backend identity changed during calibration');
+  if (await backendIdentity(grader, backend, options.signal) !== identity) throw new Error('Backend identity changed during calibration');
   const calibration = parseCalibration({ schema: 'paideia.grader-calibration.v1', questions,
     identity: createCalibrationIdentity(grader, { backendModel: identity, golden: loaded.goldenDigest,
       promptTemplateVersion: DECISION_PROMPT_VERSION, seed, exclusions: exclusions.identities }) });

@@ -22,10 +22,11 @@ export function createJevDecision(options: DecisionHttpOptions): DecisionBackend
     return raw;
   }
   return {
-    async identity() {
+    async identity(signal) {
+      signal?.throwIfAborted();
       // Jev has no required metadata endpoint; a fixed probe pins response identity.
       if (reportedModel === undefined) await send([{ key: 'paideia_identity', type: 'yes-no', optionLabels: ['yes', 'no'],
-        instructions: 'Is the supplied JSON object empty?', projection: {} }]);
+        instructions: 'Is the supplied JSON object empty?', projection: {} }], signal);
       return { backend: 'jev-http', model: reportedModel! };
     },
     async score(requests, signal) {

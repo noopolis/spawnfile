@@ -6,14 +6,14 @@ import { validateDecisionRequest } from './prompt.js';
 
 const request: DecisionRequest = { key: 'q', type: 'yes-no', instructions: 'Correct?', optionLabels: ['yes', 'no'], expectedOptions: ['yes'], projection: { text: 'data' } };
 const token = (token: string, p: number) => ({ token, logprob: Math.log(p) });
-const envelope = (candidates = [token('A', 0.6), token(' B', 0.3)], generated = 'A') => ({ done: true,
+const envelope = (candidates = [token('A', 0.3), token(' A', 0.3), token('B', 0.15), token(' B', 0.15)], generated = 'A') => ({ done: true,
   logprobs: [{ token: generated, top_logprobs: candidates }], message: { content: generated } });
 const tags = { models: [{ name: 'm', digest: 'sha256:model' }] };
 const options = { endpoint: 'http://localhost/prefix/', model: 'm' };
 
 describe('Ollama option probabilities', () => {
   it('uses native one-token settings and exact spaced/unspaced tokens, preserving order', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async url => new Response(JSON.stringify(String(url).endsWith('/tags') ? tags : envelope([token('A', 0.2), token(' A', 0.4), token('B', 0.2), token('AA', 0.1)]))));
+    const fetch = vi.fn<typeof globalThis.fetch>(async url => new Response(JSON.stringify(String(url).endsWith('/tags') ? tags : envelope([token('A', 0.2), token(' A', 0.4), token('B', 0.1), token(' B', 0.1), token('AA', 0.1)]))));
     const backend = createOllamaDecision({ ...options, fetch });
     expect(await backend.identity()).toEqual({ backend: 'ollama-logprobs', model: 'm', digest: 'sha256:model' });
     expect(await backend.score([{ ...request, system: 'judge' }])).toEqual([{ key: 'q', status: 'ok', probabilities: { yes: expect.closeTo(0.75), no: 0.25 }, bounded: false }]);
@@ -27,15 +27,28 @@ describe('Ollama option probabilities', () => {
     expect((await backend.score([request]))[0]!.status).toBe('ok');
     expect(await backend.score([])).toEqual([]);
   });
-  it('bounds absent unexpected options conservatively and gives absent expected options zero', () => {
-    const raw = envelope([token('A', 0.8), token('other', 0.005)]);
+  it('bounds each omitted exact variant and gives omitted expected variants zero', () => {
+    const raw = envelope([token('A', 0.8), ...Array.from({ length: 19 }, (_, i) => token(`other${i}`, 0.003))]);
     expect(decodeLogprobs(request, raw)).toMatchObject({ status: 'ok', bounded: true });
-    expect(decodeLogprobs(request, raw).probabilities!.yes).toBeCloseTo(0.8 / 0.805);
+    expect(decodeLogprobs(request, raw).probabilities!.yes).toBeCloseTo(0.8 / 0.806, 12);
     expect(decodeLogprobs({ ...request, expectedOptions: ['no'] }, raw).probabilities).toEqual({ yes: 1, no: 0 });
     expect(decodeLogprobs({ ...request, expectedOptions: undefined }, raw).reason).toMatch(/Expected options/);
     expect(decodeLogprobs(request, envelope([token('A', 0.8), token('other', 0.02)])).reason).toMatch(/bound exceeds/);
     const three = { ...request, optionLabels: ['yes', 'no', 'maybe'] };
     expect(decodeLogprobs(three, envelope([token('A', 0.8), token('other', 0.006)])).status).toBe('missing');
+  });
+  it('rejects a top-20 list whose individually omitted variants exceed the total uncertainty budget', () => {
+    const raw = envelope([token('A', 0.8), ...Array.from({ length: 19 }, (_, i) => token(`other${i}`, 0.008))]);
+    expect(decodeLogprobs(request, raw)).toMatchObject({ status: 'missing', probabilities: null, reason: expect.stringMatching(/bound exceeds/) });
+  });
+  it('marks partially observed options bounded and preserves observed expected mass', () => {
+    const raw = envelope([token('A', 0.6), token('B', 0.2), token('other', 0.004)]);
+    expect(decodeLogprobs(request, raw)).toMatchObject({ status: 'ok', bounded: true,
+      probabilities: { yes: expect.closeTo(0.6 / 0.804, 12), no: expect.closeTo(0.204 / 0.804, 12) } });
+    expect(decodeLogprobs({ ...request, expectedOptions: ['no'] }, raw).probabilities!.no).toBeCloseTo(0.2 / 0.804, 12);
+    const oneMissing = envelope([token('A', 0.4), token(' A', 0.2), token('B', 0.2), token('other', 0.009)]);
+    expect(decodeLogprobs(request, oneMissing)).toMatchObject({ status: 'ok', bounded: true,
+      probabilities: { yes: expect.closeTo(0.6 / 0.809, 12), no: expect.closeTo(0.209 / 0.809, 12) } });
   });
   it.each(['AA', '\nA', 'A.', ' A ', 'Z'])('refuses invalid generated token %j', generated => {
     expect(decodeLogprobs(request, envelope(undefined, generated)).reason).toMatch(/not an option/);
