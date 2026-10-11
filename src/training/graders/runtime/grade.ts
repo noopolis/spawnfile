@@ -6,6 +6,7 @@ import { aggregateGrader, type InstanceOutcome } from '../aggregation.js';
 import { checkCalibration, createCalibrationIdentity } from '../identity.js';
 import { applyPlatt, inEscalationBand } from '../calibration/index.js';
 import { teacherPolicyDigest, type LabelGroup } from '../labeling/index.js';
+import { summarizeDecisionAccounting } from './accounting.js';
 import { decisionModelIdentities } from './identity.js';
 import { escalateGroup } from './teacher.js';
 import type { GradeOptions, GradeResult } from './types.js';
@@ -30,6 +31,7 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
   }
   const models = decisionModels(grader);
   const backends = options.backends ?? (grader.model ? { default: options.backend } : {});
+  const offsets = new Map(Object.values(backends).map(backend => [backend, backend.requestReceipts?.().length ?? 0]));
   const selectedId = (question: string) => calibration.questions[question]?.model ?? 'default';
   for (const question of allQuestions(grader)) {
     if (!backends[selectedId(question.id)]) throw new Error(`Decision model ${selectedId(question.id)}: missing backend`);
@@ -84,7 +86,8 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
       judgeCalls.push(...result.judgeCalls ?? []);
     }
     for (const request of requests) decisions.push({ instance: request.key, model,
-      status: resultMap.get(request.key)?.status === 'ok' && resultMap.get(request.key)?.probabilities ? 'ok' : 'missing' });
+      status: resultMap.get(request.key)?.status === 'ok' && resultMap.get(request.key)?.probabilities ? 'ok' : 'missing',
+      ...(resultMap.get(request.key)?.reason ? { reason: resultMap.get(request.key)!.reason } : {}) });
   }
   for (const instance of instances) {
     const result = resultMap.get(instance.key);
@@ -117,16 +120,18 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
   }
   signal?.throwIfAborted();
   if (stableDigest(await decisionModelIdentities(grader, backends, signal)) !== stableDigest(reported)) throw new Error('Backend identity changed during grading');
+  const apiBackends = [...new Set(Object.values(backends))].filter(backend => backend.capabilities?.billing === 'api');
   return { ...aggregateGrader(grader, instances, outcomes, options.gateOutcomes), judgeCalls, decisions,
+    ...(apiBackends.length ? { decisionAccounting: summarizeDecisionAccounting(apiBackends.flatMap(backend => backend.requestReceipts!().slice(offsets.get(backend)))) } : {}),
     ...resultIdentity(options, identity) };
 }
 
 function resultIdentity(options: GradeOptions, identity = options.calibration.identity): Pick<GradeResult, 'identity' | 'backendBilling'> {
   const { grader, calibration } = options;
   const selected = new Set(Object.values(calibration.questions).map(question => question.model ?? 'default'));
-  const billing = new Set(decisionModels(grader).filter(model => selected.has(model.id)).map(model => model.backend === 'teacher' ? 'subscription' : 'local'));
+  const billing = new Set(decisionModels(grader).filter(model => selected.has(model.id)).map(model => model.backend === 'teacher' ? 'subscription' : model.backend === 'typesafe' ? 'api' : 'local'));
   return {
-    backendBilling: billing.size > 1 ? 'mixed' : billing.has('subscription') ? 'subscription' : 'local',
+    backendBilling: billing.size > 1 ? 'mixed' : billing.has('subscription') ? 'subscription' : billing.has('api') ? 'api' : 'local',
     identity: { calibration: identity, calibrationDigest: stableDigest(calibration), escalation: stableDigest(grader.escalate),
       teacherPolicy: stableDigest({ escalation: teacherPolicyDigest(grader.teachers.find(t => t.id === grader.escalate.to)!),
         uncalibrated: grader.uncalibrated }),

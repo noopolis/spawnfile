@@ -1,4 +1,4 @@
-import type { DecisionBackend } from '../../contracts/grading.js';
+import type { DecisionAccounting, DecisionBackend } from '../../contracts/grading.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import type { JudgeCall } from '../../contracts/evaluation.js';
 import type { Grader } from '../format/index.js';
@@ -28,7 +28,8 @@ export interface GradeOptions extends GradingRuntime {
 }
 export interface GradeResult extends GraderResult {
   identity: { calibration: CalibrationFile['identity']; calibrationDigest: string; escalation: string; teacherPolicy: string; scoringPolicy: string };
-  backendBilling: 'local' | 'subscription' | 'mixed';
-  decisions?: { instance: string; model: string; status: 'ok' | 'missing' }[];
+  backendBilling: 'local' | 'subscription' | 'api' | 'mixed';
+  decisions?: { instance: string; model: string; status: 'ok' | 'missing'; reason?: string }[];
+  decisionAccounting?: DecisionAccounting;
   judgeCalls: JudgeCall[];
 }

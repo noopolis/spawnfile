@@ -17,13 +17,14 @@ export { buildGradingRuntime } from './runtime.js';
 export type { GraderDependencies } from './backend.js';
 
 export async function runGraderCommand(args: CliArguments, io: CliIO, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<number> {
+  const maxSpendUsd = args.flags['max-spend-usd'] ? Number(one(args, 'max-spend-usd')) : undefined;
   const graderFile = resolve(io.cwd, one(args, 'grader'));
   if (args.graderCommand === 'validate') {
     io.stdout(`${JSON.stringify(await runValidate(graderFile, dependencies, signal))}\n`);
     return 0;
   }
   if (args.graderCommand === 'grade' || args.graderCommand === 'expand') {
-    const options = { graderFile, outputFile: resolve(io.cwd, one(args, 'output')),
+    const options = { graderFile, maxSpendUsd, outputFile: resolve(io.cwd, one(args, 'output')),
       contextFiles: Object.fromEntries(Object.entries(pairs(args.flags.context ?? [])).map(([name, file]) => [name, resolve(io.cwd, file)])),
       signal };
     if (args.graderCommand === 'expand') {
@@ -50,10 +51,10 @@ export async function runGraderCommand(args: CliArguments, io: CliIO, dependenci
     for (const [teacher, kind] of Object.entries(result.stopped)) io.stderr(`Teacher ${teacher} stopped: ${kind}\n`);
     return result.missing || Object.keys(result.stopped).length ? 1 : 0;
   }
-  const result = await runCalibrate({ graderFile,
+  const result = await runCalibrate({ graderFile, maxSpendUsd,
     excludeDatasets: (args.flags['exclude-dataset'] ?? []).map(file => resolve(io.cwd, file)),
     seed: one(args, 'seed', '0'), reportFile: args.flags.report ? resolve(io.cwd, one(args, 'report')) : undefined,
     concurrency, signal }, dependencies);
-  io.stdout(`${JSON.stringify({ calibrationFile: result.calibrationFile, reportFile: result.reportFile, code: result.code })}\n`);
+  io.stdout(`${JSON.stringify({ calibrationFile: result.calibrationFile, reportFile: result.reportFile, code: result.code, decisionAccounting: result.decisionAccounting })}\n`);
   return result.code;
 }

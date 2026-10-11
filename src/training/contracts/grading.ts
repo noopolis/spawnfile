@@ -20,8 +20,21 @@ export interface DecisionResult {
   /** Actual subscription attempts, absent for local option scorers. */
   judgeCalls?: JudgeCall[];
 }
-export interface DecisionIdentity { backend: string; model: string; digest?: string; fingerprint?: string }
+export interface DecisionIdentity { backend: string; model: string; digest?: string; fingerprint?: string; endpoint?: string }
+export interface DecisionSpendBudget { maxUsd?: number; spentUsd: number; reservedUsd: number }
+export interface DecisionRequestReceipt {
+  billing: 'api'; model: string; endpoint: string;
+  inputTokens: number | null; outputTokens: number | null; usd: number | null;
+  estimatedInputTokens: number; estimatedUsd: number; latencyMs: number; status: number | null;
+}
+export interface DecisionAccounting {
+  billing: 'api'; requests: number; inputTokens: number | null; outputTokens: number | null; usd: number | null;
+  latencyMs: { p50: number | null; p95: number | null };
+  receipts: DecisionRequestReceipt[];
+}
 export interface DecisionBackend {
+  capabilities?: { billing: 'local' | 'subscription' | 'api'; batch?: boolean };
+  requestReceipts?(): DecisionRequestReceipt[];
   identity(signal?: AbortSignal): Promise<DecisionIdentity>;
   score(requests: DecisionRequest[], signal?: AbortSignal): Promise<DecisionResult[]>;
 }

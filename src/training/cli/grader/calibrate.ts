@@ -1,12 +1,13 @@
+import type { DecisionAccounting } from '../../contracts/grading.js';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
+import { summarizeDecisionAccounting, allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
   decisionModels, graderForModel, selectQuestionModel, stableDigest, evidenceFailures, expectedOptions, inEscalationBand, loadGrader, loadLabels, parseCalibration,
   planEscalation, splitCalibration, teacherAgreement, type CalibrationFile, type CalibrationRecord,
   type CascadeRecord, type BandPlan } from '../../graders/index.js';
 import { validateStoredVotes } from '../../graders/labeling/index.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
-import { backendIdentity, graderBackend, type GraderDependencies } from './backend.js';
+import { backendIdentity, graderBackend, withDecisionBudget, type GraderDependencies } from './backend.js';
 import { estimateEscalationCost, type EscalationCostCall } from './cost.js';
 import { cachedScores } from './cache.js';
 import { excludeLabels, readExclusions } from './exclusions.js';
@@ -15,13 +16,14 @@ import { calibrationReport, type QuestionDiagnostics } from './report.js';
 
 export interface CalibrateOptions {
   graderFile: string; excludeDatasets?: string[]; seed?: string; reportFile?: string;
-  concurrency?: number; signal?: AbortSignal;
+  concurrency?: number; signal?: AbortSignal; maxSpendUsd?: number;
 }
 
 export async function runCalibrate(options: CalibrateOptions, dependencies: GraderDependencies = {}): Promise<{
-  calibrationFile: string; reportFile: string; calibration: CalibrationFile; code: 0 | 1;
+  calibrationFile: string; reportFile: string; calibration: CalibrationFile; code: 0 | 1; decisionAccounting?: DecisionAccounting;
 }> {
   const grader = await loadGrader(options.graderFile);
+  dependencies = withDecisionBudget(grader, { ...dependencies, maxSpendUsd: options.maxSpendUsd ?? dependencies.maxSpendUsd });
   const loaded = await loadLabels(grader.golden, grader);
   validateStoredVotes(grader, loaded.labels, { resolved: true });
   const exclusions = await readExclusions(options.excludeDatasets ?? []);
@@ -215,9 +217,14 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
   await writeFile(temporary, `${JSON.stringify(calibration, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, grader.calibration);
   await mkdir(dirname(reportFile), { recursive: true });
+  const receipts = candidates.flatMap(candidate => candidate.backend.requestReceipts?.() ?? []);
+  const decisionAccounting = candidates.some(candidate => candidate.backend.capabilities?.billing === 'api')
+    ? summarizeDecisionAccounting(receipts) : undefined;
+  const missingReasons = candidates.flatMap(candidate => candidate.results.filter(result => result.status === 'missing')
+    .map(result => ({ model: candidate.model.id, key: result.key, reason: result.reason ?? 'missing' })));
   const cost = estimateEscalationCost(costCalls, labels, grader.escalate.to, grader.escalate.max_calls_per_trial);
   await writeFile(reportFile, calibrationReport(calibration, diagnostics, { excluded: loaded.labels.labels.length - labels.labels.length,
-    disputed: golden.disputed, unavailable: golden.unavailable }) + `\nEscalation cost estimate (per represented escalated output; null = unknown):\n\n\`\`\`json\n${JSON.stringify(cost, null, 2)}\n\`\`\`\n`, { mode: 0o600 });
-  return { calibrationFile: grader.calibration, reportFile, calibration,
+    disputed: golden.disputed, unavailable: golden.unavailable }) + `\nEscalation cost estimate (per represented escalated output; null = unknown):\n\n\`\`\`json\n${JSON.stringify({ escalation: cost, decisionAccounting, missingDecisions: missingReasons }, null, 2)}\n\`\`\`\n`, { mode: 0o600 });
+  return { calibrationFile: grader.calibration, reportFile, calibration, decisionAccounting,
     code: Object.values(questions).every(question => question.status === 'calibrated') ? 0 : 1 };
 }

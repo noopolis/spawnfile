@@ -20,3 +20,14 @@ test('grading persistence retains explicit identity and missing coverage, valida
   expect(() => schema.parse({ ...result, coverage: 1.1 })).toThrow();
   expect(() => schema.parse({ ...result, identity: { ...result.identity, calibrationDigest: 'unbound' } })).toThrow();
 });
+
+test('persists explicit API accounting and spend-cap reasons without accepting unknown receipt fields', () => {
+  const schema = createGradeResultSchema(z.never());
+  const receipt = { billing: 'api', model: 'jev-1.13.0', endpoint: 'https://example.test', inputTokens: 10,
+    outputTokens: 0, usd: 0.001, estimatedInputTokens: 20, estimatedUsd: 0.002, latencyMs: 5, status: 200 };
+  const api = { ...result, backendBilling: 'api', decisions: [{ instance: 'q', model: 'default', status: 'missing', reason: 'spend cap' }],
+    decisionAccounting: { billing: 'api', requests: 1, inputTokens: 10, outputTokens: 0, usd: 0.001,
+      latencyMs: { p50: 5, p95: 5 }, receipts: [receipt] } };
+  expect(schema.parse(api)).toEqual(api);
+  expect(() => schema.parse({ ...api, decisionAccounting: { ...api.decisionAccounting, receipts: [{ ...receipt, Authorization: 'secret' }] } })).toThrow();
+});

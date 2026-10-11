@@ -16,8 +16,10 @@ const localModel = z.strictObject({ backend: z.literal('jev-http'), endpoint: z.
 const ollamaModel = localModel.extend({ backend: z.literal('ollama-logprobs'),
   context_tokens: z.number().int().min(2048).max(131072).default(16384) });
 const teacherModel = z.strictObject({ backend: z.literal('teacher'), teacher: identifier });
-const modelSchema = z.union([localModel, ollamaModel, teacherModel]);
-const namedModelSchema = z.union([localModel.extend({ id: identifier }), ollamaModel.extend({ id: identifier }), teacherModel.extend({ id: identifier })]);
+const typeSafeModel = z.strictObject({ backend: z.literal('typesafe'), name: z.string().regex(/^jev-\d+\.\d+\.\d+$/),
+  endpoint: z.url().default('https://api.typesafe.ai/v1/systemone'), price_per_mtok_usd: z.number().finite().nonnegative().optional() });
+const modelSchema = z.union([localModel, ollamaModel, teacherModel, typeSafeModel]);
+const namedModelSchema = z.union([localModel.extend({ id: identifier }), ollamaModel.extend({ id: identifier }), teacherModel.extend({ id: identifier }), typeSafeModel.extend({ id: identifier })]);
 export type DecisionModel = z.infer<typeof modelSchema>;
 export type NamedDecisionModel = z.infer<typeof namedModelSchema>;
 export const graderSchema = z.strictObject({
@@ -26,6 +28,7 @@ export const graderSchema = z.strictObject({
   context: z.record(identifier, z.strictObject({ description: z.string(), rows: rowsSchema.optional() })).default({}),
   teachers: z.array(z.strictObject({ id: identifier, provider, model: z.string().min(1), effort: z.string().min(1).optional() })).min(1),
   model: modelSchema.optional(),
+  max_spend_usd: z.number().finite().nonnegative().optional(),
   models: z.array(namedModelSchema).min(1).max(4).optional(),
   escalate: escalation,
   uncalibrated: z.enum(['refuse', 'teacher']).default('refuse'),

@@ -29,22 +29,28 @@ export async function cachedScores(directory: string, backend: DecisionBackend, 
     try {
       while (next < requests.length) {
         workSignal.throwIfAborted();
-        const index = next++, request = requests[index]!;
-        const { key: _key, ...content } = request;
-        const digest = stableDigest({ content, identity, prompt: DECISION_PROMPT_VERSION });
-        let result = cache.get(digest);
-        if (!result) {
-          const batch = await backend.score([request], workSignal);
-          workSignal.throwIfAborted();
-          result = batch.find(item => item.key === request.key);
+        // Batch-capable transports own projection grouping and request limits.
+        const indices = backend.capabilities?.batch
+          ? Array.from({ length: requests.length - next }, () => next++) : [next++];
+        const entries = indices.map(index => {
+          const request = requests[index]!;
+          const { key: _key, ...content } = request;
+          const digest = stableDigest({ content, identity, prompt: DECISION_PROMPT_VERSION });
+          return { index, request, digest, cached: cache.get(digest) };
+        });
+        const pending = entries.filter(entry => !entry.cached);
+        const scored = pending.length ? await backend.score(pending.map(entry => entry.request), workSignal) : [];
+        workSignal.throwIfAborted();
+        for (const { index, request, digest, cached } of entries) {
+          const result = cached ?? scored.find(item => item.key === request.key);
           if (!result) throw new Error(`Backend omitted result ${request.key}`);
-          // Failures are resumable; never turn one transient outage into a permanent cached miss.
-          if (result.status === 'ok') {
+          // Missing/spend-cap answers must be resumable, never a permanent cache hit.
+          if (result.status === 'ok' && !cache.has(digest)) {
             cache.set(digest, result);
             await appendFile(file, `${JSON.stringify({ digest, result })}\n`, { mode: 0o600 });
           }
+          results[index] = { ...result, key: request.key };
         }
-        results[index] = { ...result, key: request.key };
       }
     } catch (error) {
       controller.abort(error);

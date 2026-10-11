@@ -482,3 +482,59 @@ reports distinguish human/editor/consensus/single sources. Independent teacher
 truth always removes the evaluated teacher before applying that precedence.
 Forced routing persists `teacherAccuracy` held-out counts, agreement and failures
 in the calibration file and report; runtime checks these bars before inference.
+
+## Explicit TypeSafe hosted decisions
+
+Declare the paid route explicitly; it is never a fallback for a local model or
+subscription teacher. Set `TYPESAFE_API_KEY` in the process environment before
+construction. A missing key refuses immediately. No key belongs in grader YAML.
+
+```yaml
+model:
+  backend: typesafe
+  name: jev-1.13.0
+  # endpoint defaults to https://api.typesafe.ai/v1/systemone
+  price_per_mtok_usd: 0.042
+max_spend_usd: 0.50
+```
+
+The same fields work in `models:` with an `id`. Pin a versioned model; moving
+aliases are refused. Every successful response must report that exact version,
+otherwise scoring and identity reuse refuse. The version and endpoint enter
+cache/calibration identity. Hosted identity checks make no paid canary calls.
+
+System One receives `{model, state, questions}` via authenticated POST. `yes-no`
+maps to `noul` (`P(yes)=noul`); choice requires probabilities for every option;
+score uses 2–10 ordered levels and zero-based probability keys. Option labels
+supply descriptions. Put the full question meaning in `ask`: request IDs are not
+model-visible. The existing grader authoring limit remains 16 choice options;
+the transport supports up to 255. Missing/partial distributions remain missing.
+
+Identical projections share a request, including uncached calibration instances.
+Batches split at 64 questions or an estimated 48,000 tokens (JSON characters / 3).
+The factory's `maxEstimatedTokens` is configurable up to 64,000; state plus each
+individual question also stays below 32,000 estimated tokens. Oversized instances
+are missing; no truncation. These are estimates, not an exact tokenizer guarantee.
+
+HTTP 401 throws an authentication failure. Other 4xx except 429 mark that request's
+instances missing with a bounded status reason. HTTP 429, 529 and other 5xx retry
+with exponential backoff and jitter (three attempts by default), within the
+cancellation/deadline budget; exhaustion throws an infrastructure failure.
+Raw error bodies, headers and native errors never enter diagnostics or receipts.
+Authorization is sent only at the transport boundary and is not captured.
+
+`grader calibrate` and `grader grade` accept `--max-spend-usd N`, overriding
+`max_spend_usd`; zero blocks billable dispatch. A shared command budget covers all
+model candidates. Before every attempt, estimated input cost is reserved; reported
+input usage replaces that reservation. Unknown usage retains its reservation
+conservatively. A request exceeding the remaining estimate budget is not sent;
+its instances are missing with reason `spend cap`, visible in calibration reports
+and grade decisions. Actual usage can exceed the estimate on the last sent call.
+
+`decisionAccounting` records each API attempt and aggregates requests, input/output
+tokens, estimated USD from measured input usage, and nearest-rank p50/p95 latency
+in milliseconds. Output is free under this configured rate card. The default
+input rate is 0.042 USD/million, configurable and not a live pricing claim or an
+invoice. Missing usage makes aggregate tokens/cost unknown; retry latency and
+attempts still count. Cached scores add no current request/cost. Mock transport
+and command tests verify this contract; live hosted availability is unverified.

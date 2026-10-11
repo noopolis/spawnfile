@@ -39,3 +39,7 @@ and worker concurrency bound. On failure, abort scores and drain all started sco
 and cache writes before rejecting; do not start another candidate.
 Select per question on fit loss before combining selected routes for cascade
 planning. Candidate held-out metrics are informational, never selection inputs.
+
+Explicit TypeSafe routes share one command spend budget across candidates. Cache
+misses reach batch-capable transports together; successful cache hits incur no
+new usage. Reports preserve API receipts and spend-cap missing reasons.
