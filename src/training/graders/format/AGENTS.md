@@ -19,3 +19,6 @@ references verify exact bytes before JSON decoding (for .json) or UTF-8 text loa
 Golden labels accept a sidecar path or an inline labels body with implied grader.
 Inline references resolve from the grader file without adding paths to digests.
 YAML diagnostics show the first issue with line/column and a remaining issue count.
+
+External label-import manifests admit human/editor declarations only and validate
+declared context/labelers and unique vote coordinates before any golden write.

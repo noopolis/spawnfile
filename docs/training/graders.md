@@ -127,6 +127,56 @@ retain requested/reported model, provider, CLI version (null when unknown), prom
 digest, timing and usage. Older repeated call records
 remain readable. Credentials never enter labels or calibration artifacts.
 
+## Importing editor and human labels
+
+`paideia grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]`
+imports external editorial verdicts or human review sheets without model calls.
+The import accepts YAML or JSON; referenced paths resolve beside the import file:
+
+```yaml
+schema: paideia.label-import.v1
+grader: writing
+labelers:
+  editor: { kind: editor, name: Editor verdicts, source: Mapped editorial verdicts }
+  reviewer: { kind: human, name: External review }
+items:
+  - id: draft-s-1-r1
+    lineage: s-1
+    example: { dataset: test, id: x }
+    output: { from: data/x.json }
+    context: { evidence: { from: data/x.md } }
+    labeler: editor
+    votes: { clear: yes, connection@p0: earned }
+    note: Reviewed against the supplied source material
+```
+
+Only declared human/editor labelers are accepted. Questions, instance suffixes,
+options and context names must match the grader; missing or inapplicable instances
+and duplicate label/labeler/instance entries are refused. Votes must be actual
+options (not `abstain`). Score votes use numbers. `context`, `example` and `note`
+may be omitted. Multiple reviewers can supply separate items for the same label.
+
+New labels are appended. Existing IDs require matching output/context content
+addresses and lineage; an explicit example must match too. References store the
+SHA256 of exact file bytes, with paths rebased beside the golden labels file.
+Different paths to identical bytes can merge. `--relabel` never bypasses content
+or labeler-definition conflicts; changed content needs a new label ID.
+
+Each vote retains its kind, note, import timestamp and import-file byte digest,
+plus the same question and projection digests used by teacher labeling. Teacher
+policy does not apply. Replaying the same file preserves receipts and timestamps.
+Changing an existing answer or refreshing a stale question requires `--relabel`.
+Existing votes from other labelers and teacher call receipts are preserved.
+Consensus prefers human votes, then editor votes, then teacher consensus.
+
+The complete import is validated before an atomic temporary-file/rename write.
+An invalid item or interrupted pre-rename write leaves the previous checkpoint
+intact; replay is safe. A separate golden labels file is required. `--import`
+cannot be combined with `--inputs`, `--teachers`, `--adjudication`, `--limit` or
+`--concurrency`. JSON output reports `items`, unique `labelsAdded`/`labelsMerged`,
+and input vote counts in `votesByLabeler` and `votesByQuestion` (instances summed
+under their question ID, including unchanged votes).
+
 ## Local commands
 
 From a fresh checkout with the grader, manifest, output and context files prepared:

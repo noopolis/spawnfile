@@ -12,3 +12,6 @@ missing references, stale policies and mismatched projections refuse reuse.
 
 Human and editor votes require current question and projection digests too; only teacher
 policy checks are exempt. Changed meaning/evidence requires re-adjudication.
+
+External vote merges reuse ready projection groups and pin question/evidence
+identities. Content-address or ancestry conflicts cannot be bypassed by relabel.
