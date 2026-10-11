@@ -20,7 +20,7 @@ export interface DecisionResult {
   /** Actual subscription attempts, absent for local option scorers. */
   judgeCalls?: JudgeCall[];
 }
-export interface DecisionIdentity { backend: string; model: string; digest?: string }
+export interface DecisionIdentity { backend: string; model: string; digest?: string; fingerprint?: string }
 export interface DecisionBackend {
   identity(signal?: AbortSignal): Promise<DecisionIdentity>;
   score(requests: DecisionRequest[], signal?: AbortSignal): Promise<DecisionResult[]>;

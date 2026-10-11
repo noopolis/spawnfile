@@ -1,7 +1,7 @@
 import type { TrainingConfiguration } from '../contracts/training-config.js';
 export interface CliArguments {
   command: 'help' | 'validate' | 'evaluate' | 'train' | 'view' | 'grader';
-  graderCommand?: 'validate' | 'label' | 'calibrate' | 'grade';
+  graderCommand?: 'validate' | 'label' | 'calibrate' | 'grade' | 'expand';
   dataset?: string;
   training?: TrainingConfiguration;
   frozenDataset?: { path: string; sourceDigest: string };
@@ -15,6 +15,7 @@ const graderFlags: Record<string, readonly string[]> = {
   label: ['grader', 'import', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
   calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
   grade: ['grader', 'output', 'context', 'timeout-ms'],
+  expand: ['grader', 'output', 'context', 'timeout-ms'],
 };
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
@@ -28,6 +29,7 @@ grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudicat
 grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]
 grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N] [--timeout-ms N]
 grader grade --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
+grader expand --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
 evaluate DATASET --runtime codex|daimon --model MODEL --instructions FILE --out DIRECTORY
@@ -89,7 +91,7 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     if (positional.length) throw new Error('grader accepts flags only');
     if (values.import && (values.inputs || values.teachers)) throw new Error('--import is mutually exclusive with --inputs/--teachers');
     if (values.import && (values.adjudication || values.concurrency || values.limit)) throw new Error('--import does not accept --adjudication/--concurrency/--limit');
-    for (const required of graderCommand === 'label' && !values.import ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' ? ['grader', 'output'] : ['grader']) {
+    for (const required of graderCommand === 'label' && !values.import ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' || graderCommand === 'expand' ? ['grader', 'output'] : ['grader']) {
       if (!values[required]) throw new Error(`Required option --${required} is missing`);
     }
     return { command: 'grader', graderCommand: graderCommand as CliArguments['graderCommand'], flags: values };

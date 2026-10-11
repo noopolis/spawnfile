@@ -99,10 +99,10 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
       // Keep empty maps for unanswered instances so adjudication includes missing votes.
       for (const { instance } of group.instances) target.votes[instance.key] ??= {};
       for (const teacher of teachers) {
-        const pending = { ...group, instances: group.instances.filter(({ instance, question }) => {
+        const pending = { ...group, instances: group.instances.filter(({ instance }) => {
           const receipt = voteProvenance(target, teacher.id, instance.key);
           if (receipt?.status === 'refused' && receipt.teacher_policy_digest === teacherPolicyDigest(teacher) &&
-            receipt.question_digest === stableDigest(question) && receipt.projection_digest === group.projectionDigest) {
+            receipt.question_digest === instance.definitionDigest && receipt.projection_digest === group.projectionDigest) {
             counts.missing++;
             return false;
           }

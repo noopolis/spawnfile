@@ -3,8 +3,9 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
-import { sha256, stableDigest, type Label } from '../../graders/index.js';
-import { createOllamaDecision } from '../../inference/decision/index.js';
+import { sha256, stableDigest, parseGrader, createCalibrationIdentity, type Label } from '../../graders/index.js';
+import { createOllamaDecision, createJevDecision } from '../../inference/decision/index.js';
+import { backendIdentity } from './backend.js';
 import { cachedScores } from './cache.js';
 import { readExclusions, excludeLabels } from './exclusions.js';
 
@@ -23,7 +24,7 @@ function backend(score: DecisionBackend['score']): DecisionBackend {
 }
 
 describe('raw decision cache', () => {
-  it.each(['v1', 'v2'])('rescores legacy %s probabilities instead of reusing unsafe cached values', async version => {
+  it.each(['v1', 'v2', 'v3'])('rescores legacy %s probabilities instead of reusing unsafe cached values', async version => {
     const dir = await temporary(), input = request('one');
     const { key: _key, ...content } = input;
     const root = join(dir, '.paideia/grader-cache');
@@ -155,4 +156,33 @@ it('separates raw cached scores by effective Ollama context even without authore
   expect(calls).toBe(3);
   await cachedScores(dir, provider, defaultIdentity, [request('same')], 1);
   expect(calls).toBe(3);
+});
+
+
+it('separates Jev caches and calibration identity when server preparation or declared revision changes', async () => {
+  const directory = await temporary();
+  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'cal.json',
+    teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'jev-http', endpoint: 'http://localhost/jev', name: 'm' },
+    escalate: { to: 't', between: [0.3, 0.7] }, score: { method: 'weighted' },
+    questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }] });
+  const identities: string[] = [];
+  const calibrations: unknown[] = [];
+  let scoringCalls = 0;
+  for (const [refuseLong, fingerprint] of [[false, 'v1'], [true, 'v1'], [true, 'v2'], [true, 'v2']] as const) {
+    const provider = createJevDecision({ endpoint: 'http://localhost/jev', fetch: async (_url, init) => {
+      const body = JSON.parse(init!.body as string) as { state: string; questions: Record<string, unknown> };
+      if (body.state.length > 30_000 && refuseLong) return new Response('{}', { status: 422 });
+      if (Object.hasOwn(body.questions, 'same')) scoringCalls++;
+      return new Response(JSON.stringify({ model: 'm', fingerprint,
+        answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { probabilities: { yes: 0.7, no: 0.3 } }])) }));
+    } });
+    const identity = await backendIdentity(grader, provider);
+    identities.push(identity);
+    calibrations.push(createCalibrationIdentity(grader, { backendModel: identity, golden: 'a'.repeat(64),
+      promptTemplateVersion: 'v4', seed: '0', exclusions: [] }));
+    expect(await cachedScores(directory, provider, identity, [request('same')], 1)).toEqual([result('same')]);
+  }
+  expect(new Set(identities).size).toBe(3);
+  expect(new Set(calibrations.map(stableDigest)).size).toBe(3);
+  expect(scoringCalls).toBe(3);
 });

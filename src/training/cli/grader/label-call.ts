@@ -59,11 +59,11 @@ export async function labelCall(label: Label, group: LabelGroup, teacher: Teache
     prompt_digest: request.digest, status: votes ? 'ok' : refused ? 'refused' : 'missing', ...(refused ? { reason: 'tool-call' } : {}), attempts })) as Label['provenance'][string];
   const call = stableDigest(receipt);
   calls[call] = receipt;
-  for (const { instance, question } of group.instances) {
+  for (const { instance } of group.instances) {
     const answers = label.votes[instance.key] ??= {};
     if (votes) answers[teacher.id] = votes[instance.key]!;
     else delete answers[teacher.id];
-    entries[instance.key] = { question_digest: stableDigest(question), call };
+    entries[instance.key] = { question_digest: instance.definitionDigest, call };
   }
   return { calls: attempts.length, votes: votes ? group.instances.length : 0, missing: votes ? 0 : group.instances.length, failures, ...(stopped ? { stopped } : {}) };
 }

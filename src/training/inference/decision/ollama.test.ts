@@ -105,7 +105,7 @@ it('pins context and refusal policy in identity and sends the configured context
   expect(original.digest).not.toBe(tags.models[0]!.digest);
   expect(await createOllamaDecision({ ...options, fetch, contextTokens: 16384 }).identity()).toEqual(original);
   expect(await configured.identity()).not.toEqual(original);
-  expect(DECISION_PROMPT_VERSION).toBe('paideia.grader-prompt.v3');
+  expect(DECISION_PROMPT_VERSION).toBe('paideia.grader-prompt.v4');
   await configured.score([request, { ...request, key: 'second' }], new AbortController().signal);
   const chats = fetch.mock.calls.filter(([url]) => String(url).endsWith('/chat'));
   expect(chats).toHaveLength(2);

@@ -1,5 +1,5 @@
 import { parseDocument } from 'yaml';
-import { allQuestions, optionsFor, stableDigest, type Grader, type DecisionQuestion, type Labels, type Label, type Option } from '../format/index.js';
+import { questionDefinitionDigest, allQuestions, optionsFor, stableDigest, type Grader, type DecisionQuestion, type Labels, type Label, type Option } from '../format/index.js';
 import { expandInstances, type QuestionInstance } from '../instances.js';
 import { deriveConsensus } from '../consensus.js';
 
@@ -104,7 +104,7 @@ export function validateStoredVotes(grader: Grader, labels: Labels, options: { r
       }
       const question = questions.get(key.split('@')[0]!);
       const entry = voteProvenance(label, name, key);
-      if (!question || entry?.question_digest !== stableDigest(question) ||
+      if (!question || entry?.question_digest !== questionDefinitionDigest(grader, question) ||
         !authoritative && (!teacher || entry.teacher_policy_digest !== teacherPolicyDigest(teacher)) ||
         instances !== null && (instances.get(key)?.state !== 'ready' || entry.projection_digest !== instances.get(key)?.projectionDigest)) {
         throw new Error(`Stale vote ${label.id}/${key}/${name}; ${authoritative ? 're-adjudicate with current question and projection digests' : 'use --relabel'}`);

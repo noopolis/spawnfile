@@ -6,13 +6,13 @@ import { runLabelImport } from './label-import.js';
 import { runLabel } from './label.js';
 import { runValidate } from './validate.js';
 import { runCalibrate } from './calibrate.js';
-import { runGrade } from './grade.js';
+import { runExpand, runGrade } from './grade.js';
 import type { GraderDependencies } from './backend.js';
 
 export { runLabel, createGraderTeacher } from './label.js';
 export { runCalibrate } from './calibrate.js';
 export { runValidate } from './validate.js';
-export { runGrade } from './grade.js';
+export { runExpand, runGrade } from './grade.js';
 export { buildGradingRuntime } from './runtime.js';
 export type { GraderDependencies } from './backend.js';
 
@@ -22,10 +22,15 @@ export async function runGraderCommand(args: CliArguments, io: CliIO, dependenci
     io.stdout(`${JSON.stringify(await runValidate(graderFile, dependencies, signal))}\n`);
     return 0;
   }
-  if (args.graderCommand === 'grade') {
-    const result = await runGrade({ graderFile, outputFile: resolve(io.cwd, one(args, 'output')),
+  if (args.graderCommand === 'grade' || args.graderCommand === 'expand') {
+    const options = { graderFile, outputFile: resolve(io.cwd, one(args, 'output')),
       contextFiles: Object.fromEntries(Object.entries(pairs(args.flags.context ?? [])).map(([name, file]) => [name, resolve(io.cwd, file)])),
-      signal }, dependencies);
+      signal };
+    if (args.graderCommand === 'expand') {
+      io.stdout(`${JSON.stringify(await runExpand(options))}\n`);
+      return 0;
+    }
+    const result = await runGrade(options, dependencies);
     io.stdout(`${JSON.stringify(result)}\n`);
     return result.status === 'pass' ? 0 : 1;
   }

@@ -1,6 +1,6 @@
 export { decisionModels, graderForModel, graderSchema, parseGrader, parseGraderYaml, validateGrader, loadGrader, allQuestions } from './grader.js';
 export type { Grader, DecisionModel, NamedDecisionModel, Gate } from './grader.js';
-export { optionsFor, expectedOptions, applicabilityQuestion } from './questions.js';
+export { optionsFor, expectedOptions, questionDefinitionDigest, applicabilityQuestion } from './questions.js';
 export type { Question, GateQuestion, DecisionQuestion, Option } from './questions.js';
 export { labelsSchema, parseLabels, parseLabelsYaml, loadLabels } from './labels.js';
 export type { Labels, Label, Labeler } from './labels.js';

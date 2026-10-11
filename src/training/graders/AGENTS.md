@@ -15,3 +15,7 @@ source; verify 90% per-file coverage and negative guards with real mutations.
 
 Calibration identity pins the ordered decision-question/gate expansion and each
 definition digest, including applicability questions; authored reorders refuse reuse.
+
+Cited-row reads isolate evidence by unit, retain context row order and exact bytes,
+and fail missing on duplicate/unknown IDs. Regex/extraction semantics enter the
+shared question definition digest for calibration and all vote provenance.

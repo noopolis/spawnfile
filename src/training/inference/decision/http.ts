@@ -4,17 +4,20 @@ export interface DecisionHttpOptions {
   fetch?: typeof fetch;
 }
 
-/** A rejected scoring request is missing evidence; identity probes still fail. */
-export class DecisionRequestRejected extends Error {}
+/** A rejected request is missing evidence; canaries retain its declared identity. */
+export class DecisionRequestRejected extends Error {
+  constructor(message: string, readonly fingerprints: Record<string, string> = {}) { super(message); }
+}
 
-async function rejectionReason(response: Response): Promise<string> {
+async function rejection(response: Response): Promise<DecisionRequestRejected> {
   let body: unknown;
   try { body = await response.json(); }
   catch (error) { if (!(error instanceof SyntaxError)) throw error; }
   const record = body !== null && typeof body === 'object' ? body as Record<string, unknown> : {};
   const detail = typeof record.detail === 'string' ? record.detail : typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : '';
   const sanitized = detail.replace(/[\p{C}\s]+/gu, ' ').trim();
-  return `Decision HTTP ${response.status}${sanitized ? `: ${sanitized}` : ''}`.slice(0, 200);
+  return new DecisionRequestRejected(`Decision HTTP ${response.status}${sanitized ? `: ${sanitized}` : ''}`.slice(0, 200),
+    Object.fromEntries(['fingerprint', 'system_fingerprint'].flatMap(key => typeof record[key] === 'string' ? [[key, record[key]]] : [])));
 }
 
 export function decisionHttp(options: DecisionHttpOptions) {
@@ -33,7 +36,7 @@ export function decisionHttp(options: DecisionHttpOptions) {
       try {
         const response = await (options.fetch ?? fetch)(url, { method: body === undefined ? 'GET' : 'POST', signal: combined,
           ...(body === undefined ? {} : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) });
-        if (response.status >= 400 && response.status < 500) throw new DecisionRequestRejected(await rejectionReason(response));
+        if (response.status >= 400 && response.status < 500) throw await rejection(response);
         if (!response.ok) throw new Error(`Decision HTTP ${response.status}`);
         return await response.json();
       } catch (error) {

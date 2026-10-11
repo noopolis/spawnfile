@@ -28,3 +28,7 @@ Named models accept 1–4 unique IDs, mutually exclusive with legacy model synta
 The public decisionModels/graderForModel seams normalize default routing.
 
 Ollama models alone accept context_tokens: integer 2048..131072, default 16384.
+
+Context rows declare bounded one-capture heading/cite regexes. Cited reads require
+row structure and paragraph/sentence scope. questionDefinitionDigest pins these
+regexes and extraction version wherever executable question identity is needed.

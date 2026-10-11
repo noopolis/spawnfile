@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { decisionHttp, DecisionRequestRejected, type DecisionHttpOptions } from './http.js';
-import { validateDecisionRequest } from './prompt.js';
+import { DECISION_PROMPT_VERSION, validateDecisionRequest } from './prompt.js';
 
-type JevEnvelope = { model?: unknown; answers?: Record<string, { probabilities?: unknown }> };
+type JevEnvelope = { model?: unknown; fingerprint?: unknown; system_fingerprint?: unknown; answers?: Record<string, { probabilities?: unknown }> };
 
 /** Operator endpoint owns model loading and temperature=1; transport never calibrates. */
 export function createJevDecision(options: DecisionHttpOptions): DecisionBackend {
@@ -24,10 +25,32 @@ export function createJevDecision(options: DecisionHttpOptions): DecisionBackend
   return {
     async identity(signal) {
       signal?.throwIfAborted();
-      // Jev has no required metadata endpoint; a fixed probe pins response identity.
-      if (reportedModel === undefined) await send([{ key: 'paideia_identity', type: 'yes-no', optionLabels: ['yes', 'no'],
-        instructions: 'Is the supplied JSON object empty?', projection: {} }], signal);
-      return { backend: 'jev-http', model: reportedModel! };
+      // Probe each identity read so server changes invalidate even a retained backend.
+      const outcomes: unknown[] = [];
+      let rejection: DecisionRequestRejected | undefined;
+      let accepted = false;
+      for (const request of identityCanaries()) {
+        try {
+          const response = await send([request], signal);
+          const decoded = decodeJev(request, response.answers?.[request.key]?.probabilities);
+          if (decoded.status !== 'ok') throw new Error(`Jev identity canary: ${decoded.reason}`);
+          accepted = true;
+          outcomes.push({ status: 'ok', probabilities: Object.fromEntries(Object.entries(decoded.probabilities!)
+            .map(([key, value]) => [key, Math.round(value * 10_000) / 10_000])),
+          ...Object.fromEntries(['fingerprint', 'system_fingerprint'].flatMap(key => {
+            const value = response[key as 'fingerprint' | 'system_fingerprint'];
+            return typeof value === 'string' ? [[key, value]] : [];
+          })) });
+        } catch (error) {
+          if (!(error instanceof DecisionRequestRejected)) throw error;
+          rejection = error;
+          outcomes.push({ status: '4xx', ...error.fingerprints });
+        }
+      }
+      if (!accepted) throw rejection!;
+      const fingerprint = createHash('sha256').update(JSON.stringify({ protocol: DECISION_PROMPT_VERSION,
+        model: reportedModel, outcomes })).digest('hex');
+      return { backend: 'jev-http', model: reportedModel!, fingerprint };
     },
     async score(requests, signal) {
       requests.forEach(validateDecisionRequest);
@@ -54,6 +77,17 @@ export function createJevDecision(options: DecisionHttpOptions): DecisionBackend
       return requests.map(request => results.get(request.key)!);
     },
   };
+}
+
+/** Keep both payloads deterministic; the long state exposes input-size preparation. */
+function identityCanaries(): DecisionRequest[] {
+  return [
+    { key: 'paideia_identity', type: 'yes-no', optionLabels: ['yes', 'no'],
+      instructions: 'Is the supplied JSON object empty?', projection: {} },
+    { key: 'paideia_identity_long', type: 'yes-no', optionLabels: ['yes', 'no'],
+      instructions: 'Does the supplied text end with PAIDEIA_CANARY_END?',
+      projection: { text: `${'0123456789 abcdefghijklmnopqrstuvwxyz. '.repeat(1100).slice(0, 39_982)}PAIDEIA_CANARY_END` } },
+  ];
 }
 
 function wireOption(request: DecisionRequest, option: string | number): string {

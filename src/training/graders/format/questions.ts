@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Grader, Gate } from './grader.js';
-import { identifier, probability } from './common.js';
+import { identifier, probability, stableDigest } from './common.js';
 
 const predicate = z.union([
   z.strictObject({ field: z.string().min(1), equals: z.json() }),
@@ -45,7 +45,13 @@ export function expectedOptions(question: DecisionQuestion): Option[] {
 
 export function validRead(read: string, question: DecisionQuestion, context: Record<string, unknown>): boolean {
   if (/^output\.[^.]+(?:\.[^.]+)*$/.test(read)) return true;
-  if (read.startsWith('context.')) return Object.hasOwn(context, read.slice(8));
+  if (read.startsWith('context.')) {
+    if (read.endsWith('@cited')) {
+      const declaration = context[read.slice(8, -6)] as Grader['context'][string] | undefined;
+      return question.level !== 'article' && declaration?.rows !== undefined;
+    }
+    return Object.hasOwn(context, read.slice(8));
+  }
   if (read === 'sentence') return question.level === 'sentence';
   return ['paragraph', 'previous-paragraph', 'next-paragraph'].includes(read) && question.level !== 'article';
 }
@@ -83,4 +89,12 @@ export function applicabilityQuestion(question: DecisionQuestion): GateQuestion 
 export function allQuestions(grader: Grader): DecisionQuestion[] {
   const questions: DecisionQuestion[] = [...grader.questions, ...grader.gates.filter((gate): gate is Exclude<Gate, { check: unknown }> => !('check' in gate))];
   return questions.flatMap(question => typeof question.when === 'string' ? [question, applicabilityQuestion(question)] : [question]);
+}
+
+/** Cited-row extraction is executable question semantics, including for derived questions. */
+export function questionDefinitionDigest(grader: Grader, question: DecisionQuestion): string {
+  const reads = [...question.reads, ...(typeof question.when === 'object' ? [question.when.field] : [])];
+  const rows = Object.fromEntries(reads.filter(read => read.startsWith('context.') && read.endsWith('@cited'))
+    .map(read => [read, grader.context[read.slice(8, -6)]!.rows]));
+  return stableDigest(Object.keys(rows).length ? { question, rows, extraction: 'cited-rows.v1' } : question);
 }
