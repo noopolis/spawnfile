@@ -17,6 +17,33 @@ const temps: string[] = [];
 afterEach(async () => { await Promise.all(temps.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
 
 describe("Moltnet JSON rewind", () => {
+  it("round-trips an empty actor type through the JSON cut unchanged and refuses a missing actor id", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "rewind-moltnet-actor-")); temps.push(root);
+    const bank = path.join(root, "moltnet/team%3Aorg/news"); await mkdir(bank, { recursive: true });
+    const source = emptyMoltnetSnapshot(network, before);
+    const operator = { ...message("operator-message", before), from: { type: "", id: "operator" }, parts: [{ kind: "text" }] };
+    const delivery = { id: "operator-event", type: "message.created", network_id: "news", created_at: before, message: operator };
+    source.room_messages.assignment = [operator, message("future", future)];
+    source.attachment_delivery_events = [delivery]; source.attachment_delivery_cursors = { writer: 1 };
+    const file = path.join(bank, "state.json"), bytes = JSON.stringify(source);
+    await writeFile(file, bytes);
+    const context: InputContext = { at, record: null, history: await openHistory(root), destination: path.join(root, "out"),
+      input: { section: "networks", id: "news", declaredBy: "team:org", overridden: false, declarationBase: root, declaration: network } };
+    expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "approximate", basis: "created-at-cut" });
+    const output = path.join(context.destination, "state.json"), cut = JSON.parse(await readFile(output, "utf8"));
+    expect(cut.room_messages.assignment).toEqual([operator]);
+    expect(cut.attachment_delivery_events).toEqual([delivery]);
+    expect(cut.attachment_delivery_cursors).toEqual({ writer: 1 });
+    expect(await inspectMoltnetJson(output, at)).toMatchObject({ messages: 1, events: 1, findings: [] });
+    expect(await readFile(file, "utf8")).toBe(bytes);
+    for (const from of [{ type: "" }, { type: "", id: "" }]) {
+      const malformed = JSON.parse(bytes); malformed.room_messages.assignment[0].from = from;
+      await writeFile(file, JSON.stringify(malformed));
+      await expect(materializeMoltnet(context)).rejects.toThrow(/"id"/);
+      await expect(inspectMoltnetJson(file, at)).rejects.toThrow(/"id"/);
+    }
+  });
+
   it("cuts RFC3339Nano times chronologically, removes future topology, recomputes counters and remaps delivery cursors", () => {
     const source = emptyMoltnetSnapshot(network, before);
     source.room_messages.assignment = [message("old", before), message("boundary", at), message("future", future)];
