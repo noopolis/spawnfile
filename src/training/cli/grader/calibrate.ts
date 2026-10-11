@@ -10,7 +10,7 @@ import { backendIdentity, graderBackend, type GraderDependencies } from './backe
 import { estimateEscalationCost, type EscalationCostCall } from './cost.js';
 import { cachedScores } from './cache.js';
 import { excludeLabels, readExclusions } from './exclusions.js';
-import { goldenInstances, rawGood, calibrationRecord, cascadeRecord } from './records.js';
+import { goldenInstances, indexDecisionResults, rawGood, calibrationRecord, cascadeRecord } from './records.js';
 import { calibrationReport, type QuestionDiagnostics } from './report.js';
 
 export interface CalibrateOptions {
@@ -38,13 +38,13 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     .filter(instance => instance.state === 'ready').map(instance => {
       const question = byQuestion.get(instance.questionId)!;
       return { outputId: label.id, instance, question, request: {
-        key: `${label.id}:${instance.key}`, type: question.type, optionLabels: optionsFor(question),
+        key: JSON.stringify([label.id, instance.key]), type: question.type, optionLabels: optionsFor(question),
         expectedOptions: expectedOptions(question), instructions: question.ask ?? question.id, projection: instance.projection,
       } };
     }));
   const observed = await cachedScores(dirname(options.graderFile), backend, identity,
     observations.map(row => row.request), options.concurrency ?? 2, options.signal);
-  const byKey = new Map(observations.map((row, index) => [row.request.key, observed[index]!]));
+  const byKey = indexDecisionResults(observations.map(row => row.request), observed);
   const results = golden.rows.map(row => byKey.get(row.request.key)!);
   const valid = golden.rows.map((row, index) => {
     const raw = rawGood(row, results[index]!);

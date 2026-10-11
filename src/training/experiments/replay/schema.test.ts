@@ -90,7 +90,7 @@ test('persisted replay retains full grading identity, coverage and call provenan
   const grading: GradeResult = { status: 'unknown', score: 0.2, coverage: 0.5,
     gates: [{ id: 'grounded', status: 'unknown' }],
     questions: [{ id: 'clear', score: 0.2, instances: 2, not_applicable: 0, escalated: 1, missing: 1 }],
-    identity: { calibration: { questions: { clear: digest }, promptTemplateVersion: 'v1', segmenter: 'icu-test',
+    identity: { calibration: { expansion: [['clear', digest]], questions: { clear: digest }, promptTemplateVersion: 'v1', segmenter: 'icu-test',
       optionMapping: { clear: digest }, backendModel: 'local:tested', golden: digest, seed: 'seed', exclusions: [],
       escalation: digest, escalationTeacher: digest, uncalibrated: 'refuse' },
     calibrationDigest: digest, escalation: digest, teacherPolicy: digest, scoringPolicy: digest },

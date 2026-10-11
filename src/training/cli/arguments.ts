@@ -11,7 +11,7 @@ export interface CliArguments {
 const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'judge-citation-repairs', 'validation-group', 'exclude-dataset', 'context']);
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const graderFlags: Record<string, readonly string[]> = {
-  validate: ['grader'],
+  validate: ['grader', 'timeout-ms'],
   label: ['grader', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
   calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
   grade: ['grader', 'output', 'context', 'timeout-ms'],
@@ -23,7 +23,7 @@ const flags: Record<string, readonly string[]> = {
 
 export const helpText = `Paideia — explicit local native-agent experiments
 
-grader validate --grader FILE
+grader validate --grader FILE [--timeout-ms N]
 grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N] [--timeout-ms N]
 grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N] [--timeout-ms N]
 grader grade --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]

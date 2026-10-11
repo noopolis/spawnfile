@@ -16,6 +16,20 @@ function calibration(): CalibrationFile {
         accuracy: 1, brier: 0.01, baseRateBrier: 0.25, ece: 0.1, eceInterval: [0, 0.15], brierInterval: [0, 0.1] } }])) });
 }
 describe('calibration identities', () => {
+  it('refuses schedule-changing question and gate reorders while preserving authored expansion', () => {
+    const q = grader.questions[0]!;
+    const original = { ...grader, questions: [{ ...q, id: 'a' }, { ...q, id: 'b' }],
+      gates: [{ ...q, id: 'c' }, { ...q, id: 'd' }], escalate: { ...grader.escalate, max_calls_per_trial: 1 } };
+    const pinned = createCalibrationIdentity(original, supplied);
+    const file = { ...calibration(), identity: pinned };
+    expect(pinned.expansion.map(([id]) => id)).toEqual(['a', 'a.applies', 'b', 'b.applies', 'c', 'c.applies', 'd', 'd.applies']);
+    expect(checkCalibration(original, file, pinned, { quality: false }).ok).toBe(true);
+    for (const changed of [{ ...original, questions: [...original.questions].reverse() },
+      { ...original, gates: [...original.gates].reverse() }]) {
+      expect(checkCalibration(changed, file, pinned, { quality: false })).toMatchObject({ ok: false,
+        refusals: ['calibration identity mismatch: expansion'] });
+    }
+  });
   it('pins all definition, option, golden and supplied runtime identities', () => {
     expect(identity.questions['q.applies']).toMatch(/^[a-f0-9]{64}$/);
     expect(identity.optionMapping.q).toMatch(/^[a-f0-9]{64}$/);

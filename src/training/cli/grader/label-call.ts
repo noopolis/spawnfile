@@ -1,5 +1,5 @@
 import { performance } from 'node:perf_hooks';
-import type { InferenceProvider, InferenceResult } from '../../contracts/execution.js';
+import type { InferenceProvider, InferenceResult, InferenceFailureKind } from '../../contracts/execution.js';
 import { createClaudeInference, createGrokInference, InferenceFailure } from '../../inference/index.js';
 import { stableDigest, type Grader, type Label } from '../../graders/index.js';
 import { buildLabelPrompt, decodeLabelVotes, teacherPolicyDigest, type LabelGroup } from '../../graders/labeling/index.js';
@@ -15,10 +15,12 @@ export function createGraderTeacher(teacher: Teacher, timeoutMs?: number): Infer
   return createGrokInference({ timeoutMs, reasoningEffort: effort as 'low' | 'medium' | 'high' | 'xhigh' | undefined });
 }
 
-export async function labelCall(label: Label, group: LabelGroup, teacher: Teacher, provider: InferenceProvider, signal?: AbortSignal): Promise<{ calls: number; votes: number; missing: number }> {
+export async function labelCall(label: Label, group: LabelGroup, teacher: Teacher, provider: InferenceProvider, signal?: AbortSignal): Promise<{ calls: number; votes: number; missing: number; failures: Partial<Record<InferenceFailureKind, number>>; stopped?: InferenceFailureKind }> {
   if (provider.capabilities.billing !== 'subscription' || provider.capabilities.tools !== 'disabled') throw new Error('Teacher requires a tool-free subscription provider');
   const request = buildLabelPrompt(group);
   const attempts: Record<string, unknown>[] = [];
+  const failures: Partial<Record<InferenceFailureKind, number>> = {};
+  let stopped: InferenceFailureKind | undefined;
   let votes: ReturnType<typeof decodeLabelVotes> = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     signal?.throwIfAborted();
@@ -37,7 +39,10 @@ export async function labelCall(label: Label, group: LabelGroup, teacher: Teache
       failure = error instanceof InferenceFailure ? error : undefined;
       invalid = failure?.kind === 'invalid-response';
     }
-    attempts.push({ provider: teacher.provider, requested_model: teacher.model,
+    const failureKind = votes === null ? failure?.kind ?? (invalid ? 'invalid-response' : 'unknown') : null;
+    if (failureKind) failures[failureKind] = (failures[failureKind] ?? 0) + 1;
+    if (failureKind && ['authentication', 'auth-stale', 'quota'].includes(failureKind)) stopped = failureKind;
+    attempts.push({ failure_kind: failureKind, provider: teacher.provider, requested_model: teacher.model,
       reported_model: result?.modelBasis === 'requested-assumption' ? null : result?.model ?? failure?.responseModel ?? null,
       cli: null, prompt_digest: stableDigest({ system: request.system, prompt, schema: request.schema }),
       at, usage: result?.usage ?? failure?.usage ?? null, wall_ms: performance.now() - start });
@@ -57,5 +62,5 @@ export async function labelCall(label: Label, group: LabelGroup, teacher: Teache
     else delete answers[teacher.id];
     entries[instance.key] = { question_digest: stableDigest(question), call };
   }
-  return { calls: attempts.length, votes: votes ? group.instances.length : 0, missing: votes ? 0 : group.instances.length };
+  return { calls: attempts.length, votes: votes ? group.instances.length : 0, missing: votes ? 0 : group.instances.length, failures, ...(stopped ? { stopped } : {}) };
 }

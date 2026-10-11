@@ -25,8 +25,8 @@ export interface CalibrationMetrics extends EvidenceCounts {
   accuracy: number;
   brier: number;
   baseRateBrier: number;
-  ece: number;
-  eceInterval: Interval;
+  ece: number | null;
+  eceInterval: Interval | null;
   brierInterval: Interval;
   falsePassRate?: number;
   falsePassInterval?: Interval;

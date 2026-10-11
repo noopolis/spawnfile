@@ -20,7 +20,7 @@ describe('held-out metrics', () => {
     const bad = rows().map(row => ({ ...row, p: 1 }));
     expect(calibrationMetrics(bad, 0.5, 's', true).falsePassRate).toBe(1);
     expect(calibrationMetrics(rows().map(row => ({ ...row, good: true })), 0.5, 's', true).falsePassRate).toBe(0);
-    expect(calibrationMetrics([], 0, 's', true)).toMatchObject({ accuracy: 0, brier: 1, ece: 1 });
+    expect(calibrationMetrics([], 0, 's', true)).toMatchObject({ accuracy: 0, brier: 1, ece: null });
     expect(() => calibrationMetrics([], NaN, 's')).toThrow('baseRate');
     expect(() => calibrationMetrics([{ ...rows()[0]!, p: -1 }], 0.5, 's')).toThrow('p:');
   });
@@ -32,10 +32,10 @@ describe('held-out metrics', () => {
     // Ignored sentinel probabilities cannot silently become true negatives or false passes.
     sample.slice(0, 10).forEach(row => { row.p = NaN; });
     expect(calibrationMetrics(sample, 0.5, 'missing', true)).toEqual(result);
-    expect(expectedCalibrationError(sample.map(row => ({ ...row, missing: true })))).toBe(1);
+    expect(expectedCalibrationError(sample.map(row => ({ ...row, missing: true })))).toBeNull();
   });
   it('uses equal-mass bins of at least ten and no more than ten bins', () => {
-    expect(expectedCalibrationError(rows(9))).toBe(1);
+    expect(expectedCalibrationError(rows(9))).toBeNull();
     expect(expectedCalibrationError(Array.from({ length: 19 }, () => ({ p: 0.4, good: true })))).toBeCloseTo(0.6);
     expect(expectedCalibrationError(rows(200))).toBeCloseTo(0.05);
   });
@@ -48,7 +48,7 @@ describe('held-out metrics', () => {
     expect(bootstrap.brierInterval).toEqual([0, 1]);
     expect(bootstrap.eceInterval).toEqual([0, 1]);
     expect(groupBootstrap(clustered, 'groups')).toEqual(bootstrap);
-    expect(groupBootstrap([], 's')).toEqual({ eceInterval: [1, 1], brierInterval: [1, 1] });
+    expect(groupBootstrap([], 's')).toEqual({ eceInterval: null, brierInterval: [1, 1] });
   });
 });
 
@@ -112,4 +112,17 @@ describe('Wilson 90% bounds', () => {
       expect(() => wilson90(successes!, total!)).toThrow('Wilson counts');
     }
   });
+});
+
+it('reports undefined ECE and fails the evidence bar when no observed bin can form', () => {
+  const small = calibrationMetrics(rows(6), 0.5, 'small');
+  expect(small).toMatchObject({ ece: null, eceInterval: null });
+  expect(calibrationBars(small).status).toBe('insufficient-evidence');
+  const mostlyMissing = calibrationMetrics(rows(40).map((row, i) => ({ ...row, missing: i >= 6 })), 0.5, 'missing');
+  expect(mostlyMissing.ece).toBeNull();
+  expect(calibrationBars(mostlyMissing).status).toBe('insufficient-evidence');
+  expect(calibrationBars({ ...passing, eceInterval: null }).status).toBe('insufficient-evidence');
+  // Whole-lineage resampling may also fail to form a bin; never drop such draws to narrow the interval.
+  const uneven = rows(30).map((row, i) => ({ ...row, group: i < 2 ? 'small' : 'large' }));
+  expect(groupBootstrap(uneven, 'uneven').eceInterval).toBeNull();
 });

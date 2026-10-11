@@ -30,11 +30,10 @@ export function evidenceCounts(records: readonly Pick<ScoredRecord, 'group' | 'g
 }
 
 /** Equal-mass bins; fewer than 10 instances cannot form a valid ECE bin. */
-export function expectedCalibrationError(records: readonly Pick<ScoredRecord, 'p' | 'good' | 'missing'>[]): number {
-  if (records.length < 10) return 1;
+export function expectedCalibrationError(records: readonly Pick<ScoredRecord, 'p' | 'good' | 'missing'>[]): number | null {
   const observed = records.filter(row => !row.missing);
   const missing = records.length - observed.length;
-  if (observed.length < 10) return 1;
+  if (observed.length < 10) return null;
   const sorted = [...observed].sort((a, b) => a.p - b.p);
   const bins = Math.min(10, Math.floor(sorted.length / 10));
   let total = missing;
@@ -58,9 +57,9 @@ function percentile(values: number[], fraction: number): number {
 
 /** Every selected lineage contributes all its instances, including repeated draws. */
 export function groupBootstrap(records: readonly ScoredRecord[], seed: string): {
-  eceInterval: Interval; brierInterval: Interval;
+  eceInterval: Interval | null; brierInterval: Interval;
 } {
-  if (!records.length) return { eceInterval: [1, 1], brierInterval: [1, 1] };
+  if (!records.length) return { eceInterval: null, brierInterval: [1, 1] };
   const byGroup = new Map<string, ScoredRecord[]>();
   for (const record of records) {
     const group = byGroup.get(record.group) ?? [];
@@ -71,9 +70,12 @@ export function groupBootstrap(records: readonly ScoredRecord[], seed: string): 
   for (let iteration = 0; iteration < 1000; iteration++) {
     const sample: ScoredRecord[] = [];
     for (let draw = 0; draw < groups.length; draw++) sample.push(...groups[Math.floor(random() * groups.length)]!);
-    eces.push(expectedCalibrationError(sample)); briers.push(brier(sample));
+    const ece = expectedCalibrationError(sample);
+    if (ece !== null) eces.push(ece);
+    briers.push(brier(sample));
   }
-  return { eceInterval: [percentile(eces, 0.05), percentile(eces, 0.95)],
+  return { eceInterval: expectedCalibrationError(records) === null || eces.length !== 1000 ? null
+    : [percentile(eces, 0.05), percentile(eces, 0.95)],
     brierInterval: [percentile(briers, 0.05), percentile(briers, 0.95)] };
 }
 
@@ -105,10 +107,11 @@ export function evidenceFailures(counts: EvidenceCounts): string[] {
 
 export function calibrationBars(metrics: CalibrationMetrics): BarResult {
   const evidence = evidenceFailures(metrics);
+  if (metrics.ece === null || metrics.eceInterval === null) evidence.push('evidence.eceBins >= 1 (including bootstrap resamples)');
   if (evidence.length) return { status: 'insufficient-evidence', failures: evidence };
   const failures: string[] = [];
-  if (!(metrics.ece <= 0.10)) failures.push('calibration.ece <= 0.10');
-  if (!(metrics.eceInterval[1] <= 0.15)) failures.push('calibration.ece90Upper <= 0.15');
+  if (!(metrics.ece! <= 0.10)) failures.push('calibration.ece <= 0.10');
+  if (!(metrics.eceInterval![1] <= 0.15)) failures.push('calibration.ece90Upper <= 0.15');
   if (!(metrics.brier <= 0.20)) failures.push('calibration.brier <= 0.20');
   if (!(metrics.brier < metrics.baseRateBrier)) failures.push('calibration.brier < baseRateBrier');
   if (metrics.falsePassRate !== undefined && !(metrics.falsePassRate <= 0.10)) failures.push('gate.falsePassRate <= 0.10');

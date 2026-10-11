@@ -30,7 +30,7 @@ async function fixture(backend = 'jev-http', count = 80) {
   const score = vi.fn(async (requests: DecisionRequest[]) => requests.map(request => {
     const good = request.projection['output.good'] === true;
     const yes = backend === 'teacher' ? Number(good) : good ? 0.98 : 0.02;
-    return { key: request.key, status: 'ok' as const, probabilities: { yes, no: 1 - yes }, bounded: request.key.includes('o0:') };
+    return { key: request.key, status: 'ok' as const, probabilities: { yes, no: 1 - yes }, bounded: JSON.parse(request.key)[0] === 'o0' };
   }));
   const runtime: DecisionBackend = { identity: async () => ({ backend, model: 'reported', digest: 'digest' }), score };
   return { root, graderFile, grader, labels, score, runtime, dependencies: { backend: () => runtime } };
@@ -63,7 +63,7 @@ describe('grader calibration commands', () => {
     await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', id: 'train', records: [{ id: 'e0' }] }));
     const first = await runCalibrate({ graderFile: f.graderFile, excludeDatasets: [excluded] }, f.dependencies);
     expect(first.calibration.identity.exclusions).toHaveLength(1);
-    expect(f.score.mock.calls.flatMap(call => call[0]).every(request => !request.key.startsWith('o0:'))).toBe(true);
+    expect(f.score.mock.calls.flatMap(call => call[0]).every(request => JSON.parse(request.key)[0] !== 'o0')).toBe(true);
     await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', records: [{ id: 'e1' }] }));
     await expect(runValidate(f.graderFile, f.dependencies)).rejects.toThrow('exclusions');
     await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
@@ -87,7 +87,7 @@ describe('grader calibration commands', () => {
     const result = await runCalibrate({ graderFile: f.graderFile, excludeDatasets: [excluded] }, f.dependencies);
     const requests = f.score.mock.calls.flatMap(call => call[0]);
     expect(requests.length).toBeGreaterThan(0);
-    expect(requests.some(request => /^(o0|o1):/.test(request.key))).toBe(false);
+    expect(requests.some(request => ['o0', 'o1'].includes(JSON.parse(request.key)[0]))).toBe(false);
     expect(result.calibration.questions.q!.metrics.groups).toBe(39);
   });
 
@@ -153,7 +153,7 @@ describe('grader calibration commands', () => {
     await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
     const normal = f.runtime.score;
     f.runtime.score = async (requests, signal) => (await normal(requests, signal)).map(result =>
-      result.key.startsWith('o0:') ? { key: result.key, status: 'missing' as const, probabilities: null } : result);
+      JSON.parse(result.key)[0] === 'o0' ? { key: result.key, status: 'missing' as const, probabilities: null } : result);
     const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
     expect(result.calibration.questions.q!.metrics.instances).toBe(40);
     const empty = await fixture('ollama-logprobs', 0);
@@ -185,7 +185,7 @@ describe('grader calibration commands', () => {
     }
     await writeFile(f.graderFile, stringify(f.grader));
     await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
-    f.runtime.score = async requests => requests.map(request => request.key.endsWith(':q')
+    f.runtime.score = async requests => requests.map(request => JSON.parse(request.key)[1] === 'q'
       ? { key: request.key, status: 'missing', probabilities: null }
       : { key: request.key, status: 'ok', probabilities: { yes: 0.5, no: 0.5 } });
     const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
@@ -230,4 +230,34 @@ describe('grader calibration commands', () => {
     expect(await main(['grader', 'label', '--grader', 'grader.yaml', '--inputs', 'inputs.yaml', '--teachers', 'teacher', '--relabel'], io,
       { grader: { provider: () => provider } })).toBe(1);
   });
+});
+
+it('persists null ECE and prints an em dash for six held-out instances', async () => {
+  const f = await fixture('jev-http', 12);
+  const result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
+  expect(result.calibration.questions.q).toMatchObject({ status: 'insufficient-evidence', metrics: { instances: 6, ece: null, eceInterval: null } });
+  expect(JSON.parse(await readFile(result.calibrationFile, 'utf8')).questions.q.metrics.ece).toBeNull();
+  expect(await readFile(result.reportFile, 'utf8')).toContain('ECE=—');
+});
+
+it('keeps colliding legacy request pairs attached to their own evidence through calibration', async () => {
+  const f = await fixture('teacher', 2);
+  f.grader.gates = [];
+  f.grader.questions = ['c', 'b:c'].map(id => ({ ...structuredClone(f.grader.questions[0]!), id, ask: id }));
+  f.labels.labels.forEach((label, i) => {
+    label.id = i === 0 ? 'a:b' : 'a';
+    label.votes = Object.fromEntries(f.grader.questions.map(q => [q.id, { human: i === 0 ? 'yes' : 'no' }]));
+    label.provenance = { human: { votes: Object.fromEntries(f.grader.questions.map(q => [q.id, {
+      question_digest: stableDigest(q), projection_digest: stableDigest({ 'output.good': i === 0 }),
+    }])) } };
+  });
+  await writeFile(f.graderFile, stringify(f.grader));
+  await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
+  // Both split choices must preserve independent agreement; the legacy collision corrupts one side.
+  for (const seed of ['0', '1', '2', '3']) {
+    const result = await runCalibrate({ graderFile: f.graderFile, seed }, f.dependencies);
+    expect(result.calibration.questions.c!.metrics.agreement).toBe(1);
+    expect(result.calibration.questions['b:c']!.metrics.agreement).toBe(1);
+  }
+  expect(new Set(f.score.mock.calls.flatMap(([requests]) => requests.map(r => r.key))).size).toBe(4);
 });

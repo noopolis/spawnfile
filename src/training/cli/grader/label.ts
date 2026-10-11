@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
-import type { InferenceProvider } from '../../contracts/execution.js';
+import type { InferenceProvider, InferenceFailureKind } from '../../contracts/execution.js';
 import { loadGrader, parseLabelsYaml, parseLabels, labelsSchema, stableDigest, type Grader, type Labels } from '../../graders/index.js';
 import { parseSchema, parseYaml } from '../../graders/format/index.js';
 import { groupLabelInstances, validateStoredVotes, adjudicationRows } from '../../graders/labeling/index.js';
@@ -17,6 +17,7 @@ export interface LabelDependencies { provider?: (teacher: Grader['teachers'][num
 
 export async function runLabel(options: LabelOptions, dependencies: LabelDependencies = {}): Promise<{
   labelsFile: string; adjudicationFile?: string; calls: number; votes: number; missing: number;
+  failures: Record<string, Partial<Record<InferenceFailureKind, number>>>; stopped: Record<string, InferenceFailureKind>;
 }> {
   const concurrency = options.concurrency ?? 2;
   for (const [name, value, minimum] of [['concurrency', concurrency, 1], ['limit', options.limit, 1], ['adjudication', options.adjudication, 0]] as const) {
@@ -63,6 +64,8 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
     return checkpoint;
   };
   const counts = { calls: 0, votes: 0, missing: 0 };
+  const failures = Object.fromEntries(teachers.map(teacher => [teacher.id, {} as Partial<Record<InferenceFailureKind, number>>]));
+  const stopped: Record<string, InferenceFailureKind> = {};
   const providers = new Map(teachers.map(t => [t.id, (dependencies.provider ?? createGraderTeacher)(t)]));
   for (const input of inputs) {
     let label = labels.labels.find(l => l.id === input.label.id);
@@ -77,11 +80,11 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
     if (options.relabel) for (const name of options.teachers) {
       for (const votes of Object.values(target.votes)) delete votes[name];
       delete target.provenance[name];
+      if (target.asked) target.asked = target.asked.filter(id => id !== name);
     }
     if (options.relabel) for (const [key, votes] of Object.entries(target.votes)) {
       if (!Object.keys(votes).length) delete target.votes[key];
     }
-    target.asked = [...new Set([...target.asked ?? [], ...options.teachers])];
     const outputJobs: (() => Promise<void>)[] = [];
     for (const group of groupLabelInstances(grader, input.output, input.context)) {
       // Keep empty maps for unanswered instances so adjudication includes missing votes.
@@ -90,7 +93,15 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
         if (group.instances.every(({ instance }) => Object.hasOwn(target.votes[instance.key]!, teacher.id))) continue;
         const pending = { ...group, instances: group.instances.filter(({ instance }) => !Object.hasOwn(target.votes[instance.key]!, teacher.id)) };
         outputJobs.push(async () => {
+          if (Object.hasOwn(stopped, teacher.id)) return;
+          target.asked = [...new Set([...target.asked ?? [], teacher.id])];
           const result = await labelCall(target, pending, teacher, providers.get(teacher.id)!, options.signal);
+          if (result.stopped) stopped[teacher.id] = result.stopped;
+          const teacherFailures = failures[teacher.id] ??= {};
+          for (const [kind, count] of Object.entries(result.failures)) {
+            const failureKind = kind as InferenceFailureKind;
+            teacherFailures[failureKind] = (teacherFailures[failureKind] ?? 0) + count;
+          }
           counts.calls += result.calls; counts.votes += result.votes; counts.missing += result.missing;
         });
       }
@@ -114,5 +125,5 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
     await writeFile(adjudicationFile, stringify({ schema: 'paideia.grader-adjudication.v1', grader: grader.id,
       seed: 'paideia.adjudication.v1', items: adjudicationRows(labels, options.adjudication) }), { mode: 0o600 });
   }
-  return { labelsFile: grader.golden, ...(adjudicationFile ? { adjudicationFile } : {}), ...counts };
+  return { labelsFile: grader.golden, ...(adjudicationFile ? { adjudicationFile } : {}), ...counts, failures, stopped };
 }

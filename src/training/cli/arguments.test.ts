@@ -57,7 +57,7 @@ it('parses grader commands and rejects unsupported/missing/repeated flags', () =
   }
 });
 
-it.each(['label', 'calibrate', 'grade'])('accepts the bounded whole-command deadline for grader %s', command => {
+it.each(['validate', 'label', 'calibrate', 'grade'])('accepts the bounded whole-command deadline for grader %s', command => {
   const required = command === 'label' ? ['--inputs', 'inputs.yaml', '--teachers', 'teacher']
     : command === 'grade' ? ['--output', 'output.json'] : [];
   const args = parseArguments(['grader', command, '--grader', 'grader.yaml', ...required, '--timeout-ms', '3600000']);

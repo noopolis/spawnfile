@@ -7,6 +7,7 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const interval = z.tuple([probability, probability]).refine(([lo, hi]) => lo <= hi, 'unordered interval');
 export const calibrationIdentitySchema = z.strictObject({
   questions: z.record(identifier, digest),
+  expansion: z.array(z.tuple([identifier, digest])),
   promptTemplateVersion: z.string().min(1),
   segmenter: z.string().min(1),
   optionMapping: z.record(identifier, digest),
@@ -33,7 +34,7 @@ export const calibrationFileSchema = z.strictObject({
       good: z.number().int().nonnegative(), bad: z.number().int().nonnegative(),
       baseRate: probability,
       accuracy: probability.optional(), brier: probability.optional(), baseRateBrier: probability.optional(),
-      ece: probability.optional(), eceInterval: interval.optional(), brierInterval: interval.optional(),
+      ece: probability.nullable().optional(), eceInterval: interval.nullable().optional(), brierInterval: interval.optional(),
       falsePassRate: probability.optional(), falsePassInterval: interval.optional(), cascadeInterval: interval.optional(), agreement: probability.optional(),
       cascadeAccuracy: probability.optional(), escalationRate: probability.optional(), coverage: probability.optional(),
     }),
@@ -45,13 +46,14 @@ export function parseCalibration(value: unknown): CalibrationFile { return parse
 export function parseCalibrationJson(source: string): CalibrationFile { return parseCalibration(JSON.parse(source)); }
 export { segmenterIdentity } from './instances.js';
 
-export function createCalibrationIdentity(grader: Grader, supplied: Omit<CalibrationIdentity, 'questions' | 'optionMapping' | 'segmenter' | 'escalation' | 'escalationTeacher' | 'uncalibrated'> & { segmenter?: string }): CalibrationIdentity {
+export function createCalibrationIdentity(grader: Grader, supplied: Omit<CalibrationIdentity, 'questions' | 'expansion' | 'optionMapping' | 'segmenter' | 'escalation' | 'escalationTeacher' | 'uncalibrated'> & { segmenter?: string }): CalibrationIdentity {
   const questions = allQuestions(grader);
   return parseSchema(calibrationIdentitySchema, {
     ...supplied,
     escalation: stableDigest(grader.escalate),
     escalationTeacher: teacherPolicyDigest(grader.teachers.find(teacher => teacher.id === grader.escalate.to)!),
     uncalibrated: grader.uncalibrated,
+    expansion: questions.map(question => [question.id, stableDigest(question)]),
     questions: Object.fromEntries(questions.map(question => [question.id, stableDigest(question)])),
     // Fixed A–P ordering; backend token extraction is owned by inference.
     optionMapping: Object.fromEntries(questions.map(question => [question.id, stableDigest(optionsFor(question).map((option, index) =>

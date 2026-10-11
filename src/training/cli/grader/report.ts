@@ -8,7 +8,7 @@ export interface QuestionDiagnostics {
   bySource?: Partial<Record<GoldenSource, CalibrationMetrics>>;
   permutation?: { compared: number; missing: number; flipRate: number | null };
 }
-const number = (value: number | undefined): string => value === undefined ? '—' : value.toFixed(3);
+const number = (value: number | null | undefined): string => value == null ? '—' : value.toFixed(3);
 const safe = (value: string): string => value.replaceAll('|', '\\|').replaceAll('\n', ' ');
 
 export function calibrationReport(file: CalibrationFile, diagnostics: Record<string, QuestionDiagnostics>, counts: {

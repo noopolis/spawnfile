@@ -35,7 +35,8 @@ export async function runGraderCommand(args: CliArguments, io: CliIO, dependenci
       adjudication: args.flags.adjudication ? count(args, 'adjudication', 0, 1_000_000, 0) : undefined,
       limit: args.flags.limit ? count(args, 'limit', 1, 1_000_000) : undefined, concurrency, signal }, dependencies);
     io.stdout(`${JSON.stringify(result)}\n`);
-    return result.missing ? 1 : 0;
+    for (const [teacher, kind] of Object.entries(result.stopped)) io.stderr(`Teacher ${teacher} stopped: ${kind}\n`);
+    return result.missing || Object.keys(result.stopped).length ? 1 : 0;
   }
   const result = await runCalibrate({ graderFile,
     excludeDatasets: (args.flags['exclude-dataset'] ?? []).map(file => resolve(io.cwd, file)),

@@ -142,7 +142,7 @@ omitted context makes affected instances missing. Standalone grading has no tria
 snapshot, so mechanical check gates remain unknown. `validate` accepts a grader
 before calibration exists; `grade` requires calibration.
 
-`label`, `calibrate` and `grade` accept `--timeout-ms N` (default 180000, maximum
+`validate`, `label`, `calibrate` and `grade` accept `--timeout-ms N` (default 180000, maximum
 3600000). The deadline covers identity probes, scoring and teacher calls. A label
 deadline preserves completed output checkpoints; rerunning resumes their votes.
 
@@ -166,7 +166,10 @@ training examples from calibration too; use a separate golden corpus.
 
 Held-out reports include groups, instances, base rate, accuracy, Brier score,
 fit-base-rate Brier, ECE, and 90% intervals from 1,000 group bootstrap resamples.
-ECE uses equal-mass bins with at least 10 instances, at most 10 bins. Gate
+ECE uses equal-mass bins with at least 10 observed instances, at most 10 bins.
+Without a bin, ECE and its interval are `null` in JSON and `—` in the report;
+the calibration bar fails as insufficient evidence. A bootstrap draw without a
+bin makes the interval unavailable. Formed bins retain the missing-mass penalty. Gate
 questions additionally report false passes.
 
 | Bar | Requirement |
@@ -194,6 +197,8 @@ independent groups means unverified, never a calibration pass.
 Escalations share one teacher call per output/projection, bounded by
 `max_calls_per_trial`. Overflow and teacher failures become missing. Calls are admitted in the order of their first requested instance in expansion
 order, including forced-teacher routing. Calibration and runtime share this planner.
+Calibration identity pins ordered expanded question/gate IDs and definition digests;
+reordering them requires recalibration.
 Teacher answers map to 1 or 0 by expected membership. Calls report actual provider,
 models, usage and wall time; calibration cost projections are estimates.
 
@@ -259,3 +264,9 @@ is no paid API fallback, model serving, decision-head training or automatic depl
 Without human-adjudicated examples, metrics measure agreement with teacher
 consensus, not validated correctness. Protocol/unit tests do not establish live
 backend availability or useful quality on a new report-writing corpus.
+
+Label attempt provenance records sanitized `failure_kind` values, including failed
+schema repairs. The command summary counts failures per teacher. Authentication,
+stale-authentication and quota/payment failures stop further calls for that teacher
+in the run; remaining votes stay unasked, other teachers continue, and the command
+exits 1 naming the teacher and class. Already dispatched calls can finish.

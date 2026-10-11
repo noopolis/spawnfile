@@ -10,8 +10,9 @@ Platt clips raw probabilities to [1e-6, 1-1e-6] and uses mean NLL plus
 Hash-ranked lineages split equally (odd remainder held out). Example exclusions remove
 all revisions of the matching lineage before the split. Bootstrap draws whole lineages.
 Retained group coverage means groups with at least one non-escalated instance; band
-endpoints are inclusive. ECE with fewer than ten instances is conservatively 1 and
-cannot pass evidence bars. Gate false-pass rate is conditional on golden bad instances.
+endpoints are inclusive. ECE requires at least ten observed instances; otherwise it and its interval are
+null and fail as insufficient evidence. A bootstrap draw without a bin also makes
+the interval unavailable; never drop that draw to narrow the interval. Gate false-pass rate is conditional on golden bad instances.
 Cascade verification removes the escalation teacher before deriving strict option
 consensus, requires 15 independent held-out groups, and enforces Wilson 90% bounds.
 Supply raw votes/asked/labelers/expected and output/projection identities to planning.

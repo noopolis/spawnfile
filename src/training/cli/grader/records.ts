@@ -34,7 +34,7 @@ export function goldenInstances(grader: Grader, labels: Labels): { rows: GoldenI
       if (golden.disputed) { disputed++; continue; }
       const question = questions.get(instance.questionId)!;
       rows.push({ label, instance, golden, question, request: {
-        key: `${label.id}:${instance.key}`, type: question.type,
+        key: JSON.stringify([label.id, instance.key]), type: question.type,
         optionLabels: optionsFor(question), expectedOptions: expectedOptions(question),
         instructions: question.ask ?? question.id, projection: instance.projection,
       } });
@@ -61,4 +61,12 @@ export function cascadeRecord(row: GoldenInstance, record: CalibrationRecord, p:
   return { ...record, p, outputId: row.label.id, projectionDigest: row.instance.projectionDigest,
     votes: row.label.votes[row.instance.key] ?? {}, asked: [...new Set([...(row.label.asked ?? []), ...Object.values(row.label.votes).flatMap(votes => Object.keys(votes))])], labelers,
     expected: expectedOptions(row.question), goldenLabelers: Object.keys(row.golden.votes) };
+}
+
+/** Reject ambiguous associations before any result can overwrite another request. */
+export function indexDecisionResults(requests: readonly DecisionRequest[], results: readonly DecisionResult[]): Map<string, DecisionResult> {
+  if (new Set(requests.map(request => request.key)).size !== requests.length) {
+    throw new Error('Duplicate calibration request key');
+  }
+  return new Map(requests.map((request, index) => [request.key, results[index]!]));
 }

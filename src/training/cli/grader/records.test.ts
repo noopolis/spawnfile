@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseGrader, type Label, type Labels } from '../../graders/index.js';
 import type { DecisionResult } from '../../contracts/grading.js';
-import { goldenInstances, independentConsensus, rawGood, calibrationRecord, cascadeRecord } from './records.js';
+import { goldenInstances, indexDecisionResults, independentConsensus, rawGood, calibrationRecord, cascadeRecord } from './records.js';
 
 function grader(teacher = false) {
   return parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'l', calibration: 'c',
@@ -32,7 +32,7 @@ describe('calibration record preparation', () => {
     const result = goldenInstances(grader(), input);
     expect(result).toMatchObject({ unavailable: 1, disputed: 0 });
     expect(result.rows).toHaveLength(2);
-    expect(result.rows[0]!.request).toEqual({ key: 'output:q', type: 'yes-no', optionLabels: ['yes', 'no'],
+    expect(result.rows[0]!.request).toEqual({ key: '["output","q"]', type: 'yes-no', optionLabels: ['yes', 'no'],
       expectedOptions: ['yes'], instructions: 'Good?', projection: { 'output.body': ['Article'] } });
     expect(result.rows[1]!.request.instructions).toBe('choice');
     input.labels[0]!.votes.q = { a: 'yes', b: 'no' };
@@ -78,4 +78,18 @@ describe('calibration record preparation', () => {
     expect(cascadeRecord(row, record, 0.7, input.labelers)).toMatchObject({ votes: {}, asked: ['asked-but-missing', 'a', 'b', 'other'] });
     expect(calibrationRecord({ ...row, golden: { ...row.golden, answer: 'no' } }, 0.2).good).toBe(false);
   });
+});
+
+it('encodes colon-containing request pairs without collision and rejects duplicate indexing', () => {
+  const g = grader(); g.questions = ['c', 'b:c'].map(id => ({ ...g.questions[0]!, id }));
+  const input = labels(); input.labels = ['a:b', 'a'].map(id => ({ ...label(), id,
+    votes: { c: { human: 'yes' }, 'b:c': { human: 'no' } } }));
+  const requests = goldenInstances(g, input).rows.map(row => row.request);
+  expect(new Set(requests.map(request => request.key)).size).toBe(4);
+  const results = requests.map((request, index) => ({ key: request.key, status: 'ok' as const,
+    probabilities: { yes: index === 0 ? 0.9 : 0.1, no: index === 0 ? 0.1 : 0.9 } }));
+  const indexed = indexDecisionResults(requests, results);
+  expect(indexed.get(JSON.stringify(['a:b', 'c']))!.probabilities!.yes).toBe(0.9);
+  expect(indexed.get(JSON.stringify(['a', 'b:c']))!.probabilities!.yes).toBe(0.1);
+  expect(() => indexDecisionResults([requests[0]!, requests[0]!], results)).toThrow('Duplicate calibration request key');
 });

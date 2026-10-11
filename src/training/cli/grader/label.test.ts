@@ -220,3 +220,50 @@ describe('teacher labeling runner', () => {
     expect((await loadLabelInputs(f.inputsFile, g))[0]!.output).toBe('Evidence');
   });
 });
+
+it.each(['quota', 'authentication', 'auth-stale'] as const)('stops only the failed teacher on %s, records sanitized receipts and exits one', async kind => {
+  const f = await fixture();
+  f.grader.teachers.push({ id: 'other', provider: 'grok', model: 'm' });
+  // Separate projections exercise both later groups and later outputs.
+  f.grader.questions[1]!.reads = ['output.body'];
+  await writeFile(f.graderFile, stringify(f.grader));
+  const calls: string[] = [], stdout: string[] = [], stderr: string[] = [];
+  const code = await main(['grader', 'label', '--grader', f.graderFile, '--inputs', f.inputsFile,
+    '--teachers', 't,other', '--concurrency', '1'],
+  { cwd: f.dir, stdout: text => stdout.push(text), stderr: text => stderr.push(text) },
+  { grader: { provider: teacher => provider(async request => {
+    calls.push(teacher.id);
+    if (teacher.id === 't') throw new InferenceFailure(kind, 'SECRET provider account text', {
+      responseModel: 'actual', usage: { inputTokens: 2, outputTokens: 0, cachedInputTokens: null, reasoningTokens: null, source: 'test' },
+    });
+    return JSON.stringify(Object.fromEntries(JSON.parse(request.prompt).questions.map((q: { key: string }) => [q.key, 'yes'])));
+  }) } });
+  expect(code).toBe(1);
+  expect(calls.filter(id => id === 't')).toHaveLength(1);
+  expect(calls.filter(id => id === 'other')).toHaveLength(4);
+  const summary = JSON.parse(stdout.join(''));
+  expect(summary).toMatchObject({ calls: 5, votes: 4, missing: 1, failures: { t: { [kind]: 1 }, other: {} }, stopped: { t: kind } });
+  expect(stderr).toEqual([`Teacher t stopped: ${kind}\n`]);
+  const labels = await saved(f.dir);
+  expect(voteProvenance(labels.labels[0], 't', 'q')).toMatchObject({ attempts: [{ failure_kind: kind, reported_model: 'actual', usage: { inputTokens: 2 } }] });
+  expect(voteProvenance(labels.labels[0], 't', 'q2')).toBeUndefined();
+  expect(labels.labels[1]!.asked).toEqual(['other']);
+  expect(labels.labels[1]!.provenance.t).toBeUndefined();
+  expect(JSON.stringify({ labels, summary, stderr })).not.toContain('SECRET');
+  // Stop state is scoped to this run; resume can try the teacher again.
+  expect(await runLabel({ ...f, concurrency: 1 }, { provider: () => provider(async request =>
+    JSON.stringify(Object.fromEntries(JSON.parse(request.prompt).questions.map((q: { key: string }) => [q.key, 'yes'])))) })).toMatchObject({ calls: 4, missing: 0, stopped: {} });
+});
+
+it('records every failed attempt class including repaired schema failures and unknown exceptions', async () => {
+  const f = await fixture(); let calls = 0;
+  const result = await runLabel({ ...f, limit: 1 }, { provider: () => provider(async () => {
+    if (calls++ === 0) throw new InferenceFailure('invalid-response', 'SECRET');
+    throw new Error('SECRET unexpected');
+  }) });
+  expect(result.failures).toEqual({ t: { 'invalid-response': 1, unknown: 1 } });
+  expect(voteProvenance((await saved(f.dir)).labels[0], 't', 'q')).toMatchObject({ attempts: [
+    { failure_kind: 'invalid-response' }, { failure_kind: 'unknown' },
+  ] });
+  expect(await readFile(result.labelsFile, 'utf8')).not.toContain('SECRET');
+});

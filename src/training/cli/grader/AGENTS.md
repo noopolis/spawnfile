@@ -16,4 +16,9 @@ Resume retains completed votes and original call receipts, including partial gro
 compact receipt references must remain readable by stale checks and cost estimates.
 
 Whole-command cancellation reaches identity probes, scoring and teacher calls;
-label/calibrate/grade accept the existing bounded --timeout-ms control.
+validate/label/calibrate/grade accept the existing bounded --timeout-ms control.
+
+Failed label attempts retain only typed failure classes, never raw diagnostics.
+Account failures stop that teacher for the run; queued votes remain unasked and
+other teachers continue. Summaries count failure classes per teacher and exit one.
+Calibration request keys encode the label/instance pair and reject duplicate indexing.
