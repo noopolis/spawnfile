@@ -10,6 +10,7 @@ import {
   type DockerRunInvocation
 } from "../compiler/index.js";
 import { removeDirectory } from "../filesystem/index.js";
+import { assertRecordedMemoryRetention } from "../deployment/index.js";
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -213,6 +214,10 @@ export const resolveAuthProfile = async (
 };
 
 export const cleanup = async (input: { buildResult?: BuildProjectResult; dockerCommand: string; invocation?: DockerRunInvocation; keepImages: boolean; runCommand: DockerCommandRunner }): Promise<void> => {
+  const mounts = input.buildResult?.report.container?.persistent_mounts ?? [];
+  assertRecordedMemoryRetention(input.buildResult?.report.recording, mounts,
+    mounts.map((mount) => mount.volume_name), (mount) => mount.volume_name,
+    { removeVolumes: true }, "automatic E2E cleanup cannot discard recorded memory");
   const containerName = input.invocation?.containerName;
   if (containerName) await input.runCommand(input.dockerCommand, ["rm", "-f", containerName]).catch(() => undefined);
   if (input.buildResult && !input.keepImages) await input.runCommand(input.dockerCommand, ["image", "rm", "-f", input.buildResult.imageTag]).catch(() => undefined);

@@ -37,6 +37,9 @@ src/deployment/
 ├── dockerRecover.ts # Docker label recovery for context-backed remote status
 ├── buildImageCacheStore.ts # Strict, atomic Spawnfile-home cache for verified Docker image builds
 ├── record.ts        # Deployment record schema, parser, reader, and writer
+├── homeStore.ts     # Home deployment record/report publication; logs resources after success
+├── resourceLog.ts   # Opt-in deploy resource pins, retained JSONL reader and inclusive lookup
+├── recordedMemoryRetention.ts # Refuse deletion of recording agents' durable memory mounts
 ├── dockerManager.ts # Docker deployment record assembly
 ├── artifactsExportTypes.ts # `spawnfile.export-index.v1` zod schema/type + parser
 ├── artifactsExportPlan.ts  # Pure planning: which durable files to export from a compile report (no Docker/IO)
@@ -57,6 +60,14 @@ src/deployment/
 - Keep deployment records free of secrets. Paths are allowed only for local operator metadata.
 - Docker labels must contain identifiers only, never local paths or secret-bearing values.
 - Records are written only after a detached deployment has successfully started.
+- Recording histories reuse report pins and hash persisted report bytes. Project `up` and
+  image `up`/release append after record publication under the resource-log writer lock.
+  Recording off means no log/lock I/O. Retain the newest state at/before the keep cutoff.
+  A log failure after home publication raises `HomeDeploymentRecordingError`; the recorded
+  deployment remains live. Callers must not roll back its container behind the persisted record.
+- `down --volumes` refuses deletion of recording memory before export or teardown unless
+  `--discard-recorded-memory` is explicit; `--force` alone is insufficient. Match protected
+  mount IDs to actual volume names, including aliases. Declared shared names stay retained.
 - Failed image candidates save bounded, sanitized stdout/stderr and health
   evidence under the home deployment's `diagnostics/` before rollback removes
   the container. Files are 0600 inside an owned 0700 directory; collection or

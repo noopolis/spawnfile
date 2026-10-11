@@ -20,6 +20,7 @@ src/cli/
 ├── lifecyclePlanningCommands.ts # Durable lifecycle plan and lookup command registration
 ├── runPublishCommands.ts # `run` and `publish` command registration
 ├── upCommand.ts # Project/image `up` registration and machine-lifecycle receipt flow
+├── downCommand.ts # Teardown flags, including explicit --discard-recorded-memory override
 ├── upLifecycleRecovery.ts # Exact detached-container recovery for machine project `up`
 ├── releaseCommand.ts # `spawnfile release` flag parsing and exit codes; work lives in `../release/`
 ├── envFileOption.ts # `--runtime-env-file` (+ hidden `--env-file` alias Node itself claims from argv)
@@ -59,6 +60,8 @@ src/cli/
 ## Rules
 
 - Keep command handlers small.
+- Bind `--discard-recorded-memory` into down lifecycle policy/plans; `--force` only
+  authorizes discarding unexported artifacts, not recording memory ledgers.
 - Push parsing, validation, and compile behavior into compiler modules.
 - Normalize errors here so the rest of the code can throw typed errors.
 - Keep the CLI testable by isolating parsing from direct process exit handling.
