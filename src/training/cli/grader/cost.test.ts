@@ -48,3 +48,13 @@ it('handles zero projected calls without claiming measured zero and validates in
   for (const maximum of [-1, 0.1, Infinity]) expect(() => estimateEscalationCost([call], labels(), 'c', maximum)).toThrow(/maximum/);
   expect(() => estimateEscalationCost([{ ...call, instanceKeys: [] }], labels(), 'c')).toThrow(/keys/);
 });
+
+it('reads compact call references without repeating or losing receipt costs', () => {
+  const compact = labels(); const provenance = compact.labels[0]!.provenance.c!;
+  const repeated = provenance.votes as Record<string, Record<string, unknown>>;
+  provenance.calls = { receipt: repeated.q } as Label['provenance'][string];
+  provenance.votes = { q: { call: 'receipt' }, r: { call: 'receipt' } };
+  expect(estimateEscalationCost([call], compact, 'c')).toEqual(estimateEscalationCost([call], labels(), 'c'));
+  delete provenance.calls;
+  expect(estimateEscalationCost([call], compact, 'c').matchingCalls).toBe(0);
+});

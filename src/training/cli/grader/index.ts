@@ -1,15 +1,18 @@
 import { resolve } from 'node:path';
 import type { CliArguments } from '../arguments.js';
 import type { CliIO } from '../types.js';
-import { one, count } from '../arguments.js';
+import { one, count, pairs } from '../arguments.js';
 import { runLabel } from './label.js';
 import { runValidate } from './validate.js';
 import { runCalibrate } from './calibrate.js';
+import { runGrade } from './grade.js';
 import type { GraderDependencies } from './backend.js';
 
 export { runLabel, createGraderTeacher } from './label.js';
 export { runCalibrate } from './calibrate.js';
 export { runValidate } from './validate.js';
+export { runGrade } from './grade.js';
+export { buildGradingRuntime } from './runtime.js';
 export type { GraderDependencies } from './backend.js';
 
 export async function runGraderCommand(args: CliArguments, io: CliIO, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<number> {
@@ -17,6 +20,13 @@ export async function runGraderCommand(args: CliArguments, io: CliIO, dependenci
   if (args.graderCommand === 'validate') {
     io.stdout(`${JSON.stringify(await runValidate(graderFile, dependencies))}\n`);
     return 0;
+  }
+  if (args.graderCommand === 'grade') {
+    const result = await runGrade({ graderFile, outputFile: resolve(io.cwd, one(args, 'output')),
+      contextFiles: Object.fromEntries(Object.entries(pairs(args.flags.context ?? [])).map(([name, file]) => [name, resolve(io.cwd, file)])),
+      signal }, dependencies);
+    io.stdout(`${JSON.stringify(result)}\n`);
+    return result.status === 'pass' ? 0 : 1;
   }
   const concurrency = count(args, 'concurrency', 2, 64);
   if (args.graderCommand === 'label') {

@@ -1,19 +1,20 @@
 import type { TrainingConfiguration } from '../contracts/training-config.js';
 export interface CliArguments {
   command: 'help' | 'validate' | 'evaluate' | 'train' | 'view' | 'grader';
-  graderCommand?: 'validate' | 'label' | 'calibrate';
+  graderCommand?: 'validate' | 'label' | 'calibrate' | 'grade';
   dataset?: string;
   training?: TrainingConfiguration;
   frozenDataset?: { path: string; sourceDigest: string };
   flags: Readonly<Record<string, readonly string[]>>;
 }
 
-const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'judge-citation-repairs', 'validation-group', 'exclude-dataset']);
+const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'judge-citation-repairs', 'validation-group', 'exclude-dataset', 'context']);
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const graderFlags: Record<string, readonly string[]> = {
   validate: ['grader'],
   label: ['grader', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit'],
   calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency'],
+  grade: ['grader', 'output', 'context'],
 };
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
@@ -25,6 +26,7 @@ export const helpText = `Paideia — explicit local native-agent experiments
 grader validate --grader FILE
 grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N]
 grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N]
+grader grade --grader FILE --output FILE.json [--context NAME=FILE]...
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
 evaluate DATASET --runtime codex|daimon --model MODEL --instructions FILE --out DIRECTORY
@@ -84,7 +86,7 @@ export function parseArguments(argv: readonly string[]): CliArguments {
   }
   if (command === 'grader') {
     if (positional.length) throw new Error('grader accepts flags only');
-    for (const required of graderCommand === 'label' ? ['grader', 'inputs', 'teachers'] : ['grader']) {
+    for (const required of graderCommand === 'label' ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' ? ['grader', 'output'] : ['grader']) {
       if (!values[required]) throw new Error(`Required option --${required} is missing`);
     }
     return { command: 'grader', graderCommand: graderCommand as CliArguments['graderCommand'], flags: values };

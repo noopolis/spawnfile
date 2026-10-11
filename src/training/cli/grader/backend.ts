@@ -1,7 +1,7 @@
 import type { DecisionBackend } from '../../contracts/grading.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import type { Grader } from '../../graders/index.js';
-import { stableDigest } from '../../graders/index.js';
+import { decisionBackendIdentity } from '../../graders/index.js';
 import { createOllamaDecision, createJevDecision, createTeacherDecision } from '../../inference/decision/index.js';
 import { createGraderTeacher } from './label.js';
 
@@ -21,6 +21,5 @@ export function graderBackend(grader: Grader, dependencies: GraderDependencies =
 
 /** Include routing and teacher policy as well as the backend's reported identity. */
 export async function backendIdentity(grader: Grader, backend: DecisionBackend): Promise<string> {
-  return stableDigest({ configured: grader.model, reported: await backend.identity(),
-    ...(grader.model.backend === 'teacher' ? { teacher: grader.teachers.find(t => t.id === (grader.model as { teacher: string }).teacher) } : {}) });
+  return decisionBackendIdentity(grader, backend);
 }

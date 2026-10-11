@@ -1,8 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { parseDocument } from 'yaml';
 import { z } from 'zod';
-import { identifier, parseSchema } from '../../graders/format/index.js';
+import { identifier, parseSchema, parseYaml } from '../../graders/format/index.js';
 import { sha256, type Grader, type Label, type Labels } from '../../graders/index.js';
 
 const reference = z.strictObject({ from: z.string().min(1) });
@@ -13,9 +12,9 @@ const manifestSchema = z.strictObject({ schema: z.literal('paideia.grader-inputs
 export interface LabelInput { label: Label; output: Label['output']; context: Label['context'] }
 
 export async function loadLabelInputs(filename: string, grader: Grader, limit?: number): Promise<LabelInput[]> {
-  const doc = parseDocument(await readFile(filename, 'utf8'), { uniqueKeys: true, merge: false });
-  if (doc.errors.length || doc.warnings.length) throw new Error('Invalid grader inputs YAML');
-  const manifest = parseSchema(manifestSchema, doc.toJS({ maxAliasCount: 0 }));
+  if (typeof grader.golden !== 'string') throw new Error('grader label requires a separate golden labels file; inline golden labels are read-only');
+  const labelsDirectory = path.dirname(grader.golden);
+  const manifest = parseSchema(manifestSchema, parseYaml(await readFile(filename, 'utf8')));
   const ids = new Set<string>();
   for (const item of manifest.items) {
     if (ids.has(item.id)) throw new Error(`Duplicate input id ${item.id}`);
@@ -26,7 +25,7 @@ export async function loadLabelInputs(filename: string, grader: Grader, limit?: 
     const absolute = path.resolve(path.dirname(filename), from);
     const bytes = await readFile(absolute);
     const value = from.endsWith('.json') ? JSON.parse(bytes.toString('utf8')) as Label['output'] : bytes.toString('utf8');
-    return { reference: { from: path.relative(path.dirname(grader.golden), absolute), sha256: sha256(bytes) }, value };
+    return { reference: { from: path.relative(labelsDirectory, absolute), sha256: sha256(bytes) }, value };
   }
   return Promise.all(manifest.items.slice(0, limit).map(async item => {
     const output = await load(item.output.from);

@@ -1,3 +1,4 @@
+import { voteProvenance } from '../../graders/labeling/index.js';
 import { stableDigest, type Labels } from '../../graders/index.js';
 
 export interface EscalationCostCall { outputId: string; projectionDigest: string; instanceKeys: string[] }
@@ -45,8 +46,7 @@ export function estimateEscalationCost(calls: readonly EscalationCostCall[], lab
   }
   const measurements = admitted.flatMap(call => {
     const label = labels.labels.find(label => label.id === call.outputId);
-    const votes = object(label?.provenance[teacherId]?.votes);
-    const entries = call.instanceKeys.map(key => object(votes?.[key]));
+    const entries = call.instanceKeys.map(key => voteProvenance(label, teacherId, key));
     if (entries.some(entry => !entry || entry.projection_digest !== call.projectionDigest ||
       !Array.isArray(entry.instance_keys) || stableDigest([...entry.instance_keys].sort()) !== stableDigest(call.instanceKeys))) return [];
     const attempts = entries[0]!.attempts;

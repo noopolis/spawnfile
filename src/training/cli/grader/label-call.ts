@@ -45,14 +45,17 @@ export async function labelCall(label: Label, group: LabelGroup, teacher: Teache
   }
   const provenance = label.provenance[teacher.id] ??= {};
   const entries = (provenance.votes ??= {}) as Record<string, Label['provenance'][string]>;
+  const calls = (provenance.calls ??= {}) as Record<string, Label['provenance'][string]>;
+  const receipt = JSON.parse(JSON.stringify({ teacher_policy_digest: teacherPolicyDigest(teacher),
+    projection_digest: group.projectionDigest, instance_keys: group.instances.map(({ instance }) => instance.key),
+    prompt_digest: request.digest, status: votes ? 'ok' : 'missing', attempts })) as Label['provenance'][string];
+  const call = stableDigest(receipt);
+  calls[call] = receipt;
   for (const { instance, question } of group.instances) {
     const answers = label.votes[instance.key] ??= {};
     if (votes) answers[teacher.id] = votes[instance.key]!;
     else delete answers[teacher.id];
-    entries[instance.key] = JSON.parse(JSON.stringify({ question_digest: stableDigest(question),
-      teacher_policy_digest: teacherPolicyDigest(teacher), projection_digest: group.projectionDigest,
-      instance_keys: group.instances.map(({ instance }) => instance.key),
-      prompt_digest: request.digest, status: votes ? 'ok' : 'missing', attempts })) as Label['provenance'][string];
+    entries[instance.key] = { question_digest: stableDigest(question), call };
   }
   return { calls: attempts.length, votes: votes ? group.instances.length : 0, missing: votes ? 0 : group.instances.length };
 }

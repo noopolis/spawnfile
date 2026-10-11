@@ -1,9 +1,9 @@
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
-import { stringify, parseDocument } from 'yaml';
+import { stringify } from 'yaml';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { loadGrader, parseLabelsYaml, parseLabels, labelsSchema, stableDigest, type Grader, type Labels } from '../../graders/index.js';
-import { parseSchema } from '../../graders/format/index.js';
+import { parseSchema, parseYaml } from '../../graders/format/index.js';
 import { groupLabelInstances, validateStoredVotes, adjudicationRows } from '../../graders/labeling/index.js';
 import { loadLabelInputs, resolveStoredLabels } from './label-inputs.js';
 import { labelCall, createGraderTeacher } from './label-call.js';
@@ -23,6 +23,8 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
     if (value !== undefined && (!Number.isSafeInteger(value) || value < minimum)) throw new Error(`Invalid ${name}`);
   }
   const grader = await loadGrader(options.graderFile);
+  if (typeof grader.golden !== 'string') throw new Error('grader label requires a separate golden labels file; inline golden labels are read-only');
+  const labelsFile = grader.golden;
   if (!options.teachers.length || new Set(options.teachers).size !== options.teachers.length) throw new Error('Select unique teachers');
   const teachers = options.teachers.map(id => {
     const teacher = grader.teachers.find(t => t.id === id);
@@ -34,9 +36,7 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
   try {
     const text = await readFile(grader.golden, 'utf8');
     if (options.relabel) {
-      const document = parseDocument(text, { uniqueKeys: true, merge: false });
-      if (document.errors.length || document.warnings.length) throw new Error('Invalid labels YAML');
-      labels = parseSchema(labelsSchema, document.toJS({ maxAliasCount: 0 }));
+      labels = parseSchema(labelsSchema, parseYaml(text));
       if (labels.grader !== grader.id) throw new Error('Labels grader mismatch');
     } else labels = parseLabelsYaml(text, grader);
   }
@@ -50,6 +50,18 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
     labels.labelers[teacher.id] = { kind: 'model', provider: teacher.provider, model: teacher.model };
   }
   const jobs: (() => Promise<void>)[] = [];
+  let checkpoint = Promise.resolve();
+  const persist = () => {
+    parseLabels(labels, grader);
+    const snapshot = stringify(labels);
+    checkpoint = checkpoint.then(async () => {
+      await mkdir(path.dirname(labelsFile), { recursive: true });
+      const temporary = `${labelsFile}.${process.pid}.tmp`;
+      await writeFile(temporary, snapshot, { mode: 0o600 });
+      await rename(temporary, labelsFile);
+    });
+    return checkpoint;
+  };
   const counts = { calls: 0, votes: 0, missing: 0 };
   const providers = new Map(teachers.map(t => [t.id, (dependencies.provider ?? createGraderTeacher)(t)]));
   for (const input of inputs) {
@@ -70,29 +82,32 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
       if (!Object.keys(votes).length) delete target.votes[key];
     }
     target.asked = [...new Set([...target.asked ?? [], ...options.teachers])];
+    const outputJobs: (() => Promise<void>)[] = [];
     for (const group of groupLabelInstances(grader, input.output, input.context)) {
       // Keep empty maps for unanswered instances so adjudication includes missing votes.
       for (const { instance } of group.instances) target.votes[instance.key] ??= {};
       for (const teacher of teachers) {
         if (group.instances.every(({ instance }) => Object.hasOwn(target.votes[instance.key]!, teacher.id))) continue;
         const pending = { ...group, instances: group.instances.filter(({ instance }) => !Object.hasOwn(target.votes[instance.key]!, teacher.id)) };
-        jobs.push(async () => {
+        outputJobs.push(async () => {
           const result = await labelCall(target, pending, teacher, providers.get(teacher.id)!, options.signal);
           counts.calls += result.calls; counts.votes += result.votes; counts.missing += result.missing;
         });
       }
     }
+    jobs.push(async () => {
+      for (const job of outputJobs) { options.signal?.throwIfAborted(); await job(); }
+      await persist();
+    });
   }
   validateStoredVotes(grader, await resolveStoredLabels(labels, grader.golden), { resolved: true });
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+  const results = await Promise.allSettled(Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
     while (next < jobs.length) { options.signal?.throwIfAborted(); await jobs[next++]!(); }
   }));
-  parseLabels(labels, grader);
-  await mkdir(path.dirname(grader.golden), { recursive: true });
-  const temporary = `${grader.golden}.${process.pid}.tmp`;
-  await writeFile(temporary, stringify(labels), { mode: 0o600 });
-  await rename(temporary, grader.golden);
+  const failed = results.find(result => result.status === 'rejected');
+  if (failed?.status === 'rejected') throw failed.reason;
+  await persist();
   let adjudicationFile: string | undefined;
   if (options.adjudication !== undefined) {
     adjudicationFile = `${grader.golden}.adjudication.yaml`;

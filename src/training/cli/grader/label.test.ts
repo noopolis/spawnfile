@@ -5,6 +5,7 @@ import { stringify, parse } from 'yaml';
 import { afterEach, describe, it, expect } from 'vitest';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
 import { loadGrader, loadLabels, type Labels } from '../../graders/index.js';
+import { voteProvenance } from '../../graders/labeling/index.js';
 import { InferenceFailure } from '../../inference/index.js';
 import { runLabel, createGraderTeacher } from './label.js';
 import { loadLabelInputs, resolveStoredLabels } from './label-inputs.js';
@@ -41,12 +42,36 @@ describe('teacher labeling runner', () => {
     expect(result).toMatchObject({ calls: 2, votes: 4, missing: 0 });
     expect(prompts.every(p => !p.includes('NEVER'))).toBe(true);
     const labels = await saved(f.dir);
-    expect(labels.labels[0]!.provenance.t).toMatchObject({ votes: { q: { status: 'ok', attempts: [{ provider: 'grok', requested_model: 'm', reported_model: 'reported', cli: null }] } } });
+    expect(voteProvenance(labels.labels[0], 't', 'q')).toMatchObject({ status: 'ok', attempts: [{ provider: 'grok', requested_model: 'm', reported_model: 'reported', cli: null }] });
+    expect(Object.keys(labels.labels[0]!.provenance.t!.calls!)).toHaveLength(1);
+    expect(JSON.stringify(labels.labels[0]!.provenance.t!.votes)).not.toContain('attempts');
     const loaded = await loadLabels(result.labelsFile, await loadGrader(f.graderFile));
     expect(loaded.labels.labels[0]!.output).toEqual({ body: ['Hello'], secret: 'NEVER' });
     expect(parse(await readFile(result.adjudicationFile!, 'utf8')).items).toHaveLength(1);
     expect(await runLabel(f, deps)).toMatchObject({ calls: 0, votes: 0 });
     expect(await runLabel({ ...f, relabel: true, limit: 1 }, deps)).toMatchObject({ calls: 1, votes: 2 });
+  });
+  it('checkpoints each completed output before starting the next and resumes after cancellation', async () => {
+    const f = await fixture(); const controller = new AbortController(); let calls = 0;
+    await expect(runLabel({ ...f, concurrency: 1, signal: controller.signal }, { provider: () => provider(async () => {
+      if (++calls === 2) {
+        const checkpoint = await saved(f.dir);
+        expect(checkpoint.labels[0]!.votes).toEqual({ q: { t: 'yes' }, q2: { t: 'no' } });
+        controller.abort(); throw new Error('interrupted');
+      }
+      return '{"q":"yes","q2":"no"}';
+    }) })).rejects.toThrow();
+    const checkpoint = await saved(f.dir);
+    expect(checkpoint.labels[0]!.votes.q!.t).toBe('yes');
+    expect(checkpoint.labels[1]!.votes.q).toEqual({});
+    expect(await runLabel({ ...f, concurrency: 1 }, { provider: () => provider() })).toMatchObject({ calls: 1, votes: 2 });
+  });
+  it('refuses writes to inline golden labels before opening inputs or providers', async () => {
+    const f = await fixture();
+    await writeFile(f.graderFile, stringify({ ...f.grader, golden: { schema: 'paideia.labels.v1', labelers: {}, labels: [] } }));
+    const g = await loadGrader(f.graderFile);
+    await expect(runLabel(f)).rejects.toThrow('separate golden labels file');
+    await expect(loadLabelInputs(f.inputsFile, g)).rejects.toThrow('inline golden labels are read-only');
   });
   it('repairs once, counts invalid votes missing, and retains disputes', async () => {
     const f = await fixture(); let calls = 0;
@@ -56,7 +81,7 @@ describe('teacher labeling runner', () => {
     expect(result).toMatchObject({ calls: 2, votes: 0, missing: 2 });
     const labels = await saved(f.dir);
     expect(labels.labels[0]!.votes).toEqual({ q: {}, q2: {} });
-    expect(labels.labels[0]!.provenance.t).toMatchObject({ votes: { q: { attempts: [{ reported_model: null }, { reported_model: null }] } } });
+    expect(voteProvenance(labels.labels[0], 't', 'q')).toMatchObject({ attempts: [{ reported_model: null }, { reported_model: null }] });
     expect(parse(await readFile(result.adjudicationFile!, 'utf8')).items).toHaveLength(2);
     let n = 0;
     expect(await runLabel({ ...f, limit: 1 }, { provider: () => provider(async () => {
@@ -107,13 +132,16 @@ describe('teacher labeling runner', () => {
       expect(JSON.parse(request.prompt).questions).toHaveLength(1);
       return '{"q2":"no"}';
     }) });
-    expect((await saved(f.dir)).labels[0]!.votes.q!.t).toBe('no');
+    const resumed = (await saved(f.dir)).labels[0]!;
+    expect(resumed.votes.q!.t).toBe('no');
+    expect(voteProvenance(resumed, 't', 'q')!.instance_keys).toEqual(['q', 'q2']);
+    expect(voteProvenance(resumed, 't', 'q2')!.instance_keys).toEqual(['q2']);
     const changed = { ...f.grader, questions: [{ id: 'new', type: 'choice', options: ['a', 'b'], expected: ['a'], reads: ['output.body'] }] };
     await writeFile(f.graderFile, stringify(changed));
     await runLabel({ ...f, relabel: true, limit: 1 }, { provider: () => provider(async () => '{"new":"a"}') });
     expect((await saved(f.dir)).labels[0]!.votes).toEqual({ new: { t: 'a' } });
     await writeFile(path.join(f.dir, 'labels.yaml'), 'schema: [');
-    await expect(runLabel({ ...f, relabel: true }, deps)).rejects.toThrow('Invalid labels YAML');
+    await expect(runLabel({ ...f, relabel: true }, deps)).rejects.toThrow('YAML line 1, column');
     labels.grader = 'wrong'; await writeFile(path.join(f.dir, 'labels.yaml'), stringify(labels));
     await expect(runLabel({ ...f, relabel: true }, deps)).rejects.toThrow('mismatch');
   });
@@ -142,7 +170,7 @@ describe('teacher labeling runner', () => {
     const result = await runLabel({ ...f, limit: 1 }, { provider: () => provider(async () =>
       calls++ === 0 ? '{"q":"no","q":"yes","q2":"no"}' : '{"q":"yes","q2":"no"}') });
     expect(result).toMatchObject({ calls: 2, votes: 2 });
-    expect((await saved(f.dir)).labels[0]!.provenance.t).toMatchObject({ votes: { q: { instance_keys: ['q', 'q2'] } } });
+    expect(voteProvenance((await saved(f.dir)).labels[0], 't', 'q')).toMatchObject({ instance_keys: ['q', 'q2'] });
   });
   it('builds subscription providers and rejects unsupported effort', () => {
     expect(createGraderTeacher({ id: 't', provider: 'claude', model: 'm' }).id).toBe('claude-subscription');
