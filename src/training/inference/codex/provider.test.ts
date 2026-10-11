@@ -41,7 +41,7 @@ it('uses an empty workspace, auth-only home, selected controls, final message an
         expect(options.args).toContain('--output-schema');
         expect(options.args[options.args.indexOf('--output-schema') + 1]).toBe(schemaFile);
         expect(await readdir(options.cwd)).toEqual(['response-schema.json']);
-        expect(JSON.parse(await readFile(schemaFile, 'utf8'))).toEqual({ type: 'object' });
+        expect(JSON.parse(await readFile(schemaFile, 'utf8'))).toEqual({ type: 'object', properties: {}, required: [], additionalProperties: false });
         expect((await stat(schemaFile)).mode & 0o777).toBe(0o600);
       }
       expect(await readdir(options.env['CODEX_HOME']!)).toEqual(['auth.json']);

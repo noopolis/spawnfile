@@ -5,6 +5,7 @@ import type { InferenceProvider, InferenceRequest } from '../../contracts/execut
 import { runProcess, type ProcessResult } from '../../platform/process/index.js';
 import { InferenceFailure, type InferenceFailureEvidence } from '../failure.js';
 import { validateInferenceResponse, validateInferenceSchema } from '../response-schema.js';
+import { codexStrictSchema, normalizeCodexResponse } from './strict-schema.js';
 import { classifyCodexFailure, codexEvidence, consumeCodexFrame, type CodexFrames } from './protocol.js';
 
 export interface CodexInferenceOptions {
@@ -75,7 +76,7 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         authText = '';
         if (!signedIn) throw new InferenceFailure('authentication', 'Codex requires a saved ChatGPT subscription sign-in');
         const schemaFile = schema === undefined ? undefined : path.join(cwd, 'response-schema.json');
-        if (schemaFile !== undefined) await writeFile(schemaFile, JSON.stringify(schema), { mode: 0o600 });
+        if (schemaFile !== undefined) await writeFile(schemaFile, JSON.stringify(codexStrictSchema(schema!)), { mode: 0o600 });
         const result = await execute({ command, args: codexArguments(request, options.reasoningEffort, schemaFile), cwd, env,
           stdin: request.prompt, timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           requireLineTerminator: true,
@@ -87,7 +88,10 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         interrupted(result, request.signal, codexEvidence(frames));
         if (result.exitCode !== 0) throw new InferenceFailure(classifyCodexFailure(result.stderr), 'Codex generation failed', codexEvidence(frames));
         if (!frames.completed) throw new InferenceFailure('protocol', 'Codex omitted a completed final answer', codexEvidence(frames));
-        try { validateInferenceResponse(frames.text, schema, request.responseJsonFence); }
+        try {
+          if (schema !== undefined) frames.text = normalizeCodexResponse(frames.text, schema, request.responseJsonFence);
+          validateInferenceResponse(frames.text, schema, request.responseJsonFence);
+        }
         catch { throw new InferenceFailure('invalid-response', 'Codex answer violated the requested schema', codexEvidence(frames)); }
         return { text: frames.text, model: frames.model ?? request.model,
           modelBasis: frames.model === undefined ? 'requested-assumption' : 'provider-reported',
