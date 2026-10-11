@@ -9,7 +9,7 @@ export function plausibleNumber(before: string, after: string): boolean {
     a.replace('.', '').length === b.replace('.', '').length && a.split('.')[1]?.length === b.split('.')[1]?.length &&
     Number(a) !== Number(b) && Number(a) > 0 && Math.abs(Number(a) - Number(b)) / Number(a) <= 0.2;
 }
-/** Number traps are deliberately limited to exact, unqualified whole units. */
+/** Whole-unit lexical eligibility reduces bad diagnostics; it cannot establish quantity semantics. */
 export function exactQuantities(unit: Pick<AtomicUnit, 'text' | 'fields'>): boolean {
   const qualifier = /\b(?:at\s+most|at\s+least|up\s+to|more\s+than|less\s+than|fewer|over|under|above|below|about|around|roughly|nearly|almost|approximately|some|or\s+so|plus|minimum|maximum)\b|[~><≥≤]/iu;
   const range = /\bbetween\b[\s\S]*\band\b|\bfrom\b[\s\S]*\bto\b|\d[\s\S]*(?:[-–—−]|\bto\b)[\s\S]*\d/iu;

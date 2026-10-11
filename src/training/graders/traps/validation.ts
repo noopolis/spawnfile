@@ -1,5 +1,5 @@
 import { stableDigest } from '../format/index.js';
-import { evidenceRows, instantiateChecks, normalizeWhitespace, readPath, textLeaves, validateDecomposition } from '../decomposition/index.js';
+import { evidenceRows, instantiateChecks, trapDeclaration, normalizeWhitespace, readPath, textLeaves, validateDecomposition } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs } from '../decomposition/index.js';
 import type { Trap } from './types.js';
 import { formatParaphrase, keyTerms, replaceLeaf, replaceNumber } from './mutations.js';
@@ -34,7 +34,7 @@ export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: Decomposition
   const baseInstances = baseDocument ? instantiateChecks(templates, baseDocument, inputs) : undefined;
   const selected = (baseInstances ?? rendered).filter(instance => instance.unit_id === unit.id && instance.status === 'ready' &&
     configured.some(template => template.id === instance.template_id));
-  const intended = Object.fromEntries(selected.map(instance => [instance.id, configured.find(template => template.id === instance.template_id)!.traps![kind]!]));
+  const intended = Object.fromEntries(selected.map(instance => [instance.id, trapDeclaration(configured.find(template => template.id === instance.template_id)!.traps![kind]!).answer]));
   if (!selected.length || stableDigest(intended) !== stableDigest(trap.intended_answers) ||
     stableDigest(selected.map(instance => instance.template_id)) !== stableDigest(trap.affected_template_ids)) reasons.push('invalid affected checks or intended answers');
   if (baseDocument) {

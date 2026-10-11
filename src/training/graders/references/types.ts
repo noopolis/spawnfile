@@ -33,6 +33,8 @@ export interface CouncilOptions {
   signal?: AbortSignal; previous?: CouncilOutput; onCheckpoint?: (output: CouncilOutput) => void | Promise<void>;
 }
 export interface TrapAssessment {
+  /** Omission preserves the legacy operator-declared known-answer status. */
+  known_answer?: boolean;
   outputId?: string;
   kind: string; templateId: string; intended: string; actual: string | null;
   baseline?: string | null;

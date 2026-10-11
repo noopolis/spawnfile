@@ -17,3 +17,7 @@ original usage and separate attempt receipts. Grok configuration intersects the 
 Non-answers have null answers and typed statuses, never authored-label sentinels.
 Every instantiated base check counts toward zero-missing completeness, including
 unready checks and null finals; report counts per template and output.
+
+Operator-declared diagnostic trap mappings report accuracy separately; exclude them
+from all gates, group floors and known-answer output coverage. The CLI derives status
+from the current templates, never from untrusted trap metadata.

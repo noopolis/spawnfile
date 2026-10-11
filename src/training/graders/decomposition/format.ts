@@ -36,7 +36,8 @@ const templateSchema = z.strictObject({
   when: z.strictObject({ field: z.enum(['actor', 'action', 'object', 'time', 'modality', 'quantity']),
     equals: z.string() }).optional(),
   locations: z.array(z.string().min(1)).min(1).optional(),
-  traps: z.partialRecord(z.enum(trapKinds), answer).optional(),
+  traps: z.partialRecord(z.enum(trapKinds), z.union([answer,
+    z.strictObject({ answer, known_answer: z.boolean() })])).optional(),
 });
 export const checkTemplatesSchema = z.strictObject({
   schema: z.literal('paideia.check-templates.v1'), templates: z.array(templateSchema).min(1),
@@ -50,6 +51,10 @@ export const checkTemplatesSchema = z.strictObject({
 });
 export type CheckTemplates = z.infer<typeof checkTemplatesSchema>;
 export type CheckTemplate = CheckTemplates['templates'][number];
+
+export function trapDeclaration(value: NonNullable<NonNullable<CheckTemplate['traps']>[TrapKind]>): { answer: string; known_answer: boolean } {
+  return typeof value === 'string' ? { answer: value, known_answer: true } : value;
+}
 
 export function parseDecomposition(value: unknown): Decomposition {
   const result = parseSchema(decompositionSchema, value);
@@ -69,8 +74,9 @@ export function parseCheckTemplates(value: unknown): CheckTemplates {
     if (template.type === 'score' && options.some(key => !/^-?\d+$/.test(key))) throw new Error(`${template.id}: score criteria require integer keys`);
     if (new Set(template.expected).size !== template.expected.length || template.expected.some(key => !options.includes(key))) throw new Error(`${template.id}: invalid expected answer`);
     for (const [kind, value] of Object.entries(template.traps ?? {})) {
+      const label = trapDeclaration(value).answer;
       const control = kind === 'format-paraphrase' || kind === 'option-permutation';
-      if (control ? value !== 'unchanged' : !options.includes(value)) throw new Error(`${template.id}: invalid trap answer for ${kind}`);
+      if (control ? label !== 'unchanged' : !options.includes(label)) throw new Error(`${template.id}: invalid trap answer for ${kind}`);
     }
     for (const state of template.state) {
       if (state.startsWith('context.') && !Object.hasOwn(result.context, state.slice(8))) throw new Error(`${template.id}: undeclared context ${state}`);

@@ -1,5 +1,5 @@
 import { stableDigest, sha256 } from '../format/index.js';
-import { instantiateChecks, normalizeWhitespace, trapKinds, validateDecomposition } from '../decomposition/index.js';
+import { instantiateChecks, trapDeclaration, normalizeWhitespace, trapKinds, validateDecomposition } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs, TrapKind } from '../decomposition/index.js';
 import { mutationFor, replaceLeaf, replaceNumber } from './mutations.js';
 import { validateTrap } from './validation.js';
@@ -57,7 +57,7 @@ export function generateTraps(templates: CheckTemplates, document: Decomposition
       decomposition = invalid.decomposition;
       let instances = instantiateChecks(templates, decomposition, { ...inputs, output });
       const intended_answers = Object.fromEntries(selected.map(instance => [instance.id,
-        configured.find(template => template.id === instance.template_id)!.traps![kind]!]));
+        trapDeclaration(configured.find(template => template.id === instance.template_id)!.traps![kind]!).answer]));
       if (permutation) instances = instances.map(instance => {
         if (!Object.hasOwn(intended_answers, instance.id)) return instance;
         const options = [...instance.options].reverse();

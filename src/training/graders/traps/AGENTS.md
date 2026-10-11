@@ -7,7 +7,7 @@ bind trap kinds to answer keys with template.traps; unchanged controls compare
 against baseline council answers, never assume expected means observed truth.
 Defects require supplied base council finals in every affected template’s expected
 set. Only uniquely located spans can mutate. Ambiguous/unavailable/invalid mutations
-are discarded and counted with reasons. Known-answer eligibility requires independently recomputed cited-row preconditions;
+are discarded and counted with reasons. Structural eligibility requires independently recomputed cited-row preconditions;
 validation never reruns generation. Numeric replacements preserve magnitude, entity
 replacements require recognizable matching types, negation only inserts into a
 verbatim affirmative claim, and repetition must appear in the check projection.
@@ -18,8 +18,10 @@ validation rejection, keep source/tests under 400 lines and coverage above 90%.
 Substitutions remove every occurrence of the chosen fact from claim text and
 update fields consistently. Independently reject any surviving original value;
 numeric equivalence uses parsed values (commas, decimal zeroes and percentage
-numbers), while citations remain unchanged. Number traps are deliberately limited to exact, unqualified quantities: reject
+numbers), while citations remain unchanged. Number traps retain a whole-unit lexical filter: reject
 bound, approximation or comparison vocabulary and range constructions anywhere
 in the entire unit text or any claim field, before construction and independently
-in validation. Qualifiers on other quantities also make the whole unit ineligible. Entity survival
+in validation. Qualifiers on other quantities also make the whole unit ineligible. This filter cannot
+certify quantity semantics; number mappings should be diagnostic without an operator
+semantic validator. Entity survival
 checks ignore case and normalize whitespace.

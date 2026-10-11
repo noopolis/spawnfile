@@ -1,4 +1,4 @@
-export { checkTemplatesSchema, decompositionSchema, unitSchema, trapKinds,
+export { checkTemplatesSchema, decompositionSchema, unitSchema, trapKinds, trapDeclaration,
   parseCheckTemplates, parseCheckTemplatesYaml, parseDecomposition } from './format.js';
 export type { AtomicUnit, Decomposition, DecompositionInputs, CheckTemplates, CheckTemplate, TrapKind } from './format.js';
 export { normalizeWhitespace, textLeaves, readPath, evidenceRows, validateDecomposition } from './evidence.js';

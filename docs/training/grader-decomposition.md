@@ -37,7 +37,7 @@ templates:
     dimension: grounding
     severity: critical
     traps:
-      number-substitution: unsupported
+      number-substitution: { answer: unsupported, known_answer: false }
       entity-substitution: unsupported
       negation-flip: unsupported
       citation-swap: unsupported
@@ -69,7 +69,22 @@ with a location restriction; they cannot use a hint to bypass validation.
 
 Trap mappings are explicit because arbitrary operator-authored questions cannot
 safely be assigned an intended answer from their wording. Only mapped templates
-participate in each trap. Format and option controls compare with the original
+participate in each trap. A shorthand label declares a known-answer mapping, as
+before; the explicit form is `{ answer: <label>, known_answer: true|false }`.
+`known_answer: false` declares a **DIAGNOSTIC** mapping. These traps are generated,
+validated and run normally, and their accuracy is reported separately by kind and
+template. They never contribute to known-answer accuracy, group floors, consistency
+gates or output coverage. Status belongs to each template/kind mapping, so two
+templates may classify the same mutation differently.
+
+Number substitution's answer depends on quantity semantics that lexical validation
+cannot establish. Declare it diagnostic unless the operator has a semantic
+validator. For example, changing 10 to 11 in “10 dollars or less” or “a sum not
+exceeding 10 dollars” can remain entailed by evidence of exactly 10 dollars.
+The built-in validator does not certify a known answer for these quantities;
+`known_answer: true` is an operator declaration, not a code guarantee.
+
+Format and option controls compare with the original
 reference; they do not assume the original output is correct.
 
 ## Inputs and commands
@@ -185,7 +200,7 @@ answers, both adjudications, distributions, call usage/latency and content ident
 Teacher agreement is also measured against peers with the evaluated teacher
 excluded; it is not an independent claim of correctness.
 
-The gate requires both at least 95% **known-answer accuracy** on validated defect
+The gate requires both at least 95% **known-answer accuracy** on operator-declared known-answer, validated defect
 traps and at least 95% **consistency** on format-paraphrase and option-permutation
 controls. Controls compare variant answers to the base answer, and never count
 as evidence of independent correctness. Either empty population means STOP.
@@ -195,9 +210,9 @@ a constant label cannot earn known-answer credit. Known-answer groups by kind
 and template independently require 95% accuracy when they contain at least ten
 traps. Smaller groups are reported as insufficient; pooled gates still apply.
 Control groups are reported separately as CONSISTENCY, never pooled into accuracy.
-Every decomposition is included in coverage: an output with no validated defect
+Every decomposition is included in coverage: an output with no validated known-answer defect
 trap is reported as uncovered, including outputs whose trap bundle is absent.
-Any uncovered output means STOP.
+Diagnostic-only outputs are uncovered. Any uncovered output means STOP.
 
 Completeness separately requires **missing base checks <= 0%**. Every unique
 instantiated base check participates: missing placeholders, state or condition
@@ -225,7 +240,8 @@ validation recomputes preconditions from the saved variant and source rows:
   preserve digit count and precision, differ by at most 20%, and occur nowhere
   in cited rows. Every occurrence of the selected numeric value is replaced,
   including equivalent comma formatting, while citation tokens are preserved.
-  Number traps are deliberately limited to exact, unqualified quantities. The
+  The existing whole-unit lexical eligibility rule reduces bad diagnostics; it
+  does not guarantee exact quantities or non-entailment. The
   entire unit text (including citation text) and every claim field must contain no
   bound, approximation or comparison vocabulary: at most, at least, up to, more
   than, less than, fewer, over, under, above, below, about, around, roughly, nearly,

@@ -137,3 +137,26 @@ it('counts a duplicate missing base check once, preserves missing copies and ign
       .toMatchObject({ total: 1, missing: 1, rate: 1, byOutput: { output: { total: 1, missing: 1 } } });
   }
 });
+
+
+it('excludes diagnostic answers from accuracy, floors and coverage while reporting their accuracy', () => {
+  const diagnostic = Array.from({ length: 10 }, () => ({ ...correct, known_answer: false, actual: 'yes', templateId: 'diagnostic' }));
+  const known = { ...correct, kind: 'entity-substitution' };
+  const quality = referenceQuality([], [known, control, ...diagnostic], population);
+  expect(quality).toMatchObject({ gate: 'PASS', knownAnswer: { total: 1, correct: 1 },
+    diagnostic: { total: 10, correct: 0, accuracy: 0 }, coverage: { covered: 1 },
+    insufficientKinds: ['entity-substitution'], insufficientTemplates: ['support'], failingKinds: [], failingTemplates: [] });
+  expect(quality.byKind).not.toHaveProperty('number-substitution');
+  expect(quality.byTemplate).not.toHaveProperty('diagnostic');
+  expect(quality.diagnosticByKind['number-substitution']).toEqual({ total: 10, correct: 0, accuracy: 0 });
+  expect(quality.diagnosticByTemplate.diagnostic).toEqual({ total: 10, correct: 0, accuracy: 0 });
+  const onlyDiagnostic = referenceQuality([], [control, { ...correct, known_answer: false }], population);
+  expect(onlyDiagnostic).toMatchObject({ gate: 'STOP', knownAnswer: { total: 0, accuracy: null },
+    diagnostic: { correct: 1, accuracy: 1 }, coverage: { covered: 0, uncovered: ['output'] } });
+  expect(referenceQuality([], [known, control, { ...correct, known_answer: false, outputId: 'other' }],
+    { outputIds: ['output', 'other'] }).coverage.uncovered).toEqual(['other']);
+  expect(referenceQuality([], [correct, { ...correct, known_answer: false, actual: null }, control], population))
+    .toMatchObject({ gate: 'PASS', byKind: { 'number-substitution': { total: 1 } }, diagnostic: { total: 1, correct: 0 } });
+  expect(referenceQuality([], [known, { ...control, known_answer: false }], population))
+    .toMatchObject({ gate: 'STOP', consistency: { total: 0 }, diagnostic: { total: 1 } });
+});

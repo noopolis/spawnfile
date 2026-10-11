@@ -26,6 +26,15 @@ describe('decomposition formats', () => {
     expect(() => check({ traps: { 'number-substitution': 'unsupported' } })).toThrow('trap answer');
     expect(() => check({ traps: { 'format-paraphrase': true } })).toThrow('trap answer');
     expect(check({ traps: { 'number-substitution': false, 'format-paraphrase': 'unchanged' } })).toBeDefined();
+    expect(check({ traps: { 'number-substitution': { answer: false, known_answer: false } } }).templates[0]!.traps)
+      .toEqual({ 'number-substitution': { answer: 'false', known_answer: false } });
+    expect(check({ traps: { 'number-substitution': { answer: false, known_answer: true } } })).toBeDefined();
+    expect(check({ traps: { 'option-permutation': { answer: 'unchanged', known_answer: false } } })).toBeDefined();
+    for (const value of [{ answer: 'absent', known_answer: false }, { answer: false },
+      { answer: false, known_answer: 'false' }, { answer: false, known_answer: false, extra: true }]) {
+      expect(() => check({ traps: { 'number-substitution': value } })).toThrow();
+    }
+    expect(() => check({ traps: { 'option-permutation': { answer: false, known_answer: false } } })).toThrow('trap answer');
     expect(() => check({ state: ['context.other'] })).toThrow('undeclared');
     expect(() => check({ state: ['secrets'] })).toThrow();
   });

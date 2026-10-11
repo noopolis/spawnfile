@@ -45,8 +45,10 @@ const controlKinds = new Set(['format-paraphrase', 'option-permutation']);
 const defectKinds = new Set(['number-substitution', 'entity-substitution', 'negation-flip', 'citation-swap', 'injected-redundancy']);
 export function referenceQuality(baseOutputs: CouncilOutput[], traps: TrapAssessment[],
   population: { outputIds: string[]; variantOutputs?: CouncilOutput[]; rejectedUnits?: number } = { outputIds: [] }) {
-  const known = traps.filter(trap => defectKinds.has(trap.kind) && trap.intended !== 'unchanged');
-  const controls = traps.filter(trap => controlKinds.has(trap.kind) && trap.intended === 'unchanged');
+  const eligible = traps.filter(trap => trap.known_answer !== false);
+  const diagnostic = traps.filter(trap => trap.known_answer === false);
+  const known = eligible.filter(trap => defectKinds.has(trap.kind) && trap.intended !== 'unchanged');
+  const controls = eligible.filter(trap => controlKinds.has(trap.kind) && trap.intended === 'unchanged');
   const knownAnswer = accuracy(known), consistency = accuracy(controls);
   const grouped = (rows: TrapAssessment[], key: 'kind' | 'templateId') => Object.fromEntries([...new Set(rows.map(trap => trap[key]))].sort()
     .map(value => [value, accuracy(rows.filter(trap => trap[key] === value))]));
@@ -71,6 +73,7 @@ export function referenceQuality(baseOutputs: CouncilOutput[], traps: TrapAssess
   const insufficientKinds = Object.entries(byKind).filter(([, score]) => score.total < 10).map(([id]) => id);
   const insufficientTemplates = Object.entries(byTemplate).filter(([, score]) => score.total < 10).map(([id]) => id);
   return { gate: failures.length ? 'STOP' as const : 'PASS' as const, failures, knownAnswer, consistency, coverage, completeness, byKind, byTemplate,
+    diagnostic: accuracy(diagnostic), diagnosticByKind: grouped(diagnostic, 'kind'), diagnosticByTemplate: grouped(diagnostic, 'templateId'),
     consistencyByKind: grouped(controls, 'kind'), consistencyByTemplate: grouped(controls, 'templateId'),
     insufficientKinds, insufficientTemplates, failingKinds, failingTemplates, instability, variantAdjudication: adjudicationInstability(population.variantOutputs ?? [], true),
     optionPermutation: accuracy(controls.filter(trap => trap.kind === 'option-permutation')),

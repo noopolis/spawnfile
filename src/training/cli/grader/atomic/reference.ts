@@ -1,7 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stableDigest } from '../../../graders/index.js';
-import { instantiateChecks } from '../../../graders/decomposition/index.js';
+import { instantiateChecks, trapDeclaration } from '../../../graders/decomposition/index.js';
 import { validateTrap, type TrapSet } from '../../../graders/traps/index.js';
 import { runCouncil, referenceQuality, type CouncilOutput, type TrapAssessment } from '../../../graders/references/index.js';
 import type { GraderDependencies } from '../backend.js';
@@ -66,10 +66,15 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
   for (const bundle of trapBundles) for (const trap of bundle.traps) {
     const base = outputs[bundle.decomposition]!, variant = outputs[`${bundle.decomposition}:${trap.id}`]!;
     if (!variant) continue;
-    for (const [id, intended] of Object.entries(trap.intended_answers)) assessments.push({
-      outputId: bundle.decomposition, kind: trap.kind, templateId: trap.instances.find(instance => instance.id === id)!.template_id,
-      intended, actual: variant.checks[id]?.final ?? null, baseline: base.checks[id]?.final ?? null,
-    });
+    for (const [id, intended] of Object.entries(trap.intended_answers)) {
+      const templateId = trap.instances.find(instance => instance.id === id)!.template_id;
+      const declaration = templates.templates.find(template => template.id === templateId)!.traps![trap.kind]!;
+      assessments.push({
+        known_answer: trapDeclaration(declaration).known_answer,
+        outputId: bundle.decomposition, kind: trap.kind, templateId,
+        intended, actual: variant.checks[id]?.final ?? null, baseline: base.checks[id]?.final ?? null,
+      });
+    }
   }
   const sorted = Object.fromEntries(Object.entries(outputs).sort(([a], [b]) => a.localeCompare(b)));
   const baseOutputs = inputs.map(input => outputs[input.file]!);
@@ -105,6 +110,10 @@ function referenceReport(artifact: { outputs: Record<string, CouncilOutput>; qua
     ...quality.insufficientKinds.map(kind => `- Insufficient known-answer samples for kind: ${kind} (<10)`),
     ...quality.insufficientTemplates.map(id => `- Insufficient known-answer samples for template: ${id} (<10)`),
     'Known-answer accuracy by kind:', '', ...Object.entries(quality.byKind).map(([kind, score]) => `- ${kind}: ${score.correct}/${score.total}`), '',
+    'DIAGNOSTIC accuracy by kind (excluded from gates and coverage):', '',
+    ...Object.entries(quality.diagnosticByKind).map(([kind, score]) => `- ${kind}: ${score.correct}/${score.total} (${(score.accuracy! * 100).toFixed(2)}%)`), '',
+    'DIAGNOSTIC accuracy by template:', '',
+    ...Object.entries(quality.diagnosticByTemplate).map(([id, score]) => `- ${id}: ${score.correct}/${score.total}`), '',
     'Control CONSISTENCY by kind:', '', ...Object.entries(quality.consistencyByKind).map(([kind, score]) => `- ${kind}: ${score.correct}/${score.total}`), '',
     'Option-permutation consistency: ' + (quality.optionPermutation.accuracy === null ? 'unmeasured' : `${quality.optionPermutation.correct}/${quality.optionPermutation.total}`) + '.', '',
     'Teachers against references excluding themselves:', '',
