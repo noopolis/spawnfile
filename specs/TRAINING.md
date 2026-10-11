@@ -64,7 +64,7 @@ training:
 
 - `record` MAY contain `keep` and `volumes`. `keep` MUST match `^[1-9][0-9]*[mhd]$`;
   volumes MUST be unique nonempty resource IDs. Recording is off without an effective
-  `record`; `record: {}` enables the format's recording intent.
+  `record`; `record: {}` enables recording with a default retention of **30d**.
 - Every optimizer field is OPTIONAL at declaration time. `method` and `model` MUST
   be nonempty strings; `variants`, `keep`, and `budget.rounds` MUST be positive integers.
   An agent plan with any target MUST have all five effective fields and `keep <= variants`;
@@ -153,34 +153,121 @@ team targets, retaining provenance when names overlap. Keys and arrays are sorte
 resolution MUST be deterministic and perform no I/O or clock reads. The generated schema
 appears between the `training-plan-schema` markers below.
 
-## Moment record (format only)
+## Moment record
 
-`spawnfile.moment-record.v1` specifies one record per wake; recording and replay are
-implemented in a later phase. Recording MUST be off unless an effective `record` exists,
-with zero recording cost when off. `record.keep` is snapshot retention.
+`spawnfile.moment-record.v1` records one wake of one compiled agent. Recording MUST
+be off without an effective `record`, with no recording I/O or artifact changes when
+off. Recording requires a Daimon runtime whose contract manifest declares `wakeMoments`;
+other runtimes fail compile. Runtime enforcement, pre-turn snapshots and composition
+land in the next packet; this packet supplies the host histories below.
+
+All instants MUST use one host clock, shared by its containers, and include an offset
+or `Z`. Every pin MUST describe state in effect at `wake.startedAt`, not capture time.
+A later `recordedAt` MUST NOT advance a pin.
+
+- `agent` MUST be the exact compiled node ID; `recordedAt` is the capture instant.
+- `wake` MUST contain `at`, `startedAt`, `executionId`, and nonempty `deliveries` of
+  `{deliveryId, kind, occurredAt}`. `at` is the first delivery's `occurred_at` (real wake
+  time); `startedAt` is when the turn began. Queued deliveries can precede that instant.
+  `surface`, `room`, `from`, and `messageId` are OPTIONAL, derived from a
+  `moltnet:<id>` delivery and its Moltnet message when available; other deliveries
+  MUST NOT invent Moltnet metadata.
+- `resources` MUST use `{id, kind:"git", commit, sha256?}` or
+  `{id, kind:"bundle", sha256}` from the deploy resource entry in effect at
+  `startedAt`, restricted to that agent's workspace resources. Bundles have no commit.
+- `feeds` MUST use `{id, revision, tree, commit?, ref?, paths?, landedAt, period?}`
+  from the landing entry in effect at `startedAt` for each consumed fed volume.
+- `memory` MUST use `{id, declaredBy, seq}` for each accessible bank. `seq` is the
+  highest Mneme ledger sequence whose `createdAt <= startedAt`; 0 means empty.
+  `generation` is OPTIONAL and MUST be omitted while Mneme has no generations.
+  Mneme's append-only `events.jsonl` is the source of truth; there are no curation
+  archives or generations to pin today.
+- `moltnet` MUST use `{network, cursor}` with `cursor = startedAt`. Visible history
+  contains messages with `created_at <= cursor`: server timestamps order history,
+  while message IDs do not order messages across rooms. OPTIONAL `messageIds` lists
+  wake message IDs, not a history cursor.
+- `volumes` MUST use `{id, snapshot}` for each successful pre-turn snapshot of an
+  effective `record.volumes` root. A failed root MUST be omitted and named in OPTIONAL
+  `errors: [string]`. REQUIRED `exact` MUST be `false` on any snapshot or pin failure;
+  otherwise it MUST be `true`. Missing or invalid history MUST NOT be guessed.
 
 ```json
 {
   "version": "spawnfile.moment-record.v1",
   "agent": "agent:writer",
-  "wake": { "at": "2026-10-09T08:20:31Z", "surface": "moltnet", "room": "assignment", "from": "brass", "messageId": "42" },
-  "recordedAt": "2026-10-09T08:20:32Z",
-  "resources": [{ "id": "archive", "kind": "git", "commit": "resolved-commit" }],
-  "feeds": [{ "id": "news", "revision": "revision-id", "tree": "tree-id", "commit": "resolved-commit", "paths": ["published"], "landedAt": "2026-10-09T08:00:00Z" }],
-  "memory": [{ "id": "self", "declaredBy": "agent:writer", "seq": 42, "generation": 3 }],
-  "moltnet": [{ "network": "news", "cursor": "wake-cursor" }],
-  "volumes": [{ "id": "edition-state", "snapshot": "incremental-snapshot-id" }]
+  "wake": {
+    "at": "2026-10-09T08:20:31.000Z",
+    "startedAt": "2026-10-09T08:20:31.250Z",
+    "executionId": "execution-17",
+    "deliveries": [{ "deliveryId": "moltnet:42", "kind": "message", "occurredAt": "2026-10-09T08:20:31.000Z" }],
+    "surface": "moltnet", "room": "assignment", "from": "brass", "messageId": "42"
+  },
+  "recordedAt": "2026-10-09T08:20:32.000Z",
+  "exact": true,
+  "resources": [
+    { "id": "archive", "kind": "git", "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    { "id": "tools", "kind": "bundle", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+  ],
+  "feeds": [{ "id": "news", "revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "tree": "trees/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.1", "commit": "dddddddddddddddddddddddddddddddddddddddd", "ref": "data/2026-10-09", "paths": ["published"], "landedAt": "2026-10-09T08:00:00.000Z", "period": "2026-10-09" }],
+  "memory": [{ "id": "self", "declaredBy": "agent:writer", "seq": 42 }],
+  "moltnet": [{ "network": "news", "cursor": "2026-10-09T08:20:31.250Z", "messageIds": ["42"] }],
+  "volumes": [{ "id": "edition-state", "snapshot": "incremental-snapshot-17" }]
 }
 ```
 
-`agent` is the exact node ID. `wake.at` MUST be the real wake time (not the dataset's
-authored trial time); `recordedAt` is capture time. Both are instants with an offset or
-`Z`; `messageId` is OPTIONAL. Resources identify the git/bundle resolved commit per
-build/deploy. Feeds identify the fed-volume landing-log entry in effect at the wake.
-Memory pins the Mneme ledger sequence and active curation generation for each declared
-bank; Moltnet pins each network's per-wake message cursor. Volumes identify an incremental
-snapshot for every effective `record.volumes` entry. Rewind MUST use records when present;
-otherwise it is best effort and the trial MUST be labelled as such.
+### Host histories and retention
+
+`record.keep` bounds landing logs, deploy logs, snapshots and moment records; omission
+means **30d**. A shared history MUST use the maximum effective keep among its recording
+consumers (all recording agents for the deploy log). Pruning MUST keep entries newer
+than `now - keep` AND the newest entry at or before that cutoff, even across a long gap.
+Lookups are inclusive; equal timestamps use the last appended entry. Before the first
+entry, lookup returns no state. Invalid lines MUST be reported alongside valid entries.
+
+For each fed volume consumed by a recording agent, the host MUST append
+`landings.jsonl` beside `landed.json` after each successful land, generation re-land,
+retained-tree re-point or link repair. Provenance/period adoption MUST also be logged.
+When recording is enabled later or an append failed, a clean refresh MUST seed a
+missing entry from the verified host record, preserving its original landing instant.
+The entry MUST follow a successful `landed.json` write and contain:
+`{version:"spawnfile.volume-feed-landing.v1", resource, volume, revision, tree,
+source, commit?, ref?, paths?, landed_at, period?}`. `landed_at` MUST equal
+`identity.landed_at`; `period` is the host record's period. `source` MUST identify
+`{kind:"git", repo}` or `{kind:"directory", directory}` and preserve any `prepared`
+provenance. Git entries MUST carry the resolved commit and expanded requested ref;
+`paths`, when present, MUST be the expanded git paths. Commit, paths and revision
+permit refetch and verification without retaining trees. Directory feeds are verifiable
+by revision digest but **not refetchable**. Prepared feeds also require their recorded
+include digests and recipe inputs; a revision does not promise reproducible prepare output.
+
+When any compiled agent records, project `up` and home deployment publication
+(including image `up` and release) MUST append
+`~/.spawnfile/deployments/<name>/resource-log.jsonl` after successful record/report
+publication. Each `{version:"spawnfile.deploy-resources.v1", deployment, deployed_at,
+report_sha256, resources}` entry MUST reuse `workspace_git_resources` and
+`workspace_bundles`, without resolving sources again. Their IDs are already workspace
+resource IDs. Git entries are `{id, kind:"git", commit, sha256, url?}`; bundles are
+`{id, kind:"bundle", sha256, origin?}`. `deployed_at` is the deployment record's
+creation instant; `report_sha256` hashes the exact persisted UTF-8 report bytes.
+The optional report `recording` field carries `keep_ms` and `memory_mount_ids`;
+image reports carry portable pins without creator-host paths or URLs.
+
+Both logs MUST append each complete JSON line in one write followed by fsync.
+Pruning MUST use an exclusive 0600 temporary file, fsync and rename under a writer
+lock. With recording off, neither log nor its lock may be read or written.
+A deploy-log failure after publication MUST be reported without rolling back the
+container named by the published deployment record.
+
+While recording is on, Spawnfile MUST refuse deletion of the agent's durable memory
+volumes unless explicitly overridden. `down --volumes --discard-recorded-memory`
+is that override; `--force` alone is insufficient. Author-declared shared volume names
+remain retained under the existing teardown rule. Internal fixture cleanup MUST apply
+the same guard. Spawnfile has no memory-ledger reset/prune command; release prunes only
+images. This guarantee covers Spawnfile's deletion paths, not external Docker commands.
+Mneme stays independent and its ledger MUST NOT be truncated by recording retention.
+
+Rewind MUST use records when present; otherwise it is best effort and the trial MUST
+be labelled as such.
 
 ## Public handoff
 

@@ -4,7 +4,7 @@
 - `types.ts` defines the loaded project, parsed datasets, grader file references, and filesystem facts.
 - `load.ts` is the only training-file I/O boundary: target preflight before compiler source reads, compile-graph resolution, dataset YAML reads, and ownership facts. Dataset and grader paths must be regular files lexically and physically inside the project root; grader contents are never read.
 - `load.targetSources.test.ts` preserves consumed-target diagnostics and compile/plan validation boundaries.
-- `load.compileOutput.test.ts` compares every emitted compile file and report byte with and without training declarations.
+- `load.compileOutput.test.ts` compares every emitted compile file and report byte with and without non-recording training declarations; recording reports are tested in the compiler.
 - `resolve.ts` selects an exact agent and builds a deterministic plan without I/O or a clock.
 - `references.ts` resolves override and record-volume identities from the existing compiled graph.
 - `targets.ts` validates ownership, consumer sets, graders, and datasets without I/O.
