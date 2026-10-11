@@ -18,10 +18,15 @@ refusal policy enter backend identity; prompt protocol v4 invalidates old scores
 Scoring 4xx is missing per instance; capability and other transport failures throw.
 
 Jev batches only identical projections (shared state), at most 16 questions.
-identity() runs fixed empty and ~40k-character canaries once per invocation;
-it fingerprints status class, rounded probabilities and declared server revisions;
-subsequent model drift refuses results. Endpoint must serve raw temperature=1
-probabilities; Paideia does not claim to inspect operator model configuration.
+identity() runs fixed empty and ~40k-character canaries once per backend instance
+(commands construct fresh instances), and reuses the result for final checks.
+It fingerprints status class, argmax decision and declared server revisions;
+probability jitter within the same decision does not affect identity. Scoring
+checks declared revisions and model; observed drift permanently refuses scoring
+and identity reuse. Servers SHOULD declare a fingerprint that changes with their
+input preparation. Unreported changes cannot be detected by cached identity.
+Endpoint must serve raw temperature=1 probabilities; Paideia does not claim to
+inspect operator model configuration.
 Scoring HTTP 4xx responses mark exactly that request's instances missing, with a
 sanitized status/detail reason capped at 200 characters. Canary 4xx enters identity (at least one canary must succeed);
 5xx, connection failures, timeouts and cancellation remain thrown failures.

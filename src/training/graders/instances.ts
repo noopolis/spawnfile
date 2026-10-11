@@ -97,14 +97,20 @@ function expandQuestion(question: DecisionQuestion, output: unknown, context: Re
       }
     }
     if (state === 'ready') {
+      let hasCitedRead = false;
+      let hasCitations = false;
       for (const read of question.reads) {
         const resolution = resolveRead(read, output, context, unit, grader);
         if (resolution.missing) reasons.push(`${read}: ${resolution.missing}`);
         else {
           projection[read] = resolution.value;
-          if (resolution.notApplicable) state = 'not-applicable';
+          if (read.endsWith('@cited')) {
+            hasCitedRead = true;
+            if (!resolution.notApplicable) hasCitations = true;
+          }
         }
       }
+      if (hasCitedRead && !hasCitations) state = 'not-applicable';
     }
     if (reasons.length) state = 'missing';
     return {

@@ -34,10 +34,11 @@ export function moveLeadingCitations(sentences: string[], patterns: string[]): s
 /** Keep whole heading lines and exact row bytes; preamble never enters a row. */
 export function citedRows(source: unknown, unit: string, structure: RowStructure): CitedResolution {
   if (typeof source !== 'string') return { missing: 'row context must be a string' };
+  if (source.length > 2_000_000) return { missing: 'row context exceeds 2000000 characters' };
   const heading = new RegExp(structure.heading, 'm');
   const rows: Row[] = [];
   const ids = new Set<string>();
-  for (const line of source.split(/(?<=\n)/u)) {
+  for (const line of source.split(/(?<=\n|[\u2028\u2029])|(?<=\r)(?!\n)/u)) {
     const match = heading.exec(line);
     if (match) {
       const id = match[1];

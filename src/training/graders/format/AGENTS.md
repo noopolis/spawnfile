@@ -29,7 +29,9 @@ The public decisionModels/graderForModel seams normalize default routing.
 
 Ollama models alone accept context_tokens: integer 2048..131072, default 16384.
 
-Context rows declare bounded one-capture heading/cite regexes. Cited reads require
+Context rows declare one-capture heading/cite regexes of at most 200 characters.
+Reject backreferences, lookaround and nested quantifiers at parse time. This
+restriction is not a proof of linear-time JavaScript matching. Cited reads require
 row structure and paragraph/sentence scope. questionDefinitionDigest pins these
 regexes and extraction version wherever executable question identity is needed.
 rows.leading_citations defaults to keep; previous supplies the shared, versioned

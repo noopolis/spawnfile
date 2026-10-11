@@ -85,13 +85,21 @@ questions:
 ```
 
 Both regexes must compile, contain exactly one capture group (the row ID), and
-be at most 200 characters. Heading matching runs per line with multiline semantics;
+be at most 200 characters. Backreferences, lookaround and nested quantifiers
+(star height greater than one, including quantified branches inside a repeated
+group) are rejected at parse time. This restriction blocks nested repetition,
+but does not establish a linear-time guarantee for JavaScript regex matching.
+Heading matching runs per line with multiline semantics;
 rows include the whole heading line through the next heading, preserving bytes.
+LF, CR, U+2028 and U+2029 delimit lines; CRLF is one boundary. Row contexts
+longer than 2,000,000 characters are missing, never truncated or scanned.
 The preamble is excluded. Citation matching is global and multiline on the unit
 text alone. The projection is an ordered list of `{ id, text }` in context order,
 with repeated citations deduplicated, including adjacent `[E1][E7]` citations.
-No citations makes the instance `not-applicable`: uncited claims are the
-article-level question's job. Unknown cited IDs, duplicate row IDs, absent or
+No citations across all cited reads makes the instance `not-applicable`:
+uncited claims are the article-level question's job. A citation in any read keeps the check applicable;
+another uncited context contributes an empty list. Missing evidence takes
+precedence over applicability. Unknown cited IDs, duplicate row IDs, absent or
 nontext row context, or matches without a captured ID make the instance `missing`
 with a reason. Article-level cited reads and contexts without `rows` are refused
 at parse time. Regexes and the extraction version enter question/label digests
@@ -422,16 +430,20 @@ backend endpoint. Local decision billing is `local`; teacher usage stays visible
   contain at most 16 questions. Each question has `type`, `instructions`, `criteria`.
   Responses must contain stable `model` and `answers[key].probabilities` for every
   option, summing to one. Yes/no wire keys accept either complete `true`/`false` or `yes`/`no` pairs; score keys are
-  zero-based scale indices; choices retain their labels. Each `identity()` probe
-  runs two fixed canaries once: the empty-state question and a deterministic
-  approximately 40,000-character state with one yes/no question. Identity is
+  zero-based scale indices; choices retain their labels. Each command creates a fresh
+  backend, whose first `identity()` read runs two fixed canaries once: the
+  empty-state question and a deterministic approximately 40,000-character state with one yes/no question. Identity is
   `{ backend, model, fingerprint }`; the fingerprint hashes model/protocol, each
-  canary's `ok`/`4xx` status, successful probabilities rounded to 1e-4, and string
-  `fingerprint` and/or `system_fingerprint` response fields. Operators should
-  return a stable revision/hash in either field (including 4xx JSON responses),
+  canary's `2xx`/`4xx` status class, argmax decision on successful responses
+  (ties select the first option), and string `fingerprint` and/or
+  `system_fingerprint` response fields. Probability jitter that preserves the
+  argmax does not change identity. Servers SHOULD return a stable revision/hash in either field (including 4xx JSON responses),
   changing it whenever weights, tokenizer, templates, context limits or input
-  preparation changes. Both canaries rerun on the next identity probe. The full
-  identity flows into raw-score caches and calibration identity. 5xx, timeout,
+  preparation changes. Later identity reads, including the final check, reuse
+  the completed probe. Scoring responses are checked for model and declared
+  revision drift; an observed change permanently refuses scoring and identity
+  reuse for that backend. Undeclared changes between requests are not observable.
+  The full identity flows into raw-score caches and calibration identity. 5xx, timeout,
   connection failures and malformed successful responses throw; if neither
   canary succeeds, identity fails closed. Canaries distinguish observed behavior;
   declared revisions cover changes that the fixed inputs do not expose.

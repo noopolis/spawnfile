@@ -17,7 +17,9 @@ Calibration identity pins the ordered decision-question/gate expansion and each
 definition digest, including applicability questions; authored reorders refuse reuse.
 
 Cited-row reads isolate evidence by unit, retain context row order and exact bytes,
-and fail missing on duplicate/unknown IDs. Regex/extraction semantics enter the
+and fail missing on duplicate/unknown IDs or contexts over 2,000,000 characters.
+All JavaScript multiline terminators are supported; CRLF is a single boundary.
+Applicability combines all cited reads; missing evidence retains precedence. Regex/extraction semantics enter the
 shared question definition digest for calibration and all vote provenance.
 Opt-in rows.leading_citations moves leading cite runs within a paragraph before
 all sentence reads; sentence-only questions pin that policy and algorithm too.

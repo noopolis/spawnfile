@@ -3,6 +3,7 @@ import { parseGrader, questionDefinitionDigest } from './format/index.js';
 import { expandInstances } from './instances.js';
 import { createCalibrationIdentity } from './identity.js';
 import { groupLabelInstances, validateStoredVotes } from './labeling/index.js';
+import { aggregateGrader } from './aggregation.js';
 import { moveLeadingCitations } from './rows.js';
 
 const rows = { heading: '^### \\[(E\\d+)\\]', cite: '\\[(E\\d+)\\]' };
@@ -159,9 +160,9 @@ it('marks uncited units not applicable and validates duplicate ids even for unci
   expect(expandInstances(rubric(), { body: ['No citations.'] }, { evidence: '### [E1]\n### [E1]' })[0]!.state).toBe('missing');
 });
 
-it('supports generic named captures, lookarounds, escaped parentheses and CRLF without leaking preamble', () => {
-  const structure = { heading: '^(?:ROW)\\((?<id>[a-z]+)\\)(?=:)', cite: '(?<=ref:)([a-z]+)(?![a-z])' };
-  // A noncapturing group, lookahead and escaped parentheses must not count as captures.
+it('supports generic named captures, noncapturing groups, escaped parentheses and CRLF without leaking preamble', () => {
+  const structure = { heading: '^(?:ROW)\\((?<id>[a-z]+)\\):', cite: 'ref:([a-z]+)' };
+  // Noncapturing groups and escaped parentheses must not count as captures.
   const [instance] = expandInstances(rubric('paragraph', structure), { body: ['ref:cat'] },
     { evidence: 'Preamble\r\nROW(cat): label\r\nFact\r\nROW(dog): other' });
   expect(instance!.projection['context.evidence@cited']).toEqual([{ id: 'cat', text: 'ROW(cat): label\r\nFact\r\n' }]);
@@ -218,4 +219,38 @@ it.each(['heading', 'cite'] as const)('pins %s regex in definition, calibration 
       provenance: { human: { votes: { 'q@p0': { question_digest: entry.instance.definitionDigest, projection_digest: entry.instance.projectionDigest } } } } }] };
   expect(() => validateStoredVotes(original, labels, { resolved: true })).not.toThrow();
   expect(() => validateStoredVotes(changed, labels, { resolved: true })).toThrow('Stale vote');
+});
+
+it.each(['\n', '\r\n', '\r', '\u2028', '\u2029'])('isolates cited rows with separator %j and preserves exact bytes', separator => {
+  const source = ['SECRET', '### [E1]', 'Fact', '### [E2]', 'UNCITED'].join(separator);
+  const [instance] = expandInstances(rubric('sentence'), { body: ['Claim [E1].'] }, { evidence: source });
+  expect(instance).toMatchObject({ state: 'ready', projection: {
+    'context.evidence@cited': [{ id: 'E1', text: `### [E1]${separator}Fact${separator}` }],
+  } });
+  expect(JSON.stringify(instance!.projection)).not.toMatch(/SECRET|UNCITED|E2/);
+});
+
+it.each([false, true])('keeps a cited check ready with an uncited second context (reverse=%s)', reverse => {
+  const base = rubric('sentence');
+  const reads = ['sentence', 'context.evidence@cited', 'context.other@cited'];
+  const grader = parseGrader({ ...base, context: { ...base.context,
+    other: { description: 'Other sources', rows: { heading: '^### \\[(X\\d+)\\]', cite: '\\[(X\\d+)\\]' } },
+  }, questions: [{ ...base.questions[0], reads: reverse ? reads.reverse() : reads }] });
+  const output = { body: ['Unsupported claim [E1].'] };
+  const context = { evidence, other: '### [X1]\nOther fact' };
+  const instances = expandInstances(grader, output, context);
+  expect(instances[0]).toMatchObject({ state: 'ready', projection: { 'context.other@cited': [] } });
+  expect(aggregateGrader(grader, instances, {})).toMatchObject({ status: 'unknown', score: 0, coverage: 0 });
+  expect(expandInstances(grader, { body: ['No citations.'] }, context)[0]!.state).toBe('not-applicable');
+  for (const other of [undefined, '### [X1]\n### [X1]']) {
+    expect(expandInstances(grader, output, { ...context, other })[0]!.state).toBe('missing');
+  }
+});
+
+it('refuses oversized context without scanning or truncating and accepts the exact limit', () => {
+  const prefix = '### [E1]\n';
+  const source = prefix + 'a'.repeat(2_000_000 - prefix.length);
+  expect(expandInstances(rubric(), { body: ['[E1]'] }, { evidence: source })[0]!.state).toBe('ready');
+  expect(expandInstances(rubric(), { body: ['[E1]'] }, { evidence: source + 'a' })[0])
+    .toMatchObject({ state: 'missing', reasons: ['context.evidence@cited: row context exceeds 2000000 characters'] });
 });

@@ -97,7 +97,7 @@ export function questionDefinitionDigest(grader: Grader, question: DecisionQuest
   const reads = [...question.reads, ...(typeof question.when === 'object' ? [question.when.field] : [])];
   const rows = Object.fromEntries(reads.filter(read => read.startsWith('context.') && read.endsWith('@cited'))
     .map(read => [read, grader.context[read.slice(8, -6)]!.rows]));
-  const definition = Object.keys(rows).length ? { question, rows, extraction: 'cited-rows.v1' } : question;
+  const definition = Object.keys(rows).length ? { question, rows, extraction: 'cited-rows.v2' } : question;
   const policy = sentenceCitationPolicy(grader);
   return stableDigest(question.level === 'sentence' && policy.patterns.length
     ? { definition, sentenceCitations: policy } : definition);

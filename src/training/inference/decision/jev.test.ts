@@ -11,15 +11,15 @@ it('pins identity via fixed probes, batches at 16, and maps Jev booleans', async
   });
   const backend = createJevDecision({ ...options, fetch });
   expect(await backend.identity()).toEqual({ backend: 'jev-http', model: 'jev-model', fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) });
-  await backend.identity(); expect(fetch).toHaveBeenCalledTimes(4);
+  await backend.identity(); expect(fetch).toHaveBeenCalledTimes(2);
   const results = await backend.score(Array.from({ length: 33 }, (_, i) => ({ ...request, key: `q${i}` })));
   expect(results).toHaveLength(33);
   expect(results[0]).toEqual({ key: 'q0', status: 'ok', probabilities: { yes: 0.9, no: 0.1 } });
   const bodies = fetch.mock.calls.map(call => JSON.parse(call[1]!.body as string));
-  expect(bodies.map(body => Object.keys(body.questions).length)).toEqual([1, 1, 1, 1, 16, 16, 1]);
+  expect(bodies.map(body => Object.keys(body.questions).length)).toEqual([1, 1, 16, 16, 1]);
   expect(bodies[0].state).toBe('{}');
-  expect(bodies[4].state).toBe(JSON.stringify(request.projection));
-  expect(bodies[4].questions.q0).toEqual({ type: 'noul', instructions: 'Question?', criteria: { true: 'yes', false: 'no' } });
+  expect(bodies[2].state).toBe(JSON.stringify(request.projection));
+  expect(bodies[2].questions.q0).toEqual({ type: 'noul', instructions: 'Question?', criteria: { true: 'yes', false: 'no' } });
 });
 it('shares only identical projections and restores caller order; maps ordinal score positions', async () => {
   const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {

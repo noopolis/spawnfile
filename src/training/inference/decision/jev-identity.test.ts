@@ -1,7 +1,9 @@
 import { expect, it, vi } from 'vitest';
+import type { DecisionRequest } from '../../contracts/grading.js';
 import { createJevDecision } from './index.js';
 
 const endpoint = 'http://localhost/jev';
+const request: DecisionRequest = { key: 'q', type: 'yes-no', optionLabels: ['yes', 'no'], instructions: 'Claim?', projection: {} };
 function server(options: { refuseLong?: boolean; status?: number; probability?: number; declared?: Record<string, unknown> } = {}) {
   return vi.fn<typeof fetch>(async (_url, init) => {
     const body = JSON.parse(init!.body as string) as { state: string; questions: Record<string, unknown> };
@@ -32,15 +34,22 @@ it('distinguishes a truncating server from a refusing server using the long cana
   expect(truncating.mock.calls.map(call => call[1]!.body)).toEqual(refusing.mock.calls.map(call => call[1]!.body));
 });
 
-it('runs both canaries once per identity probe and hashes rounded probabilities', async () => {
-  const fetch = server();
+it('reuses both canaries once per backend instance, including concurrent and final reads', async () => {
+  const options = { probability: 0.800049 };
+  const fetch = server(options);
   const backend = createJevDecision({ endpoint, fetch });
-  const initial = await backend.identity();
+  const [initial, concurrent] = await Promise.all([backend.identity(), backend.identity()]);
+  expect(concurrent).toEqual(initial);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  options.probability = 0.800051;
+  expect((await backend.score([request]))[0]?.status).toBe('ok');
   expect(await backend.identity()).toEqual(initial);
-  expect(fetch).toHaveBeenCalledTimes(4);
-  expect(await createJevDecision({ endpoint, fetch: server() }).identity()).toEqual(initial);
-  expect(await createJevDecision({ endpoint, fetch: server({ probability: 0.800001 }) }).identity()).toEqual(initial);
-  expect(await createJevDecision({ endpoint, fetch: server({ probability: 0.8001 }) }).identity()).not.toEqual(initial);
+  expect(fetch).toHaveBeenCalledTimes(3);
+  expect(await createJevDecision({ endpoint, fetch: server({ probability: 0.800051 }) }).identity()).toEqual(initial);
+  expect(await createJevDecision({ endpoint, fetch: server({ probability: 0.2 }) }).identity()).not.toEqual(initial);
+  const cancelled = AbortSignal.abort();
+  await expect(backend.identity(cancelled)).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(3);
 });
 
 it.each(['fingerprint', 'system_fingerprint'])('includes declared %s on success and rejection', async field => {
@@ -50,7 +59,7 @@ it.each(['fingerprint', 'system_fingerprint'])('includes declared %s on success 
   const first = await backend.identity();
   expect(first).not.toEqual(initial);
   options.declared[field] = 'version-2';
-  expect(await backend.identity()).not.toEqual(first);
+  expect(await createJevDecision({ endpoint, fetch: server(options) }).identity()).not.toEqual(first);
   expect(await createJevDecision({ endpoint, fetch: server({ declared: { [field]: 42 } }) }).identity()).toEqual(initial);
   const rejecting = server({ refuseLong: true });
   const withRejectionFingerprint: typeof fetch = async (url, init) => {
@@ -93,4 +102,63 @@ it('throws a long-canary timeout and refuses invalid successful probability resp
     await expect(createJevDecision({ endpoint, fetch: async () => new Response(JSON.stringify({ model: 'm', answers })) }).identity())
       .rejects.toThrow('identity canary');
   }
+});
+
+it.each(['fingerprint', 'system_fingerprint'])('refuses changed, added or removed %s during scoring and final identity reads', async field => {
+  for (const [before, after] of [['v1', 'v2'], [undefined, 'v2'], ['v1', undefined]]) {
+    const options = { declared: { [field]: before } };
+    const fetch = server(options);
+    const backend = createJevDecision({ endpoint, fetch });
+    await backend.identity();
+    options.declared[field] = after;
+    await expect(backend.score([request])).rejects.toThrow('fingerprint changed');
+    await expect(backend.identity()).rejects.toThrow('fingerprint changed');
+    await expect(backend.score([request])).rejects.toThrow('fingerprint changed');
+    expect(fetch).toHaveBeenCalledTimes(3);
+  }
+});
+
+it.each([false, true])('refuses revision drift on rejected scoring requests (rejected canary: %s)', async refuseLong => {
+  let scoring = false;
+  const normal = server({ refuseLong, declared: { fingerprint: 'v1' } });
+  const fetch: typeof globalThis.fetch = async (url, init) => scoring
+    ? new Response('{"fingerprint":"v2"}', { status: 422 }) : normal(url, init);
+  const backend = createJevDecision({ endpoint, fetch });
+  await backend.identity();
+  scoring = true;
+  await expect(backend.score([request])).rejects.toThrow('fingerprint changed');
+  await expect(backend.identity()).rejects.toThrow('fingerprint changed');
+});
+
+it.each([{}, { fingerprint: 'v1' }])('allows rejected scoring requests without an observed revision change: %j', async declared => {
+  let scoring = false;
+  const normal = server({ declared: { fingerprint: 'v1' } });
+  const fetch: typeof globalThis.fetch = async (url, init) => scoring
+    ? new Response(JSON.stringify(declared), { status: 422 }) : normal(url, init);
+  const backend = createJevDecision({ endpoint, fetch });
+  const initial = await backend.identity();
+  scoring = true;
+  expect((await backend.score([request]))[0]?.status).toBe('missing');
+  expect(await backend.identity()).toEqual(initial);
+});
+
+it.each(['second', undefined])('refuses final cached identity after scoring reports model %s', async model => {
+  const options: { declared: Record<string, unknown> } = { declared: {} };
+  const fetch = server(options);
+  const backend = createJevDecision({ endpoint, fetch });
+  await backend.identity();
+  options.declared.model = model;
+  await expect(backend.score([request])).rejects.toThrow(/model/);
+  await expect(backend.identity()).rejects.toThrow(/model/);
+  expect(fetch).toHaveBeenCalledTimes(3);
+});
+
+it('refuses revisions that differ between successful canaries', async () => {
+  const normal = server();
+  let count = 0;
+  const fetch: typeof globalThis.fetch = async (url, init) => {
+    const response = await normal(url, init);
+    return new Response(JSON.stringify({ ...await response.json(), fingerprint: `v${++count}` }));
+  };
+  await expect(createJevDecision({ endpoint, fetch }).identity()).rejects.toThrow('fingerprint changed');
 });
