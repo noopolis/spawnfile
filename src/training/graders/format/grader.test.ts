@@ -132,6 +132,20 @@ describe('grader formats', () => {
     expect(parseYaml('null')).toBeNull();
   });
 
+  it('accepts inline labels with implied grader and rejects invalid inline labels', () => {
+    const golden = { schema: 'paideia.labels.v1', labelers: {}, labels: [] };
+    expect(parseGrader({ ...graderInput(), golden }).golden).toEqual(golden);
+    expect(() => parseGrader({ ...graderInput(), golden: { ...golden, grader: 'other' } })).toThrow('does not match');
+    expect(() => parseGrader({ ...graderInput(), golden: { ...golden, labels: [{ id: 'invalid' }] } })).toThrow('golden');
+  });
+  it('reports the first YAML error with location and the remaining count', () => {
+    expect(() => parseYaml('a: 1\na: 2\na: 3')).toThrow(/YAML line 2, column 1:.*\(1 further errors\)/);
+    try { parseYaml('a: 1\na: 2\na: 3'); } catch (error) {
+      expect(String(error).length).toBeLessThan(200);
+      expect(String(error)).not.toContain('line 3');
+    }
+  });
+
   it('loads and resolves both sidecar paths from the grader file', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'grader-'));
     try {

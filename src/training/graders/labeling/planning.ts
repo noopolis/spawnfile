@@ -1,5 +1,5 @@
 import { parseDocument } from 'yaml';
-import { allQuestions, optionsFor, stableDigest, type Grader, type DecisionQuestion, type Labels, type Option } from '../format/index.js';
+import { allQuestions, optionsFor, stableDigest, type Grader, type DecisionQuestion, type Labels, type Label, type Option } from '../format/index.js';
 import { expandInstances, type QuestionInstance } from '../instances.js';
 import { deriveConsensus } from '../consensus.js';
 
@@ -72,6 +72,19 @@ export function adjudicationRows(labels: Labels, count: number, seed = 'paideia.
   return [...rows.filter(row => row.disputed), ...consensus.slice(0, count)];
 }
 
+/** Resolve compact call references while retaining the original repeated-receipt format. */
+export function voteProvenance(label: Label | undefined, teacher: string, instance: string): Record<string, unknown> | undefined {
+  const provenance = label?.provenance[teacher];
+  const votes = provenance?.votes as Record<string, Record<string, unknown>> | undefined;
+  const vote = votes?.[instance];
+  if (!vote || typeof vote !== 'object') return undefined;
+  if (typeof vote.call !== 'string') return vote;
+  const calls = provenance?.calls as Record<string, Record<string, unknown>> | undefined;
+  const call = calls?.[vote.call];
+  if (!call || !Array.isArray(call.instance_keys) || !call.instance_keys.includes(instance)) return undefined;
+  return { ...call, question_digest: vote.question_digest };
+}
+
 /** Human adjudication is independent of a model policy; model votes require both identities. */
 export function validateStoredVotes(grader: Grader, labels: Labels, options: { resolved?: boolean } = {}): void {
   const questions = new Map(allQuestions(grader).map(q => [q.id, q]));
@@ -83,8 +96,7 @@ export function validateStoredVotes(grader: Grader, labels: Labels, options: { r
       if (labels.labelers[name]?.kind === 'human') continue;
       const teacher = teachers.get(name);
       const question = questions.get(key.split('@')[0]!);
-      const provenance = label.provenance[name]?.votes as Record<string, { question_digest?: string; teacher_policy_digest?: string; projection_digest?: string }> | undefined;
-      const entry = provenance?.[key];
+      const entry = voteProvenance(label, name, key);
       if (!teacher || !question || entry?.question_digest !== stableDigest(question) ||
         entry.teacher_policy_digest !== teacherPolicyDigest(teacher) ||
         instances !== null && (instances.get(key)?.state !== 'ready' || entry.projection_digest !== instances.get(key)?.projectionDigest)) {

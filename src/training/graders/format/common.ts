@@ -35,7 +35,12 @@ export function parseSchema<T>(schema: z.ZodType<T>, value: unknown): T {
 export function parseYaml(source: string): unknown {
   const doc = parseDocument(source, { uniqueKeys: true, version: '1.2', merge: false });
   if (doc.errors.length || doc.warnings.length) {
-    throw new Error(`$: ${[...doc.errors, ...doc.warnings].map(e => e.message).join('\n')}`);
+    const issues = [...doc.errors, ...doc.warnings];
+    const first = issues[0]!;
+    const location = first.linePos?.[0];
+    const detail = first.message.split('\n')[0]!.replace(/ at line \d+, column \d+:$/, '');
+    throw new Error(`$: YAML ${location ? `line ${location.line}, column ${location.col}: ` : ''}${detail}` +
+      (issues.length > 1 ? ` (${issues.length - 1} further errors)` : ''));
   }
   function visit(node: Node | null | undefined): void {
     if (isAlias(node)) throw new Error('$: YAML aliases are unsupported');
@@ -64,3 +69,8 @@ export function stableDigest(value: unknown): string {
   }
   return sha256(JSON.stringify(canonical(value)));
 }
+
+// Source location is IO metadata, excluded from serialized definitions and their digests.
+const sourceDirectories = new WeakMap<object, string>();
+export function rememberSourceDirectory(value: object, directory: string): void { sourceDirectories.set(value, directory); }
+export function sourceDirectory(value: object): string { return sourceDirectories.get(value) ?? process.cwd(); }

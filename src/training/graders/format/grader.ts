@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { identifier, probability, provider, parseSchema, parseYaml } from './common.js';
-import { questionSchema, gateQuestionSchema, validateQuestion, applicabilityQuestion, type DecisionQuestion } from './questions.js';
+import { labelsSchema, parseLabels } from './labels.js';
+import { identifier, probability, provider, parseSchema, parseYaml, rememberSourceDirectory } from './common.js';
+import { questionSchema, gateQuestionSchema, validateQuestion, allQuestions } from './questions.js';
 
 const between = z.tuple([probability, probability]).refine(([lo, hi]) => lo < hi, 'requires lo < hi');
 const escalation = z.union([
@@ -11,7 +12,7 @@ const escalation = z.union([
 ]);
 export const graderSchema = z.strictObject({
   schema: z.literal('paideia.grader.v1'), id: identifier,
-  golden: z.string().min(1), calibration: z.string().min(1),
+  golden: z.union([z.string().min(1), labelsSchema.extend({ grader: identifier.optional() })]), calibration: z.string().min(1),
   context: z.record(identifier, z.strictObject({ description: z.string() })).default({}),
   teachers: z.array(z.strictObject({ id: identifier, provider, model: z.string().min(1), effort: z.string().min(1).optional() })).min(1),
   model: z.union([
@@ -51,10 +52,7 @@ function checkBinding(check: Record<string, unknown>, location: string): void {
   }
 }
 
-export function allQuestions(grader: Grader): DecisionQuestion[] {
-  const questions: DecisionQuestion[] = [...grader.questions, ...grader.gates.filter((gate): gate is Exclude<Gate, { check: unknown }> => !('check' in gate))];
-  return questions.flatMap(question => typeof question.when === 'string' ? [question, applicabilityQuestion(question)] : [question]);
-}
+export { allQuestions } from './questions.js';
 
 function validateStructure(grader: Grader): void {
   const teachers = new Set<string>();
@@ -88,6 +86,7 @@ function validateStructure(grader: Grader): void {
 export function parseGrader(value: unknown): Grader {
   const grader = parseSchema(graderSchema, value);
   validateStructure(grader);
+  if (typeof grader.golden !== 'string') parseLabels({ ...grader.golden, grader: grader.golden.grader ?? grader.id }, grader);
   return grader;
 }
 export function parseGraderYaml(source: string): Grader { return parseGrader(parseYaml(source)); }
@@ -98,5 +97,9 @@ export function validateGrader(value: unknown): Grader {
 }
 export async function loadGrader(filename: string): Promise<Grader> {
   const grader = validateGrader(parseGraderYaml(await readFile(filename, 'utf8')));
-  return { ...grader, golden: path.resolve(path.dirname(filename), grader.golden), calibration: path.resolve(path.dirname(filename), grader.calibration) };
+  const directory = path.dirname(path.resolve(filename));
+  const loaded = { ...grader, golden: typeof grader.golden === 'string' ? path.resolve(directory, grader.golden) : grader.golden,
+    calibration: path.resolve(directory, grader.calibration) };
+  rememberSourceDirectory(loaded, directory);
+  return loaded;
 }

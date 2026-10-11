@@ -10,7 +10,8 @@ it('answers as one-hot and sends strict schema without expected-answer metadata'
   const fake = provider('{"q":"yes"}');
   const backend = createTeacherDecision({ provider: fake, model: 'opus' });
   expect(await backend.identity()).toEqual({ backend: 'teacher', model: 'claude-subscription:opus' });
-  expect(await backend.score([request])).toEqual([{ key: 'q', status: 'ok', teacherAnswered: true, probabilities: { yes: 1, no: 0 } }]);
+  expect(await backend.score([request])).toMatchObject([{ key: 'q', status: 'ok', teacherAnswered: true, probabilities: { yes: 1, no: 0 },
+    judgeCalls: [{ providerId: fake.id, responseModel: 'actual', billing: 'subscription', outcome: 'completed', wallMs: expect.any(Number) }] }]);
   const call = vi.mocked(fake.generate).mock.calls[0]![0];
   expect(call.responseSchema).toEqual({ type: 'object', properties: { q: { type: 'string', enum: ['yes', 'no', 'abstain'] } }, required: ['q'], additionalProperties: false });
   expect(call.prompt).not.toContain('expected');
@@ -36,4 +37,13 @@ it('reports provider failure and propagates explicit cancellation', async () => 
   expect((await backend.score([request]))[0]!.status).toBe('missing');
   controller.abort();
   await expect(backend.score([request], controller.signal)).rejects.toThrow('provider');
+});
+it('retains failed call evidence and never claims an assumed response model', async () => {
+  const fake = provider('{"q":"yes"}');
+  fake.generate = async () => ({ text: '{"q":"yes"}', model: 'm', modelBasis: 'requested-assumption', route: 'r', usage: null });
+  const backend = createTeacherDecision({ provider: fake, model: 'm' });
+  expect((await backend.score([request]))[0]!.judgeCalls![0]!.responseModel).toBeNull();
+  const { InferenceFailure } = await import('../index.js');
+  fake.generate = async () => { throw new InferenceFailure('transport', 'failed', { responseModel: 'actual', responseRoute: 'r' }); };
+  expect((await backend.score([request]))[0]!.judgeCalls![0]).toMatchObject({ responseModel: 'actual', responseRoute: 'r', failureKind: 'transport' });
 });

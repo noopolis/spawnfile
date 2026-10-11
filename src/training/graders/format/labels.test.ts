@@ -2,7 +2,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseGrader } from './grader.js';
+import { parseGrader, loadGrader } from './grader.js';
 import { loadLabels, parseLabels, parseLabelsYaml } from './labels.js';
 import { sha256 } from './common.js';
 
@@ -51,6 +51,24 @@ describe('labels', () => {
     expect(() => parseLabels(withLabel({ output: { from: 'a.json', sha256: 'wrong' } }), grader)).toThrow('labels.0.output');
     expect(() => parseLabels(withLabel({ context: { evidence: { from: 'f' } } }), grader)).toThrow('context.evidence');
     expect(() => parseLabels(JSON.parse(JSON.stringify(base).replace('"c":{"kind"', '"__proto__":{"kind"')), grader)).toThrow('unsafe');
+  });
+  it('loads inline golden references from the grader file and preserves canonical identity', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'inline-labels-'));
+    try {
+      const filename = path.join(directory, 'grader.yaml');
+      const output = JSON.stringify({ body: ['Hello.'] });
+      await writeFile(path.join(directory, 'output.json'), output);
+      const golden = { ...withLabel({ output: { from: 'output.json', sha256: sha256(output) } }), grader: undefined };
+      await writeFile(filename, JSON.stringify({ ...grader, golden }));
+      const loadedGrader = await loadGrader(filename);
+      const loaded = await loadLabels(loadedGrader.golden, loadedGrader);
+      expect(loaded.labels.labels[0]!.output).toEqual({ body: ['Hello.'] });
+      const explicit = await loadLabels({ ...base, schema: 'paideia.labels.v1' } as typeof loaded.labels, grader);
+      expect(explicit.labels.grader).toBe('g');
+      const sidecar = path.join(directory, 'labels.yaml');
+      await writeFile(sidecar, JSON.stringify({ ...golden, grader: 'g' }));
+      expect((await loadLabels(sidecar, grader)).goldenDigest).toBe(loaded.goldenDigest);
+    } finally { await rm(directory, { recursive: true, force: true }); }
   });
   it('verifies content-addressed bytes and names the label on mismatch', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'labels-'));

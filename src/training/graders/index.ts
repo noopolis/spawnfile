@@ -7,6 +7,8 @@ export type { Consensus } from './consensus.js';
 export { expandInstances, segmenterIdentity } from './instances.js';
 export type { QuestionInstance } from './instances.js';
 export { aggregateGrader } from './aggregation.js';
+export { gradeOutput, decisionBackendIdentity, createGradeResultSchema } from './runtime/index.js';
+export type { GradingRuntime, GraderTeacher, GradeOptions, GradeResult } from './runtime/index.js';
 export type { InstanceOutcome, GateOutcome, QuestionScore, GraderResult } from './aggregation.js';
 export { calibrationIdentitySchema, calibrationFileSchema, parseCalibration, parseCalibrationJson,
   createCalibrationIdentity, goldenIdentity, checkCalibration } from './identity.js';

@@ -1,3 +1,5 @@
+import type { JudgeCall } from './evaluation.js';
+
 /** Runtime-neutral option scoring; expectedOptions is bounds metadata, never prompt data. */
 export interface DecisionRequest {
   key: string;
@@ -15,6 +17,8 @@ export interface DecisionResult {
   reason?: string;
   bounded?: boolean;
   teacherAnswered?: boolean;
+  /** Actual subscription attempts, absent for local option scorers. */
+  judgeCalls?: JudgeCall[];
 }
 export interface DecisionIdentity { backend: string; model: string; digest?: string }
 export interface DecisionBackend {

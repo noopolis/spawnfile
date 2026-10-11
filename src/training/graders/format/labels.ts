@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { identifier, provider, parseSchema, parseYaml, sha256, stableDigest, rejectUnsafeKeys } from './common.js';
-import { allQuestions, type Grader } from './grader.js';
-import { optionsFor } from './questions.js';
+import { identifier, provider, parseSchema, parseYaml, sha256, stableDigest, rejectUnsafeKeys, sourceDirectory } from './common.js';
+import type { Grader } from './grader.js';
+import { optionsFor, allQuestions } from './questions.js';
 
 const referenceSchema = z.strictObject({ from: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
 const labelerSchema = z.union([
@@ -81,15 +81,17 @@ async function resolveValue(value: Label['output'], directory: string, label: st
   return resolved;
 }
 
-export async function loadLabels(filename: string, grader: Grader): Promise<{ labels: Labels; goldenDigest: string }> {
-  const labels = parseLabelsYaml(await readFile(filename, 'utf8'), grader);
+export async function loadLabels(source: Grader['golden'], grader: Grader): Promise<{ labels: Labels; goldenDigest: string }> {
+  const labels = typeof source === 'string' ? parseLabelsYaml(await readFile(source, 'utf8'), grader)
+    : parseLabels({ ...source, grader: source.grader ?? grader.id }, grader);
+  const directory = typeof source === 'string' ? path.dirname(source) : sourceDirectory(grader);
   // Identity includes original content addresses, votes, asked set and provenance.
   const goldenDigest = stableDigest(labels);
   const resolved = await Promise.all(labels.labels.map(async label => ({
     ...label,
-    output: await resolveValue(label.output, path.dirname(filename), label.id),
+    output: await resolveValue(label.output, directory, label.id),
     context: Object.fromEntries(await Promise.all(Object.entries(label.context).map(async ([name, value]) =>
-      [name, await resolveValue(value, path.dirname(filename), label.id)]))),
+      [name, await resolveValue(value, directory, label.id)]))),
   })));
   return { labels: { ...labels, labels: resolved }, goldenDigest };
 }

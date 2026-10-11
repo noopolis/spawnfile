@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseGrader, stableDigest, type Labels } from '../index.js';
-import { groupLabelInstances, buildLabelPrompt, decodeLabelVotes, teacherPolicyDigest, adjudicationRows, validateStoredVotes } from './index.js';
+import { groupLabelInstances, buildLabelPrompt, decodeLabelVotes, teacherPolicyDigest, adjudicationRows, validateStoredVotes, voteProvenance } from './index.js';
 
 function grader() { return parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'l.yaml', calibration: 'c.json',
   teachers: [{ id: 't', provider: 'grok', model: 'm' }], model: { backend: 'teacher', teacher: 't' },
@@ -36,6 +36,27 @@ describe('label planning', () => {
     expect(rows[0]).toMatchObject({ instance: 'missing', disputed: true, answer: null });
     expect(adjudicationRows(labels, 1)).toEqual(rows);
     expect(adjudicationRows(labels, 0)).toHaveLength(1);
+  });
+  it('resolves shared call receipts and refuses missing, stale or unrelated call references', () => {
+    const g = grader(); const output = { body: ['Hello'] };
+    const receipt = { teacher_policy_digest: teacherPolicyDigest(g.teachers[0]!),
+      projection_digest: groupLabelInstances(g, output, {})[0]!.projectionDigest, instance_keys: ['q'] };
+    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g',
+      labelers: { t: { kind: 'model', provider: 'grok', model: 'm' } },
+      labels: [{ id: 'l', lineage: 'l', output, context: {}, votes: { q: { t: 'yes' } },
+        provenance: { t: { calls: { call: receipt }, votes: { q: { call: 'call', question_digest: stableDigest(g.questions[0]) } } } } }] };
+    const label = labels.labels[0]!;
+    expect(voteProvenance(label, 't', 'q')).toMatchObject(receipt);
+    expect(() => validateStoredVotes(g, labels, { resolved: true })).not.toThrow();
+    receipt.instance_keys = ['s'];
+    expect(() => validateStoredVotes(g, labels)).toThrow('Stale vote');
+    receipt.instance_keys = ['q']; receipt.teacher_policy_digest = 'stale';
+    expect(() => validateStoredVotes(g, labels)).toThrow('Stale vote');
+    delete label.provenance.t!.calls;
+    expect(() => validateStoredVotes(g, labels)).toThrow('Stale vote');
+    expect(voteProvenance(undefined, 't', 'q')).toBeUndefined();
+    label.provenance.t!.votes = { q: 'invalid' };
+    expect(voteProvenance(label, 't', 'q')).toBeUndefined();
   });
   it('refuses legacy and stale per-vote identities but exempts humans', () => {
     const g = grader();

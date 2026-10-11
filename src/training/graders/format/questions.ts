@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Grader, Gate } from './grader.js';
 import { identifier, probability } from './common.js';
 
 const predicate = z.union([
@@ -77,4 +78,9 @@ export function applicabilityQuestion(question: DecisionQuestion): GateQuestion 
     id: `${question.id}.applies`, level: question.level, ask: question.when as string,
     type: 'yes-no', expected: 'yes', reads: [...question.reads], not_applicable: 1,
   };
+}
+
+export function allQuestions(grader: Grader): DecisionQuestion[] {
+  const questions: DecisionQuestion[] = [...grader.questions, ...grader.gates.filter((gate): gate is Exclude<Gate, { check: unknown }> => !('check' in gate))];
+  return questions.flatMap(question => typeof question.when === 'string' ? [question, applicabilityQuestion(question)] : [question]);
 }

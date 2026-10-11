@@ -12,3 +12,7 @@ errors, content mismatches and unsupported scoring without invoking inference.
 IDs/map keys reject prototype names; identifiers also reject control characters.
 Conflicting human answers remain disputed. Inline JSON is canonically hashed;
 references verify exact bytes before JSON decoding (for .json) or UTF-8 text loading.
+
+Golden labels accept a sidecar path or an inline labels body with implied grader.
+Inline references resolve from the grader file without adding paths to digests.
+YAML diagnostics show the first issue with line/column and a remaining issue count.
