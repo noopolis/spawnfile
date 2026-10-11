@@ -19,6 +19,7 @@ import {
   pointCurrent, removeTree, type LinkOps
 } from "./feedLayout.js";
 import { buildFeedManifest, compareFeedManifest, manifestDrift, readFeedManifest, removeFeedManifest, writeFeedManifest } from "./feedManifest.js";
+import { appendFeedLanding } from "./feedLandings.js";
 import { FEED_IDENTITY_VERSION, FEED_LANDED_VERSION, writeFeedIdentity, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
 import { stageFeedContent } from "./feedPrepare.js";
 import { digestDirectory, hostExec, type FeedExec, type ResolvedFeedSource } from "./feedSource.js";
@@ -144,7 +145,9 @@ export const landFeed = (
   record: FeedLandedRecord | null,
   { exact = false, force = false, heals = {}, period, runtime = {} }: { exact?: boolean; force?: boolean; heals?: Record<string, number>; period?: string; runtime?: FeedRuntime } = {}
 ): FeedLandResult => {
-  const now = (runtime.now ?? (() => new Date()))(), log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec;
+  const clock = runtime.now ?? (() => new Date()), log = runtime.log ?? (() => undefined), exec = runtime.exec ?? hostExec;
+  // Preserve the existing timestamp behavior when recording is absent.
+  const started = target.record ? undefined : clock();
   if (!assertRealDirectory(treesDirOf(target), "the fed volume's trees/ directory")) mkdirSync(treesDirOf(target), { mode: 0o755 });
   // A retained tree for this revision is reused only when the host recorded it and its manifest still
   // describes it -- and it passes the validation policy as declared NOW, like any new tree.
@@ -155,17 +158,20 @@ export const landFeed = (
     name = retained;
   } else ({ name, resolved: landedSource } = stageAndLand(target, resolved, { exact, exec, log }));
   const revision = landedSource.revision;
-  if (pointCurrent(target.volume, feedTreeLink(name), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) })) log(`current -> ${feedTreeLink(name.slice(0, 12))}`);
+  const changed = pointCurrent(target.volume, feedTreeLink(name), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
+  const now = started ?? clock();
+  if (changed) log(`current -> ${feedTreeLink(name.slice(0, 12))}`);
   const manifest = readFeedManifest(target.stateDir, name) ?? buildFeedManifest(path.join(treesDirOf(target), name), name);
   const identity = {
-    files: manifest.files, landed_at: isoSeconds(now), resource: target.resourceId, revision, source: landedSource.provenance,
+    files: manifest.files, landed_at: target.record ? now.toISOString() : isoSeconds(now), resource: target.resourceId, revision, source: landedSource.provenance,
     tree: feedTreeLink(name), version: FEED_IDENTITY_VERSION, volume: target.volumeName
   } as const;
   const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
   // Order is serving history: the serving tree is always last.
   let trees = [...(record?.trees ?? []).filter((entry) => entry !== name), name];
   const write = (): FeedLandedRecord => writeFeedLanded(target.stateDir, { heals, identity, identity_sha256: identitySha, ...(period ? { period } : {}), revision, tree: name, trees, version: FEED_LANDED_VERSION });
-  write();
+  const landedRecord = write();
+  appendFeedLanding(target, landedRecord, now);
   const gc = collectGarbage(target, trees, name, now);
   if (gc.removed.length) {
     for (const removed of gc.removed) removeFeedManifest(target.stateDir, removed);

@@ -6,7 +6,7 @@ import path from "node:path";
 import { buildCompilePlan } from "../compiler/index.js";
 import { resolveBundleArchitecture } from "../compiler/workspaceBundleResolve.js";
 import type { TeamWorkspaceResource } from "../manifest/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import { recordingKeepMs, SpawnfileError } from "../shared/index.js";
 
 import { feedError } from "./feedLayout.js";
 import { hostExec, type FeedExec } from "./feedSource.js";
@@ -35,18 +35,25 @@ export interface DeclaredVolumeFeed {
   feed: DeclaredFeed;
   id: string;
   name: string;
+  record?: { keepMs: number };
 }
 
 /** Every fed volume visible in the compile plan, deduplicated by id (team resources reach many agents). */
 export const findDeclaredVolumeFeeds = async (inputPath: string): Promise<DeclaredVolumeFeed[]> => {
   const plan = await buildCompilePlan(inputPath);
   const byId = new Map<string, DeclaredVolumeFeed>();
+  const recordingById = new Map<string, number>();
   for (const node of plan.nodes) {
+    const keepMs = node.value.kind === "agent" ? recordingKeepMs(node.value.training?.record) : undefined;
     for (const resource of node.value.workspaceResources ?? []) {
+      if (keepMs !== undefined && resource.kind === "volume" && resource.feed) {
+        recordingById.set(resource.id, Math.max(recordingById.get(resource.id) ?? 0, keepMs));
+      }
       if (resource.kind !== "volume" || !resource.feed || byId.has(resource.id)) continue;
       byId.set(resource.id, { base: path.dirname(resource.scope.key), feed: resource.feed, id: resource.id, name: resource.name as string });
     }
   }
+  for (const [id, keepMs] of recordingById) byId.get(id)!.record = { keepMs };
   return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id));
 };
 
@@ -91,6 +98,7 @@ export const toFeedTarget = (declared: DeclaredVolumeFeed, options: FeedTargetOp
     keep: feed.keep ?? DEFAULT_FEED_KEEP,
     ...(feed.owner ? { owner: feed.owner } : {}),
     ...(feed.prepare ? { prepare: toPrepare(feed.prepare, options) } : {}),
+    ...(declared.record ? { record: declared.record } : {}),
     ...(ref !== undefined && typeof ref !== "string" ? { refRule: toRefRule(ref, declared.base) } : {}),
     resourceId: declared.id,
     source,

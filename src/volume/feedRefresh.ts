@@ -12,6 +12,7 @@ import path from "node:path";
 import { assertFeedVolumeRoot, assertOutsideVolume, assertSameDevice, auditFeedRoot, feedTreeLink, LINK_OPS, pointCurrent } from "./feedLayout.js";
 import { buildFeedManifest, writeFeedManifest } from "./feedManifest.js";
 import { landFeed, type FeedRuntime } from "./feedLand.js";
+import { appendFeedLanding, ensureFeedLanding } from "./feedLandings.js";
 import { acquireFeedLock } from "./feedLock.js";
 import { resolveFeedContent } from "./feedPrepare.js";
 import { readFeedLanded, writeFeedIdentity, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
@@ -83,9 +84,14 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
     return { ...base, status: "repaired" };
   }
   if (sweep.relink) pointCurrent(target.volume, feedTreeLink(record.tree), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
+  const reestablished = sweep.relink && target.record ? (runtime.now ?? (() => new Date()))() : undefined;
   let next = record;
-  if (sweep.identity) next = { ...record, identity_sha256: writeFeedIdentity(target.volume, record.identity, { owner: target.owner, tmpDir: feedStagingDir(target) }) };
+  if (sweep.identity || reestablished) {
+    const identity = reestablished ? { ...record.identity, landed_at: reestablished.toISOString() } : record.identity;
+    next = { ...record, identity, identity_sha256: writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) }) };
+  }
   writeFeedLanded(target.stateDir, next);
+  if (reestablished) appendFeedLanding(target, next, reestablished);
   const after = sweepFeed(target, next);
   if (repairable(after)) return { findings: [...sweep.findings, ...after.findings.map((finding) => `still after repair: ${finding}`)], previous: record.revision, revision: record.revision, status: "tampered" };
   return { ...base, status: repairable(sweep) && sweep.unknown.length === 0 ? "repaired" : "tampered" };
@@ -96,18 +102,24 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
  * period and provenance are re-stamped (record, then the identity agents read). Without it a ref that
  * moved to identical content would never count as landed this period, and the freeze would never hold.
  */
-const adopt = (target: FeedTarget, record: FeedLandedRecord, resolved: ResolvedFeedSource, period: string | undefined): void => {
+const adopt = (target: FeedTarget, record: FeedLandedRecord, resolved: ResolvedFeedSource, period: string | undefined, runtime: FeedRuntime): void => {
   const source = resolved.provenance;
-  if (!period || (record.period === period && JSON.stringify(record.identity.source) === JSON.stringify(source))) return;
-  const identity = { ...record.identity, source };
+  if ((!period && !target.record) || (record.period === period && JSON.stringify(record.identity.source) === JSON.stringify(source))) {
+    if (target.record) ensureFeedLanding(target, record, (runtime.now ?? (() => new Date()))());
+    return;
+  }
+  const now = target.record ? (runtime.now ?? (() => new Date()))() : undefined;
+  const identity = { ...record.identity, source, ...(now ? { landed_at: now.toISOString() } : {}) };
   const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
-  writeFeedLanded(target.stateDir, { ...record, identity, identity_sha256: identitySha, period });
+  const next = writeFeedLanded(target.stateDir, { ...record, identity, identity_sha256: identitySha, period });
+  if (now) appendFeedLanding(target, next, now);
 };
 
 /** A held volume (frozen, or waiting for a ref that does not exist yet) keeps serving what it has; it is still verified and healed. */
 const holdLocked = (target: FeedTarget, record: FeedLandedRecord, held: "frozen" | "waiting", runtime: FeedRuntime): FeedRefreshResult => {
   const sweep = sweepFeed(target, record);
   if (sweep.findings.length) return heal(target, record, sweep, runtime, { held: true });
+  if (target.record) ensureFeedLanding(target, record, (runtime.now ?? (() => new Date()))());
   (runtime.log ?? (() => undefined))(`${held}: serving ${record.revision.slice(0, 12)}`);
   return { findings: [], previous: record.revision, revision: record.revision, status: held };
 };
@@ -151,14 +163,14 @@ const refreshLocked = (target: FeedTarget, runtime: FeedRuntime): FeedRefreshRes
   if (!sweep.findings.length) {
     // Same bytes, moved mtime: somebody touched the mount without changing content. Re-stamp the manifest.
     if (sweep.touched.length) writeFeedManifest(target.stateDir, buildFeedManifest(path.join(target.volume, feedTreeLink(record.tree)), record.tree));
-    adopt(concrete, record, resolved, period);
+    adopt(concrete, record, resolved, period, runtime);
     log(`already current: ${record.revision.slice(0, 12)}`);
     return { findings: [], previous: record.revision, revision: record.revision, status: "current" };
   }
   const healed = heal(concrete, record, sweep, runtime);
   // A repair of the content this period chose is this period's landing too.
   const after = healed.status === "repaired" ? readFeedLanded(target.stateDir).record : null;
-  if (after && after.revision === resolved.revision) adopt(concrete, after, resolved, period);
+  if (after && after.revision === resolved.revision) adopt(concrete, after, resolved, period, runtime);
   return healed;
 };
 
