@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { momentRecordSchema } from "./contract.js";
@@ -49,6 +49,17 @@ describe("P3 recording format", () => {
 });
 
 describe("recording pins in a materialized trial", () => {
+  it.each([false, true])("refuses conflicting copies instead of choosing the empty pin or nonempty fallback (reverse=%s)", async (reverse) => {
+    const f = await rewindFixture(); roots.push(f.root);
+    const healthy = emptyRecord(); healthy.memory = [{ id: "self", declaredBy: "agent:a", seq: 0 }];
+    const errored = structuredClone(healthy); errored.exact = false; errored.errors = ["memory self: sequence capture failed"];
+    await jsonl(f.historyDir, "memory/agent%3Aa/self/events.jsonl", [memoryEvent(1)]);
+    await jsonl(f.historyDir, "moments/copies.jsonl", reverse ? [errored, healthy] : [healthy, errored]);
+    const result = await materializeTrainingMoment(f.options);
+    expect(result.status).toBe("refused");
+    expect(result.inputs.find((input) => input.id === "self")!.refusal).toMatch(/Conflicting moment records.*memory agent:a\/self/u);
+    expect(await readdir(f.options.out)).toEqual(["moment.json"]);
+  });
   it.each([false, true])("accepts incoming feed publication metadata after the bound with record=%s", async (withRecord) => {
     const f = await rewindFixture(); roots.push(f.root);
     const log = "feeds/team%3Apublication/news/landings.jsonl";

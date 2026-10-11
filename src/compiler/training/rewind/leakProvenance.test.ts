@@ -37,7 +37,7 @@ const fixture = async (kind: Kind) => {
     const revision = resolveFeedSource({ kind: "git", fetch: false, repo: repository, ref: selected }).revision;
     const directory = path.dirname(repository), retained = path.join(directory, "trees", revision);
     await mkdir(retained, { recursive: true });
-    await writeFile(path.join(retained, "data.txt"), selected === commit ? "past bytes\n" : "future retained bytes\n");
+    await writeFile(path.join(retained, "data.txt"), "past bytes\n");
     await writeFile(path.join(directory, "landings.jsonl"), JSON.stringify({ version: "spawnfile.volume-feed-landing.v1", resource: "source", volume: "source", source: { kind: "git", repo: repository }, revision, tree: revision, commit: selected,
       ref: "main", landed_at: BEFORE }) + "\n");
     await stampTree(retained, BEFORE, AT);
@@ -67,7 +67,7 @@ describe("independent source commit provenance", () => {
     const guard = vi.spyOn(gitProcess, "assertCommitNotFuture").mockResolvedValue(undefined);
     const moment = await f.stage(); guard.mockRestore();
     expect(moment.inputs[0]).toMatchObject({ fidelity: "exact", source: { commit } });
-    expect(await readFile(path.join(f.destination, "current/data.txt"), "utf8")).toBe("future retained bytes\n");
+    expect(await readFile(path.join(f.destination, "current/data.txt"), "utf8")).toBe("past bytes\n");
     await stampTree(f.bundle, BEFORE, AT);
     const out = path.join(f.root, "refused");
     expect((await finalizeTrainingMoment(f.bundle, out, { historyDir: f.historyDir })).status).toBe("refused");

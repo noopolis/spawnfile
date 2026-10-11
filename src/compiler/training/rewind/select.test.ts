@@ -38,6 +38,34 @@ describe("pure rewind record selection", () => {
     expect(selectMomentRecord([], "agent:writer", at)).toBeNull();
   });
 
+  it.each([false, true])("refuses effective pin/fallback disagreements in either order (reverse=%s)", (reverse) => {
+    for (const section of ["memory", "resources", "networks"] as const) {
+      const id = section === "memory" ? "self" : section === "resources" ? "news" : "network";
+      const first = record(), second = record();
+      second.exact = false; second.errors = [`${section} ${id}: capture failed`];
+      const copies = reverse ? [second, first] : [first, second];
+      expect(() => selectMomentRecord(copies, "agent:writer", at, [{ section, id, declaredBy: "agent:writer" }]))
+        .toThrow(new RegExp(`Conflicting moment records.*${section} agent:writer/${id}.*effective pin/fallback`, "u"));
+    }
+  });
+
+  it.each([false, true])("compares fallback fidelity when exact differs (reverse=%s)", (reverse) => {
+    const first = record(), second = record(); second.exact = false;
+    const inputs = [{ section: "resources" as const, id: "absent-feed", declaredBy: "agent:writer" }];
+    expect(() => selectMomentRecord(reverse ? [second, first] : [first, second], "agent:writer", at, inputs))
+      .toThrow(/absent-feed.*effective pin\/fallback/u);
+  });
+
+  it("ignores unrelated errors and exact flags for healthy pins, and compares usable rather than errored pins", () => {
+    const first = record(), second = record();
+    second.exact = false; second.errors = ["volume unrelated: failed", "memory self (team:other): failed"];
+    const inputs = [{ section: "memory" as const, id: "self", declaredBy: "agent:writer" }];
+    expect(selectMomentRecord([first, second], "agent:writer", at, inputs)).toBe(first);
+    first.exact = false; first.errors = ["memory self: failed"];
+    second.errors = ["memory self: another failure"]; second.memory[0]!.seq = 99;
+    expect(selectMomentRecord([first, second], "agent:writer", at, inputs)).toBe(first);
+  });
+
   const changes: Array<[string, (value: MomentRecord) => void]> = [
     ["resource commit", (value) => { value.resources[0] = { id: "repo", kind: "git", commit: "c".repeat(40) }; }],
     ["feed revision", (value) => { value.feeds[0]!.revision = "different"; }],

@@ -39,16 +39,25 @@ export const rewindGitSync = (repo: string, args: readonly string[]): Buffer =>
 
 export interface SelectedCommit { commit: string; instant: string }
 
-export const commitInstant = async (repo: string, commit: string): Promise<string> => {
-  const timestamp = Number((await rewindGit(repo, ["show", "-s", "--format=%ct", commit, "--"])).toString().trim());
-  if (!Number.isSafeInteger(timestamp)) throw new Error(`Commit ${commit} has an invalid committer date`);
-  return new Date(timestamp * 1000).toISOString();
+/** Git's pretty formatter drops negative epochs. Read the signed raw dates instead. */
+const commitDates = async (repo: string, commit: string): Promise<{ author: string; committer: string }> => {
+  const headers = (await rewindGit(repo, ["cat-file", "commit", commit])).toString().split("\n\n", 1)[0]!;
+  const date = (role: string): string => {
+    const match = new RegExp(`^${role} .* (-?\\d+) [+-]\\d{4}$`, "mu").exec(headers);
+    const seconds = match ? Number(match[1]) : NaN;
+    if (!Number.isSafeInteger(seconds) || !Number.isFinite(new Date(seconds * 1000).getTime())) {
+      throw new Error(`Commit ${commit} has an invalid ${role} date`);
+    }
+    return new Date(seconds * 1000).toISOString();
+  };
+  return { author: date("author"), committer: date("committer") };
 };
+export const commitInstant = async (repo: string, commit: string): Promise<string> => (await commitDates(repo, commit)).committer;
 
 /** Validate the selected source before any copy/export, regardless of the materialized layout. */
 export const assertCommitNotFuture = async (repo: string, commit: string, at: string): Promise<void> => {
-  const dates = (await rewindGit(repo, ["show", "-s", "--format=%at %ct", commit, "--"])).toString().trim().split(" ");
-  if (dates.length !== 2 || dates.some((value) => !Number.isSafeInteger(Number(value)) || compareInstants(new Date(Number(value) * 1000).toISOString(), at) > 0)) {
+  const dates = await commitDates(repo, commit);
+  if (Object.values(dates).some((instant) => compareInstants(instant, at) > 0)) {
     throw new Error(`Selected commit ${commit} has an author or committer date after ${at}`);
   }
 };
@@ -63,12 +72,11 @@ export const resolveRewindCommit = async (repo: string, selector: string): Promi
 export const commitAt = async (repo: string, selector: string, at: string): Promise<SelectedCommit | null> => {
   let head: string;
   try { head = await resolveRewindCommit(repo, selector); } catch { return null; }
-  const lines = (await rewindGit(repo, ["log", "--first-parent", "--format=%H %ct", head, "--"]))
+  const commits = (await rewindGit(repo, ["log", "--first-parent", "--format=%H", head, "--"]))
     .toString().trim().split("\n").filter(Boolean);
-  return selectCommitAt(lines.map((line) => {
-    const [commit, seconds] = line.split(" ");
-    return { commit: commit!, instant: new Date(Number(seconds) * 1000).toISOString() };
-  }), at);
+  const dated: SelectedCommit[] = [];
+  for (const commit of commits) dated.push({ commit, instant: await commitInstant(repo, commit) });
+  return selectCommitAt(dated, at);
 };
 
 /** Stable ties preserve the first-parent order returned by git. */

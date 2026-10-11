@@ -44,7 +44,7 @@ export const materializedInputSchema = inputIdentitySchema.extend({
   fidelity: z.enum(["exact", "approximate", "overridden"]).nullable(), basis: text,
   source: z.object({ commit: text.optional(), repository: text.optional(), revision: text.optional(), seq: count.optional(),
     sha256: recordedSha256Schema.optional(), agentSlug: text.optional(), snapshot: text.optional(), cursor: text.optional(),
-    switchingAt: trainingInstantSchema.optional(), landedAt: trainingInstantSchema.optional() }).strict(),
+    switchingAt: trainingInstantSchema.optional(), landedAt: trainingInstantSchema.optional(), prepared: z.literal(true).optional() }).strict(),
   path: text.nullable(), notes: z.array(z.string()), refusal: text.nullable(), build: z.literal("deferred").optional()
 }).strict();
 export type MaterializedInput = z.infer<typeof materializedInputSchema>;

@@ -14,6 +14,17 @@ const vectors: Array<[string, number, string]> = [
 ];
 
 describe("training task clock contract", () => {
+  it.each(["1969-12-31T23:59:59.999999999Z", "1970-01-01T00:00:00+00:01", "9999-12-31T23:59:59.999000001Z", "9999-12-31T23:59:59-00:01"])
+    ("refuses the out-of-range trial instant %s in every helper", (origin) => {
+      expect(() => createTaskClock(origin)).toThrow(/must be within 1970.*9999/u);
+      for (const helper of helpers) expect(() => helper(origin, 0)).toThrow(/must be within 1970.*9999/u);
+    });
+
+  it.each(["1970-01-01T00:00:00Z", "1969-12-31T23:00:00-01:00", "9999-12-31T23:59:59.999Z"])
+    ("accepts the inclusive trial boundary %s", (origin) => {
+      expect(() => createTaskClock(origin)).not.toThrow();
+      for (const helper of helpers) expect(() => helper(origin, 0)).not.toThrow();
+    });
   it("normalizes the origin and gives each process exactly one clock owner", () => {
     const origin = "2026-10-09T10:20:31.120000000+02:00", anchor = 1_790_000_000_123;
     expect(createTaskClock(origin)).toEqual({ version: "spawnfile.task-clock.v1", origin: "2026-10-09T08:20:31.12Z" });

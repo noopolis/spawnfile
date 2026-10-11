@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import type { TeamWorkspaceResource } from "../../../manifest/index.js";
 import { digestDirectory, feedIdentityFindings, resolveFeedSource } from "../../../volume/index.js";
 import { materializeFeed, type FeedLanding } from "./feed.js";
@@ -126,16 +127,35 @@ describe("feed rewind", () => {
     const { context, resource, directory, landing, log } = await fixture();
     resource.feed = { git: { repo: "never-used", ref: { command: ["never-run-ref"] } }, freeze: { timezone: "UTC", after: "08:00" },
       include: [{ from: "not-on-disk", to: "assets" }], prepare: { host: true, command: ["never-run-prepare"] } };
-    const retained = path.join(directory, "trees", `${landing.revision}.2`);
+    const prepared = { include: [], prepare: { command: ["never-run-prepare"], image: null, network: null, platform: null }, source_revision: landing.revision };
+    const revision = createHash("sha256").update(`prepared\n${JSON.stringify(prepared)}\n`).digest("hex");
+    const retained = path.join(directory, "trees", `${revision}.2`);
     await mkdir(retained, { recursive: true }); await writeFile(path.join(retained, "prepared.txt"), "retained\n");
-    await log([{ ...landing, tree: `trees/${landing.revision}.2`, source: { kind: "git", repo: "never-used", prepared: {
-      source_revision: landing.revision, include: [], prepare: { command: ["never-run-prepare"], image: null, network: null, platform: null }
-    } } }]);
-    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "landing-log" });
-    expect(await readlink(path.join(context.destination, "current"))).toBe(`trees/${landing.revision}.2`);
+    await log([{ ...landing, revision, tree: `trees/${revision}.2`, source: { kind: "git", repo: "never-used", prepared } }]);
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "approximate", basis: "landing-log",
+      notes: ["prepared output not content-verifiable"] });
+    expect(await readlink(path.join(context.destination, "current"))).toBe(`trees/${revision}.2`);
     expect(await readFile(path.join(context.destination, "current/prepared.txt"), "utf8")).toBe("retained\n");
     expect(JSON.parse(await readFile(path.join(context.destination, ".spawnfile-feed.json"), "utf8")).source.prepared.prepare.command).toEqual(["never-run-prepare"]);
   });
+
+  it.each(["unchanged", "changed bytes", "extra file", "missing file", "wrong revision", "missing repository"])
+    ("verifies retained plain git feed with %s against commit and paths", async (change) => {
+      const f = await fixture();
+      const revision = change === "wrong revision" ? "0".repeat(64) : f.revision;
+      const retained = path.join(f.directory, "trees", revision);
+      await mkdir(path.join(retained, "published"), { recursive: true });
+      if (change !== "missing file") await writeFile(path.join(retained, "published/news.txt"), change === "changed bytes" ? "future\n" : "past\n");
+      if (change === "extra file") await writeFile(path.join(retained, "extra.txt"), "future\n");
+      await f.log([{ ...f.landing, revision, tree: revision }]);
+      if (change === "missing repository") await rm(f.repository, { recursive: true });
+      if (change === "unchanged") {
+        expect(await materializeFeed(f.context)).toMatchObject({ fidelity: "exact" });
+        expect(await readFile(path.join(f.context.destination, "current/published/news.txt"), "utf8")).toBe("past\n");
+        expect(await readdir(f.context.destination)).not.toContain(".retained-check");
+      } else await expect(materializeFeed(f.context)).rejects.toThrow(change === "wrong revision" ? "Feed revision mismatch"
+        : change === "missing repository" ? "Missing feed source repository" : "Retained git feed bytes disagree with selected commit and paths");
+    });
 
   it("uses retained directory feed landings and starts overridden feeds empty", async () => {
     const { context, resource, directory, log } = await fixture();
@@ -201,8 +221,9 @@ describe("feed rewind", () => {
     resource.feed = { git: { repo: "never-read" }, freeze: { after: "08:00", timezone: "UTC" } };
     await expect(materializeFeed(context)).rejects.toThrow("freeze/waiting");
     resource.feed = { git: { repo: "never-read" }, prepare: { host: true, command: ["never-execute"] } };
-    await log([{ ...landing, source: { kind: "git", repo: "never-read", prepared: { source_revision: landing.revision,
-      include: [], prepare: { command: ["never-execute"], image: null, network: null, platform: null } } } }]);
+    const prepared = { include: [], prepare: { command: ["never-execute"], image: null, network: null, platform: null }, source_revision: landing.revision };
+    const revision = createHash("sha256").update(`prepared\n${JSON.stringify(prepared)}\n`).digest("hex");
+    await log([{ ...landing, revision, tree: revision, source: { kind: "git", repo: "never-read", prepared } }]);
     await expect(materializeFeed(context)).rejects.toThrow("retained landed tree bytes");
     context.history = undefined;
     await expect(materializeFeed(context)).rejects.toThrow("--history is required");

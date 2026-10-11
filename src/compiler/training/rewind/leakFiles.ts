@@ -30,14 +30,16 @@ export const snapshotBundleFiles = async (root: string): Promise<Map<string, Big
 /** Preserve the inspected access times, including future ones; never hide an existing violation. */
 export const restoreInspectedAccessTimes = async (files: Map<string, BigIntStats>): Promise<void> => {
   for (const [file, stats] of [...files].reverse()) {
-    await (stats.isSymbolicLink() ? lutimes : utimes)(file, Number(stats.atimeNs / 1_000n) / 1_000_000, Number(stats.mtimeNs / 1_000n) / 1_000_000);
+    // Numeric strings preserve sub-millisecond precision; negative numeric arguments mean "now" in Node.
+    await (stats.isSymbolicLink() ? lutimes : utimes)(file,
+      String(Number(stats.atimeNs / 1_000n) / 1_000_000), String(Number(stats.mtimeNs / 1_000n) / 1_000_000));
   }
 };
 
 /** No symlinks are traversed. Inspection never reads a target outside the bundle. */
 export const inspectBundleFiles = async (root: string, inputs: MaterializedInput[], report: LeakCheck, files: Map<string, BigIntStats>): Promise<void> => {
   const at = instantNanos(report.at);
-  const latestDate = new Date(Date.parse(report.at) + 14 * 3600_000).toISOString().slice(0, 10);
+  const latestDate = new Date(Math.min(253_402_300_799_999, Date.parse(report.at) + 14 * 3600_000)).toISOString().slice(0, 10);
   const visit = async (file: string): Promise<void> => {
     const relative = path.relative(root, file).split(path.sep).join("/") || ".";
     const owner = inputAtPath(inputs, relative);
