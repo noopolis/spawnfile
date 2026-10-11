@@ -168,13 +168,18 @@ exclusive-reattach volume; snapshot paths are the resolved unfed volume backing 
 not workspace symlinks. Recording stores receive the same deletion guard as memory.
 
 `spawnfile record sync [path] [--deployment <name>]` selects a deployment like `usage`,
-reads its wake rows and memory ledgers, and joins host histories using deployed compiled
-facts. It writes private `0600` records via temporary file, fsync and rename to
-`<deployment state dir>/moments/<agent slug>/<compact startedAt>-<sanitized executionId>.json`.
+reads wake rows and memory ledgers in bounded exec chunks, and joins host histories using
+the compiled agent facts from the activation entry in effect at each row's `started_at`.
+Missing activation entries or agent facts MUST set `exact:false` with a reason, including
+when the agent has no resource pins. Today's deployment facts MUST NOT fill historical gaps.
+It writes private `0600` records via temporary file, fsync and rename to
+`<deployment state dir>/moments/<agent slug>/<compact startedAt>-<sanitized executionId>-<row hash>.json`.
 For project records the state directory is `<output>/deployments/<name>/`; for home
 records it is `~/.spawnfile/deployments/<name>/`, scoped to the same identity as the
-sibling resource log. Existing records are never rewritten. Replays share `executionId`
-but have distinct `startedAt` instants and files: one record per attempt. Moment
+sibling resource log. The row hash is the first 12 lowercase hex characters of SHA-256
+over canonical wake-row JSON (object keys sorted recursively, array order preserved).
+Existing records are never rewritten. Replays may share both `executionId` and `startedAt`;
+different row contents produce distinct attempt filenames, while resync skips the same row. Moment
 retention deletes attempts older than `now - keep`, preserving the newest per agent
 (including ties). Snapshots remain in the deployment's recording volume; records name
 them, and P4 reads them. Non-exact records do not fail sync; operational failures do.
@@ -281,8 +286,13 @@ is the absolute canonical record path; lookup MUST require that identity. Indepe
 outputs with the same deployment name MUST NOT share history or retention.
 
 Each `{version:"spawnfile.deploy-resources.v1", deployment, deployment_id, activated_at,
-activation_exact, activation_note?, deployed_at, report_sha256, resources}` entry MUST
+activation_exact, activation_note?, deployed_at, report_sha256, resources, recording_agents}` entry MUST
 reuse `workspace_git_resources` and `workspace_bundles`, without resolving sources again.
+`recording_agents` MUST copy the validated compiled recording facts for every recording
+agent: node ID, slug, recording directory, keep window, snapshot IDs, consumed feed IDs
+and volume names, git/bundle resource IDs, memory bank IDs with declaring node and ledger
+path, and attached Moltnet networks. These facts survive releases that remove or change
+inputs. Legacy entries without them remain readable but cannot produce exact moments.
 Every resource MUST retain its workspace-visible `id`, compiled `agent_node_ids`, and
 `declared_by` node ID when known. Git adds `{kind:"git", commit, sha256, url?}`; bundles
 add `{kind:"bundle", sha256, origin?}`. Ownership MUST survive compile and distribution

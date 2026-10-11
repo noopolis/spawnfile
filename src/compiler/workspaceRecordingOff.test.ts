@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { afterEach, beforeEach, expect, it } from "vitest";
 
 import { createDistributionFingerprint, DISTRIBUTION_REPORT_OUTPUT_FILE, type DistributionReport } from "../distribution/index.js";
+import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 
 const run = promisify(execFile);
@@ -41,10 +42,15 @@ beforeEach(async () => {
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 const compile = async (recording: boolean) => {
+  if (recording) for (const name of ["a", "b"]) {
+    const file = path.join(org, name, "Spawnfile"), manifest = JSON.parse(await readFile(file, "utf8"));
+    await writeFile(file, json({ ...manifest, runtime: "daimon", execution: undefined }));
+  }
   await writeFile(path.join(org, "Spawnfile"), json({ spawnfile_version: "0.1", kind: "team", name: "news", mode: "swarm",
     ...(recording ? { shared: { training: { record: {} } } } : {}), members: ["a", "b"].map((id) => ({ id, ref: id })) }));
   return compileProject(org, { bundleCacheDirectory: path.join(root, "cache/workspace-bundles"),
-    containerArchitecture: "amd64", outputDirectory: path.join(root, "out") });
+    containerArchitecture: "amd64", outputDirectory: path.join(root, "out"),
+    ...(recording ? { daimonContractManifest: capableDaimonManifest() } : {}) });
 };
 
 // Baseline field order is the pre-recording origin/main report contract. Dynamic

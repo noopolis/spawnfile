@@ -39,7 +39,7 @@ src/deployment/
 ├── buildImageCacheStore.ts # Strict, atomic Spawnfile-home cache for verified Docker image builds
 ├── record.ts        # Deployment record schema, parser, reader, and writer
 ├── homeStore.ts     # Home deployment record/report publication; logs resources after success
-├── resourceLog.ts   # Owned pins, record-path-scoped history and activation-time lookup
+├── resourceLog.ts   # Owned pins and agent recording facts, record-path-scoped activation history
 ├── recordPublication.ts # Reconcile predecessor snapshots, durable publication, then log
 ├── activation.ts    # Clock boundary strictly after old stop and before image start
 ├── recordedMemoryRetention.ts # Refuse deletion of recording agents' durable memory mounts
@@ -66,7 +66,9 @@ src/deployment/
 - Recording histories reuse report pins and hash persisted report bytes. Project `up` and
   image `up`/release append after record publication under the resource-log writer lock.
   Store a complete resource snapshot and protected memory IDs/keep in the deployment
-  record; reconcile its predecessor before replacing record or cached report, even when
+  record; each recording snapshot also carries the activation's validated per-agent facts
+  for historical sync (recording directory, feeds, resources, banks, snapshots, networks).
+  Reconcile its predecessor before replacing record or cached report, even when
   the next deployment disables recording. Otherwise off means no log/lock I/O. Logs live
   beside their record and lookups require that record path plus activation time.
   File fsync, rename and directory fsync precede log append/fsync; prune syncs its rename.

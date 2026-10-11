@@ -32,7 +32,7 @@ export const resolveRecordingAgentFacts = (
     feeds: resources.flatMap((resource) => resource.kind === "volume" && resource.feed
       ? [{ id: resource.id, volume_name: resource.name! }] : []).sort((a, b) => a.id.localeCompare(b.id)),
     resources: resources.flatMap((resource): RecordingAgentReport["resources"] => resource.kind === "volume" ? []
-      : [{ id: resource.id, kind: gitPins.some((pin) => pin.id === resource.id && pin.agent_node_ids.includes(node.id)) ? "git" : resource.kind }])
+      : [{ id: resource.id, kind: gitPins.some((pin) => pin.id === resource.id && pin.agent_node_ids?.includes(node.id)) ? "git" : resource.kind }])
       .sort((a, b) => a.id.localeCompare(b.id)),
     snapshots: resolveTrainingRecordVolumes({ id: node.id, value: agent }).map((resource) => resource.id)
   }];
