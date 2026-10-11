@@ -37,7 +37,7 @@ export const rewindGitSync = (repo: string, args: readonly string[]): Buffer =>
     env: rewindGitEnvironment(), maxBuffer: LIMIT, stdio: ["ignore", "pipe", "pipe"], timeout: 60_000
   });
 
-export interface SelectedCommit { commit: string; instant: string }
+export interface SelectedCommit { commit: string; instant: string; authorInstant?: string }
 
 /** Git's pretty formatter drops negative epochs. Read the signed raw dates instead. */
 const commitDates = async (repo: string, commit: string): Promise<{ author: string; committer: string }> => {
@@ -75,11 +75,14 @@ export const commitAt = async (repo: string, selector: string, at: string): Prom
   const commits = (await rewindGit(repo, ["log", "--first-parent", "--format=%H", head, "--"]))
     .toString().trim().split("\n").filter(Boolean);
   const dated: SelectedCommit[] = [];
-  for (const commit of commits) dated.push({ commit, instant: await commitInstant(repo, commit) });
+  for (const commit of commits) {
+    const dates = await commitDates(repo, commit);
+    dated.push({ commit, instant: dates.committer, authorInstant: dates.author });
+  }
   return selectCommitAt(dated, at);
 };
 
 /** Stable ties preserve the first-parent order returned by git. */
 export const selectCommitAt = (commits: readonly SelectedCommit[], at: string): SelectedCommit | null =>
-  commits.filter((entry) => compareInstants(entry.instant, at) <= 0)
+  commits.filter((entry) => compareInstants(entry.instant, at) <= 0 && compareInstants(entry.authorInstant ?? entry.instant, at) <= 0)
     .reduce<SelectedCommit | null>((latest, entry) => latest === null || compareInstants(entry.instant, latest.instant) > 0 ? entry : latest, null);

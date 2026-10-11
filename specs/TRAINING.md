@@ -478,7 +478,11 @@ helpers' millisecond host-clock contract.
 
 An `exact:false` record does not invalidate healthy pins: a present pin is used
 with `exact` fidelity and `record` basis (`record-cursor` for Moltnet), unless its
-`errors` names that input. Errored pins are ignored, absent pins use fallback
+`errors` names that input. A record error containing `Deployment activation is non-exact`
+instead downgrades every git/bundle pin used from that record to `approximate`,
+preserving `record` basis and the error in notes; those pins are still used.
+This covers inexact activations and rollback intervals even though the marker
+does not name individual resources. Errored pins are ignored, absent pins use fallback
 rules, and those inputs are labelled `approximate`, with the record's error text
 in notes. Explicit section or declaring-node qualifications apply only to that
 input; unqualified ID errors conservatively apply to every input with that ID.
@@ -508,7 +512,8 @@ intervals MUST remain `approximate`, with the activation/rollback reason in note
 The merged helper excludes a rolled-back candidate after its interval and restores
 the predecessor. A pin that is present but unavailable in the repository refuses.
 Only an absent deployment pin falls back to the declared selector's
-first-parent history, choosing its newest commit with committer time `<= effectiveAt`
+first-parent history, choosing its newest commit by committer time among commits
+whose author AND committer times are `<= effectiveAt`
 (`approximate`, `selector-at`); an absent selector means `HEAD`. Commit dates
 do not establish when a commit reached a branch or tag, so this fallback cannot
 prove historical ref membership. A missing eligible commit refuses.
@@ -521,13 +526,17 @@ from the selected commit, with one checked-out branch, no remotes, tags, source
 packed refs, reflogs, `FETCH_HEAD`, or `ORIG_HEAD`. Git commands use argv without
 a shell and sanitized configuration. History MUST NOT be mutated. The leak
 check also rejects any reachable ancestor with author or committer time after
-`effectiveAt`. Bundle `build.files` extracts `files.root` at the selected commit and honors
+`effectiveAt`. Rebuild the checkout index without live stat data; acceptance checks
+every index entry's ctime and mtime against `effectiveAt`. Acceptance also compares
+the worktree paths, raw bytes, symlink targets, and executable modes against the
+selected commit's tree in the output repository, refusing untracked/ignored extras.
+Bundle `build.files` extracts `files.root` at the selected commit and honors
 `exclude`. `build.dependencies` and `build.generated` retain their source
 directory or declared inputs at that commit and report `build: deferred`;
 trial preparation owns builds. Bundle output MAY be a plain tree. A moment record
 or, when absent, the deployment log pins a bundle by SHA-256 only.
 Exact bundle output requires `bundles/<sha256 hex>.tar` whose actual digest
-matches that pin (`record` or `deploy-log` basis). A deploy-log digest retains
+matches that pin (`record` or `deploy-log` basis). A record or deploy-log digest retains
 the activation/rollback fidelity above even when its bytes verify. A present
 deployment bundle pin without a matching archive refuses; it MUST NOT silently
 select a different source commit. Validate the archive before extraction: escaping paths,
@@ -537,6 +546,9 @@ For a moment-record bundle pin, absent or digest-mismatched archives fall back t
 source reconstruction where available, always `approximate` even with a pinned source commit; notes explain
 that the recorded SHA-256 could not be reproduced. A prebuilt `source` tar has
 no historical source fallback and refuses unless overridden.
+Source-built bundles record their resolved roots, prefixes and exclusions in
+`source.trees`. Acceptance re-exports that selection from the source repository
+and byte-compares the result, including when a local pin supplies the repository.
 Generated inputs spanning multiple repositories or independently pinned input
 refs cannot be represented by this one-repository/one-commit history contract
 and MUST refuse. Bundle roots whose historical repository prefix cannot be
@@ -551,9 +563,11 @@ landing log is retained. Otherwise, lookup inside the inclusive
 `[switching_at, landed_at]` window selects the incoming entry with `approximate`,
 `landing-log` and an ambiguous-transition note. Outside windows, choose the
 newest `landed_at <= effectiveAt`, breaking equal timestamps by last append
-(`exact`, `landing-log`). Before the first entry, there is no landed state.
+(`exact`, `landing-log`). Before the first entry, there is no landed state:
+a nonempty log without an applicable landing refuses unless a matching record
+supplies the state or the feed is explicitly overridden.
 
-Without selected recorded state, a plain git feed evaluates its ref template
+Without a record pin or a nonempty landing log, a plain git feed evaluates its ref template
 and paths at `effectiveAt`, including `${date}` in UTC and `${date:<IANA zone>}`.
 Use the primary ref only if it has an eligible first-parent commit; otherwise
 try the fallback. Its newest eligible commit is `approximate`, `feed-rule-at`.
@@ -631,9 +645,14 @@ events after `effectiveAt`. Empty threads/DMs and threads/DMs whose root is afte
 are dropped. Thread/DM message counts and last-message times are recomputed;
 attachment cursors are clamped/remapped to retained events. Room removals after
 `effectiveAt` are undone when removal time and restorable room metadata exist; a missing
-historical removal time retains current removal state. Agents and memberships
-have no historical log and are retained as now, explicitly disclosed in input
-`notes`: even a cursor-exact content cut cannot prove historical membership.
+historical removal time retains current removal state. Restoration MUST refuse
+when its only available room metadata comes from a future event.
+Agents registered after `effectiveAt` and their memberships and delivery cursors
+are removed; retained agents' `updated_at` and SQLite migrations' `applied_at`
+are clamped to `effectiveAt`. Both store inspectors reject future registration
+timestamps; the SQLite inspector also rejects future migration timestamps.
+Other registration metadata and memberships have no historical log, explicitly
+disclosed in input `notes`: even a cursor-exact content cut cannot prove historical membership.
 SQLite changes apply only to a copy through `node:sqlite` on the supported
 Node >=22.19 line; if that API is unavailable, SQLite rewind refuses. RFC3339Nano
 fractions with omitted trailing zeros MUST be compared as parsed instants.
@@ -755,16 +774,23 @@ reopens it read-only. That source repository must remain available for subsequen
 verification. Directory feeds and digest-pinned or explicitly overridden prebuilt tars have no git
 provenance. Recorded bundles are independently checked against their digest-pinned archive. This source check is independent of the materialized git object's
 reachable-history check and MUST NOT reuse the producer's date assertion.
+Native payload layouts use exact entry allowlists: a feed volume contains only
+`current`, `.spawnfile-feed.json`, and `trees/<selected>`; a memory bank contains
+only `memory/events.jsonl`; a Moltnet directory contains exactly one of
+`state.json` or `moltnet.sqlite`. Bundle-level entries are limited to the input
+paths and their directory ancestors plus `moment.json`, `leak-check.json`, and
+`task-clock.json`. Unexpected entries refuse even with historical file times.
 Every finding refuses the moment:
 
 | Class | Refusal condition |
 | --- | --- |
+| `bundle-entry` | An entry outside the input paths, their directory ancestors, and the report allowlist is present. |
 | `file-time` | A file, directory, or symlink atime or mtime is after `effectiveAt`. |
 | `symlink-escape` | An absolute link or a lexically/physically escaping link resolves outside the bundle. |
 | `git-object` | Source provenance is missing, inconsistent, not a commit, or has author/committer time after `effectiveAt`; any materialized commit has a future date, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. Any `.git` directory/gitfile or bare repository (`HEAD` + `objects/` + `refs/`) anywhere outside the materialized git resource repository also refuses, including inside feed trees and bundles. |
-| `memory-event` | Future ledger events, sequence gaps, invalid prefix ordering, or derived/audit files are present. |
-| `moltnet-message` / `moltnet-event` / `moltnet-room` | Retained messages, delivery events, or rooms are after `effectiveAt`. |
-| `feed-identity` | Unproved publication time after `effectiveAt`, a directory revision mismatch, or `current` outside its selected tree. |
+| `memory-event` | Future ledger events, sequence gaps, invalid prefix ordering, or unexpected bank entries are present. |
+| `moltnet-message` / `moltnet-event` / `moltnet-room` | Retained messages, delivery events, rooms, registration timestamps, or migration timestamps are after `effectiveAt`, or the store directory contains unexpected entries. |
+| `feed-identity` | Unproved publication time after `effectiveAt`, a directory revision mismatch, `current` outside its selected tree, or unexpected volume entries/retained trees. |
 | `dated-path` | A path segment contains a calendar date `YYYY-MM-DD` later than the UTC date of `effectiveAt + 14h`, the latest possible local date. |
 | `snapshot` | An unfed volume differs from its selected full snapshot manifest or retained bytes. |
 
@@ -1880,6 +1906,32 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
                 "minimum": 0,
                 "maximum": 9007199254740991
               },
+              "trees": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "root": {
+                      "type": "string"
+                    },
+                    "prefix": {
+                      "type": "string"
+                    },
+                    "exclude": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "root"
+                  ],
+                  "additionalProperties": false
+                }
+              },
               "sha256": {
                 "type": "string",
                 "pattern": "^sha256:[a-f0-9]{64}$"
@@ -2132,6 +2184,7 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
           "class": {
             "type": "string",
             "enum": [
+              "bundle-entry",
               "file-time",
               "symlink-escape",
               "git-object",

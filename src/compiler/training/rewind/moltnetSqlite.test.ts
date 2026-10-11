@@ -76,7 +76,7 @@ describe("Moltnet SQLite rewind", () => {
     message(database, "dm-regressed", before, { kind: "dm", dm_id: "dm-dropped" });
     database.prepare("INSERT INTO artifacts VALUES (?, ?, ?)").run("old-artifact", "old", before);
     database.prepare("INSERT INTO artifacts VALUES (?, ?, ?)").run("future-artifact", "future-root", future);
-    for (const agent of ["writer", "brass"]) database.prepare("INSERT INTO agents VALUES (?, 'news', 'uid', 'uri', NULL, 'key', ?, ?)").run(agent, future, future);
+    for (const agent of ["writer", "brass"]) database.prepare("INSERT INTO agents VALUES (?, 'news', 'uid', 'uri', NULL, 'key', ?, ?)").run(agent, before, future);
     event(database, "event-old", before); event(database, "event-future", future); event(database, "event-boundary", at);
     database.prepare("INSERT INTO attachment_delivery_cursors VALUES (?, ?, ?)").run("writer", 2, future);
     database.prepare("INSERT INTO attachment_delivery_cursors VALUES (?, ?, ?)").run("brass", 3, future);
@@ -117,6 +117,64 @@ describe("Moltnet SQLite rewind", () => {
       context.record.moltnet[0]!.cursor = cursor;
       await expect(materializeMoltnet(context)).rejects.toThrow(/cursor must equal.*startedAt/);
     }
+  });
+
+  it("drops future registrations and memberships, clamps retained updates and migration times, and preserves history bytes", async () => {
+    const { database, context, file } = await fixture();
+    room(database, "assignment"); dm(database, "dm-kept");
+    message(database, "dm-old", before, { kind: "dm", dm_id: "dm-kept" });
+    for (const [id, time] of [["writer", before], ["boundary", at], ["later", future]]) {
+      database.prepare("INSERT INTO agents VALUES (?, 'news', ?, ?, NULL, 'key', ?, ?)").run(id, id, id, time, future);
+    }
+    for (const id of ["boundary", "later", "unregistered"]) {
+      database.prepare("INSERT INTO room_members VALUES ('assignment', ?)").run(id);
+      database.prepare("INSERT INTO dm_participants VALUES ('dm-kept', ?)").run(id);
+    }
+    database.prepare("INSERT INTO attachment_delivery_cursors VALUES ('later', 0, ?)").run(future);
+    database.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT, applied_at TEXT)");
+    for (const [version, time] of [[1, before], [2, at], [3, future]] as const) {
+      database.prepare("INSERT INTO schema_migrations VALUES (?, 'migration', ?)").run(version, time);
+    }
+    database.close(); const sourceBytes = await readFile(file);
+    await materializeMoltnet(context);
+    const output = path.join(context.destination, "moltnet.sqlite"), result = new DatabaseSync(output, { readOnly: true });
+    try {
+      expect(result.prepare("SELECT agent_id, created_at, updated_at FROM agents ORDER BY agent_id").all()).toEqual([
+        { agent_id: "boundary", created_at: at, updated_at: at }, { agent_id: "writer", created_at: before, updated_at: at }
+      ]);
+      expect(result.prepare("SELECT member_id FROM room_members ORDER BY member_id").all())
+        .toEqual(["boundary", "unregistered", "writer"].map((member_id) => ({ member_id })));
+      expect(result.prepare("SELECT participant_id FROM dm_participants ORDER BY participant_id").all())
+        .toEqual(["boundary", "unregistered", "writer"].map((participant_id) => ({ participant_id })));
+      expect(result.prepare("SELECT * FROM attachment_delivery_cursors").all()).toEqual([]);
+      expect(result.prepare("SELECT version, applied_at FROM schema_migrations ORDER BY version").all()).toEqual([
+        { version: 1, applied_at: before }, { version: 2, applied_at: at }, { version: 3, applied_at: at }
+      ]);
+    } finally { result.close(); }
+    expect(await readFile(file)).toEqual(sourceBytes);
+    expect((await inspectMoltnetSqlite(output, at)).findings).toEqual([]);
+  });
+
+  it.each(["created_at", "updated_at"] as const)("independently flags a SQLite agent's future %s", async (field) => {
+    const { database, file } = await fixture();
+    database.prepare("INSERT INTO agents VALUES ('writer', 'news', 'uid', 'uri', NULL, 'key', ?, ?)")
+      .run(field === "created_at" ? future : before, field === "updated_at" ? future : before);
+    database.close(); const bytes = await readFile(file);
+    expect((await inspectMoltnetSqlite(file, at)).findings).toEqual([
+      { class: "moltnet-event", path: file, detail: `Agent writer has a future ${field}` }
+    ]);
+    expect(await readFile(file)).toEqual(bytes);
+  });
+
+  it("independently flags future schema migration times", async () => {
+    const { database, file } = await fixture();
+    database.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT, applied_at TEXT)");
+    database.prepare("INSERT INTO schema_migrations VALUES (1, 'migration', ?)").run(future);
+    database.close(); const bytes = await readFile(file);
+    expect((await inspectMoltnetSqlite(file, at)).findings).toEqual([
+      { class: "moltnet-event", path: file, detail: "Schema migration 1 has a future applied_at" }
+    ]);
+    expect(await readFile(file)).toEqual(bytes);
   });
 
   it("copies WAL state and independently detects message, room and attachment-event mutations without changing the file", async () => {

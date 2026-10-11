@@ -18,6 +18,9 @@ export const sqliteJson = (row: SqliteRow, key: string): unknown => {
   try { return JSON.parse(sqliteText(row, key)); }
   catch (error) { throw new Error(`Invalid Moltnet SQLite ${key}: ${(error as Error).message}`); }
 };
+export const readMoltnetSqliteMigrations = (database: DatabaseSync): SqliteRow[] =>
+  database.prepare("SELECT name FROM sqlite_schema WHERE name = 'schema_migrations'").get()
+    ? database.prepare("SELECT version, applied_at FROM schema_migrations").all() : [];
 const allowedColumns: Record<string, string[]> = {
   rooms: ["id", "network_id", "fqid", "name", "created_at", "deleted_at", "visibility", "write_policy", "federation"],
   room_members: ["room_id", "member_id"],

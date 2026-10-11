@@ -103,6 +103,16 @@ describe("feed rewind", () => {
     expect(await readdir(path.join(context.destination, "current"))).toEqual(["published"]);
   });
 
+  it("steps back past a future-authored feed commit", async () => {
+    const { context, resource, repository, past } = await fixture();
+    testGit(repository, ["checkout", "--detach", past]);
+    await commitTestGit(repository, { "published/news.txt": "future-authored\n" }, "2026-10-09T08:10:00Z");
+    testGit(repository, ["commit", "--amend", "--no-edit", `--date=${LATE}`], "2026-10-09T08:10:00Z");
+    resource.feed!.git!.ref = "HEAD";
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "approximate", basis: "feed-rule-at", source: { commit: past } });
+    expect(await readFile(path.join(context.destination, "current/published/news.txt"), "utf8")).toBe("past\n");
+  });
+
   it("expands the Berlin date in both ref and paths near UTC midnight", async () => {
     const { context, resource, repository } = await fixture();
     const commit = await commitTestGit(repository, { "2026-10-10/news.txt": "Berlin tomorrow\n" }, "2026-10-09T22:00:00Z");
@@ -229,11 +239,27 @@ describe("feed rewind", () => {
     await expect(materializeFeed(context)).rejects.toThrow("--history is required");
   });
 
-  it("validates every landing line and falls back before the first eligible landing", async () => {
-    const { context, directory, landing, log } = await fixture();
+  it("refuses before the first landing in a nonempty log unless overridden", async () => {
+    const { context, landing, log } = await fixture();
     await log([{ ...landing, switching_at: LATE, landed_at: LATE }]);
-    expect(await materializeFeed(context)).toMatchObject({ fidelity: "approximate", basis: "feed-rule-at" });
-    await rm(context.destination, { recursive: true });
+    await expect(materializeFeed(context)).rejects.toThrow(`Feed news has no landed state at ${AT}; provide an override`);
+    await expect(readdir(context.destination)).rejects.toThrow();
+    context.input.overridden = true;
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "overridden", basis: "override" });
+    expect(await readdir(context.destination)).toEqual([]);
+  });
+
+  it("preserves a matching wake pin before the first retained landing", async () => {
+    const { context, landing, log } = await fixture();
+    await log([{ ...landing, switching_at: LATE, landed_at: LATE }]);
+    context.record = { ...testMomentRecord(), feeds: [{ id: "news", revision: landing.revision, tree: landing.tree,
+      commit: landing.commit, ref: landing.ref, paths: landing.paths, landedAt: EARLY }] };
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { commit: landing.commit } });
+    expect(await readFile(path.join(context.destination, "current/published/news.txt"), "utf8")).toBe("past\n");
+  });
+
+  it("validates every landing line and falls back for an empty landing log", async () => {
+    const { context, directory, landing } = await fixture();
     await writeFile(path.join(directory, "landings.jsonl"), `${JSON.stringify(landing)}\n${JSON.stringify({ ...landing, switching_at: undefined })}\n`);
     await expect(materializeFeed(context)).rejects.toThrow(/landings.jsonl:2/u);
     await writeFile(path.join(directory, "landings.jsonl"), "");

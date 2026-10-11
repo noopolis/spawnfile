@@ -1,7 +1,7 @@
 import type { TrainingPlan } from "../plan/index.js";
 import type { MomentRecord } from "../../../recording/index.js";
 import { compareInstants, normalizeInstant } from "./instant.js";
-import { hasRecordPin, recordForInput, recordPins } from "./recordInput.js";
+import { hasRecordPin, recordActivationErrors, recordForInput, recordPins } from "./recordInput.js";
 import type { InputIdentity, RewindInput } from "./types.js";
 
 export type DatasetRole = "train" | "validation" | "test";
@@ -63,6 +63,8 @@ export const selectMomentRecord = (
       const pins = recordPins(usable, input).map((pin) => "landedAt" in pin ? { ...pin, landedAt: normalizeInstant(pin.landedAt) }
         : "cursor" in pin ? { ...pin, cursor: normalizeInstant(pin.cursor) } : pin);
       return canonical({ pin: declaredPin ? "declared-pin" : pins.sort((a, b) => canonical(a).localeCompare(canonical(b))),
+        approximateActivation: !declaredPin && pins.some((pin) => "kind" in pin && ["git", "bundle"].includes(pin.kind))
+          && recordActivationErrors(usable).length > 0,
         approximateFallback: !record.exact && !hasRecordPin(usable, input) });
     };
     if (matches.some((record) => decision(record) !== decision(matches[0]!))) {

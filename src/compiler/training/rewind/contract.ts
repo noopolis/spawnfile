@@ -11,6 +11,7 @@ export const materializedInputSchema = inputIdentitySchema.extend({
   kind: z.enum(["git", "bundle", "feed", "volume", "memory", "moltnet"]),
   fidelity: z.enum(["exact", "approximate", "overridden"]).nullable(), basis: text,
   source: z.object({ commit: text.optional(), repository: text.optional(), revision: text.optional(), seq: count.optional(),
+    trees: z.array(z.object({ root: z.string(), prefix: z.string().optional(), exclude: z.array(text).optional() }).strict()).min(1).optional(),
     sha256: recordedSha256Schema.optional(), agentSlug: text.optional(), snapshot: text.optional(), cursor: text.optional(),
     switchingAt: trainingInstantSchema.optional(), landedAt: trainingInstantSchema.optional(), prepared: z.literal(true).optional() }).strict(),
   path: text.nullable(), notes: z.array(z.string()), refusal: text.nullable(), build: z.literal("deferred").optional()
@@ -27,7 +28,7 @@ export const materializedMomentSchema = z.object({
 export type MaterializedMoment = z.infer<typeof materializedMomentSchema>;
 export const leakFindingSchema = z.object({
   input: inputIdentitySchema.nullable(),
-  class: z.enum(["file-time", "symlink-escape", "git-object", "memory-event", "moltnet-message",
+  class: z.enum(["bundle-entry", "file-time", "symlink-escape", "git-object", "memory-event", "moltnet-message",
     "moltnet-event", "moltnet-room", "feed-identity", "dated-path", "snapshot"]), path: text, detail: text
 }).strict();
 export const leakCheckSchema = z.object({

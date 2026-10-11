@@ -44,10 +44,15 @@ export const inspectBundleFiles = async (root: string, inputs: MaterializedInput
     const relative = path.relative(root, file).split(path.sep).join("/") || ".";
     const owner = inputAtPath(inputs, relative);
     const input = owner ? { section: owner.section, id: owner.id, declaredBy: owner.declaredBy } : null;
-    const add = (kind: "file-time" | "symlink-escape" | "dated-path" | "git-object", detail: string) => {
+    const add = (kind: "bundle-entry" | "file-time" | "symlink-escape" | "dated-path" | "git-object", detail: string) => {
       report.findings.push({ input, class: kind, path: relative, detail });
     };
     const stats = files.get(file)!;
+    if (!owner && relative !== ".") {
+      const reportFile = ["moment.json", "leak-check.json", "task-clock.json"].includes(relative) && stats.isFile();
+      const wrapper = stats.isDirectory() && inputs.some((entry) => entry.path?.startsWith(`${relative}/`));
+      if (!reportFile && !wrapper) add("bundle-entry", "Unexpected entry outside the materialized inputs and reports");
+    }
     report.checked.files++;
     if (stats.mtimeNs > at) add("file-time", "Modification time is later than the moment");
     if (stats.atimeNs > at) add("file-time", "Access time is later than the moment");

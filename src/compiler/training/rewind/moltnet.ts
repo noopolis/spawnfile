@@ -44,6 +44,6 @@ export const materializeMoltnet = async (context: InputContext): Promise<InputRe
   if (missing.length) throw new Error(`Moltnet network ${input.id}: recorded wake message IDs ${missing.join(", ")} are not retained after the cursor cut`);
   return { fidelity: pin ? "exact" : "approximate", basis: pin ? "record-cursor" : "created-at-cut",
     source: pin ? { cursor: pin.cursor } : {}, instant: at,
-    notes: ["Agent registrations and memberships have no historical log and are kept as now (best effort).",
+    notes: ["Future agent registrations and their memberships are removed; retained registration updates are clamped. Other membership history is unavailable (best effort).",
       "Room removals without a recorded removal instant retain the current removal state; current JSON Moltnet uses a zero-time marker."] };
 };

@@ -12,11 +12,16 @@ const qualifiedPrefix = new RegExp(`(?:^|[^A-Za-z0-9_.-])(${Object.keys(sections
 const ownerPrefix = new RegExp(`(?:^|[^A-Za-z0-9_.-])(${ownerPattern})[\\s/]+$`, "u");
 const ownerSuffix = new RegExp(`^\\s*(?:\\(\\s*|declaredBy\\s*[=:]\\s*|@\\s*)(${ownerPattern})(?=[\\s):,;]|$)`, "u");
 
+/** Merged recording keeps deployment uncertainty at record level, rather than naming each pin. */
+export const recordActivationErrors = (record: MomentRecord | null): string[] =>
+  (record?.errors ?? []).filter((error) => error.includes("Deployment activation is non-exact"));
+
 /** Errors are free text in P3: honor explicit qualifications; otherwise conservatively match the whole ID. */
 export const recordInputErrors = (record: MomentRecord, input: InputIdentity): string[] => {
   const escaped = input.id.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   const namesInput = new RegExp(`(?<![A-Za-z0-9_.-])${escaped}(?![A-Za-z0-9_.-])`, "gu");
   return (record.errors ?? []).filter((error) => {
+    if (recordActivationErrors(record).includes(error)) return false;
     let decoded = error;
     try { decoded = decodeURIComponent(error); } catch { /* A literal percent is valid free text. */ }
     return [...decoded.matchAll(namesInput)].some((match) => {

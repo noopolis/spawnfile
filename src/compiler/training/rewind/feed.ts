@@ -88,6 +88,7 @@ export const materializeFeed = async (context: InputContext): Promise<InputResul
   } else if (selected) {
     landing = selected; ambiguous = selected.ambiguous === true; basis = "landing-log";
   } else {
+    if (log.length) throw new Error(`Feed ${input.id} has no landed state at ${context.at}; provide an override`);
     // Refuse unknown historical behavior before touching any declared source or executing any command.
     if (!feed.git || feed.freeze || typeof feed.git.ref === "object" && feed.git.ref.command) await selectFeedCommit(feed, "", context.at);
     if (feed.include || feed.prepare) throw new Error("Prepared/included feed requires a landing log and retained tree bytes");

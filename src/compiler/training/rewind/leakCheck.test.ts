@@ -95,7 +95,7 @@ const intendedFinding = (name: string, fixture: Fixture, moment: MaterializedMom
     "reachable commit future committer only": { path: relative("git"), detail: /^Commit [a-f0-9]+ has a future committer date$/u },
     "future memory event": { path: relative("memory"), detail: "Future memory event at line 1" },
     "memory seq gap": { path: relative("memory"), detail: "Noncontiguous memory sequence at line 1" },
-    "memory audit state": { path: relative("memory"), detail: "Derived or audit memory state index.sqlite is forbidden" },
+    "memory audit state": { path: relative("memory"), detail: "Unexpected payload entry index.sqlite" },
     "future Moltnet message": { path: `${relative("moltnet")}/state.json`, detail: "Message future is later than the moment" },
     "future Moltnet event": { path: `${relative("moltnet")}/state.json`, detail: "Attachment event future is later than the moment" },
     "future Moltnet room": { path: `${relative("moltnet")}/state.json`, detail: "Room future is later than the moment" },

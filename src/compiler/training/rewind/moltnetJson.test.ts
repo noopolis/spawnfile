@@ -57,6 +57,53 @@ describe("Moltnet JSON rewind", () => {
     expect(rewindMoltnetJson(source, at).removed_rooms.assignment).toBe("0001-01-01T00:00:00Z");
   });
 
+  it("refuses restoration from future room events even when the embedded creation date is old", () => {
+    const source = emptyMoltnetSnapshot(network, before), room = source.rooms.assignment!;
+    delete source.rooms.assignment; source.removed_rooms.assignment = future;
+    source.attachment_delivery_events = [{ id: "future-room", type: "room.updated", network_id: "news", created_at: future,
+      room: { ...room, name: "FUTURE ROOM NAME", members: ["future-agent"] } }];
+    expect(() => rewindMoltnetJson(source, at)).toThrow("room metadata was not retained");
+    source.attachment_delivery_events.push({ id: "old-room", type: "room.created", network_id: "news", created_at: before, room });
+    expect(rewindMoltnetJson(source, at).rooms.assignment).toEqual(room);
+  });
+
+  it("drops future registrations with their memberships and cursors while clamping retained updates", async () => {
+    const source = emptyMoltnetSnapshot(network, before);
+    for (const [id, created_at, updated_at] of [["writer", before, future], ["boundary", at, at], ["later", future, future]]) {
+      source.agents[id] = { agent_id: id, network_id: "news", actor_uid: id, actor_uri: id, created_at, updated_at };
+    }
+    source.agents.undated = { agent_id: "undated", network_id: "news", actor_uid: "undated", actor_uri: "undated" };
+    source.rooms.assignment!.members = ["writer", "boundary", "later", "unregistered"];
+    source.direct_messages.dm = [message("dm-old", before, { kind: "dm", dm_id: "dm" })];
+    source.direct_members.dm = { writer: {}, boundary: {}, later: {}, unregistered: {} };
+    source.attachment_delivery_cursors = { writer: 0, later: 0 };
+    const cut = rewindMoltnetJson(source, at);
+    expect(Object.keys(cut.agents)).toEqual(["writer", "boundary", "undated"]);
+    expect(cut.agents.writer).toMatchObject({ created_at: before, updated_at: at });
+    expect(cut.agents.boundary).toMatchObject({ created_at: at, updated_at: at });
+    expect(cut.agents.undated).not.toHaveProperty("updated_at");
+    expect(cut.rooms.assignment!.members).toEqual(["writer", "boundary", "unregistered"]);
+    expect(cut.direct_members.dm).toEqual({ writer: {}, boundary: {}, unregistered: {} });
+    expect(cut.attachment_delivery_cursors).toEqual({ writer: 0 });
+    expect(source.agents.writer!.updated_at).toBe(future); expect(source.agents.later).toBeDefined();
+    expect(source.rooms.assignment!.members).toContain("later"); expect(source.direct_members.dm).toHaveProperty("later");
+    const root = await mkdtemp(path.join(os.tmpdir(), "rewind-moltnet-agents-")); temps.push(root);
+    const file = path.join(root, "state.json"); await writeFile(file, JSON.stringify(cut));
+    expect((await inspectMoltnetJson(file, at)).findings).toEqual([]);
+  });
+
+  it.each(["created_at", "updated_at"] as const)("independently flags an agent's future %s", async (field) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "rewind-moltnet-agent-leak-")); temps.push(root);
+    const file = path.join(root, "state.json"), source = emptyMoltnetSnapshot(network, before);
+    source.agents.writer = { agent_id: "writer", network_id: "news", actor_uid: "uid", actor_uri: "uri",
+      created_at: before, updated_at: before, [field]: future };
+    const bytes = JSON.stringify(source); await writeFile(file, bytes);
+    expect((await inspectMoltnetJson(file, at)).findings).toEqual([
+      { class: "moltnet-event", path: file, detail: `Agent writer has a future ${field}` }
+    ]);
+    expect(await readFile(file, "utf8")).toBe(bytes);
+  });
+
   it("materializes exact cursor and approximate cuts, keeps history unchanged and makes fresh overridden rooms", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "rewind-moltnet-")); temps.push(root);
     const bank = path.join(root, "moltnet/team%3Aorg/news"); await mkdir(bank, { recursive: true });

@@ -9,6 +9,7 @@ import { permitsFeedPublicationTime } from "./leakFeed.js";
 import { historyKey, inside, safeSegment, type History } from "./history.js";
 import { compareInstants } from "./instant.js";
 import { diskPath } from "./leakFiles.js";
+import { assertDirectoryEntries } from "./leakLayout.js";
 import { parseMemoryLedger } from "./memory.js";
 import { inspectMoltnetJson } from "./moltnetJson.js";
 import { inspectMoltnetSqlite } from "./moltnetSqlite.js";
@@ -20,15 +21,8 @@ export const addInputFinding = (report: LeakCheck, input: MaterializedInput, kin
 
 export const inspectMemoryBundle = async (root: string, input: MaterializedInput, report: LeakCheck): Promise<void> => {
   const home = await diskPath(root, input.path!);
-  const visit = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (/^(?:index\.sqlite(?:$|[-.])|causal|authority-receipts)/u.test(entry.name)) {
-        addInputFinding(report, input, "memory-event", `Derived or audit memory state ${entry.name} is forbidden`);
-      }
-      if (entry.isDirectory()) await visit(path.join(directory, entry.name));
-    }
-  };
-  await visit(home);
+  await assertDirectoryEntries(home, { memory: "directory" });
+  await assertDirectoryEntries(path.join(home, "memory"), { "events.jsonl": "file" });
   const ledger = parseMemoryLedger(await readFile(await diskPath(root, `${input.path}/memory/events.jsonl`), "utf8"));
   report.checked.memoryEvents += ledger.events.length;
   let native = false;
@@ -52,6 +46,7 @@ export const inspectFeedBundle = async (root: string, input: MaterializedInput, 
     return;
   }
   const identity: FeedIdentity = JSON.parse(await readFile(await diskPath(root, `${input.path}/.spawnfile-feed.json`), "utf8"));
+  await assertDirectoryEntries(directory, { current: "symlink", ".spawnfile-feed.json": "file", trees: "directory" });
   for (const issue of feedIdentityFindings(identity)) addInputFinding(report, input, "feed-identity", issue);
   if (compareInstants(identity.landed_at, report.at) > 0 && !(moment && await permitsFeedPublicationTime(identity, input, moment, history))) {
     addInputFinding(report, input, "feed-identity", "Feed landed_at is later than the moment");
@@ -67,6 +62,7 @@ export const inspectFeedBundle = async (root: string, input: MaterializedInput, 
     addInputFinding(report, input, "feed-identity", "Feed current does not point to its tree inside the volume");
   } else if (!(await lstat(await realpath(current))).isDirectory()) addInputFinding(report, input, "feed-identity", "Feed tree must be a directory");
   else {
+    await assertDirectoryEntries(path.join(directory, "trees"), { [path.basename(link)]: "directory" });
     const prepared = identity.source.prepared !== undefined || input.source.prepared === true;
     if (prepared && (input.fidelity !== "approximate" || !input.notes.includes("prepared output not content-verifiable"))) {
       addInputFinding(report, input, "feed-identity", "Prepared feed must be approximate: prepared output not content-verifiable");
@@ -90,6 +86,7 @@ export const inspectMoltnetBundle = async (root: string, input: MaterializedInpu
   const directory = await diskPath(root, input.path!);
   const stores = (await readdir(directory)).filter((name) => name === "state.json" || name === "moltnet.sqlite");
   if (stores.length !== 1) throw new Error("Expected exactly one Moltnet store");
+  await assertDirectoryEntries(directory, { [stores[0]!]: "file" });
   const store = await diskPath(root, `${input.path}/${stores[0]}`);
   const result = stores[0] === "state.json" ? await inspectMoltnetJson(store, report.at) : await inspectMoltnetSqlite(store, report.at);
   report.checked.moltnetMessages += result.messages;

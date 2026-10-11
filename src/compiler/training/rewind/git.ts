@@ -10,6 +10,8 @@ import { assertCommitNotFuture, commitAt, commitInstant, resolveRewindCommit, re
 import { exportGitTree, extractOverrideBundle } from "./gitTree.js";
 import { resolveRecordedCommit } from "./recordedCommit.js";
 import { materializeRecordedBundle } from "./recordedBundle.js";
+import { recordActivationErrors } from "./recordInput.js";
+import type { MaterializedInput } from "./contract.js";
 import type { InputContext, InputResult } from "./types.js";
 
 export { commitAt, commitInstant, resolveRewindCommit, rewindGit, rewindGitEnvironment, rewindGitSync, selectCommitAt } from "./gitProcess.js";
@@ -41,6 +43,9 @@ export const materializeCleanRepository = async (repository: string, commit: str
   await rewindGit(destination, ["update-ref", "refs/heads/moment", commit]);
   await rewindGit(destination, ["read-tree", commit]);
   await rewindGit(destination, ["checkout-index", "--all", "--force"]);
+  // read-tree may reuse cached stat data from an existing index; rebuild it from scratch.
+  await rm(path.join(destination, ".git/index"));
+  await rewindGit(destination, ["read-tree", commit]);
   for (const name of ["FETCH_HEAD", "ORIG_HEAD", "logs", "packed-refs"]) await rm(path.join(destination, ".git", name), { recursive: true, force: true });
 };
 
@@ -61,16 +66,15 @@ const bundlePrefix = async (root: string, base: string): Promise<string> => {
   }
 };
 
-const materializeBundle = async (resource: BundleResource, context: InputContext, repository: string, commit: string): Promise<boolean> => {
+const materializeBundle = async (resource: BundleResource, context: InputContext, repository: string, commit: string): Promise<{
+  trees: NonNullable<MaterializedInput["source"]["trees"]>; deferred: boolean
+}> => {
   const build = resource.build;
-  if (!build) { await exportGitTree(repository, commit, context.destination); return false; }
-  if (build.files) {
-    await exportGitTree(repository, commit, context.destination, { root: await bundlePrefix(build.files.root, context.input.declarationBase), exclude: build.files.exclude });
-    return false;
-  }
-  if (build.dependencies) {
-    await exportGitTree(repository, commit, context.destination, { root: await bundlePrefix(build.dependencies.directory, context.input.declarationBase) });
-  } else {
+  const trees: NonNullable<MaterializedInput["source"]["trees"]> = [];
+  if (!build) trees.push({ root: "" });
+  else if (build.files) trees.push({ root: await bundlePrefix(build.files.root, context.input.declarationBase), exclude: build.files.exclude });
+  else if (build.dependencies) trees.push({ root: await bundlePrefix(build.dependencies.directory, context.input.declarationBase) });
+  else {
     const origins = await Promise.all(build.generated!.inputs.map(async (input) => {
       try { return (await rewindGit(path.resolve(context.input.declarationBase, input.root), ["rev-parse", "--show-toplevel"])).toString().trim(); }
       catch { return null; } // Missing relative roots are mapped against the retained repository below.
@@ -82,10 +86,11 @@ const materializeBundle = async (resource: BundleResource, context: InputContext
     for (const input of build.generated!.inputs) {
       if (input.ref !== undefined) throw new Error("Generated bundle inputs cannot pin a ref: the deferred command reads the work tree");
       const root = await bundlePrefix(input.root, context.input.declarationBase);
-      await exportGitTree(repository, commit, context.destination, { root, prefix: root, exclude: input.exclude, mergeIdentical: true });
+      trees.push({ root, prefix: root, exclude: input.exclude });
     }
   }
-  return true;
+  for (const tree of trees) await exportGitTree(repository, commit, context.destination, { ...tree, mergeIdentical: true });
+  return { trees, deferred: Boolean(build?.dependencies || build?.generated) };
 };
 
 export const materializeGit = async (context: InputContext): Promise<InputResult> => {
@@ -93,6 +98,7 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
   if (input.section !== "resources" || input.declaration.kind === "volume") throw new Error("Git rewind requires a git or bundle resource");
   const resource = input.declaration, selector = selectorOf(resource), pinned = FULL_OBJECT.test(selector);
   const matchingRecord = input.overridden ? undefined : context.record?.resources.find((entry) => entry.id === input.id);
+  const activationErrors = matchingRecord ? recordActivationErrors(context.record) : [];
   const candidateCommits = input.overridden ? [] : context.candidateRecords?.flatMap((candidate) =>
     candidate.resources.flatMap((entry) => entry.id === input.id && entry.kind === "git" ? [entry.commit] : [])) ?? [];
   if (matchingRecord && matchingRecord.kind !== resource.kind) throw new Error(`Moment resource ${input.id} kind disagrees with its declaration`);
@@ -102,8 +108,8 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
   const effectivePin = matchingRecord ?? deployed?.pin;
   const bundlePin = effectivePin?.kind === "bundle" ? effectivePin : undefined;
   if (bundlePin && await materializeRecordedBundle(history, bundlePin.sha256, context.destination)) {
-    return { fidelity: deployed && !deployed.exact ? "approximate" : "exact", basis: deployed ? "deploy-log" : "record",
-      source: { sha256: bundlePin.sha256 }, notes: deployed?.notes ?? [], instant: context.at };
+    return { fidelity: activationErrors.length || deployed && !deployed.exact ? "approximate" : "exact", basis: deployed ? "deploy-log" : "record",
+      source: { sha256: bundlePin.sha256 }, notes: [...(deployed?.notes ?? []), ...activationErrors], instant: context.at };
   }
   if (deployed && bundlePin) throw new Error(`Deployment bundle ${bundlePin.sha256} could not be reproduced from retained archive bytes`);
   const bundleNote = bundlePin ? `Recorded bundle ${bundlePin.sha256} could not be reproduced from retained archive bytes.` : undefined;
@@ -131,15 +137,15 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
     : await commitAt(repository, selector, context.at);
   if (!selected) throw new Error(`No first-parent commit for ${selector} exists at or before ${context.at}`);
   await assertCommitNotFuture(repository, selected.commit, context.at);
-  const deferred = resource.kind === "bundle" ? await materializeBundle(resource, context, repository, selected.commit) : false;
+  const bundle = resource.kind === "bundle" ? await materializeBundle(resource, context, repository, selected.commit) : undefined;
   if (resource.kind === "git") await materializeCleanRepository(repository, selected.commit, context.destination);
   return {
     fidelity: input.overridden ? "overridden" : resource.kind === "bundle" ? "approximate"
-      : deployed ? deployed.exact ? "exact" : "approximate" : pinned || record ? "exact" : "approximate",
+      : record && activationErrors.length ? "approximate" : deployed ? deployed.exact ? "exact" : "approximate" : pinned || record ? "exact" : "approximate",
     basis: input.overridden ? "override" : pinned ? "pinned" : deployed ? "deploy-log" : record ? "record" : "selector-at",
-    source: { commit: selected.commit, ...(!fromHistory ? { repository } : {}) }, instant: selected.instant,
-    notes: [...(deployed?.notes ?? []), ...(pinned || record || input.overridden ? [] : ["Commit dates do not establish when a commit reached the selected ref."]),
+    source: { commit: selected.commit, ...(!fromHistory ? { repository } : {}), ...(bundle ? { trees: bundle.trees } : {}) }, instant: selected.instant,
+    notes: [...(deployed?.notes ?? []), ...(record || bundle ? activationErrors : []), ...(pinned || record || input.overridden ? [] : ["Commit dates do not establish when a commit reached the selected ref."]),
       ...(!input.overridden && resource.kind === "bundle" ? [bundleNote ?? "Source reconstruction has no matching recorded bundle digest."] : [])],
-    ...(deferred ? { build: "deferred" } : {})
+    ...(bundle?.deferred ? { build: "deferred" } : {})
   };
 };

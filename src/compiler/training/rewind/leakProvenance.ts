@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { FeedIdentity } from "../../../volume/feedRecord.js";
 import type { LeakCheck, MaterializedInput } from "./contract.js";
@@ -9,6 +10,17 @@ import { instantNanos } from "./instant.js";
 import { diskPath } from "./leakFiles.js";
 import { addInputFinding } from "./leakInputs.js";
 import { verifyRecordedBundle } from "./recordedBundle.js";
+import { digestDirectory } from "../../../volume/index.js";
+import { exportGitTree } from "./gitTree.js";
+
+const inspectBundleTree = async (repository: string, commit: string, directory: string, input: MaterializedInput): Promise<void> => {
+  if (!input.source.trees?.length) throw new Error("Missing bundle source tree selection");
+  const scratch = await mkdtemp(path.join(os.tmpdir(), "spawnfile-bundle-check-"));
+  try {
+    for (const tree of input.source.trees) await exportGitTree(repository, commit, scratch, { ...tree, mergeIdentical: true });
+    if (digestDirectory(directory) !== digestDirectory(scratch)) throw new Error("Bundle bytes disagree with selected commit, roots and exclusions");
+  } finally { await rm(scratch, { recursive: true, force: true }); }
+};
 
 /** Read receipts and source objects afresh; never trust the producer's date guard or stamped files. */
 export const inspectInputProvenance = async (
@@ -55,5 +67,6 @@ export const inspectInputProvenance = async (
       if (!match) add(`Provenance commit ${commit} has no valid ${role} date`);
       else if (BigInt(match[1]!) * 1_000_000_000n > instantNanos(report.at)) add(`Provenance commit ${commit} has a future ${role} date`);
     }
+    if (input.kind === "bundle") await inspectBundleTree(repository, commit, await diskPath(root, input.path!), input);
   } catch (error) { add(error instanceof Error ? error.message : String(error)); }
 };
