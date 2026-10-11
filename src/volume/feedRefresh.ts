@@ -84,14 +84,16 @@ const heal = (target: FeedTarget, record: FeedLandedRecord, sweep: FeedSweep, ru
     landFeed(target, resolved, record, { exact: held, force: true, heals: { ...record.heals, [record.revision]: cycles + 1 }, ...(record.period ? { period: record.period } : {}), runtime });
     return { ...base, status: "repaired" };
   }
-  if (sweep.relink) pointCurrent(target.volume, feedTreeLink(record.tree), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target) });
+  let switchingAt: string | undefined;
+  if (sweep.relink) pointCurrent(target.volume, feedTreeLink(record.tree), { ops: runtime.ops ?? LINK_OPS, tmpDir: feedStagingDir(target),
+    ...(target.record ? { beforeRename: () => { switchingAt = (runtime.now ?? (() => new Date()))().toISOString(); } } : {}) });
   const reestablished = sweep.relink && target.record ? (runtime.now ?? (() => new Date()))() : undefined;
   let next = record;
   if (sweep.identity || reestablished) {
     const identity = reestablished ? { ...record.identity, landed_at: reestablished.toISOString() } : record.identity;
     next = { ...record, identity, identity_sha256: writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) }) };
   }
-  publishFeedLanded(target, next, reestablished ?? (runtime.now ?? (() => new Date()))());
+  publishFeedLanded(target, next, reestablished ?? (runtime.now ?? (() => new Date()))(), record, switchingAt);
   const after = sweepFeed(target, next);
   if (repairable(after)) return { findings: [...sweep.findings, ...after.findings.map((finding) => `still after repair: ${finding}`)], previous: record.revision, revision: record.revision, status: "tampered" };
   return { ...base, status: repairable(sweep) && sweep.unknown.length === 0 ? "repaired" : "tampered" };
@@ -112,7 +114,7 @@ const adopt = (target: FeedTarget, record: FeedLandedRecord, resolved: ResolvedF
   const now = target.record ? (runtime.now ?? (() => new Date()))() : undefined;
   const identity = { ...record.identity, source, ...(now ? { landed_at: now.toISOString() } : {}) };
   const identitySha = writeFeedIdentity(target.volume, identity, { owner: target.owner, tmpDir: feedStagingDir(target) });
-  publishFeedLanded(target, { ...record, identity, identity_sha256: identitySha, period }, now ?? new Date());
+  publishFeedLanded(target, { ...record, identity, identity_sha256: identitySha, period }, now ?? new Date(), record);
 };
 
 /** A held volume (frozen, or waiting for a ref that does not exist yet) keeps serving what it has; it is still verified and healed. */

@@ -24,7 +24,7 @@ describe("feed landing history", () => {
     const first = entries()[0]!;
     expect(first).toEqual({ version: "spawnfile.volume-feed-landing.v1", resource: "shared-data", volume: "shared-data-vol",
       revision: readFeedLanded(fixture.target.stateDir).record!.revision, tree: readFeedLanded(fixture.target.stateDir).record!.identity.tree,
-      source: { kind: "directory", directory: fixture.source }, landed_at: at(1).now().toISOString() });
+      source: { kind: "directory", directory: fixture.source }, switching_at: at(1).now().toISOString(), landed_at: at(1).now().toISOString() });
     const file = path.join(fixture.volume, first.tree, "a.txt");
     fs.chmodSync(file, 0o644); fs.writeFileSync(file, "ALPHA\n");
     expect(refreshVolumeFeed(fixture.target, at(2)).status).toBe("repaired");
@@ -101,7 +101,7 @@ describe("feed landing history", () => {
     expect(fs.existsSync(path.join(fixture.volume, entries()[0]!.tree))).toBe(false);
     expect(fs.statSync(logFile()).mode & 0o777).toBe(0o600);
     expect(feedLandingAt(entries(), at(8).now())).toEqual(entries()[0]);
-    expect(feedLandingAt(entries(), at(10).now())).toEqual(entries()[1]);
+    expect(feedLandingAt(entries(), at(10).now())).toEqual({ ...entries()[1], ambiguous: true });
     expect(feedLandingAt(entries(), new Date(at(3).now().getTime() - 1))).toBeNull();
   });
 
@@ -123,7 +123,7 @@ describe("feed landing history", () => {
     fs.unlinkSync(path.join(fixture.volume, "current"));
     refreshVolumeFeed(fixture.target, { now: () => new Date("2026-10-02T09:00:00.456Z") });
     expect(entries()[2]).toMatchObject({ commit, landed_at: "2026-10-02T09:00:00.456Z" });
-    expect(feedLandingAt(entries(), entries()[0]!.landed_at)).toEqual(entries()[0]);
+    expect(feedLandingAt(entries(), entries()[0]!.landed_at)).toEqual({ ...entries()[0], ambiguous: true });
     fs.appendFileSync(logFile(), "broken\n{}\n");
     expect(readFeedLandings(fixture.target.stateDir).errors).toEqual(["line 4: invalid JSON or entry", "line 5: invalid JSON or entry"]);
   });
@@ -135,7 +135,7 @@ it("reconciles failed B before a different revision C, retaining the original so
   writeSourceFiles(fixture.source, { "a.txt": "B\n" });
   const open = fs.openSync;
   vi.spyOn(fs, "openSync").mockImplementation((file, ...args) => {
-    if (file === logFile()) throw new Error("B append failed");
+    if (file === logFile() && args[0] !== "r") throw new Error("B append failed");
     return open(file, ...args);
   });
   expect(() => refreshVolumeFeed(fixture.target, at(2))).toThrow("B append failed");

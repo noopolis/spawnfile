@@ -9,7 +9,7 @@ import { SpawnfileError } from "../shared/index.js";
 import { normalizeDeploymentName } from "./names.js";
 import { acquirePidLock, PidLockBusyError } from "./pidLock.js";
 import { parseDeploymentRecord, type DeploymentRecord } from "./record.js";
-import { bindDeploymentRecording, publishDeploymentRecord } from "./recordPublication.js";
+import { bindDeploymentRecording, publishDeploymentRecord, writeAtomicDeploymentFile } from "./recordPublication.js";
 export { HomeDeploymentRecordingError } from "./recordPublication.js";
 
 export const resolveHomeDeploymentsDirectory = (): string =>
@@ -52,7 +52,8 @@ export const acquireHomeDeploymentLock = async (
 /** Writes the record and the cached distribution report together, record last. */
 export const writeHomeDeployment = async (
   record: DeploymentRecord,
-  report: DistributionReport
+  report: DistributionReport,
+  previous?: DeploymentRecord | null
 ): Promise<{ recordPath: string; reportPath: string }> => {
   const parsed = parseDeploymentRecord(record);
   const directory = resolveHomeDeploymentDirectory(parsed.name);
@@ -62,7 +63,8 @@ export const writeHomeDeployment = async (
   const recordPath = resolveHomeRecordPath(parsed.name);
   const reportBytes = `${JSON.stringify(report, null, 2)}\n`;
   const bound = parseDeploymentRecord(bindDeploymentRecording(recordPath, parsed, report, reportBytes));
-  await publishDeploymentRecord(recordPath, bound, () => writeDurableFile(reportPath, reportBytes));
+  await publishDeploymentRecord(recordPath, bound,
+    (durable) => (durable ? writeDurableFile : writeAtomicDeploymentFile)(reportPath, reportBytes), previous);
   return { recordPath, reportPath };
 };
 

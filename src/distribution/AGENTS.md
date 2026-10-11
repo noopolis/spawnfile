@@ -41,6 +41,9 @@ src/distribution/
 - Image up (also used by drained release) verifies the old container stopped, then
   captures activation on a later clock tick immediately before starting the replacement.
   Record creation time is informational; resource lookup uses activation time.
+  A removed failed candidate records its inexact activation/rollback interval before
+  restoring the predecessor. Reuse the existing home-record listing for publication's
+  predecessor context so recording-off adds no reads.
 - Candidate startup gets the full readiness budget (default 600 seconds,
   overridable via `SPAWNFILE_CANDIDATE_READINESS_TIMEOUT_MS`) even if Docker
   marks a running process unhealthy during initialization. Only running and

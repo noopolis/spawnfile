@@ -1,7 +1,7 @@
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 
-import { ensureDirectory, PublishedFileSyncError, syncFile, writeDurableFile } from "../filesystem/index.js";
+import { PublishedFileSyncError, syncFile, writeDurableFile } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { acquirePidLock } from "./pidLock.js";
 import { parseDeploymentRecord, type DeploymentRecord } from "./record.js";
@@ -29,22 +29,32 @@ const priorRecord = async (recordPath: string): Promise<DeploymentRecord | null>
   return parseDeploymentRecord(JSON.parse(bytes), recordPath);
 };
 
-/** The record embeds its pins so recompilation/failed report replacement cannot erase pending history. */
+/** The original non-recording publication sequence, including its temporary name and permissions. */
+export const writeAtomicDeploymentFile = async (file: string, bytes: string): Promise<void> => {
+  const temporary = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
+  await writeFile(temporary, bytes, "utf8");
+  await rename(temporary, file);
+};
+
+/** Callers create the directory and pass the predecessor from their existing lifecycle read.
+ * Recording replacements re-read under the lock; off never probes for recording state. */
 export const publishDeploymentRecord = async (
-  recordPath: string, record: DeploymentRecord, publishReport?: () => Promise<void>
+  recordPath: string, record: DeploymentRecord, publishReport?: (durable: boolean) => Promise<void>,
+  previous?: DeploymentRecord | null
 ): Promise<void> => {
-  await ensureDirectory(path.dirname(recordPath));
-  const prior = await priorRecord(recordPath);
-  // With recording off and no outstanding recorded predecessor, no history/lock I/O.
-  const release = record.recording || prior?.recording
-    ? await acquirePidLock(`${recordPath}.resource-log.lock`) : async () => undefined;
+  if (!record.recording && !previous?.recording) {
+    await publishReport?.(false);
+    await writeAtomicDeploymentFile(recordPath, `${JSON.stringify(record, null, 2)}\n`);
+    return;
+  }
+  const release = await acquirePidLock(`${recordPath}.resource-log.lock`);
   try {
     const previous = await priorRecord(recordPath);
     if (previous?.resource_snapshot && previous.recording) {
       await syncFile(recordPath);
       ensureDeployResources(recordPath, previous.resource_snapshot, previous.recording.keep_ms);
     }
-    await publishReport?.();
+    await publishReport?.(true);
     try { await writeDurableFile(recordPath, `${JSON.stringify(record, null, 2)}\n`); }
     catch (cause) {
       if (cause instanceof PublishedFileSyncError) throw new HomeDeploymentRecordingError(record.name, cause);

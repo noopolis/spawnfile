@@ -35,8 +35,10 @@ const publish = async (mode: string, pin: string, enabled = true) => {
     activated_at: new Date(Date.now() - 100).toISOString(), activation_exact: true,
     target: { kind: "host", value: "unix:///test-only.sock" } });
   const file = mode === "home" ? resolveHomeRecordPath("default") : resolveDeploymentRecordPath(root, "default");
-  if (mode === "home") await writeHomeDeployment({ ...record, output_directory: null, source: { kind: "image", ref: "org/news:v1", digest: null } }, report);
-  else await writeDeploymentRecord(root, bindDeploymentRecording(file, record, report, JSON.stringify(report)));
+  // Lifecycle already loads the predecessor to resolve target/container identity.
+  const previous = fs.existsSync(file) ? await readDeploymentRecord(file) : null;
+  if (mode === "home") await writeHomeDeployment({ ...record, output_directory: null, source: { kind: "image", ref: "org/news:v1", digest: null } }, report, previous);
+  else await writeDeploymentRecord(root, bindDeploymentRecording(file, record, report, JSON.stringify(report)), previous);
   return file;
 };
 
@@ -45,7 +47,7 @@ it.each(["project", "home"])("%s reconciles failed B before publishing different
   vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
   const open = fs.openSync;
   vi.spyOn(fs, "openSync").mockImplementation((name, ...args) => {
-    if (name === deployResourceLogPath(file)) throw new Error("B append failed");
+    if (name === deployResourceLogPath(file) && args[0] !== "r") throw new Error("B append failed");
     return open(name, ...args);
   });
   await expect(publish(mode, "b")).rejects.toThrow("B append failed");
@@ -62,6 +64,38 @@ it.each(["project", "home"])("%s reconciles failed B before publishing different
   expect(history.entries[1]).toEqual(pending);
   expect((await readDeploymentRecord(file)).recording).toEqual({ keep_ms: 30 * 86_400_000, memory_mount_ids: ["memory"] });
 });
+
+it.each(["project", "home"].flatMap((mode) => ["file", "directory"].map((failure) => ({ mode, failure }))))(
+  "$mode retries a visible append after $failure fsync failure before recording-off replacement", async ({ mode, failure }) => {
+    const file = await publish(mode, "a"), log = deployResourceLogPath(file);
+    vi.setSystemTime(new Date("2026-10-11T00:00:00Z"));
+    const open = fs.openSync, write = fs.writeSync, sync = fs.fsyncSync;
+    const handles = new Map<number, string>(), events: string[] = [];
+    let appended = false, fail = true;
+    vi.spyOn(fs, "openSync").mockImplementation((name, ...args) => {
+      const fd = open(name, ...args); handles.set(fd, String(name)); return fd;
+    });
+    vi.spyOn(fs, "writeSync").mockImplementation(((fd: number, bytes: Uint8Array) => {
+      const result = write(fd, bytes); if (handles.get(fd) === log) appended = true; return result;
+    }) as typeof fs.writeSync);
+    vi.spyOn(fs, "fsyncSync").mockImplementation((fd) => {
+      const name = handles.get(fd)!; events.push(name);
+      if (appended && fail && name === (failure === "file" ? log : path.dirname(log))) throw new Error("log fsync failed");
+      sync(fd);
+    });
+    await expect(publish(mode, "b")).rejects.toThrow("log fsync failed");
+    expect(readDeployResources(file).entries).toHaveLength(2);
+    const pending = fs.readFileSync(file, "utf8");
+    await expect(publish(mode, "c", false)).rejects.toThrow("log fsync failed");
+    expect(fs.readFileSync(file, "utf8")).toBe(pending);
+    fail = false; events.length = 0;
+    await publish(mode, "c", false);
+    expect(events).toContain(log);
+    expect(events.indexOf(path.dirname(log))).toBeGreaterThan(events.indexOf(log));
+    expect(readDeployResources(file).entries).toHaveLength(2);
+    expect((await readDeploymentRecord(file)).recording).toBeUndefined();
+  }
+);
 
 it.each(["project", "home"])("%s blocks replacement if predecessor reconciliation fails, even when switching recording off", async (mode) => {
   const file = await publish(mode, "a");

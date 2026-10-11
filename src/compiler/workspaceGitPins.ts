@@ -90,6 +90,7 @@ const treeEntries = async (resource: GitResource, repository: string, commit: st
  */
 export const resolveWorkspaceGitPins = async (plan: CompilePlan, options: ResolveWorkspaceGitPinsOptions): Promise<ResolvedWorkspaceGitPins> => {
   const result: ResolvedWorkspaceGitPins = { built: new Map(), report: [] };
+  const recording = plan.nodes.some((node) => node.kind === "agent" && node.value.training?.record !== undefined);
   const pinned = plan.nodes.flatMap((node) => node.kind === "agent" ? (node.value.workspaceResources ?? []).filter(isBuildPinnedGitResource) : []);
   if (pinned.length === 0) return result;
   const root = path.join(path.dirname(resolveWorkspaceBundleCacheDirectory(options.bundleCacheDirectory)), "git-resources");
@@ -115,7 +116,6 @@ export const resolveWorkspaceGitPins = async (plan: CompilePlan, options: Resolv
     resolved.set(memoKey, {
       commit,
       facts: {
-        agent_node_ids: [],
         auth: auth === undefined ? "none" : auth.sshKey !== undefined ? "ssh_key" : "ssh_key_env",
         cache_key: key, commit, content_bytes: cached.contentBytes, file_count: cached.fileCount, id: resource.id, identity,
         platform, selector: selector.kind === "none" ? { kind: "default_branch" } : { kind: selector.kind, value: selector.value },
@@ -130,11 +130,13 @@ export const resolveWorkspaceGitPins = async (plan: CompilePlan, options: Resolv
       if (!isBuildPinnedGitResource(resource)) return resource;
       const { facts } = resolved.get(declarationKey(resource))!;
       const same = (existing: CompileReportWorkspaceGitResource): boolean => existing.id === resource.id && existing.url === facts.url && existing.commit === facts.commit && existing.sha256 === facts.sha256 && JSON.stringify(existing.selector) === JSON.stringify(facts.selector);
-      const declared_by = plan.nodes.find((entry) => entry.value.source === resource.scope.key)?.id;
-      let pin = result.report.find((entry) => same(entry) && entry.declared_by === declared_by);
-      if (!pin) { pin = { ...facts, id: resource.id, agent_node_ids: [], ...(declared_by ? { declared_by } : {}) }; result.report.push(pin); }
-      if (!pin.agent_node_ids.includes(node.id)) pin.agent_node_ids.push(node.id);
-      pin.agent_node_ids.sort();
+      if (recording) {
+        const declared_by = plan.nodes.find((entry) => entry.value.source === resource.scope.key)?.id;
+        let pin = result.report.find((entry) => same(entry) && entry.declared_by === declared_by);
+        if (!pin) { pin = { ...facts, id: resource.id, agent_node_ids: [], ...(declared_by ? { declared_by } : {}) }; result.report.push(pin); }
+        if (!pin.agent_node_ids!.includes(node.id)) pin.agent_node_ids!.push(node.id);
+        pin.agent_node_ids!.sort();
+      } else if (!result.report.some(same)) result.report.push({ ...facts, id: resource.id });
       // From here on it is a bundle: same staging, same identity-checked read-only mount, no auth fields.
       return { id: resource.id, kind: "bundle", mode: "readonly", mount: resource.mount, scope: resource.scope, sha256: facts.sha256, sharing: "per_agent" };
     });

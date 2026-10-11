@@ -7,11 +7,14 @@ import {
   activationBeforeStart,
   captureCandidateDiagnostics,
   createDockerDeploymentLabels,
-  homeDeploymentExists,
+  listHomeDeploymentRecords,
   HomeDeploymentRecordingError,
   normalizeDeploymentName,
   sanitizeCandidateDiagnostic,
+  recordDeploymentRollback,
+  resolveHomeRecordPath,
   writeHomeDeployment,
+  type DeploymentActivation,
   type DeploymentRecord
 } from "../deployment/index.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -166,7 +169,8 @@ const consumeImageUpLocked = async (
   options: ConsumeImageUpOptions
 ): Promise<ConsumeImageUpResult> => {
   void parsedRef;
-  const alreadyExists = await homeDeploymentExists(deploymentName);
+  const previousRecord = (await listHomeDeploymentRecords()).find((entry) => entry.record.name === deploymentName)?.record;
+  const alreadyExists = previousRecord !== undefined;
   if (alreadyExists && !isExplicitName) {
     throw new SpawnfileError(
       "validation_error",
@@ -294,8 +298,9 @@ const consumeImageUpLocked = async (
     runArgs.push(imageRef);
 
     let candidateId: string | undefined;
+    let activation: DeploymentActivation = {};
     try {
-      const activation = report.recording ? await activationBeforeStart(stoppedAt, now) : {};
+      activation = report.recording ? await activationBeforeStart(stoppedAt, now) : {};
       const runOutput = (await runDocker(runArgs)).toString("utf8").trim();
       const observedId = runOutput.split("\n").pop()?.trim();
       if (!observedId || !/^[a-f0-9]{64}$/u.test(observedId)) {
@@ -333,7 +338,7 @@ const consumeImageUpLocked = async (
         version: "spawnfile.deployment.v2"
       };
 
-      const written = await writeHomeDeployment(record, report);
+      const written = await writeHomeDeployment(record, report, previousRecord);
       if (previousContainer !== null) {
         await runDocker(["rm", "-f", previousContainer.id]).catch(() => undefined);
       }
@@ -359,7 +364,10 @@ const consumeImageUpLocked = async (
         sanitizeCandidateDiagnostic(cause instanceof Error ? cause.message : String(cause), Object.values(env)) + detail);
       try {
         await rollbackCandidateContainer(
-          runDocker, candidateId, containerName, previousContainer, backupName
+          runDocker, candidateId, containerName, previousContainer, backupName,
+          report.recording && activation.activated_at ? () => recordDeploymentRollback(resolveHomeRecordPath(deploymentName),
+            { name: deploymentName, created_at: activation.activated_at!, ...activation }, report,
+            `${JSON.stringify(report, null, 2)}\n`, now().toISOString()) : undefined
         );
       } catch (rollbackError) {
         throw failure(rollbackError);

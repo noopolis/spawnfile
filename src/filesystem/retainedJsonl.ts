@@ -70,6 +70,7 @@ const writeAndSync = (fd: number, text: string): void => {
  */
 export const appendRetainedJsonl = <T>(file: string, entry: T, options: {
   keepMs: number; now: Date; timeOf: (entry: T) => string; isEntry: (value: unknown) => value is T;
+  retain?: (entries: readonly T[], cutoff: number) => T[];
 }): void => {
   if (!Number.isSafeInteger(options.keepMs) || options.keepMs <= 0 || !Number.isFinite(options.now.getTime())) {
     throw new Error("Recording retention requires a positive safe duration and valid clock");
@@ -87,7 +88,8 @@ export const appendRetainedJsonl = <T>(file: string, entry: T, options: {
 
   const parsed = parseLines(previous + line, options.isEntry);
   const entries = parsed.lines.flatMap(({ entry: value }) => value === undefined ? [] : [value]);
-  const retained = new Set(retainEntries(entries, options.now.getTime() - options.keepMs, options.timeOf));
+  const cutoff = options.now.getTime() - options.keepMs;
+  const retained = new Set(options.retain ? options.retain(entries, cutoff) : retainEntries(entries, cutoff, options.timeOf));
   const kept = parsed.lines.filter(({ entry: value }) => value === undefined || retained.has(value));
   if (kept.length === parsed.lines.length) return;
   const temporary = `${file}.${randomUUID()}.tmp`;

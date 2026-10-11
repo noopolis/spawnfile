@@ -33,6 +33,7 @@ src/deployment/
 ├── dockerInspect.ts # Bounded Docker container inspection for status --live
 ├── dockerLogs.ts    # Bounded Docker log collection with redaction for status --logs
 ├── candidateDiagnostics.ts # Private startup evidence captured before failed-image rollback
+├── candidateRecording.ts # Inexact activation intervals for removed failed candidates
 ├── dockerProbeGateway.ts # Manager-mediated artifact reads and ephemeral same-image network-namespace health probes
 ├── dockerRecover.ts # Docker label recovery for context-backed remote status
 ├── buildImageCacheStore.ts # Strict, atomic Spawnfile-home cache for verified Docker image builds
@@ -72,6 +73,11 @@ src/deployment/
   Retain the newest state at/before the keep cutoff.
   A log failure after home publication raises `HomeDeploymentRecordingError`; the recorded
   deployment remains live. Callers must not roll back its container behind the persisted record.
+  Publication takes predecessor metadata from existing lifecycle reads; recording-off
+  without a recorded predecessor uses the original write/rename sequence with no extra I/O.
+  Matching history tails must still fsync file and directory before reconciliation succeeds.
+  `candidateRecording.ts` records rolled-back startup intervals as inexact; lookup excludes
+  their published snapshots after rollback, and retention keeps the restored predecessor.
 - `down --volumes` refuses deletion of recording memory before export or teardown unless
   `--discard-recorded-memory` is explicit; `--force` alone is insufficient. Match protected
   mount IDs from the DEPLOYED record to actual volume names, including aliases. Refuse

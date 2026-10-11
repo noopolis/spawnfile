@@ -109,6 +109,9 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   and `declared_by` from the resolved graph through distribution, without re-resolution.
   Launch activation is captured before the runner; replacement without a stop/drain
   barrier is explicitly inexact. Image `up` and release use the home publication path.
+  Reuse the existing detached-options record read as publication's predecessor context;
+  recording-off does not probe again. A project candidate removed after readiness failure
+  records its inexact activation/rollback interval using the published resource snapshot.
 - Built workspace bundles take identity from git, never from a content walk of
   unchanged files: release from `ls-tree` of a clean `HEAD`, dev from index
   blob ids plus hashes of only the files `git status` reports changed. The

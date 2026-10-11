@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import * as asyncFs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -15,9 +16,10 @@ import { deployResourcesAt } from "../deployment/resourceLog.js";
 const doubles = vi.hoisted(() => ({ extract: vi.fn(), docker: vi.fn() }));
 vi.mock("./extractImage.js", async (original) => ({ ...await original<typeof import("./extractImage.js")>(), extractImageReport: doubles.extract }));
 vi.mock("./dockerRunner.js", async (original) => ({ ...await original<typeof import("./dockerRunner.js")>(), createConsumerDockerRunner: () => doubles.docker }));
+vi.mock("node:fs/promises", async (original) => ({ ...await original<typeof import("node:fs/promises")>() }));
 let root: string;
 beforeEach(() => { root = mkdtempSync(path.join(os.tmpdir(), "spawnfile-activation-")); vi.stubEnv("SPAWNFILE_HOME", root); });
-afterEach(() => { vi.resetAllMocks(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
 it.each(["image", "drained-release"])("%s places activation strictly after old stop and before the new startup wake", async (mode) => {
   const report = buildDistributionReport({ envVariables: [], generatedAt: new Date().toISOString(), internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [],
@@ -76,4 +78,68 @@ it.each(["image", "drained-release"])("%s places activation strictly after old s
   const file = resolveHomeRecordPath("news"), entry = deployResourcesAt(readDeployResources(file).entries, file, wake, "agent:writer")!;
   expect(entry).toMatchObject({ activated_at: wake, activation_exact: true, resources: [expect.objectContaining({ commit: "b".repeat(40) })] });
   expect(Date.parse(entry.deployed_at)).toBeGreaterThan(Date.parse(wake));
+});
+
+it.each(["image", "drained-release"].flatMap((mode) => ["readiness", "publication"].map((failure) => ({ mode, failure }))))('$mode records a startup wake when $failure fails and restores predecessor lookup after rollback', async ({ mode, failure }) => {
+  const report = buildDistributionReport({ envVariables: [], generatedAt: new Date().toISOString(), internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [],
+    organization: { agents: [], teams: [], project: "news" }, persistentMounts: [], portMappings: [], publishedPorts: [], resources: [], runtimeInstances: [],
+    recording: { keep_ms: 30 * 86_400_000, memory_mount_ids: [] },
+    workspaceGitResources: [{ id: "archive", agent_node_ids: ["agent:writer"], commit: "b".repeat(40), sha256: `sha256:${"c".repeat(64)}` }] });
+  doubles.extract.mockResolvedValue({ report, compileFingerprint: report.compile_fingerprint });
+  const oldId = "a".repeat(64), newId = "b".repeat(64), imageId = `sha256:${"c".repeat(64)}`;
+  let time = Date.now(), wake = "", oldName = "spawnfile-news", oldRunning = true, removed = false;
+  const now = () => new Date(++time);
+  const start = new Date(time - 1000).toISOString();
+  await writeHomeDeployment({ auth_profile: null, compile_fingerprint: report.compile_fingerprint, created_at: start, activated_at: start, activation_exact: true,
+    manager: "docker", name: "news", output_directory: null, source: { kind: "image", ref: "example/news:old", digest: null }, target: { kind: "host", value: "unix:///test-only.sock" },
+    units: [{ id: "news-container", kind: "container", container_id: oldId, container_name: oldName, image_id: imageId, image_tag: "example/news:old", contains: [], runtime_instances: [] }],
+    version: "spawnfile.deployment.v2" }, { ...report, workspace_git_resources: [{ ...report.workspace_git_resources![0]!, commit: "a".repeat(40) }] });
+  if (failure === "publication") {
+    const rename = asyncFs.rename;
+    vi.spyOn(asyncFs, "rename").mockImplementation(async (from, to) => {
+      if (String(to) === resolveHomeRecordPath("news")) throw new Error("candidate publication failed");
+      await rename(from, to);
+    });
+  }
+  doubles.docker.mockImplementation(async (args: string[]) => {
+    if (args[0] === "rename") { oldName = args[2]!; return Buffer.from(""); }
+    if (args[0] === "stop") { oldRunning = false; return Buffer.from(""); }
+    if (args[0] === "start") { oldRunning = true; return Buffer.from(""); }
+    if (args[0] === "run") { wake = new Date(++time).toISOString(); return Buffer.from(newId); }
+    if (args[0] === "rm") { expect(args.at(-1)).toBe(newId); removed = true; time++; return Buffer.from(""); }
+    if (args[0] === "container" && args[1] === "inspect") {
+      const ref = args.at(-1)!;
+      if (ref === oldId || ref === oldName) return Buffer.from(`"${oldId}"\n"/${oldName}"\n${oldRunning}`);
+      if (args.some((value) => value.includes(".State.Running"))) return Buffer.from(`"${newId}"\n"/spawnfile-news"\nfalse`);
+      return Buffer.from(`"${newId}"\n"/spawnfile-news"\n${failure === "readiness" ? '{"Running":false,"ExitCode":1}' : '{"Running":true,"Health":{"Status":"healthy"}}'}`);
+    }
+    return Buffer.from("{}"); // bounded diagnostic probes, no live Docker
+  });
+  if (mode === "image") {
+    await expect(consumeImageUp("example/news:new", { deploymentName: "news", dockerHost: "unix:///test-only.sock", runDocker: doubles.docker, now })).rejects.toThrow();
+  } else {
+    const deps = createDefaultReleaseDependencies();
+    deps.inspectUnit = async () => ({ id: oldId, imageId, restartCount: 0, running: true, health: "healthy" });
+    deps.runtimesOf = async () => ["daimon"];
+    deps.requestDrain = async () => ({ drain: "draining", state: "paused" });
+    deps.waitForDrained = async () => ({ drained: true, waitedMs: 1 });
+    deps.requestResume = async () => ({ drain: null, state: "running" });
+    const request: ReleaseRequest = { bundleIdentity: "release", deployment: "news", dockerCommand: "docker", dockerHost: "unix:///test-only.sock",
+      drain: true, drainPollMs: 1, drainTimeoutMs: 1000, envFileEnv: { SPAWNFILE_DAIMON_CONTROL_TOKEN: "test-token" }, force: false,
+      inputPath: root, log: () => undefined, notifier: { kind: "none" }, notifyDeferredAfterMs: 1000, now,
+      target: { kind: "host", value: "unix:///test-only.sock" }, settle: { pollMs: 1, polls: 1, stablePolls: 1 } };
+    const paths = resolveReleasePaths("news", root);
+    mkdirSync(paths.directory, { recursive: true });
+    const release = await acquireHomeDeploymentLock("news");
+    try { await expect(drainAndSwap(request, deps, paths, "example/news:new")).rejects.toThrow("deploy failed"); } finally { await release(); }
+  }
+  expect(removed).toBe(true);
+  expect(oldName).toBe("spawnfile-news"); expect(oldRunning).toBe(true);
+  const file = resolveHomeRecordPath("news"), { entries, errors } = readDeployResources(file);
+  expect(errors).toEqual([]);
+  const entry = deployResourcesAt(entries, file, wake, "agent:writer")!;
+  expect(entry).toMatchObject({ activation_exact: false, exact: false, rolled_back_at: expect.any(String), resources: [expect.objectContaining({ commit: "b".repeat(40) })] });
+  expect(Date.parse(entry.activated_at)).toBeLessThanOrEqual(Date.parse(wake));
+  expect(Date.parse(entry.rolled_back_at!)).toBeGreaterThan(Date.parse(wake));
+  expect(deployResourcesAt(entries, file, new Date(time + 1))!.resources[0]).toMatchObject({ commit: "a".repeat(40) });
 });

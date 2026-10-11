@@ -243,6 +243,7 @@ export const createDockerRunInvocation = async (
 };
 
 interface ResolvedRunDeploymentOptions {
+  previousRecord?: DeploymentRecord;
   authProfile?: string;
   containerName?: string;
   deploymentName?: string;
@@ -296,6 +297,7 @@ export const resolveDetachedDeploymentOptions = async (
   }
 
   return {
+    previousRecord: record,
     authProfile: options.authProfile ?? record.auth_profile ?? undefined,
     containerName: options.containerName ?? unit?.container_name ?? undefined,
     deploymentName,
@@ -369,6 +371,7 @@ export const runProject = async (
 
   const deploymentRecordPath = invocation.detach && invocation.deploymentName
     ? await writeDockerDeploymentRecordForRun({
+        previousRecord: resolvedOptions.previousRecord,
         authProfileName: authProfile?.name ?? null,
         envFilePath: resolvedOptions.envFilePath,
         imageTag,
