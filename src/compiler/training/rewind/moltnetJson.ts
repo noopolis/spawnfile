@@ -113,12 +113,6 @@ export const rewindMoltnetJson = (source: MoltnetSnapshot, at: string): MoltnetS
   return snapshot;
 };
 
-/** UUID cursors have no ordering: exactness is established only from the retained message instant. */
-export const moltnetCursorExact = (messages: Array<{ id: string; created_at: string }>, cursor?: string): boolean => {
-  const message = cursor === undefined ? undefined : messages.find((entry) => entry.id === cursor);
-  return Boolean(message && messages.every((entry) => compareInstants(entry.created_at, message.created_at) <= 0));
-};
-
 /** Independent timestamp inspection of event payloads, including embedded messages and rooms. */
 export const inspectMoltnetEvent = (event: MoltnetEvent, at: string, path: string): MoltnetFinding[] => {
   const findings: MoltnetFinding[] = [];

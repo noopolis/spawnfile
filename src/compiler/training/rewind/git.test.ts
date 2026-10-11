@@ -35,7 +35,8 @@ describe("git rewind", () => {
       testGit(repository, ["checkout", "--detach", past]);
       testGit(repository, ["commit", "--allow-empty", "-m", "future metadata", `--date=${role === "author" ? LATE : EARLY}`], role === "committer" ? LATE : EARLY);
       const commit = testGit(repository, ["rev-parse", "HEAD"]);
-      context.record = { ...testMomentRecord(), resources: [{ id: "archive", kind, commit }] };
+      context.record = { ...testMomentRecord(), resources: kind === "git" ? [{ id: "archive", kind, commit }] : [] };
+      if (context.input.declaration.kind === "bundle") context.input.declaration.build!.files!.ref = commit;
       await expect(materializeGit(context)).rejects.toThrow(`Selected commit ${commit} has an author or committer date after ${AT}`);
       await expect(readdir(context.destination)).rejects.toThrow();
     }
@@ -93,7 +94,7 @@ describe("git rewind", () => {
     const { past, context } = await fixture(); context.history = undefined;
     await expect(materializeGit(context)).rejects.toThrow("unpinned resources require --history");
     context.input.declaration = { id: "archive", kind: "bundle", mode: "readonly", mount: "./archive", source: "today.tar" };
-    await expect(materializeGit(context)).rejects.toThrow("Prebuilt bundle has no recorded commit");
+    await expect(materializeGit(context)).rejects.toThrow("Prebuilt bundle has no matching recorded archive");
     context.input.declaration = { id: "archive", kind: "git", mode: "readonly", mount: "./archive", url: "https://example.invalid/repo", ref: past };
     await expect(materializeGit(context)).rejects.toThrow("network access is forbidden");
   });
@@ -101,7 +102,7 @@ describe("git rewind", () => {
   it("exports files bundle roots and exclusions at their pinned commit", async () => {
     const { past, context } = await fixture();
     context.input.declaration = { id: "archive", kind: "bundle", mode: "readonly", mount: "./archive", build: { files: { root: "package", ref: past, exclude: ["secret.txt"] } } };
-    expect(await materializeGit(context)).toMatchObject({ fidelity: "exact", basis: "pinned", source: { commit: past } });
+    expect(await materializeGit(context)).toMatchObject({ fidelity: "approximate", basis: "pinned", source: { commit: past } });
     expect(await readdir(context.destination)).toEqual(["package.json"]);
   });
 
@@ -115,15 +116,6 @@ describe("git rewind", () => {
     context.input.declaration.build!.files!.ref = testGit(repository, ["rev-parse", "HEAD"]);
     await expect(materializeGit(context)).rejects.toThrow("author or committer date after");
     await expect(readdir(context.destination)).rejects.toThrow();
-  });
-
-  it("exports a prebuilt bundle's recorded git tree instead of today's tar", async () => {
-    const { past, context } = await fixture();
-    context.input.declaration = { id: "archive", kind: "bundle", mode: "readonly", mount: "./archive", source: "does-not-exist.tar" };
-    context.record = { ...testMomentRecord(), resources: [{ id: "archive", kind: "bundle", commit: past }] };
-    expect(await materializeGit(context)).toMatchObject({ fidelity: "exact", basis: "record" });
-    expect(await readFile(path.join(context.destination, "readme.txt"), "utf8")).toBe("past\n");
-    await expect(readFile(path.join(context.destination, ".git"))).rejects.toThrow();
   });
 
   it("defers dependency and generated recipes while keeping all declared historical inputs", async () => {
@@ -154,12 +146,12 @@ describe("git rewind", () => {
     await symlink("package.json", path.join(repository, "package/link"));
     const ref = await commitTestGit(repository, {}, "2026-10-09T08:10:00Z");
     context.input.declaration = { id: "archive", kind: "bundle", mode: "readonly", mount: "./archive", build: { files: { root: "package", ref } } };
-    expect(await materializeGit(context)).toMatchObject({ fidelity: "exact" });
+    expect(await materializeGit(context)).toMatchObject({ fidelity: "approximate" });
     expect(await readlink(path.join(context.destination, "link"))).toBe("package.json");
     expect(await readFile(path.join(context.destination, "link"), "utf8")).toBe("{}\n");
     await rm(context.destination, { recursive: true, force: true });
     context.input.declaration.build!.files!.exclude = ["link"];
-    expect(await materializeGit(context)).toMatchObject({ fidelity: "exact" });
+    expect(await materializeGit(context)).toMatchObject({ fidelity: "approximate" });
     expect(await readdir(context.destination)).not.toContain("link");
   });
 

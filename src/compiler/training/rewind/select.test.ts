@@ -6,11 +6,11 @@ import { selectMomentRecord, selectTrainingExample } from "./select.js";
 const at = "2026-10-09T08:20:31Z";
 const record = (): MomentRecord => ({
   version: "spawnfile.moment-record.v1", agent: "agent:writer",
-  wake: { at, surface: "moltnet", room: "assignment", from: "brass" }, recordedAt: at,
+  wake: { at, startedAt: at, executionId: "execution-17", deliveries: [{ deliveryId: "delivery-17", kind: "message", occurredAt: at }], surface: "moltnet", room: "assignment", from: "brass" }, recordedAt: at, exact: true,
   resources: [{ id: "repo", kind: "git", commit: "a".repeat(40) }],
   feeds: [{ id: "news", revision: "rev", tree: "tree", commit: "b".repeat(40), paths: ["published"], landedAt: at }],
   memory: [{ id: "self", declaredBy: "agent:writer", seq: 2, generation: 0 }],
-  moltnet: [{ network: "network", cursor: "cursor" }], volumes: [{ id: "state", snapshot: "snapshot" }]
+  moltnet: [{ network: "network", cursor: at }], volumes: [{ id: "state", snapshot: "snapshot" }]
 });
 const dataset = (name: string, id: string) => ({ sourcePath: `/project/${name}.yaml`, path: `${name}.yaml`,
   examples: [{ id, at, wake: { surface: "moltnet" as const, room: "assignment", from: "brass", text: "write" }, overrides: [] }] });
@@ -39,12 +39,12 @@ describe("pure rewind record selection", () => {
   });
 
   const changes: Array<[string, (value: MomentRecord) => void]> = [
-    ["resource commit", (value) => { value.resources[0]!.commit = "c".repeat(40); }],
+    ["resource commit", (value) => { value.resources[0] = { id: "repo", kind: "git", commit: "c".repeat(40) }; }],
     ["feed revision", (value) => { value.feeds[0]!.revision = "different"; }],
     ["feed paths", (value) => { value.feeds[0]!.paths = ["private"]; }],
     ["memory sequence", (value) => { value.memory[0]!.seq = 3; }],
     ["memory generation", (value) => { value.memory[0]!.generation = 1; }],
-    ["network cursor", (value) => { value.moltnet[0]!.cursor = "different"; }],
+    ["network cursor", (value) => { value.moltnet[0]!.cursor = "2026-10-10T00:00:00Z"; }],
     ["volume snapshot", (value) => { value.volumes[0]!.snapshot = "different"; }]
   ];
   it.each(changes)("refuses conflicting %s fields", (_name, change) => {
@@ -55,7 +55,7 @@ describe("pure rewind record selection", () => {
 
   it("compares only inputs being used and retains memory declaring-node identity", () => {
     const first = record(), second = structuredClone(first);
-    second.resources[0]!.commit = "c".repeat(40);
+    second.resources[0] = { id: "repo", kind: "git", commit: "c".repeat(40) };
     second.memory.push({ id: "self", declaredBy: "team:other", generation: 9, seq: 88 });
     const selected = [{ section: "memory" as const, id: "self", declaredBy: "agent:writer" }];
     expect(selectMomentRecord([first, second], "agent:writer", at, selected)).toBe(first);
@@ -65,7 +65,7 @@ describe("pure rewind record selection", () => {
 
   it("accepts reordered record entries without mutating its inputs", () => {
     const first = record();
-    first.resources.push({ id: "another", kind: "bundle", commit: "d".repeat(40) });
+    first.resources.push({ id: "another", kind: "bundle", sha256: `sha256:${"d".repeat(64)}` });
     const second = structuredClone(first);
     second.resources.reverse();
     const before = structuredClone([first, second]);
@@ -73,9 +73,19 @@ describe("pure rewind record selection", () => {
     expect([first, second]).toEqual(before);
   });
 
+  it("refuses conflicting bundle digests even when the declared source has a full commit pin", () => {
+    const first = record(), second = record();
+    first.resources = [{ id: "tools", kind: "bundle", sha256: `sha256:${"a".repeat(64)}` }];
+    second.resources = [{ id: "tools", kind: "bundle", sha256: `sha256:${"b".repeat(64)}` }];
+    expect(() => selectMomentRecord([first, second], "agent:writer", at, [{
+      section: "resources", id: "tools", declaredBy: "agent:writer", overridden: false, declarationBase: "/project",
+      declaration: { id: "tools", kind: "bundle", mode: "readonly", mount: "./tools", build: { files: { root: ".", ref: "c".repeat(40) } } }
+    }])).toThrow("Conflicting moment records");
+  });
+
   it("does not compare record fields superseded by a full commit pin or another resource kind", () => {
     const first = record(), second = structuredClone(first);
-    second.resources[0]!.commit = "c".repeat(40);
+    second.resources[0] = { id: "repo", kind: "git", commit: "c".repeat(40) };
     second.feeds[0]!.revision = "other";
     expect(selectMomentRecord([first, second], "agent:writer", at, [{
       section: "resources", id: "repo", declaredBy: "agent:writer", overridden: false, declarationBase: "/project",

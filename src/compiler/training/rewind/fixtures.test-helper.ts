@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -6,6 +5,7 @@ import { trainingProject, writeTrainingFile, teamFiles, teamManifest, volume, ex
 import { loadTrainingProject, resolveTrainingPlan } from "../plan/index.js";
 import { rewindGitEnvironment } from "./gitProcess.js";
 import { resolveFeedSource } from "../../../volume/feedSource.js";
+import { writeRecordedVolumeSnapshot } from "./snapshotFixtures.test-helper.js";
 import type { MomentRecord } from "./contract.js";
 import type { MemoryLedgerEvent } from "./memorySchemas.js";
 
@@ -18,8 +18,9 @@ export const memoryEvent = (seq: number, createdAt = BEFORE): MemoryLedgerEvent 
   tags: [], entities: [], sensitivity: "normal", parentEventIds: [], checksum: `checksum-${seq}`
 });
 export const emptyRecord = (agent = "agent:a", at = AT): MomentRecord => ({
-  version: "spawnfile.moment-record.v1", agent, wake: { at, surface: "moltnet", room: "assignment", from: "brass" },
-  recordedAt: FUTURE, resources: [], feeds: [], memory: [], moltnet: [], volumes: []
+  version: "spawnfile.moment-record.v1", agent, wake: { at, startedAt: at, executionId: "execution-17",
+    deliveries: [{ deliveryId: "delivery-17", kind: "message", occurredAt: at }], surface: "moltnet", room: "assignment", from: "brass" },
+  recordedAt: FUTURE, exact: true, resources: [], feeds: [], memory: [], moltnet: [], volumes: []
 });
 export const jsonl = async (root: string, relative: string, values: unknown[]): Promise<void> => {
   const file = path.join(root, relative);
@@ -44,8 +45,8 @@ export const rewindFixture = async () => {
   await mkdir(path.dirname(feedRepo), { recursive: true });
   testGit(root, ["clone", "--quiet", "--no-local", gitRepo, feedRepo]);
   const feedSource = resolveFeedSource({ kind: "git", repo: feedRepo, ref: commit, fetch: false });
-  await jsonl(historyDir, "feeds/team%3Apublication/news/landings.jsonl", [{ revision: feedSource.revision,
-    tree: feedSource.revision, commit, ref: "main", paths: null, landedAt: BEFORE }]);
+  await jsonl(historyDir, "feeds/team%3Apublication/news/landings.jsonl", [{ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "news", source: { kind: "git", repo: feedRepo }, revision: feedSource.revision,
+    tree: `trees/${feedSource.revision}`, commit, ref: "main", landed_at: BEFORE }]);
   await writeFile(path.join(gitRepo, "future.txt"), "secret after wake\n");
   testGit(gitRepo, ["add", "."]); testGit(gitRepo, ["commit", "--quiet", "-m", "future"], "2026-10-10T00:00:00Z");
   const futureCommit = testGit(gitRepo, ["rev-parse", "HEAD"]);
@@ -56,13 +57,10 @@ export const rewindFixture = async () => {
   await writeTrainingFile(root, "Spawnfile", manifest);
   await writeTrainingFile(root, "training/train.yaml", { examples: [{ ...example, networks: [network] }] });
   await jsonl(historyDir, "memory/agent%3Aa/self/events.jsonl", [memoryEvent(1), memoryEvent(2, FUTURE)]);
-  const data = Buffer.from("snapshot bytes\n"), digest = createHash("sha256").update(data).digest("hex");
-  await jsonl(historyDir, "volumes/team%3Apublication/edition-state/snapshots.jsonl", [
-    { snapshot: "snapshot-1", takenAt: BEFORE, parent: null, files: { "saved.txt": digest } }
-  ]);
-  const objectDir = path.join(historyDir, "volumes/team%3Apublication/edition-state/objects");
-  await mkdir(objectDir, { recursive: true }); await writeFile(path.join(objectDir, digest), data);
   const project = await loadTrainingProject(root), plan = resolveTrainingPlan(project, "agent:a", "test");
+  const agentSlug = project.compilePlan.nodes.find((node) => node.id === plan.agent.id)!.slug;
+  await writeRecordedVolumeSnapshot(historyDir, { agentSlug, agentId: plan.agent.id, rootId: "edition-state",
+    snapshot: "20261009T070000000Z-execution-17", startedAt: BEFORE, files: { "saved.txt": "snapshot bytes\n" } });
   return { root, historyDir, project, plan, gitRepo, futureCommit, commit, feedRepo,
     options: { project, plan, example: example.id, historyDir, out: path.join(root, "out") } };
 };

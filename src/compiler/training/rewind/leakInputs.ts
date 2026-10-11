@@ -1,15 +1,17 @@
-import { createHash } from "node:crypto";
 import { lstat, readFile, readdir, readlink, realpath } from "node:fs/promises";
 import path from "node:path";
 import { feedIdentityFindings, type FeedIdentity } from "../../../volume/feedRecord.js";
-import type { LeakCheck, LeakFinding, MaterializedInput } from "./contract.js";
-import { historyKey, inside, type History } from "./history.js";
+import type { LeakCheck, LeakFinding, MaterializedInput, MaterializedMoment } from "./contract.js";
+import { digestDirectory } from "../../../volume/index.js";
+import { permitsFeedPublicationTime } from "./leakFeed.js";
+import { inside, safeSegment, type History } from "./history.js";
 import { compareInstants } from "./instant.js";
 import { diskPath } from "./leakFiles.js";
 import { parseMemoryLedger } from "./memory.js";
 import { inspectMoltnetJson } from "./moltnetJson.js";
 import { inspectMoltnetSqlite } from "./moltnetSqlite.js";
-import { replayVolumeSnapshot, volumeSnapshotSchema } from "./volumes.js";
+import { readSnapshotManifest, snapshotBytes, snapshotHistoryPath, snapshotTreeFindings } from "./snapshotManifest.js";
+import { wakeSnapshotRowSchema } from "./volumes.js";
 
 export const addInputFinding = (report: LeakCheck, input: MaterializedInput, kind: LeakFinding["class"], detail: string, file = input.path!): void => {
   report.findings.push({ input: { section: input.section, id: input.id, declaredBy: input.declaredBy }, class: kind, path: file, detail });
@@ -42,7 +44,7 @@ export const inspectMemoryBundle = async (root: string, input: MaterializedInput
   if (input.source.seq !== ledger.events.length) addInputFinding(report, input, "memory-event", "Ledger length disagrees with the materialized sequence");
 };
 
-export const inspectFeedBundle = async (root: string, input: MaterializedInput, report: LeakCheck): Promise<void> => {
+export const inspectFeedBundle = async (root: string, input: MaterializedInput, report: LeakCheck, moment?: MaterializedMoment, history?: History): Promise<void> => {
   const directory = await diskPath(root, input.path!);
   if (input.fidelity === "overridden") {
     if ((await readdir(directory)).length) addInputFinding(report, input, "feed-identity", "Overridden feed volume must be empty");
@@ -50,7 +52,9 @@ export const inspectFeedBundle = async (root: string, input: MaterializedInput, 
   }
   const identity: FeedIdentity = JSON.parse(await readFile(await diskPath(root, `${input.path}/.spawnfile-feed.json`), "utf8"));
   for (const issue of feedIdentityFindings(identity)) addInputFinding(report, input, "feed-identity", issue);
-  if (compareInstants(identity.landed_at, report.at) > 0) addInputFinding(report, input, "feed-identity", "Feed landed_at is later than the moment");
+  if (compareInstants(identity.landed_at, report.at) > 0 && !(moment && await permitsFeedPublicationTime(identity, input, moment, history))) {
+    addInputFinding(report, input, "feed-identity", "Feed landed_at is later than the moment");
+  }
   if (identity.resource !== input.id || identity.revision !== input.source.revision) {
     addInputFinding(report, input, "feed-identity", "Feed identity disagrees with the moment input");
   }
@@ -61,6 +65,9 @@ export const inspectFeedBundle = async (root: string, input: MaterializedInput, 
     || !inside(path.join(directory, "trees"), await realpath(current))) {
     addInputFinding(report, input, "feed-identity", "Feed current does not point to its tree inside the volume");
   } else if (!(await lstat(await realpath(current))).isDirectory()) addInputFinding(report, input, "feed-identity", "Feed tree must be a directory");
+  else if (identity.source.kind === "directory" && digestDirectory(await realpath(current)) !== identity.revision) {
+    addInputFinding(report, input, "feed-identity", "Directory feed revision disagrees with retained bytes");
+  }
 };
 
 export const inspectMoltnetBundle = async (root: string, input: MaterializedInput, report: LeakCheck): Promise<void> => {
@@ -75,38 +82,27 @@ export const inspectMoltnetBundle = async (root: string, input: MaterializedInpu
 };
 
 export const inspectVolumeBundle = async (root: string, input: MaterializedInput, report: LeakCheck, history?: History): Promise<void> => {
-  let expected: Record<string, string> = {};
-  if (input.fidelity !== "overridden") {
-    if (!history || !input.source.snapshot) throw new Error("Snapshot verification requires its history and selected snapshot");
-    const snapshots = await history.jsonl(`volumes/${historyKey(input)}/snapshots.jsonl`, volumeSnapshotSchema);
-    if (!snapshots) throw new Error("Snapshot history is missing");
-    const replay = replayVolumeSnapshot(snapshots, input.source.snapshot);
-    if (compareInstants(replay.takenAt, report.at) > 0) throw new Error("Selected snapshot is later than the moment");
-    expected = replay.files;
-    report.checked.snapshots += replay.chain.length;
+  const directory = await diskPath(root, input.path!);
+  if (input.fidelity === "overridden") {
+    for (const name of await readdir(directory)) addInputFinding(report, input, "snapshot", `Unexpected snapshot entry ${name}`);
+    return;
   }
-  const found = new Set<string>();
-  const directories = new Set<string>();
-  for (const name of Object.keys(expected)) {
-    for (let parent = path.posix.dirname(name); parent !== "."; parent = path.posix.dirname(parent)) directories.add(parent);
+  if (!history || !input.source.snapshot || !input.source.agentSlug) throw new Error("Snapshot verification requires its history, agent slug and selected snapshot");
+  if (input.source.snapshot.endsWith(".partial")) throw new Error("Selected snapshot is partial");
+  const relative = snapshotHistoryPath(input.source.agentSlug, input.id, input.source.snapshot);
+  const manifest = await readSnapshotManifest(history, relative, input.id, input.source.snapshot);
+  const retained = await history.path(relative);
+  if (!manifest || !retained) throw new Error("Snapshot tree or manifest is missing");
+  if (compareInstants(manifest.started_at, report.at) > 0) throw new Error("Selected snapshot is later than the moment");
+  const rows = await history.jsonl(`recording/${safeSegment(input.source.agentSlug)}/wake-moments.jsonl`, wakeSnapshotRowSchema);
+  if (!rows?.some((row) => compareInstants(row.started_at, manifest.started_at) === 0
+    && row.snapshots.some((entry) => entry.id === input.id && entry.snapshot === input.source.snapshot))) {
+    throw new Error("Selected snapshot has no matching wake row");
   }
-  const visit = async (relative: string): Promise<void> => {
-    const folder = await diskPath(root, `${input.path}${relative ? `/${relative}` : ""}`);
-    for (const entry of await readdir(folder, { withFileTypes: true })) {
-      const name = relative ? `${relative}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
-        if (!directories.has(name)) addInputFinding(report, input, "snapshot", `Unexpected snapshot directory ${name}`);
-        await visit(name);
-      } else {
-        found.add(name);
-        if (!entry.isFile() || !Object.hasOwn(expected, name)) addInputFinding(report, input, "snapshot", `Unexpected snapshot entry ${name}`);
-        else {
-          const digest = createHash("sha256").update(await readFile(await diskPath(root, `${input.path}/${name}`))).digest("hex");
-          if (digest !== expected[name]) addInputFinding(report, input, "snapshot", `Snapshot digest mismatch for ${name}`);
-        }
-      }
-    }
-  };
-  await visit("");
-  for (const name of Object.keys(expected)) if (!found.has(name)) addInputFinding(report, input, "snapshot", `Missing snapshot file ${name}`);
+  report.checked.snapshots++;
+  for (const detail of await snapshotTreeFindings(retained, manifest, { retained: true })) addInputFinding(report, input, "snapshot", `Retained ${detail}`);
+  for (const detail of await snapshotTreeFindings(directory, manifest, {
+    readBytes: async (name) => readFile(await diskPath(root, `${input.path}/${name}`)),
+    expectedBytes: (name) => snapshotBytes(history, relative, name)
+  })) addInputFinding(report, input, "snapshot", detail);
 };

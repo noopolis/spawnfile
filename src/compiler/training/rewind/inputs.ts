@@ -60,5 +60,5 @@ export const resolveRewindInputs = (
     }
   }
   inputs.sort((a, b) => a.section.localeCompare(b.section) || a.declaredBy.localeCompare(b.declaredBy) || a.id.localeCompare(b.id));
-  return { inputs, selected, at: normalizeInstant(raw.at) };
+  return { inputs, selected, at: normalizeInstant(raw.at), agentSlug: agent.slug };
 };

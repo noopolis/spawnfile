@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from "node
 import path from "node:path";
 import type { TeamWorkspaceResource } from "../../../manifest/index.js";
 import { digestDirectory, feedIdentityFindings, resolveFeedSource } from "../../../volume/index.js";
-import { feedLandingSchema, materializeFeed, selectFeedLanding, type FeedLanding } from "./feed.js";
+import { materializeFeed, type FeedLanding } from "./feed.js";
 import { History } from "./history.js";
 import { commitTestGit, gitTestRoot, initTestGit, testGit, testMomentRecord } from "./git.test-helper.js";
 import type { InputContext } from "./types.js";
@@ -19,7 +19,8 @@ const fixture = async () => {
   const past = await commitTestGit(repository, { "published/news.txt": "past\n", "ignored/private.txt": "not-fed\n" }, EARLY);
   const future = await commitTestGit(repository, { "published/news.txt": "future\n" }, LATE);
   const revision = resolveFeedSource({ kind: "git", fetch: false, repo: repository, ref: past, paths: ["published"] }).revision;
-  const landing: FeedLanding = { revision, tree: revision, commit: past, ref: "main", paths: ["published"], landedAt: EARLY };
+  const landing: FeedLanding = { version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "org-news",
+    source: { kind: "git", repo: "https://never-fetch.invalid/source" }, revision, tree: `trees/${revision}`, commit: past, ref: "main", paths: ["published"], landed_at: EARLY };
   const resource: TeamWorkspaceResource = { id: "news", kind: "volume", mode: "mutable", mount: "./news", name: "org-news",
     feed: { git: { repo: "https://never-fetch.invalid/source", ref: "main", paths: ["published"], fetch: true } } };
   const context: InputContext = { at: AT, destination: path.join(root, "output"), history: new History(path.join(root, "history")), record: null,
@@ -36,7 +37,7 @@ describe("feed rewind", () => {
       testGit(repository, ["commit", "--allow-empty", "-m", "future metadata", `--date=${role === "author" ? LATE : EARLY}`], role === "committer" ? LATE : EARLY);
       const commit = testGit(repository, ["rev-parse", "HEAD"]);
       const revision = resolveFeedSource({ kind: "git", fetch: false, repo: repository, ref: commit, paths: ["published"] }).revision;
-      await log([{ ...landing, commit, revision, tree: revision, landedAt: EARLY }]);
+      await log([{ ...landing, commit, revision, tree: revision, landed_at: EARLY }]);
       if (bytes === "retained") {
         const retained = path.join(directory, "trees", revision);
         await mkdir(retained, { recursive: true }); await writeFile(path.join(retained, "future.txt"), "future retained bytes");
@@ -48,16 +49,50 @@ describe("feed rewind", () => {
 
   it("selects exact boundary landings and matches offset-equivalent records", async () => {
     const { context, landing, log, revision } = await fixture();
-    const selected = { ...landing, landedAt: AT };
-    await log([selected, { ...landing, revision: "f".repeat(64), tree: "f".repeat(64), landedAt: "2026-10-09T08:20:31.001Z" }]);
-    context.record = { ...testMomentRecord(), feeds: [{ id: "news", revision, tree: revision, commit: landing.commit!, paths: ["published"], landedAt: "2026-10-09T10:20:31+02:00" }] };
-    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "landing-log", source: { commit: landing.commit, revision }, instant: AT });
+    const selected = { ...landing, landed_at: AT };
+    await log([selected, { ...landing, revision: "f".repeat(64), tree: "f".repeat(64), landed_at: "2026-10-09T08:20:31.001Z" }]);
+    context.record = { ...testMomentRecord(), feeds: [{ id: "news", revision, tree: revision, commit: landing.commit!, ref: "main", paths: ["published"], landedAt: "2026-10-09T10:20:31+02:00" }] };
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { commit: landing.commit, revision }, instant: "2026-10-09T10:20:31+02:00" });
     expect(await readlink(path.join(context.destination, "current"))).toBe(`trees/${revision}`);
     expect(await readFile(path.join(context.destination, "current/published/news.txt"), "utf8")).toBe("past\n");
     const identity = JSON.parse(await readFile(path.join(context.destination, ".spawnfile-feed.json"), "utf8"));
     expect(feedIdentityFindings(identity)).toEqual([]);
-    expect(identity).toMatchObject({ landed_at: AT, files: 1, source: { commit: landing.commit, paths: ["published"], ref: "main" } });
+    expect(identity).toMatchObject({ landed_at: "2026-10-09T10:20:31+02:00", files: 1, source: { commit: landing.commit, paths: ["published"], ref: "main" } });
   });
+
+  it("uses a present pin from an inexact record without a landing log or optional ref", async () => {
+    const { context, landing } = await fixture();
+    context.record = { ...testMomentRecord(), exact: false, errors: ["memory self unavailable"],
+      feeds: [{ id: "news", revision: landing.revision, tree: landing.tree, commit: landing.commit,
+        paths: landing.paths, landedAt: EARLY }] };
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { commit: landing.commit } });
+    expect(await readFile(path.join(context.destination, "current/published/news.txt"), "utf8")).toBe("past\n");
+    expect(JSON.parse(await readFile(path.join(context.destination, ".spawnfile-feed.json"), "utf8")).source.ref).toBe(landing.commit);
+  });
+
+  it("keeps the original wake pin when another landing precedes the replay", async () => {
+    const { context, landing, log, repository } = await fixture();
+    const commit = await commitTestGit(repository, { "published/news.txt": "later landing\n" }, "2026-10-09T08:10:00Z");
+    const revision = resolveFeedSource({ kind: "git", fetch: false, repo: repository, ref: commit, paths: ["published"] }).revision;
+    await log([landing, { ...landing, commit, revision, tree: `trees/${revision}`, landed_at: "2026-10-09T08:11:00Z" }]);
+    context.record = { ...testMomentRecord(), feeds: [{ id: "news", revision: landing.revision, tree: landing.tree,
+      commit: landing.commit, ref: landing.ref, paths: landing.paths, landedAt: EARLY }] };
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { commit: landing.commit } });
+    expect(await readFile(path.join(context.destination, "current/published/news.txt"), "utf8")).toBe("past\n");
+  });
+
+  it.each(["2026-10-09T08:20:30Z", AT, "2026-10-09T08:20:32Z"])
+    ("uses the incoming transition landing approximately at %s", async (at) => {
+      const { context, landing, log } = await fixture();
+      const incoming = { ...landing, switching_at: "2026-10-09T08:20:30Z", landed_at: "2026-10-09T08:20:32Z" };
+      await log([landing, incoming]); context.at = at;
+      const result = await materializeFeed(context);
+      expect(result).toMatchObject({ fidelity: "approximate", basis: "landing-log", instant: at,
+        source: { switchingAt: incoming.switching_at, landedAt: incoming.landed_at } });
+      expect(result.notes).toEqual([expect.stringContaining("ambiguous feed transition")]);
+      expect(JSON.parse(await readFile(path.join(context.destination, ".spawnfile-feed.json"), "utf8")).landed_at).toBe(incoming.landed_at);
+      expect(await readFile(path.join(context.destination, "current/published/news.txt"), "utf8")).toBe("past\n");
+    });
 
   it("falls back to the feed rule at the trial instant with historical committer landing time", async () => {
     const { context, past, revision } = await fixture();
@@ -91,11 +126,15 @@ describe("feed rewind", () => {
     const { context, resource, directory, landing, log } = await fixture();
     resource.feed = { git: { repo: "never-used", ref: { command: ["never-run-ref"] } }, freeze: { timezone: "UTC", after: "08:00" },
       include: [{ from: "not-on-disk", to: "assets" }], prepare: { host: true, command: ["never-run-prepare"] } };
-    const retained = path.join(directory, "trees", landing.revision);
+    const retained = path.join(directory, "trees", `${landing.revision}.2`);
     await mkdir(retained, { recursive: true }); await writeFile(path.join(retained, "prepared.txt"), "retained\n");
-    await log([{ ...landing, tree: `${landing.revision}.2` }]);
+    await log([{ ...landing, tree: `trees/${landing.revision}.2`, source: { kind: "git", repo: "never-used", prepared: {
+      source_revision: landing.revision, include: [], prepare: { command: ["never-run-prepare"], image: null, network: null, platform: null }
+    } } }]);
     expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "landing-log" });
+    expect(await readlink(path.join(context.destination, "current"))).toBe(`trees/${landing.revision}.2`);
     expect(await readFile(path.join(context.destination, "current/prepared.txt"), "utf8")).toBe("retained\n");
+    expect(JSON.parse(await readFile(path.join(context.destination, ".spawnfile-feed.json"), "utf8")).source.prepared.prepare.command).toEqual(["never-run-prepare"]);
   });
 
   it("uses retained directory feed landings and starts overridden feeds empty", async () => {
@@ -104,7 +143,8 @@ describe("feed rewind", () => {
     const retainedTemp = path.join(directory, "retained"); await mkdir(retainedTemp); await writeFile(path.join(retainedTemp, "data.txt"), "directory\n");
     const revision = digestDirectory(retainedTemp), retained = path.join(directory, "trees", revision);
     await mkdir(retained, { recursive: true }); await writeFile(path.join(retained, "data.txt"), "directory\n");
-    await log([{ revision, tree: revision, commit: null, ref: null, paths: null, landedAt: EARLY }]);
+    await log([{ version: "spawnfile.volume-feed-landing.v1", resource: "news", volume: "org-news",
+      source: { kind: "directory", directory: "never-read" }, revision, tree: `trees/${revision}`, landed_at: EARLY }]);
     expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", source: { revision } });
     expect(await readFile(path.join(context.destination, "current/data.txt"), "utf8")).toBe("directory\n");
     await rm(context.destination, { recursive: true }); context.input.overridden = true; context.history = undefined;
@@ -112,14 +152,44 @@ describe("feed rewind", () => {
     expect(await readdir(context.destination)).toEqual([]);
   });
 
-  it("refuses revision mismatches and disagreements with the moment record", async () => {
+  it("uses retained directory record pins without optional git metadata or a log", async () => {
+    const { context, resource, directory } = await fixture();
+    resource.feed = { directory: "never-read" };
+    const retained = path.join(directory, "retained"); await mkdir(retained); await writeFile(path.join(retained, "data.txt"), "past\n");
+    const revision = digestDirectory(retained), selected = path.join(directory, "trees", `${revision}.2`);
+    await mkdir(selected, { recursive: true }); await writeFile(path.join(selected, "data.txt"), "past\n");
+    context.record = { ...testMomentRecord(), feeds: [{ id: "news", revision, tree: `trees/${revision}.2`, landedAt: EARLY }] };
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { revision } });
+    expect(await readFile(path.join(context.destination, "current/data.txt"), "utf8")).toBe("past\n");
+  });
+
+  it.each(["changed bytes", "extra file", "missing file"])("refuses retained directory feeds with %s", async (change) => {
+    const { context, directory, landing, log } = await fixture();
+    const retained = path.join(directory, "retained"); await mkdir(retained); await writeFile(path.join(retained, "data.txt"), "past\n");
+    const revision = digestDirectory(retained), selected = path.join(directory, "trees", `${revision}.3`);
+    await mkdir(selected, { recursive: true });
+    if (change !== "missing file") await writeFile(path.join(selected, "data.txt"), change === "changed bytes" ? "evil\n" : "past\n");
+    if (change === "extra file") await writeFile(path.join(selected, "extra.txt"), "extra\n");
+    // Historical source kind controls verification even after the declaration switched to git.
+    const { commit: _commit, ref: _ref, paths: _paths, ...base } = landing;
+    await log([{ ...base, source: { kind: "directory", directory: "never-read" }, revision, tree: `trees/${revision}.3` }]);
+    await expect(materializeFeed(context)).rejects.toThrow("Directory feed revision mismatch");
+  });
+
+  it("does not substitute another retained generation for a missing directory tree", async () => {
+    const { context, directory, landing, log } = await fixture();
+    const retained = path.join(directory, "retained"); await mkdir(retained); await writeFile(path.join(retained, "data.txt"), "past\n");
+    const revision = digestDirectory(retained), previous = path.join(directory, "trees", revision);
+    await mkdir(previous, { recursive: true }); await writeFile(path.join(previous, "data.txt"), "past\n");
+    const { commit: _commit, ref: _ref, paths: _paths, ...base } = landing;
+    await log([{ ...base, source: { kind: "directory", directory: "never-read" }, revision, tree: `trees/${revision}.3` }]);
+    await expect(materializeFeed(context)).rejects.toThrow("Directory/prepared/included feed requires retained landed tree bytes");
+  });
+
+  it("refuses revisions which cannot be reproduced from the selected commit", async () => {
     const { context, landing, log } = await fixture();
     await log([{ ...landing, revision: "0".repeat(64), tree: "0".repeat(64) }]);
     await expect(materializeFeed(context)).rejects.toThrow("Feed revision mismatch");
-    await log([landing]);
-    context.record = { ...testMomentRecord(), feeds: [{ id: "news", revision: "f".repeat(64), tree: landing.tree,
-      commit: landing.commit!, paths: ["published"], landedAt: EARLY }] };
-    await expect(materializeFeed(context)).rejects.toThrow("disagrees with its landing log");
   });
 
   it("refuses nonhistorical feed rules and missing retained prepared bytes", async () => {
@@ -131,20 +201,23 @@ describe("feed rewind", () => {
     resource.feed = { git: { repo: "never-read" }, freeze: { after: "08:00", timezone: "UTC" } };
     await expect(materializeFeed(context)).rejects.toThrow("freeze/waiting");
     resource.feed = { git: { repo: "never-read" }, prepare: { host: true, command: ["never-execute"] } };
-    await log([landing]);
+    await log([{ ...landing, source: { kind: "git", repo: "never-read", prepared: { source_revision: landing.revision,
+      include: [], prepare: { command: ["never-execute"], image: null, network: null, platform: null } } } }]);
     await expect(materializeFeed(context)).rejects.toThrow("retained landed tree bytes");
     context.history = undefined;
     await expect(materializeFeed(context)).rejects.toThrow("--history is required");
   });
 
-  it("validates every landing line and refuses no eligible landing", async () => {
+  it("validates every landing line and falls back before the first eligible landing", async () => {
     const { context, directory, landing, log } = await fixture();
-    await log([{ ...landing, landedAt: LATE }]);
-    await expect(materializeFeed(context)).rejects.toThrow("No feed landing");
+    await log([{ ...landing, landed_at: LATE }]);
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "approximate", basis: "feed-rule-at" });
+    await rm(context.destination, { recursive: true });
     await writeFile(path.join(directory, "landings.jsonl"), `${JSON.stringify(landing)}\n${JSON.stringify({ ...landing, unknown: true })}\n`);
     await expect(materializeFeed(context)).rejects.toThrow(/landings.jsonl:2/u);
     await writeFile(path.join(directory, "landings.jsonl"), "");
-    await expect(materializeFeed(context)).rejects.toThrow("No feed landing");
+    expect(await materializeFeed(context)).toMatchObject({ fidelity: "approximate", basis: "feed-rule-at" });
+    await rm(context.destination, { recursive: true });
   });
 
   it("ignores archive attributes and preserves long names when reconstructing feed bytes", async () => {
@@ -166,10 +239,4 @@ describe("feed rewind", () => {
     await expect(materializeFeed(context)).rejects.toThrow("History symlink escape");
   });
 
-  it("selects pure instant boundaries and refuses contradictory equal-instant landings", () => {
-    const revision = "a".repeat(64), landing = feedLandingSchema.parse({ revision, tree: revision, commit: "a".repeat(40), ref: "main", paths: [], landedAt: AT });
-    expect(selectFeedLanding([landing], "2026-10-09T10:20:31+02:00")).toBe(landing);
-    expect(selectFeedLanding([landing], "2026-10-09T08:20:30.999Z")).toBeNull();
-    expect(() => selectFeedLanding([landing, { ...landing, commit: "b".repeat(40), landedAt: "2026-10-09T10:20:31+02:00" }], AT)).toThrow("Conflicting feed landings");
-  });
 });

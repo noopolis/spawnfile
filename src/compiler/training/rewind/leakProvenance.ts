@@ -8,6 +8,7 @@ import { historyKey, openHistory } from "./history.js";
 import { instantNanos } from "./instant.js";
 import { diskPath } from "./leakFiles.js";
 import { addInputFinding } from "./leakInputs.js";
+import { verifyRecordedBundle } from "./recordedBundle.js";
 
 /** Read receipts and source objects afresh; never trust the producer's date guard or stamped files. */
 export const inspectInputProvenance = async (
@@ -15,6 +16,10 @@ export const inspectInputProvenance = async (
 ): Promise<void> => {
   const add = (detail: string) => addInputFinding(report, input, "git-object", detail);
   try {
+    if (input.kind === "bundle" && input.basis === "record" && input.source.sha256) {
+      await verifyRecordedBundle(await openHistory(historyDir), input.source.sha256, await diskPath(root, input.path!));
+      return;
+    }
     const commit = input.source.commit;
     if (input.kind === "feed") {
       if (input.fidelity === "overridden") return;

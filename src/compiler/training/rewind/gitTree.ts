@@ -62,7 +62,13 @@ export const extractOverrideBundle = async (file: string, destination: string, e
   if (!info.isFile() || info.size > 536_870_912) throw new Error("Override bundle must be a bounded local tar file");
   const bytes = await readFile(file);
   if (expected && `sha256:${createHash("sha256").update(bytes).digest("hex")}` !== expected) throw new Error("Override bundle checksum mismatch");
+  await extractBundleBytes(bytes, destination);
+};
+
+/** Validated archive bytes are extracted only after digest validation by the caller. */
+export const extractBundleBytes = async (bytes: Buffer, destination: string): Promise<void> => {
   validateWorkspaceBundleTar(bytes);
+  await mkdir(destination, { recursive: true });
   const text = (buffer: Buffer) => buffer.toString("utf8").replace(/\0.*$/su, "");
   for (let offset = 0; offset < bytes.length && !bytes.subarray(offset, offset + 512).every((byte) => byte === 0);) {
     const header = bytes.subarray(offset, offset + 512), prefix = text(header.subarray(345, 500)), name = text(header.subarray(0, 100));

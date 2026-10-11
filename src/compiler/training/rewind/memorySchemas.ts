@@ -2,14 +2,6 @@ import { z } from "zod";
 import { trainingInstantSchema } from "../../../manifest/index.js";
 
 const safeSequence = z.number().int().nonnegative().refine(Number.isSafeInteger);
-const relativeLedger = z.string().min(1).refine((value) => !value.includes("\\")
-  && !value.includes("\0") && value.split("/").every((part) => part !== "" && part !== "." && part !== ".."),
-"ledger must be a relative path inside its bank directory");
-export const memoryGenerationSchema = z.object({
-  generation: safeSequence, switchedAt: trainingInstantSchema, ledger: relativeLedger
-}).strict();
-export type MemoryGeneration = z.infer<typeof memoryGenerationSchema>;
-
 /** Mirrors the public MemoryEvent contract and Mneme 0.1.1's strict ledger reader. */
 export const memoryEventSchema = z.object({
   id: z.string().min(1),

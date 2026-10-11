@@ -101,10 +101,22 @@ describe("Moltnet SQLite rewind", () => {
     expect(await readdir(context.destination)).toEqual(["moltnet.sqlite"]);
     expect(await inspectMoltnetSqlite(output, at)).toMatchObject({ messages: 4, events: 2, findings: [] });
     context.record = momentRecordSchema.parse({ version: "spawnfile.moment-record.v1", agent: "agent:writer",
-      wake: { at, surface: "moltnet", room: "assignment", from: "brass" }, recordedAt: at,
-      resources: [], feeds: [], memory: [], moltnet: [{ network: "news", cursor: "boundary" }], volumes: [] });
+      wake: { at, startedAt: at, executionId: "turn-1", deliveries: [{ deliveryId: "moltnet:old", kind: "message", occurredAt: at }],
+        surface: "moltnet", room: "assignment", from: "brass" }, recordedAt: at, exact: true,
+      resources: [], feeds: [], memory: [], moltnet: [{ network: "news", cursor: at, messageIds: ["old", "boundary"] }], volumes: [] });
     context.destination += "-exact";
     expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "exact", basis: "record-cursor" });
+    context.record.moltnet[0]!.messageIds = ["old", "future-root"];
+    await expect(materializeMoltnet(context)).rejects.toThrow(/wake message.*future-root.*not retained/);
+    context.record.moltnet[0]!.messageIds = ["missing"];
+    await expect(materializeMoltnet(context)).rejects.toThrow(/wake message.*missing.*not retained/);
+    delete context.record.moltnet[0]!.messageIds;
+    context.record.moltnet[0]!.cursor = "2026-10-09T12:00:00.100000000+02:00";
+    expect(await materializeMoltnet(context)).toMatchObject({ fidelity: "exact", basis: "record-cursor" });
+    for (const cursor of [before, future]) {
+      context.record.moltnet[0]!.cursor = cursor;
+      await expect(materializeMoltnet(context)).rejects.toThrow(/cursor must equal.*startedAt/);
+    }
   });
 
   it("copies WAL state and independently detects message, room and attachment-event mutations without changing the file", async () => {

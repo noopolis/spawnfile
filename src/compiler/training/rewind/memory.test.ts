@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { openHistory } from "./history.js";
-import { materializeMemory, parseMemoryLedger, selectMemoryGeneration, selectMemoryPrefix } from "./memory.js";
-import { AT, BEFORE, FUTURE, emptyRecord, jsonl, memoryEvent } from "./fixtures.test-helper.js";
+import { materializeMemory, parseMemoryLedger, selectMemoryPrefix } from "./memory.js";
+import { AT, FUTURE, emptyRecord, jsonl, memoryEvent } from "./fixtures.test-helper.js";
 import type { InputContext, RewindInput } from "./types.js";
 
 const roots: string[] = [];
@@ -45,9 +45,10 @@ describe("memory rewind", () => {
   it("materializes an exact record prefix without an index or a Mneme runtime dependency", async () => {
     const context = await setup();
     await jsonl(context.history!.root, `${base}/events.jsonl`, [memoryEvent(1), memoryEvent(2, AT)]);
-    context.record = { ...emptyRecord(), memory: [{ id: "self", declaredBy: "agent:a", seq: 1, generation: 0 }] };
+    context.record = { ...emptyRecord(), memory: [{ id: "self", declaredBy: "agent:a", seq: 1 }] };
     const result = await materializeMemory(context);
-    expect(result).toMatchObject({ fidelity: "exact", basis: "record", source: { seq: 1, generation: 0 } });
+    expect(result).toMatchObject({ fidelity: "exact", basis: "record", source: { seq: 1 } });
+    expect(result.source).not.toHaveProperty("generation");
     expect(await readdir(path.join(context.destination, "memory"))).toEqual(["events.jsonl"]);
     expect(await readFile(path.join(context.destination, "memory/events.jsonl"), "utf8")).toBe(`${JSON.stringify(memoryEvent(1))}\n`);
     expect(result.notes.join(" ")).toContain("without a Mneme runtime dependency");
@@ -58,18 +59,21 @@ describe("memory rewind", () => {
     await jsonl(context.history!.root, `${base}/events.jsonl`, [memoryEvent(1, AT), memoryEvent(2, FUTURE)]);
     expect(await materializeMemory(context)).toMatchObject({ fidelity: "approximate", basis: "created-at-prefix", source: { seq: 1 } });
   });
-  it("selects an archived generation before a switch and refuses a missing archive", async () => {
+  it.each([{ generation: 0, seq: 0 }, { generation: 0, seq: 1 }, { generation: 1, seq: 0 }, { generation: 1, seq: 1 }])(
+    "refuses unsupported recorded memory generation $generation at seq $seq", async ({ generation, seq }) => {
+      const context = await setup();
+      await jsonl(context.history!.root, `${base}/events.jsonl`, [memoryEvent(1)]);
+      context.record = { ...emptyRecord(), memory: [{ id: "self", declaredBy: "agent:a", seq, generation }] };
+      await expect(materializeMemory(context)).rejects.toThrow(/Mneme generations are unsupported/);
+    });
+  it.each(["missing", "malformed", "no history"])("uses seq zero as an exact empty bank with %s ledger", async (state) => {
     const context = await setup();
-    await jsonl(context.history!.root, `${base}/generations.jsonl`, [
-      { generation: 3, switchedAt: BEFORE, ledger: "archive/g3.jsonl" },
-      { generation: 4, switchedAt: FUTURE, ledger: "events.jsonl" }
-    ]);
-    await jsonl(context.history!.root, `${base}/events.jsonl`, [memoryEvent(1, FUTURE)]);
-    await expect(materializeMemory(context)).rejects.toThrow(/Missing memory ledger.*g3/);
-    await jsonl(context.history!.root, `${base}/archive/g3.jsonl`, [memoryEvent(1)]);
-    expect(await materializeMemory(context)).toMatchObject({ source: { generation: 3, seq: 1 } });
-    expect(() => selectMemoryGeneration([{ generation: 4, switchedAt: FUTURE, ledger: "events.jsonl" }], AT)).toThrow(/archived ledger/);
-    expect(() => selectMemoryGeneration(null, AT, 3)).toThrow(/disagrees/);
+    if (state === "malformed") await jsonl(context.history!.root, `${base}/events.jsonl`, [{ bad: true }]);
+    if (state === "no history") context.history = undefined;
+    context.record = { ...emptyRecord(), memory: [{ id: "self", declaredBy: "agent:a", seq: 0 }] };
+    expect(await materializeMemory(context)).toMatchObject({ fidelity: "exact", basis: "record", source: { seq: 0 } });
+    expect(await readdir(path.join(context.destination, "memory"))).toEqual(["events.jsonl"]);
+    expect(await readFile(path.join(context.destination, "memory/events.jsonl"), "utf8")).toBe("");
   });
   it("creates an empty override without history and refuses a missing non-overridden bank", async () => {
     const context = await setup();

@@ -28,7 +28,7 @@ describe("raw historical blob extraction", () => {
     await mkdir(path.join(repository, ".git/info"), { recursive: true });
     await writeFile(path.join(repository, ".git/info/attributes"), "hidden.txt export-ignore\n");
     const context: InputContext = { at: AT, destination: path.join(root, "out"), history: new History(path.join(root, "history")),
-      record: { ...testMomentRecord(), resources: kind === "bundle" ? [{ id: "input", kind: "bundle", commit }] : [] },
+      record: { ...testMomentRecord(), resources: [] },
       input: { section: "resources", id: "input", declaredBy: "agent:writer", overridden: false, declarationBase: repository,
         declaration: kind === "feed"
           ? { id: "input", kind: "volume", mode: "mutable", mount: "./input", name: "input", feed: { git: { repo: repository } } }
@@ -36,10 +36,10 @@ describe("raw historical blob extraction", () => {
     let output = context.destination;
     if (kind === "feed") {
       const revision = resolveFeedSource({ kind: "git", repo: repository, ref: commit, fetch: false }).revision;
-      await writeFile(path.join(repository, "../landings.jsonl"), `${JSON.stringify({ revision, tree: revision, commit, ref: "main", paths: null, landedAt: BEFORE })}\n`);
+      await writeFile(path.join(repository, "../landings.jsonl"), `${JSON.stringify({ version: "spawnfile.volume-feed-landing.v1", resource: "input", volume: "input", source: { kind: "git", repo: repository }, revision, tree: revision, commit, ref: "main", landed_at: BEFORE })}\n`);
       expect(await materializeFeed(context)).toMatchObject({ fidelity: "exact", source: { revision, commit } });
       output = path.join(output, "current");
-    } else expect(await materializeGit(context)).toMatchObject({ fidelity: "exact", source: { commit } });
+    } else expect(await materializeGit(context)).toMatchObject({ fidelity: "approximate", source: { commit } });
     expect(await readFile(path.join(output, "refs.txt"), "utf8")).toBe("$Format:%D$\n");
     expect(await readFile(path.join(output, "hidden.txt"), "utf8")).toBe("raw retained bytes\n");
   });

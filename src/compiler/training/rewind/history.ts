@@ -69,9 +69,22 @@ export class History {
     const directory = await this.path("moments");
     if (!directory) return [];
     const records: MomentRecord[] = [];
-    for (const name of (await readdir(directory)).sort()) {
-      if (name.endsWith(".jsonl")) records.push(...(await this.jsonl(`moments/${name}`, momentRecordSchema) ?? []));
-    }
+    const seen = new Set<string>();
+    const walk = async (relative: string): Promise<void> => {
+      const file = await this.path(relative);
+      if (!file) throw new Error(`History entry vanished: ${relative}`);
+      const physical = await realpath(file);
+      if ((await lstat(physical)).isDirectory()) {
+        if (seen.has(physical)) throw new Error(`Repeated moment history directory: ${relative}`);
+        seen.add(physical);
+        for (const name of (await readdir(file)).sort()) await walk(`${relative}/${name}`);
+      } else if (relative.endsWith(".jsonl")) records.push(...(await this.jsonl(relative, momentRecordSchema) ?? []));
+      else if (relative.endsWith(".json")) {
+        try { records.push(momentRecordSchema.parse(JSON.parse((await this.text(relative))!))); }
+        catch (error) { throw new Error(`Invalid history ${relative}: ${reason(error)}`); }
+      }
+    };
+    await walk("moments");
     return records;
   }
   /** Validate all tree entries before git or another local parser receives the directory. */

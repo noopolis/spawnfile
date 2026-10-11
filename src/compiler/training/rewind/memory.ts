@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { historyKey } from "./history.js";
 import { compareInstants } from "./instant.js";
-import { parseMemoryLedgerEvent, memoryGenerationSchema, type MemoryGeneration, type MemoryLedgerEvent } from "./memorySchemas.js";
+import { parseMemoryLedgerEvent, type MemoryLedgerEvent } from "./memorySchemas.js";
 import type { InputContext, InputResult } from "./types.js";
 
 export interface MemoryLedger { lines: string[]; events: MemoryLedgerEvent[] }
@@ -41,36 +41,6 @@ export const selectMemoryPrefix = (ledger: MemoryLedger, at: string, seq?: numbe
   return { events, lines: ledger.lines.slice(0, length) };
 };
 
-export const selectMemoryGeneration = (
-  generations: MemoryGeneration[] | null, at: string, recordGeneration?: number
-): { generation: number; ledger: string; switchedAt: string | null } => {
-  // With no curation log, only the original generation can be established.
-  let selected: { generation: number; ledger: string; switchedAt: string | null } = {
-    generation: 0, ledger: "events.jsonl", switchedAt: null
-  };
-  if (generations !== null) {
-    const known = new Map<number, MemoryGeneration>();
-    for (const generation of generations) {
-      const prior = known.get(generation.generation);
-      if (prior && JSON.stringify(prior) !== JSON.stringify(generation)) {
-        throw new Error(`Conflicting memory generation ${generation.generation}`);
-      }
-      known.set(generation.generation, generation);
-    }
-    const eligible = [...known.values()].filter((entry) => compareInstants(entry.switchedAt, at) <= 0)
-      .sort((a, b) => compareInstants(b.switchedAt, a.switchedAt));
-    if (!eligible.length) throw new Error("No memory generation switched at or before the moment; an archived ledger is required");
-    if (eligible[1] && compareInstants(eligible[0]!.switchedAt, eligible[1].switchedAt) === 0) {
-      throw new Error("Ambiguous memory generations switched at the same instant");
-    }
-    selected = eligible[0]!;
-  }
-  if (recordGeneration !== undefined && recordGeneration !== selected.generation) {
-    throw new Error(`Memory record generation ${recordGeneration} disagrees with selected generation ${selected.generation}`);
-  }
-  return selected;
-};
-
 export const materializeMemory = async (context: InputContext): Promise<InputResult> => {
   const { input, at, record, history, destination } = context;
   if (input.section !== "memory") throw new Error("Memory materialization requires a memory input");
@@ -78,25 +48,29 @@ export const materializeMemory = async (context: InputContext): Promise<InputRes
   if (input.overridden) {
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, "events.jsonl"), "");
-    return { fidelity: "overridden", basis: "override", source: { seq: 0, generation: 0 }, notes: [], instant: at };
+    return { fidelity: "overridden", basis: "override", source: { seq: 0 }, notes: [], instant: at };
+  }
+  const pin = record?.memory.find((entry) => entry.id === input.id && entry.declaredBy === input.declaredBy);
+  if (pin?.generation !== undefined) throw new Error(`Memory bank ${input.id}: Mneme generations are unsupported`);
+  if (pin?.seq === 0) {
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, "events.jsonl"), "");
+    return { fidelity: "exact", basis: "record", source: { seq: 0 },
+      notes: ["The record pins an empty bank (seq: 0); no history ledger is required."], instant: at };
   }
   if (!history) throw new Error(`Memory bank ${input.id} requires --history or an override`);
-  const base = `memory/${historyKey(input)}`;
-  const pin = record?.memory.find((entry) => entry.id === input.id && entry.declaredBy === input.declaredBy);
-  const generation = selectMemoryGeneration(await history.jsonl(`${base}/generations.jsonl`, memoryGenerationSchema), at, pin?.generation);
-  const ledgerPath = `${base}/${generation.ledger}`;
+  const ledgerPath = `memory/${historyKey(input)}/events.jsonl`;
   const payload = await history.text(ledgerPath);
-  if (payload === null) throw new Error(`Missing memory ledger ${ledgerPath}; an archived ledger is required for this generation`);
+  if (payload === null) throw new Error(`Missing memory ledger ${ledgerPath}`);
   const prefix = selectMemoryPrefix(parseMemoryLedger(payload, ledgerPath), at, pin?.seq);
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, "events.jsonl"), prefix.lines.length ? `${prefix.lines.join("\n")}\n` : "");
   return {
     fidelity: pin ? "exact" : "approximate", basis: pin ? "record" : "created-at-prefix",
-    source: { seq: prefix.events.length, generation: generation.generation },
+    source: { seq: prefix.events.length },
     notes: ["Spawnfile structurally validated the selected ledger without a Mneme runtime dependency; no derived or authority audit state is included.",
       "Mneme 0.1.1 rebuilds its index from the ledger before every index read.",
-      "Checksum verification is skipped: Mneme 0.1.1 hashes the original input before normalization, which cannot be reconstructed exactly from stored events.",
-      ...(generation.switchedAt === null ? ["No generation history: the current ledger is treated as original generation 0."] : [])],
-    instant: prefix.events.at(-1)?.createdAt ?? generation.switchedAt ?? at
+      "Checksum verification is skipped: Mneme 0.1.1 hashes the original input before normalization, which cannot be reconstructed exactly from stored events."],
+    instant: prefix.events.at(-1)?.createdAt ?? at
   };
 };

@@ -35,11 +35,18 @@ const canonical = (value: unknown): string => JSON.stringify(value, (_key, item:
 export const matchingMomentRecords = (records: readonly MomentRecord[], agent: string, at: string): MomentRecord[] =>
   records.filter((record) => record.agent === agent && compareInstants(record.wake.at, at) === 0);
 
+/** Replays keep the wake identity but later attempts have different pins. Only the original is relevant. */
+export const originalMomentRecords = (records: readonly MomentRecord[]): MomentRecord[] => {
+  const first = records.reduce<MomentRecord | null>((earliest, entry) =>
+    !earliest || compareInstants(entry.wake.startedAt, earliest.wake.startedAt) < 0 ? entry : earliest, null);
+  return first ? records.filter((entry) => compareInstants(entry.wake.startedAt, first.wake.startedAt) === 0) : [];
+};
+
 /** Capture time and wake payload are not used to materialize data. Normalize actual used instants. */
 export const selectMomentRecord = (
   records: MomentRecord[], agent: string, at: string, inputs?: Array<InputIdentity | RewindInput>
 ): MomentRecord | null => {
-  const matches = matchingMomentRecords(records, agent, at);
+  const matches = originalMomentRecords(matchingMomentRecords(records, agent, at));
   if (!matches.length) return null;
   const includes = (section: InputIdentity["section"], id: string, declaredBy?: string, field?: "resources" | "feeds" | "volumes"): boolean =>
     !inputs || inputs.some((input) => {
@@ -51,7 +58,9 @@ export const selectMomentRecord = (
       if (field === "feeds") return resource.kind === "volume" && Boolean(resource.feed);
       if (field === "volumes") return resource.kind === "volume" && !resource.feed;
       if (resource.kind === "volume") return false;
-      const ref = resource.kind === "git" ? resource.ref : resource.build?.files?.ref;
+      // Retained bundle digests take precedence over even a pinned build source.
+      if (resource.kind === "bundle") return true;
+      const ref = resource.ref;
       return !ref || !/^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$/u.test(ref);
     });
   const sort = <T>(entries: T[]): T[] => entries.sort((a, b) => canonical(a).localeCompare(canonical(b)));
@@ -61,7 +70,7 @@ export const selectMomentRecord = (
       ...item, landedAt: normalizeInstant(item.landedAt)
     }))),
     memory: sort(record.memory.filter((item) => includes("memory", item.id, item.declaredBy))),
-    moltnet: sort(record.moltnet.filter((item) => includes("networks", item.network))),
+    moltnet: sort(record.moltnet.filter((item) => includes("networks", item.network)).map((item) => ({ ...item, cursor: normalizeInstant(item.cursor) }))),
     volumes: sort(record.volumes.filter((item) => includes("resources", item.id, undefined, "volumes")))
   });
   if (matches.some((record) => used(record) !== used(matches[0]!))) throw new Error(`Conflicting moment records for ${agent} at ${normalizeInstant(at)}`);

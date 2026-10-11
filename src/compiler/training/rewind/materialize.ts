@@ -9,7 +9,8 @@ import { resolveRewindInputs } from "./inputs.js";
 import { inspectTrainingMoment, type LeakCheckOptions } from "./leakCheck.js";
 import { materializeMemory } from "./memory.js";
 import { materializeMoltnet } from "./moltnet.js";
-import { matchingMomentRecords, selectMomentRecord } from "./select.js";
+import { matchingMomentRecords, originalMomentRecords, selectMomentRecord } from "./select.js";
+import { hasRecordPin, recordForInput } from "./recordInput.js";
 import { createTaskClock } from "./taskClock.js";
 import { restoreAccessTimes, stampTree } from "./timestamps.js";
 import type { InputContext, InputResult, RewindInput } from "./types.js";
@@ -28,9 +29,9 @@ export const resolveTrainingMoment = (
   plan: TrainingPlan, project: LoadedTrainingProject, example: string, records: MomentRecord[] = []
 ) => {
   const resolved = resolveRewindInputs(plan, project, example);
-  const candidateRecords = matchingMomentRecords(records, plan.agent.id, resolved.at);
-  return { ...resolved, candidateRecords, record: selectMomentRecord(candidateRecords, plan.agent.id, resolved.at,
-    resolved.inputs.filter((input) => !input.overridden)) };
+  const candidateRecords = originalMomentRecords(matchingMomentRecords(records, plan.agent.id, resolved.at));
+  const record = selectMomentRecord(candidateRecords, plan.agent.id, resolved.at, resolved.inputs.filter((input) => !input.overridden));
+  return { ...resolved, candidateRecords, record, effectiveAt: record?.wake.startedAt ?? resolved.at };
 };
 
 const reason = (error: unknown): string => error instanceof Error ? error.message : String(error);
@@ -80,12 +81,12 @@ export const finalizeTrainingMoment = async (staging: string, out: string, optio
       await discardPayload(staging, moment);
     }
     await writeFile(path.join(staging, "leak-check.json"), serialize(check));
-    await stampTree(path.join(staging, "leak-check.json"), moment.at, moment.at);
+    await stampTree(path.join(staging, "leak-check.json"), moment.effectiveAt, moment.effectiveAt);
   } else await discardPayload(staging, moment);
   await writeFile(path.join(staging, "moment.json"), serialize(materializedMomentSchema.parse(moment)));
-  await stampTree(path.join(staging, "moment.json"), moment.at, moment.at);
-  await utimes(staging, new Date(moment.at), new Date(moment.at));
-  await restoreAccessTimes(staging, moment.at);
+  await stampTree(path.join(staging, "moment.json"), moment.effectiveAt, moment.effectiveAt);
+  await utimes(staging, new Date(moment.effectiveAt), new Date(moment.effectiveAt));
+  await restoreAccessTimes(staging, moment.effectiveAt);
   await assertEmptyOutput(out);
   await rename(staging, out);
   return moment;
@@ -112,10 +113,15 @@ export const materializeTrainingMoment = async (options: MaterializeTrainingMome
       record = selectMomentRecord(candidateRecords, plan.agent.id, resolved.at,
         resolved.inputs.filter((input) => !input.overridden));
     } catch (error) { recordError = reason(error); }
+    const attempts = candidateRecords.length;
+    candidateRecords = originalMomentRecords(candidateRecords);
+    const effectiveAt = record?.wake.startedAt ?? resolved.at;
     const moment: MaterializedMoment = {
       version: "spawnfile.materialized-moment.v1", status: "materialized", agent: plan.agent.id,
       example: { id: resolved.selected.id, role: resolved.selected.role, dataset: resolved.selected.dataset },
-      at: resolved.at, inputs: [], record: { matched: record !== null }, leakCheck: { ok: false, findings: 0 }
+      at: resolved.at, effectiveAt, inputs: [], record: { matched: record !== null, ...(record ? {
+        attempts, selectedStartedAt: record.wake.startedAt, executionId: record.wake.executionId, selection: "earliest-startedAt" as const
+      } : {}) }, leakCheck: { ok: false, findings: 0 }
     };
     for (const input of resolved.inputs) {
       const entry = reportInput(input);
@@ -124,8 +130,14 @@ export const materializeTrainingMoment = async (options: MaterializeTrainingMome
         if (!input.overridden && (historyError || recordError)) throw new Error(historyError ?? recordError);
         const relative = `${input.section === "networks" ? "moltnet" : input.section}/${historyKey(input)}`;
         const destination = path.join(staging, relative);
-        const result = await dispatch({ input, at: resolved.at, record, candidateRecords, history, destination });
-        await stampTree(destination, result.instant, resolved.at);
+        const usableRecord = recordForInput(record, input);
+        const result = await dispatch({ input, at: effectiveAt, agentSlug: resolved.agentSlug, agentId: plan.agent.id,
+          record: usableRecord, candidateRecords: candidateRecords.filter((candidate) => recordForInput(candidate, input)), history, destination });
+        if (record && !record.exact && !input.overridden && !hasRecordPin(usableRecord, input)) {
+          result.fidelity = "approximate";
+          result.notes.push(...(record.errors ?? []));
+        }
+        await stampTree(destination, result.instant, effectiveAt);
         Object.assign(entry, { fidelity: result.fidelity, basis: result.basis, source: result.source,
           notes: result.notes, path: relative, ...(result.build ? { build: result.build } : {}) });
       } catch (error) {
@@ -134,7 +146,7 @@ export const materializeTrainingMoment = async (options: MaterializeTrainingMome
       }
     }
     if (recordError && resolved.inputs.length === 0) throw new Error(recordError);
-    await writeFile(path.join(staging, "task-clock.json"), serialize(createTaskClock(resolved.at)));
+    await writeFile(path.join(staging, "task-clock.json"), serialize(createTaskClock(effectiveAt)));
     await writeFile(path.join(staging, "moment.json"), serialize(moment));
     // Set only unstamped wrapper directories; per-input source times remain intact.
     const wrappers = async (directory: string): Promise<void> => {
@@ -142,9 +154,9 @@ export const materializeTrainingMoment = async (options: MaterializeTrainingMome
       if (moment.inputs.some((input) => input.path === relative)) return;
       for (const entry of await readdir(directory, { withFileTypes: true })) {
         if (entry.isDirectory()) await wrappers(path.join(directory, entry.name));
-        else if (directory === staging) await stampTree(path.join(directory, entry.name), resolved.at, resolved.at);
+        else if (directory === staging) await stampTree(path.join(directory, entry.name), effectiveAt, effectiveAt);
       }
-      await utimes(directory, new Date(resolved.at), new Date(resolved.at));
+      await utimes(directory, new Date(effectiveAt), new Date(effectiveAt));
     };
     await wrappers(staging);
     return await finalizeTrainingMoment(staging, out, { historyDir: options.historyDir });

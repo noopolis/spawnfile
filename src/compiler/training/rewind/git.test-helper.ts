@@ -25,6 +25,7 @@ export const commitTestGit = async (repository: string, files: Record<string, st
   return testGit(repository, ["rev-parse", "HEAD"]);
 };
 export const testMomentRecord = (at = "2026-10-09T08:20:31Z"): MomentRecord => ({
-  version: "spawnfile.moment-record.v1", agent: "agent:writer", wake: { at, surface: "moltnet", room: "assignment", from: "brass" },
-  recordedAt: at, resources: [], feeds: [], memory: [], moltnet: [], volumes: []
+  version: "spawnfile.moment-record.v1", agent: "agent:writer", wake: { at, startedAt: at, executionId: "execution-17",
+    deliveries: [{ deliveryId: "delivery-17", kind: "message", occurredAt: at }], surface: "moltnet", room: "assignment", from: "brass" },
+  recordedAt: at, exact: true, resources: [], feeds: [], memory: [], moltnet: [], volumes: []
 });
