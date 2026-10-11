@@ -5,6 +5,7 @@
 - `context.ts` resolves the full compiler graph and pins source files without compiling or launching it.
 - `resolution.ts` merges direct-member training metadata during traversal and preserves declaring sources.
 - `plan/` owns local authoring-file loading, pure plan resolution, and the public training-plan schema.
+- `rewind/` materializes authored moments from contained local history, with explicit fidelity and an independent disk leak check; it never runs trials.
 - Preserve resolved inheritance and exact agent IDs. Never create a second agent declaration.
 - Source mappings are project-relative editable files, not runtime-native destinations or flattened prompts.
 - Do not serialize secret values, arbitrary environments or transport credentials.
