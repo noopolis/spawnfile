@@ -52,6 +52,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   prepared?: Awaited<ReturnType<typeof prepareCliInputs>>) {
   const inputs = prepared ?? await prepareCliInputs(args, io, dependencies);
   const { runtime, model, judges, datasets } = inputs;
+  const graders = await datasets.buildGraders(dependencies.grader, args.command === 'train');
   const adapter = 'context' in inputs
     ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs })
     : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
@@ -69,7 +70,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   const subjectRoot = 'context' in inputs ? dependencies.spawnfile!.subjectRoot : undefined;
   return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot, closeInference: configured.close,
     registry: createEvaluationRegistry(),
-    evaluation: { judges: configured.judges,
+    evaluation: { judges: configured.judges, graders,
       embeddings: {}, readText: (path: string) => datasets.readCriterion(path) },
   };
 }

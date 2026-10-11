@@ -60,3 +60,11 @@ it('rejects duplicate JSON keys even when parsing would hide a conflicting field
   const response = JSON.stringify(evidenceResponse).replace('"score":0.84', '"score":0.2,"score":0.84');
   expect(() => validateCachedJudgment({ ...value, response })).toThrow('response');
 });
+
+it('retains measured grader call timing and billing while rejecting invented metadata', () => {
+  const enriched = { ...value, sourceCalls: [{ ...call, wallMs: 12.5, billing: 'local' }] };
+  expect(validateCachedJudgment(enriched)).toEqual(enriched);
+  for (const metadata of [{ wallMs: -1 }, { wallMs: Infinity }, { billing: 'free' }]) {
+    expect(() => validateCachedJudgment({ ...value, sourceCalls: [{ ...call, ...metadata }] })).toThrow('provenance');
+  }
+});

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createGradeResultSchema } from '../../graders/index.js';
 import { subjectUsageMatchesNative } from './subject-usage.js';
 import { judgeFailureCauses, type EvaluationResult } from '../../contracts/evaluation.js';
 
@@ -20,7 +21,8 @@ const subjectUsage = z.object({ status: z.enum(['complete', 'incomplete']), usag
 }).nullable() });
 const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),
-  fallbackOf: identity.optional(),
+  fallbackOf: identity.optional(), wallMs: z.number().finite().nonnegative().optional(),
+  billing: z.enum(['local', 'subscription', 'api', 'mixed']).optional(),
   citationRepairs: z.union([z.literal(0), z.literal(1)]).optional(), repairOf: identity.optional(),
   // Preserve historical retry provenance without attesting that earlier calls aborted.
   retryOf: identity.optional(), retryCause: z.enum(judgeFailureCauses).optional(),
@@ -56,6 +58,7 @@ const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string
   score: z.number().min(0).max(1).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
+  grading: createGradeResultSchema(judgeCall).optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));
 const weighted = z.object({ finality: z.enum(['provisional', 'final']), lower: z.number(), upper: z.number(),
   assessedWeight: z.number(), missingWeight: z.number() });

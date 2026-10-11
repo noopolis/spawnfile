@@ -31,6 +31,14 @@ function isolatedContext(context: EvaluationContext): EvaluationContext {
           generate: provider.generate.bind(provider) },
       }];
     })),
+    ...(context.graders ? { graders: Object.fromEntries(Object.entries(context.graders).map(([id, route]) => [id, {
+      ...route, grader: structuredClone(route.grader), calibration: structuredClone(route.calibration),
+      backend: { identity: route.backend.identity.bind(route.backend), score: route.backend.score.bind(route.backend) },
+      ...(route.teacher ? { teacher: { model: route.teacher.model, provider: {
+        id: route.teacher.provider.id, capabilities: structuredClone(route.teacher.provider.capabilities),
+        generate: route.teacher.provider.generate.bind(route.teacher.provider),
+      } } } : {}),
+    }])) } : {}),
     embeddings: Object.fromEntries(Object.entries(context.embeddings).map(([id, provider]) => [id, {
       id: provider.id, version: provider.version, embed: provider.embed.bind(provider),
     }])),
@@ -67,7 +75,10 @@ async function evaluate(check: CheckNode, context: EvaluationContext, registry: 
       if (!evaluator) throw new Error(`Unknown evaluator ${check.eval}`);
       const parameters = Object.fromEntries(Object.entries(structuredClone(check)).filter(([key]) => !['id', 'eval', 'on', 'on_fail'].includes(key)));
       evaluator.definition.validate(parameters, check.id ?? check.eval);
-      evaluated = structuredClone(await evaluator.evaluate(structuredClone(check), isolatedContext(context)));
+      const isolated = isolatedContext(context);
+      isolated.evaluateCheck = (gate, artifact) => evaluateNode(gate,
+        { ...isolatedContext(context), ...(artifact ? { gradedArtifact: structuredClone(artifact) } : {}) }, registry);
+      evaluated = structuredClone(await evaluator.evaluate(structuredClone(check), isolated));
       if (!validResult(evaluated)) throw new Error('Evaluator returned an invalid result');
     } else throw new Error('Unresolved or invalid check node');
     return { ...evaluated, id: check.id ?? evaluated.id };

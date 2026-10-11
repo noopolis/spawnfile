@@ -30,7 +30,7 @@ function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly
   }
   const versions: Record<string, string> = {};
   const criterionFileDigests: Record<string, string> = {};
-  const context = { registry, versions, criterionFileDigests, criterionFiles: new Map<string, Uint8Array>(),
+  const context = { registry, versions, sourceName: document.sourceName, criterionFileDigests, criterionFiles: new Map<string, Uint8Array>(),
     readCriterionFile: options.readCriterionFile ? (path: string) => options.readCriterionFile!(path, document.sourceName) : undefined };
   const sharedStages = resolveStages(normalizeStages(dataset), context);
   const live = { checks: resolveLive(dataset.live?.checks ?? [], context) };

@@ -61,3 +61,5 @@ state. Ordinary training identity and measurement-repair behavior stay unchanged
 can only be a `fail`, so a subject that ended its turn without doing the work
 becomes a zero the optimizer can learn from instead of an infrastructure error.
 `failed` still means the machine broke and still refuses to produce a number.
+
+Evaluation services preserve injected grader runtimes alongside judges and embeddings.

@@ -63,3 +63,5 @@ their own verdicts and weights, so a missing artifact stays a missing artifact i
 the score's denominator rather than becoming a measured zero. An errored terminal
 plan still outranks the deferral: an evaluation that could not measure remains
 unscorable instead of being published as a behavioural zero.
+
+Evaluation services preserve injected grader runtimes alongside judges and embeddings.

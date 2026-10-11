@@ -8,3 +8,5 @@ export { DatasetError } from './validation.js';
 export { validateTrainingConfiguration, trainingJudgeVersions } from './training/index.js';
 export { projectDatasetCost } from './cost-projection.js';
 export type { CostDataset, CostRecord } from './cost-projection.js';
+
+export type { GraderBinding } from './grader.js';

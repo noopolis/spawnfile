@@ -21,3 +21,8 @@ raw attempts are not native observations or optimizer feedback.
 report, its manifest, snapshot observations and artifact hashes. Preserve current
 judge failure/fallback/cache provenance and authored stage weights through schema
 validation; dropping those fields changes recovery policy and cost evidence.
+
+Evaluation services preserve injected grader runtimes alongside judges and embeddings.
+Replay preserves the complete typed grader result, calibration/scoring identity,
+coverage and measured judge billing/timing on every nested result surface. Validate
+those fields explicitly; object stripping must never erase grading evidence.

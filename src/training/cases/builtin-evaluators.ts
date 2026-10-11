@@ -1,4 +1,5 @@
 import type { EvaluatorDefinition } from '../contracts/dataset.js';
+import { validateGraderParameters } from './grader.js';
 import { validatePredicate } from './turn-bindings.js';
 import { compileJsonSchema } from './json-schema.js';
 import { exclusive, fail, fields, number, object, oneOf, safePath, sequence, string, uniqueStrings } from './validation.js';
@@ -56,6 +57,7 @@ function sequenceParameters(parameters: Readonly<Record<string, unknown>>, path:
   });
 }
 export const builtinEvaluatorDefinitions: Readonly<Record<string, EvaluatorDefinition>> = {
+  grader: descriptor('semantic', ['grader', 'input', 'context', 'grader_binding'], ['grader', 'input'], validateGraderParameters),
   equals: descriptor('mechanical', ['input', 'value'], ['input', 'value'], textParameters),
   'contains-any': descriptor('mechanical', ['input', 'values'], ['input', 'values'], (parameters, path) => {
     textParameters(parameters, path);

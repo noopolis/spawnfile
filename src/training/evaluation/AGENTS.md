@@ -31,3 +31,11 @@ failure; started work settles first. Mechanical-only checks spend no inference a
 take no slot; the exemption is recorded when createEvaluationRegistry builds its frozen
 built-ins, so custom evaluators always take a slot whatever kind they declare. A test enforces that opted-in builtins never read results or scores.
 Cancellation leaves checks that already finished with their own outcome.
+
+The grader builtin consumes host-injected routes keyed by resolved grader path and
+checks their definition/calibration digests against the resolved plan. Missing trial
+context remains missing. The engine evaluates nested grader gates on the same
+snapshot and supplies `gradedArtifact` to project evaluators. Grader results retain
+coverage, per-question results, identity and actual judge calls. Shared backend
+resources and nested gate resources serialize; gates without concurrency opt-in
+make the enclosing grader sequential. No inference or CLI imports belong here.

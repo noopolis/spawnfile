@@ -1,3 +1,4 @@
+import { resolveGraderCheck } from './grader.js';
 import { createHash } from 'node:crypto';
 import type { CheckNode, Dataset, DatasetRegistry, LiveCheck, Stage } from '../contracts/dataset.js';
 import { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
@@ -8,6 +9,8 @@ import { fail, object, string } from './validation.js';
 
 export interface PlanResolution {
   registry: DatasetRegistry;
+  sourceName?: string;
+  resolvingGrader?: boolean;
   versions: Record<string, string>;
   artifacts?: ReadonlySet<string>;
   criterionFileDigests?: Record<string, string>;
@@ -86,7 +89,10 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
       if (!route) fail(path, `unresolved embedding route ${name}`);
       context.versions[`embedding:${name}`] = route.version;
     }
-    return { node: structuredClone(node), nature: {
+    const resolvedNode = node.eval === 'grader' ? resolveGraderCheck(node, context, path,
+      (gate, gatePath) => expand(gate, context, new Map(), gatePath, ruleStack).node,
+      name => Object.hasOwn(builtinEvaluatorDefinitions, name)) : structuredClone(node);
+    return { node: resolvedNode, nature: {
       mechanical: definition.kind === 'mechanical', incremental: definition.incremental,
       stopProof: definition.stopProof,
     } };

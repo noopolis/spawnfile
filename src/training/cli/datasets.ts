@@ -2,7 +2,23 @@ import { constants, closeSync, fstatSync, openSync, readFileSync, realpathSync }
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parseDatasetYaml, resolveDataset, resolveDatasetForCost } from '../cases/index.js';
 import type { CostDataset } from '../cases/index.js';
-import type { ResolvedDataset, ResolutionOptions } from '../contracts/index.js';
+import type { CheckNode, ResolvedDataset, ResolutionOptions } from '../contracts/index.js';
+import { buildGradingRuntime, type GraderDependencies } from './grader/index.js';
+import type { GradingRuntime } from '../graders/index.js';
+
+/** Visit logical check positions only; arbitrary evaluator parameters are data. */
+function graderChecks(dataset: ResolvedDataset): CheckNode[] {
+  const stages = [...dataset.sharedStages, ...dataset.records.flatMap(record => record.effectiveStages)];
+  const checks = [...stages.flatMap(stage => [...stage.checks, ...stage.when ? [stage.when] : [], ...stage.gate ? [stage.gate] : []]),
+    ...dataset.live.checks, ...dataset.records.flatMap(record => [...record.live.checks, ...record.turns?.flatMap(turn => turn.checks ?? []) ?? []])];
+  const found: CheckNode[] = [];
+  function visit(check: CheckNode): void {
+    if (check.eval === 'grader') found.push(check);
+    [...check.all ?? [], ...check.any ?? [], ...check.not ? [check.not] : []].forEach(visit);
+  }
+  checks.forEach(visit);
+  return found;
+}
 
 export function readCliBytes(path: string, maximum: number): Buffer {
   const file = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -22,6 +38,7 @@ export function readCliText(path: string, maximum: number): string {
 /** Sidecar bytes are resolved and frozen before a native subject can run. */
 export class CliDatasets {
   private readonly sidecars = new Map<string, string>();
+  private readonly loaded = new Map<string, ResolvedDataset>();
   readonly protectedDirectories = new Set<string>();
 
   constructor(private readonly judges: Readonly<Record<string, string>>, private readonly cwd: string,
@@ -30,7 +47,29 @@ export class CliDatasets {
     private readonly frozen?: { path: string; sourceDigest: string }) {}
 
   load(file: string, groups: boolean): ResolvedDataset {
-    return this.resolve(file, groups, resolveDataset);
+    const dataset = this.resolve(file, groups, resolveDataset);
+    this.loaded.set(dataset.sourceName, dataset);
+    return dataset;
+  }
+
+  /** All model construction happens after resolution and before the native subject. */
+  async buildGraders(dependencies: GraderDependencies = {}, requireExclusions = false): Promise<Record<string, GradingRuntime>> {
+    const graders: Record<string, GradingRuntime> = {};
+    for (const dataset of this.loaded.values()) for (const check of graderChecks(dataset)) {
+      const filename = check.grader as string;
+      const binding = check.grader_binding as { definitionDigest: string; calibrationDigest: string };
+      const runtime = graders[filename] ?? await buildGradingRuntime(filename, dependencies);
+      if (runtime.definitionDigest !== binding.definitionDigest || runtime.calibrationDigest !== binding.calibrationDigest) {
+        throw new Error(`Grader or calibration changed after dataset resolution: ${filename}`);
+      }
+      if (requireExclusions) for (const excluded of this.loaded.values()) {
+        if (!runtime.calibration.identity.exclusions.some(item => item.digest === excluded.sourceDigest.replace(/^sha256:/, ''))) {
+          throw new Error(`Grader calibration must exclude dataset ${excluded.sourceName}; internal validation requires excluding the whole training dataset`);
+        }
+      }
+      graders[filename] = runtime;
+    }
+    return graders;
   }
 
   loadForCost(file: string, groups: boolean): CostDataset {
