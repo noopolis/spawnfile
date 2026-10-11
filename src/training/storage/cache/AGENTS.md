@@ -23,3 +23,5 @@ Evidence-ID storage validates current unit-ID syntax, uniqueness, and bounded
 reasons/IDs; membership in the exact selected source packet stays with the semantic
 evaluator and is revalidated on hits. Keep raw responses and source-call attribution
 unchanged. Storage imports contracts only, not evaluator implementation modules.
+Grader-origin judge calls retain explicit billing route and measured wall milliseconds.
+Unknown billing values and negative/nonfinite timing are rejected by the strict schema.

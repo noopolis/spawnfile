@@ -1,6 +1,9 @@
+import type { CheckNode } from '../contracts/dataset.js';
+import type { GraderBinding } from '../cases/index.js';
 import { builtinEvaluatorDefinitions } from '../cases/index.js';
 import type { EvaluationRegistry, RegisteredEvaluator } from '../contracts/evaluation.js';
 import { evaluateSequence, evaluateText, evaluateTokenEfficiency, evaluateTool } from './mechanical/index.js';
+import { evaluateGrader } from './grader.js';
 import { evaluateRubric } from './semantic/index.js';
 import { evaluateSimilarity } from './embedding/index.js';
 
@@ -17,6 +20,7 @@ export function createEvaluationRegistry(custom: EvaluationRegistry = {}): Evalu
     equals: evaluateText, 'contains-any': evaluateText, 'json-schema': evaluateText,
     'tool-called': evaluateTool, 'tool-count': evaluateTool, 'tool-sequence': evaluateSequence,
     'token-efficiency': evaluateTokenEfficiency,
+    grader: evaluateGrader,
     'llm-rubric': evaluateRubric, 'embedding-similarity': evaluateSimilarity,
   };
   const builtins: Record<string, RegisteredEvaluator> = Object.fromEntries(Object.entries(functions).map(([id, evaluate]) => [id,
@@ -29,6 +33,22 @@ export function createEvaluationRegistry(custom: EvaluationRegistry = {}): Evalu
   builtins['llm-rubric']!.concurrency = (check, context) => {
     const cache = named(context.judges, check.judge)?.cache;
     return cache ? [cache] : [];
+  };
+  builtins.grader!.concurrency = (check, context) => {
+    const route = named(context.graders ?? {}, check.grader);
+    const resources = route ? [route.resource] : [];
+    function collect(node: CheckNode): boolean {
+      if (node.eval) {
+        const nested = (builtins[node.eval] ?? custom[node.eval])?.concurrency?.(node, context);
+        if (!nested) return false;
+        resources.push(...nested);
+        return true;
+      }
+      const children = node.all ?? node.any ?? (node.not ? [node.not] : undefined);
+      return children !== undefined && children.every(collect);
+    }
+    const binding = check.grader_binding as GraderBinding | undefined;
+    return (binding?.gates ?? []).every(gate => collect(gate.check)) ? resources : undefined;
   };
   builtins['embedding-similarity']!.concurrency = (check, context) => {
     const provider = named(context.embeddings, check.provider);

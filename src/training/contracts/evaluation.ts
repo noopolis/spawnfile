@@ -1,3 +1,4 @@
+import type { GradingRuntime, GradeResult } from '../graders/index.js';
 import type { CheckNode, EvaluatorDefinition, DataMap } from './dataset.js';
 import type { Observation, ObservationCoverage, InferenceProvider, Usage, InferenceFailureKind, InferenceDiagnostic } from './execution.js';
 
@@ -30,6 +31,8 @@ export interface JudgeCall {
   retryCause?: JudgeFailureCause;
   failureKind?: InferenceFailureKind;
   fallbackOf?: string;
+  wallMs?: number;
+  billing?: 'local' | 'subscription' | 'api' | 'mixed';
 }
 export interface CachedJudgment {
   response: string;
@@ -129,6 +132,7 @@ export interface EvaluationResult {
   score?: number;
   evidence: EvidenceReference[];
   children?: EvaluationResult[];
+  grading?: GradeResult;
   usage?: Usage[];
   judgeCalls?: JudgeCall[];
   cache?: { key: string; sourceCallId: string; sourceCalls?: JudgeCall[] };
@@ -170,6 +174,12 @@ export interface EvaluationContext {
   scores: Readonly<Record<string, WeightedScore>>;
   judges: Readonly<Record<string, JudgeRoute>>;
   embeddings: Readonly<Record<string, EmbeddingProvider>>;
+  /** Host-built grader routes keyed by resolved grader filename. */
+  graders?: Readonly<Record<string, GradingRuntime>>;
+  /** Engine-owned nested gate execution against the same immutable trial snapshot. */
+  evaluateCheck?: (check: CheckNode, artifact?: ArtifactSnapshot) => Promise<EvaluationResult>;
+  /** Artifact whose acceptance a nested grader gate must establish. */
+  gradedArtifact?: ArtifactSnapshot;
   /** The host confines sidecars to protected evaluator resources. */
   readText: (path: string) => Promise<string>;
   /** Trusted host sink, awaited before accepting a judgment or making its one permitted repair. */

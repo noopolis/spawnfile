@@ -48,3 +48,9 @@ setup, executable stages or validated plan identity escape it. Resolve structura
 fixtures, bindings, criterion files and split references, but never call preparation
 validators or claim profile availability, parameter semantics or override locks.
 Normal executable resolution stays strict; no authored bypass flag exists.
+
+`eval: grader` loads protected grader and calibration bytes relative to the dataset,
+validates context bindings and gate checks, and freezes both digests into the plan.
+Resolved grader paths are absolute route keys; runtime construction remains with the
+host. Gate checks expand through the same evaluator/ruleset registry. Recursive
+graders are refused. Never load native inference providers during case resolution.

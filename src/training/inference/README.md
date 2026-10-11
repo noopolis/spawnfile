@@ -59,6 +59,18 @@ a fresh experiment. These versions describe maintained invocation behavior, not
 model weights, subscription accounts or a hash of ambient user configuration.
 Custom inference overrides remain responsible for truthful execution provenance.
 
+## Decision backends
+
+The public decision module supplies `createOllamaDecision`, `createJevDecision`
+and `createTeacherDecision`. These return option probabilities and truthful model
+identity; neutral grader rules own calibration, escalation and aggregation.
+Ollama requires observable option logprobs; Jev requires a complete normalized
+probability vector. Missing scores stay missing. Teacher mode uses the same
+attested tool-free subscription providers and never claims local-model ECE.
+No adapter installs models, starts servers or silently changes billing routes.
+See the [grader guide](../../docs/graders.md) for wire contracts, calibration bars,
+CLI commands and the Codex empty-tool-attestation refusal.
+
 ## Container training
 
 Training uses one outer Docker container for the experiment coordinator, DSPy,

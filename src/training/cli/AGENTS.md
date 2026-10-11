@@ -4,6 +4,11 @@ Owns explicit local commands, configuration selection and human diagnostics.
 
 - Keep commands thin; experiment, evaluation and optimization behavior belongs
   in their owning modules, not duplicated argument handlers.
+- Grader commands delegate to the grader feature entry point. Standalone grading
+  binds named local context files; absent trial evidence remains unknown.
+- Native grader routes are built before subject construction, matching frozen
+  grader/calibration digests. Training requires exclusion digests for both source
+  datasets; internal validation conservatively excludes the whole training file.
 - `main(argv, io, dependencies)` validates, evaluates, trains or views through public
   module exports. Native/inference boundaries alone are injectable in tests.
 - Explicit Markdown selections map to identical native paths. Resources remain

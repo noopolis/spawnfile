@@ -1,0 +1,20 @@
+# Grader formats
+
+Owns strict grader/label schemas, YAML and content-addressed file loading, and
+canonical digests. Public seam: index.ts. No provider calls or runtime imports.
+Gate check objects remain opaque except artifact-binding restrictions; callers
+validate their evaluator semantics. YAML duplicate keys and unsafe map keys fail.
+Sequence gates require a positive argument-to-binding equality conjunct in the
+final predicate; a binding mention or bypassable Boolean branch is insufficient.
+
+Run adjacent tests, ESLint, TypeScript and per-file coverage. Verify path-bearing
+errors, content mismatches and unsupported scoring without invoking inference.
+
+`abstain` is reserved in choice options because it is the vote abstention marker.
+IDs/map keys reject prototype names; identifiers also reject control characters.
+Conflicting human answers remain disputed. Inline JSON is canonically hashed;
+references verify exact bytes before JSON decoding (for .json) or UTF-8 text loading.
+
+Golden labels accept a sidecar path or an inline labels body with implied grader.
+Inline references resolve from the grader file without adding paths to digests.
+YAML diagnostics show the first issue with line/column and a remaining issue count.

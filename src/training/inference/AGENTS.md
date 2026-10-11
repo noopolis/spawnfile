@@ -6,6 +6,8 @@ native tools before accepting a nonempty successful terminal result. Embeddings
 are a separate provider contract and are not supplied by this text-generation route.
 
 - Keep this separate from native subject adapters and their tool loops.
+- Decision backends return probabilities and model identities through their
+  public module; calibration, escalation and aggregation remain with graders.
 - Subscription-backed CLI routes serve DSPy reflection/proposals and semantic
   judges. Every enabled generation route is explicit; no paid API fallback.
 - Do not copy login credentials into cases or expose them through captures.

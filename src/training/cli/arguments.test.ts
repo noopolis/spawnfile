@@ -44,3 +44,23 @@ describe('explicit bounded CLI arguments', () => {
       .toThrow('unique NAME=VALUE');
   });
 });
+
+it('parses grader commands and rejects unsupported/missing/repeated flags', () => {
+  expect(parseArguments(['grader', 'validate', '--grader', 'g.yaml'])).toMatchObject({ command: 'grader', graderCommand: 'validate' });
+  expect(parseArguments(['grader', 'calibrate', '--grader', 'g', '--exclude-dataset', 'a', '--exclude-dataset', 'b']).flags['exclude-dataset']).toEqual(['a', 'b']);
+  expect(parseArguments(['grader', 'label', '--grader', 'g', '--inputs', 'i', '--teachers', 'a', '--relabel']).flags.relabel).toEqual(['true']);
+  expect(parseArguments(['grader', 'grade', '--grader', 'g', '--output', 'o.json', '--context', 'a=a.json', '--context', 'b=b.md']).flags.context).toEqual(['a=a.json', 'b=b.md']);
+  for (const argv of [['grader'], ['grader', 'grade'], ['grader', 'validate'], ['grader', 'validate', '--grader', 'g', 'extra'],
+    ['grader', 'grade', '--grader', 'g'], ['grader', 'grade', '--grader', 'g', '--output', 'o', '--output', 'other'],
+    ['grader', 'label', '--grader', 'g', '--inputs', 'i'], ['grader', 'validate', '--grader', 'a', '--grader', 'b']]) {
+    expect(() => parseArguments(argv)).toThrow();
+  }
+});
+
+it.each(['validate', 'label', 'calibrate', 'grade'])('accepts the bounded whole-command deadline for grader %s', command => {
+  const required = command === 'label' ? ['--inputs', 'inputs.yaml', '--teachers', 'teacher']
+    : command === 'grade' ? ['--output', 'output.json'] : [];
+  const args = parseArguments(['grader', command, '--grader', 'grader.yaml', ...required, '--timeout-ms', '3600000']);
+  expect(count(args, 'timeout-ms', 180000, 3600000)).toBe(3600000);
+  expect(() => count({ ...args, flags: { ...args.flags, 'timeout-ms': ['3600001'] } }, 'timeout-ms', 180000, 3600000)).toThrow('integer');
+});

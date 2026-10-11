@@ -2,8 +2,8 @@ import type { ResolvedDataset } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 
-export async function freezeCriteria(dataset: ResolvedDataset, evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>,
-  registry: EvaluationRegistry, scope?: string): Promise<Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>> {
+export async function freezeCriteria(dataset: ResolvedDataset, evaluation: Pick<EvaluationContext, 'judges' | 'graders' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>,
+  registry: EvaluationRegistry, scope?: string): Promise<Pick<EvaluationContext, 'judges' | 'graders' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>> {
   const judges = Object.fromEntries(Object.entries(evaluation.judges).map(([name, route]) => [name, { ...route, cacheScope: scope ?? route.cacheScope ?? `${dataset.id}:${dataset.sourceDigest}:${dataset.sharedPlanDigest}` }]));
   const observeJudgeAttempt = evaluation.observeJudgeAttempt;
   for (const [key, version] of Object.entries(dataset.registryVersions)) {

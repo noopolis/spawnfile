@@ -9,7 +9,7 @@ export interface RescoreOptions {
   access: ReadAccess;
   dataset: ResolvedDataset;
   registry: EvaluationRegistry;
-  evaluation: Pick<EvaluationContext, 'judges' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>;
+  evaluation: Pick<EvaluationContext, 'judges' | 'graders' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>;
   /** Unique immutable evaluation identity, supplied explicitly by the caller. */
   id: string;
   signal?: AbortSignal;

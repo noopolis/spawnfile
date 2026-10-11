@@ -1,3 +1,4 @@
+import { parseGrader, createCalibrationIdentity, decisionBackendIdentity, type GradingRuntime } from '../graders/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createEvaluationRegistry, createJudgeCache, evaluatePlan, result } from './index.js';
 import { evaluationContext, observation, snapshot } from '../testing/index.js';
@@ -192,7 +193,20 @@ describe('concurrent independent judges', () => {
     const embedding = { id: 'local', version: '1', embed: async () => ({ vectors: [[1, 0], [1, 0]], usage: null }) };
     const judge = deferredJudges(['editor']).judges.editor!;
     judge.provider.generate = async () => ({ text: JSON.stringify(good), model: 'm', route: 'r', usage: null });
+    const definition = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'g', calibration: 'c',
+      teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'teacher', teacher: 't' },
+      escalate: { to: 't', between: [0.4, 0.6] }, score: { method: 'weighted' },
+      questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }] });
+    const backend: GradingRuntime['backend'] = { identity: async () => ({ backend: 'teacher', model: 'm' }),
+      score: async requests => requests.map(request => ({ key: request.key, status: 'ok', probabilities: { yes: 1, no: 0 } })) };
+    const digest = 'a'.repeat(64);
+    const identity = createCalibrationIdentity(definition, { backendModel: await decisionBackendIdentity(definition, backend),
+      golden: digest, promptTemplateVersion: 'v1', seed: '', exclusions: [] });
+    const grader: GradingRuntime = { grader: definition, backend, resource: {}, goldenDigest: digest, promptTemplateVersion: 'v1',
+      definitionDigest: digest, calibrationDigest: digest, calibration: { schema: 'paideia.grader-calibration.v1', identity,
+        questions: { q: { status: 'calibrated', failures: [], metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } } };
     const cases: Record<string, CheckNode> = {
+      grader: { eval: 'grader', grader: 'g', input: 'artifact:article', grader_binding: { definitionDigest: digest, calibrationDigest: digest, gates: [] } },
       equals: { eval: 'equals', input: 'output.text', value: '4' },
       'contains-any': { eval: 'contains-any', input: 'artifact:article#/body', values: ['precise'] },
       'json-schema': { eval: 'json-schema', input: 'artifact:article', schema: { type: 'object' } },
@@ -207,7 +221,7 @@ describe('concurrent independent judges', () => {
     const opted = Object.entries(registry).filter(([, entry]) => entry.concurrency).map(([id]) => id).sort();
     expect(opted).toEqual(Object.keys(cases).sort());
     for (const [id, check] of Object.entries(cases)) {
-      const context = evaluationContext({ judges: { editor: { ...judge, model: 'm' } }, embeddings: { local: embedding },
+      const context = evaluationContext({ graders: { g: grader }, judges: { editor: { ...judge, model: 'm' } }, embeddings: { local: embedding },
         snapshot: snapshot({ events: [observation()], subjectUsage: { status: 'complete', usage: { inputTokens: 800, cachedInputTokens: 0,
           outputTokens: 200, reasoningTokens: 0, source: 'native-total' } } }),
         readText: async path => path === 'calibration.json' ? JSON.stringify({ model: 'test-vector', metric: 'cosine', version: '1' }) : 'reference' });

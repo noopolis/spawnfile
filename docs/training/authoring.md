@@ -257,6 +257,7 @@ failures to resolve or evaluate, not opportunities for best-effort passing.
 | `tool-called`, `tool-count` | Authentic native tool occurrence/count, with declared outcome or phase |
 | `tool-sequence` | Ordered successful calls and bindings between their arguments/results |
 | `llm-rubric` | Semantic judgment using a fixed prompt and explicit inference route |
+| `grader` | [Calibrated grader file](graders.md) with typed questions, hard gates and explicit trial-context selectors |
 | `embedding-similarity` | Similarity with a declared model, metric and calibration |
 | Registered project evaluator | Typed domain checks against real accepted state/artifacts |
 | `all`, `any`, `not` | Logical composition with explicit unknown/error semantics |

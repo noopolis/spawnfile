@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest';
 import type { JudgeCall } from '../../contracts/evaluation.js';
 import type { Usage } from '../../contracts/execution.js';
+import type { GradeResult } from '../../graders/index.js';
+import { capturedTrial } from './source.js';
 import { fixture } from './fixture.js';
 import { trialReportSchema } from './schema.js';
 
@@ -9,7 +11,7 @@ const usage: Usage = { inputTokens: 40, cachedInputTokens: 10, cacheWriteInputTo
   outputTokens: 8, reasoningTokens: null, source: 'native' };
 const call: JudgeCall = { id: 'actual-generation', judge: 'editor', providerId: 'selected-provider',
   requestedModel: 'requested-alias', responseModel: 'reported-model', responseRoute: 'reported-route',
-  outcome: 'invalid-response', usage };
+  outcome: 'invalid-response', usage, wallMs: 125.5, billing: 'subscription' };
 
 test('replay retains judge attribution and cache-write usage across stored report surfaces', async () => {
   const { report } = await fixture(report => {
@@ -80,4 +82,37 @@ test('a replayed report keeps why a judge errored', async () => {
   // Only the closed vocabulary parses; an invented cause is refused, not carried.
   stage.checks.at(-1)!.judgeFailure = { ...failure, cause: 'grant-vaporised' as never };
   expect(() => trialReportSchema.parse(JSON.parse(JSON.stringify(report)))).toThrow();
+});
+
+
+test('persisted replay retains full grading identity, coverage and call provenance', async () => {
+  const digest = 'a'.repeat(64);
+  const grading: GradeResult = { status: 'unknown', score: 0.2, coverage: 0.5,
+    gates: [{ id: 'grounded', status: 'unknown' }],
+    questions: [{ id: 'clear', score: 0.2, instances: 2, not_applicable: 0, escalated: 1, missing: 1 }],
+    identity: { calibration: { expansion: [['clear', digest]], questions: { clear: digest }, promptTemplateVersion: 'v1', segmenter: 'icu-test',
+      optionMapping: { clear: digest }, backendModel: 'local:tested', golden: digest, seed: 'seed', exclusions: [],
+      escalation: digest, escalationTeacher: digest, uncalibrated: 'refuse' },
+    calibrationDigest: digest, escalation: digest, teacherPolicy: digest, scoringPolicy: digest },
+    backendBilling: 'local', judgeCalls: [call] };
+  const { store, report, options } = await fixture(report => {
+    const graded = { ...report.evaluation.checks.old!, grading, judgeCalls: [call] };
+    report.evaluation.checks.old = graded;
+    report.evaluation.stages[0]!.checks = [graded];
+    report.evaluation.stages[0]!.gate = graded;
+    report.turns[0]!.checks = [graded];
+    report.live = [{ checkId: 'grader', boundary: 'artifact', result: graded }];
+    report.decisiveFailure = graded;
+  });
+  const replayed = capturedTrial(await store.readReplay(options.runId, options.access)).report;
+  expect(replayed).toEqual(report);
+  expect(replayed.evaluation.checks.old!.grading).toEqual(grading);
+  for (const invalid of [{ ...grading, score: 2 }, { ...grading, coverage: -1 },
+    { ...grading, backendBilling: 'free' }, { ...grading, identity: { ...grading.identity, calibrationDigest: 'stale' } },
+    { ...grading, questions: [{ ...grading.questions[0], missing: -1 }] },
+    { ...grading, judgeCalls: [{ ...call, billing: 'invented' }] },
+    { ...grading, judgeCalls: [{ ...call, wallMs: -1 }] }]) {
+    expect(() => trialReportSchema.parse({ ...report, evaluation: { ...report.evaluation,
+      checks: { old: { ...report.evaluation.checks.old, grading: invalid } } } })).toThrow();
+  }
 });
