@@ -9,6 +9,15 @@ receipts, authenticated native activity, closed telemetry and verified containme
 Use public module indexes across child boundaries; no sibling implementation imports.
 Keep adjacent tests, files below 400 lines and per-file coverage above 90 percent.
 
+Transport delivery is explicit in the launch receipt. The real caller-owned bridge
+submits production message envelopes; the worker arms an expected source and never
+synthesizes that wake. Continuations name exact external message IDs. Preserve real
+delivery IDs, observed batch membership and per-wake accounting. Missing batch or
+rendered allowance evidence is never reconstructed from prompt assumptions.
+Task clock environment is installed inside the running worker before host creation;
+Daimon owns child offset application and real-time engines. Ready/terminal frames
+retain origin plus real anchor; Paideia deadlines never use task time.
+
 External continuations are opt-in, sourced, bounded to three deliveries and share
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and
 aggregate usage once; cancellation must stop the owned runtime. One observer-owned

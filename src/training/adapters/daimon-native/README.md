@@ -52,6 +52,71 @@ arguments. That trusted caller code owns local transport startup; it must call
 the public worker afterward. Controls and bearer token stay under `/run/paideia`.
 The optional Daimon dependency is loaded only by the native worker.
 
+## Production transport delivery and task time
+
+Both receipt versions accept optional `delivery: "direct" | "transport"`.
+Omission retains the direct manual-wake behavior and old receipt shape. Transport
+works with Codex and child-process Grok; the caller owns the real isolated Moltnet
+server, its Daimon bridge, sender/room configuration and bootstrap lifecycle.
+
+The worker's isolated Bearer token authenticates every route. In transport mode,
+`POST /v2/wakes` uses Daimon's public `parseWakeAcceptanceRequest` and `host.accept`;
+it returns Daimon's acceptance unchanged (202), including `acceptance_id` and
+`request_digest`. Kind, text envelope and real `occurred_at` pass through unchanged.
+The bridge follows `GET /v2/wake-receipts/<acceptance_id>` to terminal. Existing
+`GET /v2/activity` and `GET /v2/availability` remain available. Direct mode refuses
+`POST /v2/wakes` and the transport arming read with 404.
+
+For a low-level caller:
+
+1. Start `POST /trial/run` with `{wakeId, source, controls?}`. `source` is exactly
+   `{kind: "transport", deliveryId: "moltnet:<message-id>"}` or
+   `{kind: "transport", deliveryIdPrefix: "moltnet:"}`. `text` is optional and is
+   never submitted to the native host in this mode.
+2. Poll authenticated `GET /trial/run` until its `wakeId` and `source` match and
+   `state` is `waiting` or `observing`; `idle` means no run is armed. Keep the POST
+   open while observing.
+3. Publish on the real transport. Only matching acceptances received after arming
+   can bind; retries of earlier deliveries cannot become the new wake. The POST
+   returns terminal evidence, or a clear failure if the expected delivery never
+   arrives before the real deadline.
+
+Adapter callers provide `transportDelivery.prepare(context, signal)`, returning
+`{source, publish(signal)}`. Preparation reserves the delivery identity; `publish`
+is invoked only after the matching run is armed. Configure this alongside
+`execution: {kind: "child-process"}` for shared-container transport. Deferred
+continuations keep the existing `id`, `text`, and content-hashed `source` evidence,
+and add `transport: {source, publish}`. That transport source must name an exact
+message ID. At most three continuations share the original deadline. Providers
+must honor cancellation and must not publish during preparation.
+
+Daimon owns inbox batching, dispositions, deferred items and clock projection.
+Evidence binds the real delivery ID and observed native execution, records all
+IDs from its active batch, original producer envelopes, deferred batch members,
+and a current availability budget with its observation time. A missed active batch
+observation fails closed. `renderedAllowances: "unavailable-public-api"` is
+deliberate: the inspected runtime computes allowances when the model calls
+`daimon_inbox`; its public control API has no retained copy of that response.
+Polling availability cannot establish what the engine saw. Exact rendered-budget
+capture requires a public Daimon evidence export; Paideia does not recreate it.
+
+Optional receipt `taskClock: {origin, libfaketimePath}` selects an advancing task
+clock. `origin` must be an ISO instant with `Z` or an explicit offset, within UTC
+years 1970–9999. The image supplies one `libfaketime*.so*` library path. The running
+worker sets `NOOPOLIS_TASK_CLOCK` to `{version: "noopolis.task-clock.v1", origin,
+anchorEpochMs}` using real `Date.now()`, and supplies `LD_PRELOAD` for Daimon's
+child gate before creating the host. Never preload the worker through its launch
+environment. Daimon and engines stay on real time; Daimon applies the advancing
+offset only to supported tool/MCP children. Ready and per-wake frames record the
+origin and anchor; every Paideia timeout remains real. Omission unsets the clock
+environment. Supply a clock-capable Daimon runtime and, for brokered Grok, its
+attested clocked worker configuration. No generic public runtime capability marker
+currently proves clock support; live container verification remains required.
+
+Producer delivery timestamps must remain real UTC milliseconds; Daimon shifts
+them once at dispatch. Historical dates inside text remain unchanged. This
+adapter supplies no provider-prompt date correction.
+
 ## Evidence and cancellation
 
 The authenticated HTTP endpoint forwards actual native activity for production
@@ -65,6 +130,15 @@ Real MCP/Moltnet receipts yield partial tool observations; unobserved arguments
 and built-in tools remain absent. Native attention final prose is absent. Projects
 can evaluate authentic filed artifacts through their own collectors. Missing
 usage remains unknown. The terminal evidence retains preparation receipts.
+
+Each wake's complete frame is already persisted as `evidence.<ordinal>.json`
+beside the latest `evidence.json` in the private trial artifact root, and as an
+operator-only diagnostic in the run's raw `events.jsonl`. Inspect
+`native.modelContexts` and (Grok) `native.requests` there. These existing fields
+contain model/policy and request timing/token metadata, respectively; they do
+**not** contain provider request prompts. Brokered Grok's private session tree is
+not readable by this adapter. Date leakage inside engine-injected model context
+therefore remains unmeasured without a public engine/broker capture export.
 
 A completed execution that defers its inbox delivery stays a failed trial with
 `blocked: "awaiting-external-input"` in terminal evidence. Recorded usage and

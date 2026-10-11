@@ -1,8 +1,9 @@
 import type { ObservationCoverage, Usage } from '../../contracts/execution.js';
 import type { NativeLaunch } from './receipt/index.js';
 import { verifyExternalSource, type ExternalInputSource, type TerminalEvidence } from './worker/index.js';
+import { verifyPreparedTransport, type PreparedTransportDelivery } from './transport/index.js';
 
-export interface NativeExternalInput { id: string; text: string; source: ExternalInputSource }
+export interface NativeExternalInput { id: string; text: string; source: ExternalInputSource; transport?: PreparedTransportDelivery }
 export interface NativeExternalInputs {
   maxDeliveries: number;
   next(context: { trialId: string; turnId: string; containerName: string; launch: NativeLaunch; terminal: TerminalEvidence },
@@ -33,9 +34,11 @@ export async function nextExternalInput<T>(policy: { next(context: T, signal: Ab
     const input = await Promise.race([policy.next(context, controller.signal), interrupted]);
     if (signal.aborted) throw new Error('External input cancelled');
     if (input !== null) {
-      if (Object.keys(input).sort().join(',') !== 'id,source,text' ||
+      const keys = Object.keys(input).sort().join(',');
+      if ((keys !== 'id,source,text' && keys !== 'id,source,text,transport') ||
           !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(input.id) || !input.text.trim() || Buffer.byteLength(input.text) > 16384) throw new Error('Invalid external input');
       verifyExternalSource(input.source, input.text);
+      if (keys.endsWith(',transport')) verifyPreparedTransport(input.transport!, true);
     }
     return input;
   } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); controller.abort(); }

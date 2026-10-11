@@ -11,6 +11,11 @@ observed child exit. Uncertain cancellation fails closed; outer container teardo
 remains the caller's responsibility. Tests use real child/loopback fixtures but
 must not claim actual authenticated model acceptance from those fixtures.
 
+Transport runs record the requested source in each wake's evidence ledger. Their
+terminal receipt must match the actual transport delivery, acceptance and batch,
+not the direct-mode trial/wake delivery key. A GET arm-status poll is observation
+only and must never add a wake to that ledger. Keep direct receipts unchanged.
+
 A completed trace can close an execution whose delivery remains accepted and
 deferred awaiting external input. Require that explicit blocked receipt and all
 identity/idle/stop/exit proofs. Confirming closure never changes the task outcome
