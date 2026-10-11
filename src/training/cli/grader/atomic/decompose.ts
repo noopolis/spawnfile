@@ -4,7 +4,7 @@ import { InferenceFailure } from '../../../inference/index.js';
 import type { InferenceDiagnostic, InferenceFailureKind } from '../../../contracts/execution.js';
 import type { InferenceProvider, Usage, InferenceAttempt } from '../../../contracts/execution.js';
 import { stableDigest } from '../../../graders/index.js';
-import { parseDecomposition, validateDecomposition, instantiateChecksReport, extractionResponseSchema, parseExtractionResponse } from '../../../graders/decomposition/index.js';
+import { parseDecomposition, validateDecomposition, instantiateChecksReport, extractionResponseSchema, parseExtractionResponse, normalizeWhitespace } from '../../../graders/decomposition/index.js';
 import type { CheckTemplates, Decomposition } from '../../../graders/decomposition/index.js';
 import type { GraderDependencies } from '../backend.js';
 import { createGraderTeacher } from '../label-call.js';
@@ -25,6 +25,7 @@ interface Checkpoint {
   digest?: string; identity: string; decomposition?: Decomposition; receipts: ExtractionReceipt[];
   citationDisagreements: ReturnType<typeof validateDecomposition>['citationDisagreements'];
   dropped: ReturnType<typeof validateDecomposition>['dropped'];
+  duplicates: { id: string; label: string; duplicate_of: string; reason: string }[];
   rejected: { id: string; reasons: string[] }[]; complete: boolean;
 }
 export function selectTeachers(templates: CheckTemplates, ids: string[]) {
@@ -83,7 +84,9 @@ async function extract(input: AtomicInput, config: CheckTemplates, teacher: NonN
     const payload = parseExtractionResponse(receipt.response_text!);
     receipt.outcome = 'completed';
     await save();
-    return { units: payload.units, receipt };
+    // Extractor IDs are labels; response order owns identity across both phases.
+    return { units: payload.units.map((unit, index) => ({ ...unit,
+      id: `${phase === 'extract' ? 'x' : 'a'}${index + 1}`, label: unit.id })), receipt };
   } catch (error) {
     receipt.outcome = 'invalid-response'; receipt.failure_class = 'invalid-response';
     await save();
@@ -99,10 +102,10 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
     throw new Error('Select one or two Codex/Claude extractors');
   }
   const inputs = await readInputs(options.inputsFile, templates);
-  let completed = 0, resumed = 0, rejected = 0, dropped = 0;
+  let completed = 0, resumed = 0, rejected = 0, dropped = 0, duplicates = 0;
   for (const input of inputs) {
     options.signal?.throwIfAborted();
-    const identity = stableDigest({ refs: input.refs, templates, teachers, protocol: 'paideia.extraction.v5' });
+    const identity = stableDigest({ refs: input.refs, templates, teachers, protocol: 'paideia.extraction.v6' });
     const basename = stableDigest(input.id);
     const checkpointFile = join(options.out, `${basename}.checkpoint.json`);
     const decompositionFile = join(options.out, `${basename}.decomposition.json`);
@@ -116,7 +119,7 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
       }
     }
     if (checkpoint && checkpoint.identity !== identity) throw new Error(`Stale decomposition checkpoint: ${input.id}`);
-    checkpoint ??= { identity, receipts: [], rejected: [], dropped: [], citationDisagreements: [], complete: false };
+    checkpoint ??= { identity, receipts: [], rejected: [], dropped: [], duplicates: [], citationDisagreements: [], complete: false };
     const save = () => persist(checkpointFile, checkpoint);
     if (!checkpoint.decomposition) {
       const teacher = teachers[0]!;
@@ -132,9 +135,21 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
     if (!checkpoint.complete) {
       const teacher = teachers[1] ?? teachers[0]!;
       const result = await extract(input, templates, teacher, (dependencies.provider ?? createGraderTeacher)(teacher), checkpoint, save, options.signal);
+      const key = (unit: { kind: string; text: string }) => JSON.stringify([unit.kind, normalizeWhitespace(unit.text)]);
+      const seen = new Map(checkpoint.decomposition!.units.map(unit => [key(unit), unit.id]));
+      const missed = result.units.filter(unit => {
+        const duplicate = seen.get(key(unit));
+        if (duplicate !== undefined) {
+          checkpoint.duplicates.push({ id: unit.id, label: unit.label, duplicate_of: duplicate,
+            reason: 'duplicate audit unit: normalized text and kind match' });
+          return false;
+        }
+        seen.set(key(unit), unit.id);
+        return true;
+      });
       const validated = validateDecomposition(parseDecomposition({ ...checkpoint.decomposition,
         audit: { extractor: { provider: result.receipt.provider, model: result.receipt.model,
-          prompt_digest: result.receipt.prompt_digest, at: result.receipt.at }, missed: result.units, at: result.receipt.at } }), input, templates);
+          prompt_digest: result.receipt.prompt_digest, at: result.receipt.at }, missed, at: result.receipt.at } }), input, templates);
       checkpoint.decomposition = validated.decomposition;
       checkpoint.rejected.push(...validated.rejected);
       checkpoint.dropped.push(...validated.dropped);
@@ -147,9 +162,10 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
     await atomicWrite(join(options.out, `${basename}.instantiation.json`), instantiateChecksReport(templates, checkpoint.decomposition!, input));
     rejected += checkpoint.rejected.length;
     dropped += checkpoint.dropped.length;
+    duplicates += checkpoint.duplicates.length;
     completed++;
   }
-  return { completed, resumed, rejected, dropped, directory: options.out };
+  return { completed, resumed, rejected, dropped, duplicates, directory: options.out };
 }
 
 async function persist(file: string, checkpoint: Checkpoint): Promise<void> {

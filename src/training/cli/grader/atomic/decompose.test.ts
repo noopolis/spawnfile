@@ -14,7 +14,7 @@ it('extracts, audits, pins bytes, stores receipt accounting and resumes without 
   const files = await readdir(f.decompose.out);
   const docFile = join(f.decompose.out, files.find(file => file.endsWith('.decomposition.json'))!);
   const doc = JSON.parse(await readFile(docFile, 'utf8'));
-  expect(doc).toMatchObject({ units: [f.unit], audit: { missed: [], extractor: { provider: 'claude' } } });
+  expect(doc).toMatchObject({ units: [{ ...f.unit, id: 'x1', label: 'claim' }], audit: { missed: [], extractor: { provider: 'claude' } } });
   const checkpoint = JSON.parse(await readFile(join(f.decompose.out, files.find(file => file.endsWith('.checkpoint.json'))!), 'utf8'));
   expect(checkpoint.receipts).toHaveLength(2);
   expect(checkpoint.receipts[0]).toMatchObject({ reported_model: 'test-codex', usage: null, wall_ms: expect.any(Number) });
@@ -40,8 +40,8 @@ it('sends kind descriptions and persists citation disagreements and location exc
   }
   const files = await readdir(f.decompose.out);
   const load = async (suffix: string) => JSON.parse(await readFile(join(f.decompose.out, files.find(file => file.endsWith(suffix))!), 'utf8'));
-  expect(await load('.checkpoint.json')).toMatchObject({ citationDisagreements: [{ id: 'claim', supplied: ['B2'], derived: ['A1'] }] });
-  expect(await load('.instantiation.json')).toEqual({ checks: [], skipped: [{ template_id: 'support', unit_id: 'claim',
+  expect(await load('.checkpoint.json')).toMatchObject({ citationDisagreements: [{ id: 'x1', supplied: ['B2'], derived: ['A1'] }] });
+  expect(await load('.instantiation.json')).toEqual({ checks: [], skipped: [{ template_id: 'support', unit_id: 'x1',
     location: 'body', reason: 'outside declared template locations' }] });
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1 });
   expect(f.generate).toHaveBeenCalledTimes(2);
@@ -55,7 +55,7 @@ it('resumes extraction after an audit failure and retains rejected invented unit
   expect(await runDecompose({ ...f.decompose, extractors: ['codex', 'claude'] }, f.dependencies)).toMatchObject({ completed: 1, rejected: 1 });
   expect(f.generate).toHaveBeenCalledTimes(3);
   const loaded = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile), true);
-  expect(loaded[0]!.doc.units).toEqual([{ ...f.unit, location: 'body' }]);
+  expect(loaded[0]!.doc.units).toEqual([{ ...f.unit, id: 'x1', label: 'claim', location: 'body' }]);
 });
 
 it('refuses bad teacher selections, uncontained providers, malformed and duplicate-key extraction responses', async () => {
@@ -117,4 +117,55 @@ it('bounds workers, drains started jobs after failure and propagates cancellatio
     await Promise.resolve(); drained = true;
   })).rejects.toThrow('fail');
   expect(drained).toBe(true);
+});
+
+it('assigns response-order identities despite repeated extraction and colliding audit labels', async () => {
+  const f = await fixture();
+  const response = (units: unknown[]) => ({ text: JSON.stringify({ units }), model: 'test', usage: null, route: 'subscription' as const });
+  f.generate.mockResolvedValueOnce(response([f.unit, { ...f.unit, text: '12 items.' }]))
+    .mockResolvedValueOnce(response([{ ...f.unit, text: 'Alice' }, { ...f.unit, text: 'reported' }]));
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ completed: 1, rejected: 0, duplicates: 0 });
+  const [loaded] = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile));
+  expect(loaded!.doc.units.map(({ id, label }) => ({ id, label })))
+    .toEqual([{ id: 'x1', label: 'claim' }, { id: 'x2', label: 'claim' }]);
+  expect(loaded!.doc.audit!.missed.map(({ id, label }) => ({ id, label })))
+    .toEqual([{ id: 'a1', label: 'claim' }, { id: 'a2', label: 'claim' }]);
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1 });
+  expect(f.generate).toHaveBeenCalledTimes(2);
+});
+
+it('drops and reports normalized audit duplicates without merging different kinds', async () => {
+  const f = await fixture();
+  await writeFile(f.templatesFile, stringify({ ...f.templates, kinds: { display: 'Display text' } }));
+  f.generate.mockResolvedValueOnce({ text: JSON.stringify({ units: [f.unit] }), model: 'test', usage: null, route: 'subscription' })
+    .mockResolvedValueOnce({ text: JSON.stringify({ units: [
+      { ...f.unit, text: '  Alice\nreported\t12 items. ' },
+      { ...f.unit, kind: 'display' },
+      { ...f.unit, kind: 'display' },
+    ] }), model: 'test', usage: null, route: 'subscription' });
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ rejected: 0, duplicates: 2 });
+  const [loaded] = await readDecompositions(f.decompose.out, await readTemplates(f.templatesFile));
+  expect(loaded!.doc.audit!.missed).toMatchObject([{ id: 'a2', label: 'claim', kind: 'display' }]);
+  const file = join(f.decompose.out, (await readdir(f.decompose.out)).find(file => file.endsWith('.checkpoint.json'))!);
+  const checkpoint = JSON.parse(await readFile(file, 'utf8'));
+  expect(checkpoint.duplicates).toEqual([
+    { id: 'a1', label: 'claim', duplicate_of: 'x1', reason: 'duplicate audit unit: normalized text and kind match' },
+    { id: 'a3', label: 'claim', duplicate_of: 'a2', reason: 'duplicate audit unit: normalized text and kind match' },
+  ]);
+  expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ resumed: 1, duplicates: 2 });
+  expect(f.generate).toHaveBeenCalledTimes(2);
+});
+
+it('refuses v5 extraction checkpoints before making calls', async () => {
+  const f = await fixture();
+  await runDecompose(f.decompose, f.dependencies);
+  const templates = await readTemplates(f.templatesFile);
+  const [input] = await readInputs(f.inputsFile, templates);
+  const file = join(f.decompose.out, (await readdir(f.decompose.out)).find(file => file.endsWith('.checkpoint.json'))!);
+  const { digest: _digest, ...content } = JSON.parse(await readFile(file, 'utf8'));
+  content.identity = stableDigest({ refs: input!.refs, templates, teachers: selectTeachers(templates, f.decompose.extractors),
+    protocol: 'paideia.extraction.v5' });
+  await writeFile(file, JSON.stringify({ ...content, digest: stableDigest(content) }));
+  await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('Stale decomposition checkpoint');
+  expect(f.generate).toHaveBeenCalledTimes(2);
 });

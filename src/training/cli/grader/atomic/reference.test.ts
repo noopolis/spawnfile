@@ -50,7 +50,7 @@ it('stops quality gates without traps, reports window skips and option consisten
 
 it('reports failing traps/templates and retains missing council answers as failure', async () => {
   const f = await prepared(); await runTraps(f.traps);
-  f.generate.mockImplementation(async request => ({ text: JSON.stringify({ 'support@claim': { answer: 'supported' } }),
+  f.generate.mockImplementation(async request => ({ text: JSON.stringify({ 'support@x1': { answer: 'supported' } }),
     model: request.model, route: 'subscription', usage: null }));
   const result = await runReference(f.reference, f.dependencies);
   expect(result.gate).toBe('STOP');
@@ -63,7 +63,7 @@ it('rejects stale and tampered trap artifacts before starting inference', async 
   await expect(runTraps({ ...f.traps, seed: 'different' })).rejects.toThrow('Stale trap');
   const file = join(f.traps.out, (await readdir(f.traps.out))[0]!);
   const trap = JSON.parse(await readFile(file, 'utf8'));
-  trap.traps[0].intended_answers['support@claim'] = 'supported';
+  trap.traps[0].intended_answers['support@x1'] = 'supported';
   await writeFile(file, JSON.stringify(trap));
   await expect(runReference(f.reference, f.dependencies)).rejects.toThrow('Invalid trap checkpoint');
   trap.decompositionDigest = 'changed';
@@ -180,8 +180,8 @@ it('does not call or count unaffected duplicate checks in trap variants', async 
   const artifact = JSON.parse(await readFile(result.file, 'utf8'));
   const outputs = Object.entries(artifact.outputs) as [string, { checks: Record<string, unknown> }][];
   expect(outputs.filter(([key]) => key.includes(':')).map(([, output]) => Object.keys(output.checks)))
-    .toEqual([['support@claim'], ['support@claim']]);
-  expect(outputs.find(([key]) => !key.includes(':'))![1].checks).toHaveProperty('other@claim');
+    .toEqual([['support@x1'], ['support@x1']]);
+  expect(outputs.find(([key]) => !key.includes(':'))![1].checks).toHaveProperty('other@x1');
 });
 
 it('keeps units with invalid source hints, reports drops and never sends hints to council teachers', async () => {
@@ -192,7 +192,7 @@ it('keeps units with invalid source hints, reports drops and never sends hints t
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ completed: 1, rejected: 0, dropped: 1 });
   const files = await readdir(f.decompose.out);
   const load = async (suffix: string) => JSON.parse(await readFile(join(f.decompose.out, files.find(file => file.endsWith(suffix))!), 'utf8'));
-  expect(await load('.checkpoint.json')).toMatchObject({ dropped: [{ id: 'claim', field: 'source_span', value: source_span }] });
+  expect(await load('.checkpoint.json')).toMatchObject({ dropped: [{ id: 'x1', field: 'source_span', value: source_span }] });
   const doc = await load('.decomposition.json');
   expect(doc.units).toHaveLength(1);
   expect(doc.units[0]).not.toHaveProperty('source_span');
@@ -201,7 +201,7 @@ it('keeps units with invalid source hints, reports drops and never sends hints t
   f.generate.mockImplementation(async request => {
     expect(request.prompt).not.toContain(source_span);
     expect(request.prompt).not.toContain('source_span');
-    return { text: JSON.stringify({ 'support@claim': { answer: 'supported' } }),
+    return { text: JSON.stringify({ 'support@x1': { answer: 'supported' } }),
       model: request.model, usage: null, route: 'subscription' };
   });
   await runReference({ ...f.reference, traps: undefined }, f.dependencies);

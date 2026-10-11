@@ -7,7 +7,7 @@ export type TrapKind = typeof trapKinds[number];
 const id = identifier.refine(value => !value.includes('@'), '@ is reserved for check IDs');
 const reference = z.strictObject({ from: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
 export const unitSchema = z.strictObject({
-  id, kind: identifier, text: z.string().refine(value => value.trim().length > 0, 'text must not be blank'),
+  id, label: z.string().optional(), kind: identifier, text: z.string().refine(value => value.trim().length > 0, 'text must not be blank'),
   paragraph: z.number().int().nonnegative().optional(), sentence: z.number().int().nonnegative().optional(),
   location: z.string().min(1).optional(),
   cites: z.array(identifier).optional(),

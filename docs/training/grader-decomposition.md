@@ -116,6 +116,12 @@ context. Validation searches output string fields itself and derives `location`
 spans use `context.<name>` paths. A unique occurrence overrides extractor location,
 paragraph and sentence hints; multiple occurrences require hints consistent with
 exactly one match. Zero matches and unresolved ambiguity are rejected.
+The CLI assigns `x1`, `x2`, … to extraction units and `a1`, `a2`, … to audit units
+in response order, retaining each extractor ID as `label`. Audit units matching an
+existing unit's whitespace-normalized text and kind are dropped; checkpoint
+`duplicates` records their IDs, labels, matching IDs and reasons, and the command
+summary reports their count. Repeats within the audit response are also dropped.
+Extraction protocol v6 rejects earlier checkpoints; regenerate in a fresh directory.
 The decomposition persists each rejected unit with its text and rejection reasons.
 Both `traps` and `reference` refuse these artifacts unless `--allow-rejections`
 is explicit. With that flag, each rejected unit remains one missing check in the

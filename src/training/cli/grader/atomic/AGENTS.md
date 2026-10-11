@@ -20,3 +20,8 @@ a completed base reference with expected good finals. Request
 strict JSON schemas on Codex/Claude extraction and retain dropped field and citation
 disagreement diagnostics. Pass kind descriptions to extractors and persist a local
 instantiation report with declared location exclusions.
+
+Assign unit IDs by response order (x1… extraction, a1… audit); retain extractor IDs
+as labels. Drop audit repeats by whitespace-normalized text and kind, recording
+duplicate identities in checkpoints and counts in command summaries. Protocol
+changes invalidate earlier extraction checkpoints.

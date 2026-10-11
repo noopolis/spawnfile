@@ -13,7 +13,7 @@ it('routes atomic commands without a grader argument and returns gate exit codes
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
     const text: string = (prompt.projection ?? prompt.questions[0].evidence).unit.text;
-    return { text: JSON.stringify({ 'support@claim': { answer: text.includes('12') ? 'supported' : 'unsupported' } }),
+    return { text: JSON.stringify({ 'support@x1': { answer: text.includes('12') ? 'supported' : 'unsupported' } }),
       model: request.model, usage: null, route: 'subscription' };
   });
   expect(await run(['reference', '--templates', 'templates.yaml', '--decompositions', 'decompositions', '--teachers', 'codex,claude', '--out', 'base.json'])).toBe(1);

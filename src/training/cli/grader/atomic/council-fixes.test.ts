@@ -15,9 +15,9 @@ it('persists rejected real spans, refuses downstream by default and counts allow
   await writeFile(join(f.root, 'output.json'), JSON.stringify({ body: ['Alice reported 12 items. [R9]'] }));
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ rejected: 1 });
   const doc = await load(f.decompose.out, '.decomposition.json');
-  expect(doc.rejected).toMatchObject([{ id: 'claim', reasons: ['unknown cited row'], unit: { text: f.unit.text } }]);
+  expect(doc.rejected).toMatchObject([{ id: 'x1', reasons: ['unknown cited row'], unit: { text: f.unit.text } }]);
   const report = await load(f.decompose.out, '.instantiation.json');
-  expect(report.checks).toMatchObject([{ id: 'rejected@claim', status: 'missing' }]);
+  expect(report.checks).toMatchObject([{ id: 'rejected@x1', status: 'missing' }]);
   await expect(runTraps(f.traps)).rejects.toThrow('--allow-rejections');
   await expect(runReference({ ...f.reference, traps: undefined }, f.dependencies)).rejects.toThrow('--allow-rejections');
   expect(await runTraps({ ...f.traps, allowRejections: true })).toMatchObject({ missingChecks: 1 });
@@ -42,7 +42,7 @@ it.each([true, false])('records provider schema failure class and available prot
 it('excludes cancelled calls from report totals while preserving run receipts', async () => {
   const f = await fixture();
   await runDecompose(f.decompose, f.dependencies);
-  f.generate.mockImplementation(async request => ({ text: '{"support@claim":{"answer":"supported"}}', model: request.model, route: 'subscription', usage: null }));
+  f.generate.mockImplementation(async request => ({ text: '{"support@x1":{"answer":"supported"}}', model: request.model, route: 'subscription', usage: null }));
   const result = await runReference({ ...f.reference, traps: undefined }, f.dependencies);
   const directory = `${f.reference.out}.checkpoints`;
   const name = (await readdir(directory))[0]!;
@@ -63,7 +63,7 @@ it('binds trap generation to current completed base references and rejects missi
   await expect(runTraps({ ...f.traps, references })).rejects.toThrow('Missing base');
   await writeFile(references, JSON.stringify({ digest: 'bad' }));
   await expect(runTraps({ ...f.traps, references })).rejects.toThrow('corrupt');
-  f.generate.mockImplementation(async request => ({ text: '{"support@claim":{"answer":"unsupported"}}', model: request.model, route: 'subscription', usage: null }));
+  f.generate.mockImplementation(async request => ({ text: '{"support@x1":{"answer":"unsupported"}}', model: request.model, route: 'subscription', usage: null }));
   await runReference({ ...f.reference, traps: undefined, out: references }, f.dependencies);
   expect(await runTraps({ ...f.traps, references })).toMatchObject({ generated: 1 });
   const artifact = JSON.parse(await readFile(references, 'utf8'));
