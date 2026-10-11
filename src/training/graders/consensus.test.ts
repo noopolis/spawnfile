@@ -50,3 +50,17 @@ it('gives human then editor precedence and disputes conflicts at the highest ans
   expect(deriveConsensus(label({ q: { e: 'abstain', a: 'yes' } }), sources).q)
     .toMatchObject({ answer: 'yes', disputed: false, source: 'single-teacher' });
 });
+
+
+it('retains signals without truth, precedence, overrides or majority denominator membership', () => {
+  const sources: Labels['labelers'] = { ...labelers,
+    review: { kind: 'signal', name: 'External AI', source: 'review' },
+    desk: { kind: 'signal', name: 'Desk verdict', source: 'send-back' } };
+  const votes = { a: 'yes', review: 'no', desk: 'no' };
+  expect(deriveConsensus(label({ q: votes }, ['a', 'review', 'desk']), sources).q)
+    .toMatchObject({ answer: 'yes', disputed: false, source: 'single-teacher', votes });
+  expect(deriveConsensus(label({ q: { review: 'yes', desk: 'yes' } }), sources).q)
+    .toMatchObject({ answer: undefined, disputed: true, source: 'consensus' });
+  expect(deriveConsensus(label({ q: { a: 'yes', b: 'no', review: 'yes' } }), sources).q?.disputed).toBe(true);
+  expect(deriveConsensus(label({ q: { h: 'no', review: 'yes' } }), sources).q?.answer).toBe('no');
+});

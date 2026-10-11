@@ -1,7 +1,7 @@
 import type { TrainingConfiguration } from '../contracts/training-config.js';
 export interface CliArguments {
   command: 'help' | 'validate' | 'evaluate' | 'train' | 'view' | 'grader';
-  graderCommand?: 'validate' | 'label' | 'calibrate' | 'grade' | 'expand';
+  graderCommand?: 'validate' | 'label' | 'calibrate' | 'grade' | 'expand' | 'decompose' | 'traps' | 'reference';
   dataset?: string;
   training?: TrainingConfiguration;
   frozenDataset?: { path: string; sourceDigest: string };
@@ -11,6 +11,9 @@ export interface CliArguments {
 const repeated = new Set(['instructions', 'supporting', 'locked', 'editable', 'resource', 'judge', 'judge-citation-repairs', 'validation-group', 'exclude-dataset', 'context']);
 const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'resource', 'judge', 'judge-citation-repairs', 'source-root', 'out', 'max-trials', 'timeout-ms', 'view', 'cost-config', 'spawnfile-context'];
 const graderFlags: Record<string, readonly string[]> = {
+  decompose: ['templates', 'inputs', 'extractors', 'out', 'timeout-ms'],
+  traps: ['templates', 'decompositions', 'out', 'seed', 'timeout-ms'],
+  reference: ['templates', 'decompositions', 'traps', 'teachers', 'out', 'concurrency', 'timeout-ms'],
   validate: ['grader', 'timeout-ms'],
   label: ['grader', 'import', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
   calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
@@ -24,6 +27,9 @@ const flags: Record<string, readonly string[]> = {
 
 export const helpText = `Paideia — explicit local native-agent experiments
 
+grader decompose --templates FILE --inputs FILE --extractors codex[,claude] --out DIR [--timeout-ms N]
+grader traps --templates FILE --decompositions DIR --out DIR [--seed S] [--timeout-ms N]
+grader reference --templates FILE --decompositions DIR [--traps DIR] --teachers codex,claude[,grok] --out FILE [--concurrency N] [--timeout-ms N]
 grader validate --grader FILE [--timeout-ms N]
 grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N] [--timeout-ms N]
 grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]
@@ -91,7 +97,12 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     if (positional.length) throw new Error('grader accepts flags only');
     if (values.import && (values.inputs || values.teachers)) throw new Error('--import is mutually exclusive with --inputs/--teachers');
     if (values.import && (values.adjudication || values.concurrency || values.limit)) throw new Error('--import does not accept --adjudication/--concurrency/--limit');
-    for (const required of graderCommand === 'label' && !values.import ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' || graderCommand === 'expand' ? ['grader', 'output'] : ['grader']) {
+    const atomicRequired: Record<string, string[]> = {
+      decompose: ['templates', 'inputs', 'extractors', 'out'],
+      traps: ['templates', 'decompositions', 'out'],
+      reference: ['templates', 'decompositions', 'teachers', 'out'],
+    };
+    for (const required of atomicRequired[graderCommand ?? ''] ?? (graderCommand === 'label' && !values.import ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' || graderCommand === 'expand' ? ['grader', 'output'] : ['grader'])) {
       if (!values[required]) throw new Error(`Required option --${required} is missing`);
     }
     return { command: 'grader', graderCommand: graderCommand as CliArguments['graderCommand'], flags: values };

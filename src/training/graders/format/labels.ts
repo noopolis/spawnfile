@@ -8,6 +8,7 @@ import { optionsFor, allQuestions } from './questions.js';
 const referenceSchema = z.strictObject({ from: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
 const labelerSchema = z.union([
   z.strictObject({ kind: z.literal('model'), provider, model: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('signal'), name: z.string().min(1), source: z.string().min(1) }),
   z.strictObject({ kind: z.literal('human'), name: z.string().min(1) }),
   z.strictObject({ kind: z.literal('editor'), name: z.string().min(1), source: z.string().min(1).optional() }),
 ]);

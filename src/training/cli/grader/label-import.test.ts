@@ -250,3 +250,19 @@ it('relabel still rejects malformed stored schema and wrong grader identity', as
     expect(await fs.readFile(f.labelsFile, 'utf8')).toBe(bytes);
   }
 });
+
+
+it('imports and reports external review signals without creating truth', async () => {
+  const f = await fixture();
+  f.manifest.labelers.editor.kind = 'signal'; await f.save();
+  expect(await runLabelImport(f)).toMatchObject({ votesByLabeler: { editor: 2 }, votesByQuestion: { q: 1, p: 1 } });
+  const raw = await f.saved(), g = await loadGrader(f.graderFile);
+  expect(raw.labelers.editor).toEqual({ kind: 'signal', name: 'Editor', source: 'Verdicts' });
+  expect(voteProvenance(raw.labels[0], 'editor', 'q')!.kind).toBe('signal');
+  expect(deriveConsensus(raw.labels[0]!, raw.labelers).q).toMatchObject({ answer: undefined, disputed: true });
+  const loaded = await loadLabels(f.labelsFile, g);
+  g.questions[0]!.ask = 'Changed';
+  expect(() => validateStoredVotes(g, loaded.labels, { resolved: true })).not.toThrow();
+  await runLabelImport(f);
+  expect(await f.saved()).toEqual(raw);
+});

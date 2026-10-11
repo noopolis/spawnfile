@@ -22,3 +22,13 @@ export type { QuestionType, GoldenSource, CalibrationRecord, Exclusions, PlattPa
 export { planCallAdmission, escalationCallKey } from './admission.js';
 
 export { selectQuestionModel, fitNll } from './calibration/index.js';
+export { parseCheckTemplates, parseCheckTemplatesYaml, parseDecomposition,
+  validateDecomposition, instantiateChecks } from './decomposition/index.js';
+export type { AtomicUnit, CheckTemplate, CheckTemplates, CheckInstance, Decomposition,
+  DecompositionInputs } from './decomposition/index.js';
+export { runCouncil, averageAnswers, grokWindowOpen, adjudicationInstability,
+  referenceQuality, leaveOneTeacherOut } from './references/index.js';
+export type { CouncilTeacher, CouncilOptions, CouncilOutput, CheckReference,
+  TeacherAnswer, TrapAssessment } from './references/index.js';
+export { generateTraps, validateTrap } from './traps/index.js';
+export type { Trap, TrapSet, TrapMutation } from './traps/index.js';
