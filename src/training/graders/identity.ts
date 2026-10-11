@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { teacherAccuracyFailures } from './calibration/index.js';
 import { teacherPolicyDigest } from './labeling/index.js';
 import { segmenterIdentity } from './instances.js';
-import { allQuestions, optionsFor, parseSchema, identifier, probability, stableDigest, type Grader, type Labels } from './format/index.js';
+import { allQuestions, decisionModels, optionsFor, parseSchema, identifier, probability, stableDigest, type Grader, type Labels } from './format/index.js';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const interval = z.tuple([probability, probability]).refine(([lo, hi]) => lo <= hi, 'unordered interval');
@@ -13,6 +13,8 @@ export const calibrationIdentitySchema = z.strictObject({
   segmenter: z.string().min(1),
   optionMapping: z.record(identifier, digest),
   backendModel: z.string().min(1),
+  models: digest.optional(),
+  modelIdentities: z.record(identifier, z.string().min(1)).optional(),
   golden: digest,
   seed: z.string(),
   escalation: digest,
@@ -26,6 +28,7 @@ export const calibrationFileSchema = z.strictObject({
   schema: z.literal('paideia.grader-calibration.v1'),
   identity: calibrationIdentitySchema,
   questions: z.record(identifier, z.strictObject({
+    model: identifier.optional(),
     status: z.enum(['calibrated', 'insufficient-evidence', 'uncalibrated', 'escalation-infeasible', 'unverified']),
     failures: z.array(z.string()),
     params: z.strictObject({ a: z.number(), b: z.number() }).optional(),
@@ -53,10 +56,11 @@ export function parseCalibration(value: unknown): CalibrationFile { return parse
 export function parseCalibrationJson(source: string): CalibrationFile { return parseCalibration(JSON.parse(source)); }
 export { segmenterIdentity } from './instances.js';
 
-export function createCalibrationIdentity(grader: Grader, supplied: Omit<CalibrationIdentity, 'questions' | 'expansion' | 'optionMapping' | 'segmenter' | 'escalation' | 'escalationTeacher' | 'uncalibrated'> & { segmenter?: string }): CalibrationIdentity {
+export function createCalibrationIdentity(grader: Grader, supplied: Omit<CalibrationIdentity, 'questions' | 'expansion' | 'optionMapping' | 'segmenter' | 'escalation' | 'escalationTeacher' | 'uncalibrated' | 'models'> & { segmenter?: string }): CalibrationIdentity {
   const questions = allQuestions(grader);
   return parseSchema(calibrationIdentitySchema, {
     ...supplied,
+    ...(grader.models ? { models: stableDigest(decisionModels(grader)) } : {}),
     escalation: stableDigest(grader.escalate),
     escalationTeacher: teacherPolicyDigest(grader.teachers.find(teacher => teacher.id === grader.escalate.to)!),
     uncalibrated: grader.uncalibrated,
@@ -82,8 +86,16 @@ export function checkCalibration(grader: Grader, calibration: CalibrationFile, i
   const refusals: string[] = [];
   const current = createCalibrationIdentity(grader, identity);
   for (const component of Object.keys(current) as (keyof CalibrationIdentity)[]) {
-    if (stableDigest(calibration.identity[component]) !== stableDigest(current[component])) {
+    if (stableDigest([calibration.identity[component]]) !== stableDigest([current[component]])) {
       refusals.push(`calibration identity mismatch: ${component}`);
+    }
+  }
+  const models = decisionModels(grader);
+  for (const question of allQuestions(grader)) {
+    const id = calibration.questions[question.id]?.model ?? (grader.models ? undefined : 'default');
+    if (!models.some(model => model.id === id)) refusals.push(`question ${question.id}: unknown or missing selected model ${id}`);
+    if (grader.models && id && (!calibration.identity.modelIdentities?.[id] || !identity.modelIdentities?.[id])) {
+      refusals.push(`calibration identity mismatch: modelIdentities.${id}`);
     }
   }
   const notCalibrated = allQuestions(grader).filter(question => calibration.questions[question.id]?.status !== 'calibrated').map(question => question.id);
@@ -91,8 +103,11 @@ export function checkCalibration(grader: Grader, calibration: CalibrationFile, i
     for (const id of notCalibrated) refusals.push(`question ${id}: ${calibration.questions[id]?.failures.join(', ') || 'not calibrated'}`);
   }
   if (options.quality !== false) {
-    const forced = grader.model.backend === 'teacher' ? allQuestions(grader).map(question => question.id)
-      : grader.uncalibrated === 'teacher' ? notCalibrated : [];
+    const forced = allQuestions(grader).filter(question => {
+      const id = calibration.questions[question.id]?.model ?? 'default';
+      return models.find(model => model.id === id)?.backend === 'teacher' ||
+        grader.uncalibrated === 'teacher' && notCalibrated.includes(question.id);
+    }).map(question => question.id);
     for (const id of forced) {
       const accuracy = calibration.questions[id]?.teacherAccuracy;
       const failures = accuracy ? teacherAccuracyFailures(accuracy)

@@ -10,11 +10,13 @@ export interface GradingRuntime {
   grader: Grader;
   calibration: CalibrationFile;
   backend: DecisionBackend;
+  backends?: Record<string, DecisionBackend>;
   teacher?: GraderTeacher;
   goldenDigest: string;
   promptTemplateVersion: string;
   /** Shared endpoint token: checks using the same backend must serialize. */
   resource: object;
+  resources?: object[];
   definitionDigest?: string;
   calibrationDigest?: string;
 }
@@ -26,6 +28,7 @@ export interface GradeOptions extends GradingRuntime {
 }
 export interface GradeResult extends GraderResult {
   identity: { calibration: CalibrationFile['identity']; calibrationDigest: string; escalation: string; teacherPolicy: string; scoringPolicy: string };
-  backendBilling: 'local' | 'subscription';
+  backendBilling: 'local' | 'subscription' | 'mixed';
+  decisions?: { instance: string; model: string; status: 'ok' | 'missing' }[];
   judgeCalls: JudgeCall[];
 }

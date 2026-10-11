@@ -66,6 +66,44 @@ score: { method: weighted, pass_at: 0.75 }
 - Weights default to 1 and cannot be negative; their total must be positive.
   `fitted-weights` is recognized but refused as unimplemented.
 
+## Per-question decision models
+
+Keep `model:` for a single decision model (implicit ID `default`), or replace it
+with `models:` containing 1–4 candidates with unique IDs. Exactly one form is
+required. Local candidates declare `id`, `backend`, `endpoint` and `name`;
+teacher candidates declare `id`, `backend: teacher` and a declared `teacher`:
+
+```yaml
+models:
+  - { id: intern, backend: jev-http, endpoint: http://127.0.0.1:8000, name: Intern-Decision-4B }
+  - { id: minicpm, backend: jev-http, endpoint: http://127.0.0.1:8001, name: MiniCPM5-2B-Jev }
+  - { id: reader, backend: teacher, teacher: reader }
+```
+
+Calibration scores every eligible instance with every candidate, with separate
+backend identities, raw-score caches and concurrency bounds. An unavailable
+candidate is a named error. Per question (including gates and derived applicability),
+each local candidate fits Platt parameters on the fit split with the existing
+question/type pooling rule. Selection minimizes mean binary NLL of calibrated
+fit probabilities; ties preserve authored order. Missing fit answers keep the
+full denominator and receive maximum binary error, like held-out metrics:
+truth probability zero, clipped to `1e-6` for finite NLL. They cannot improve a
+candidate by abstaining. Teacher candidates retain their 0/1 decision semantics
+and independent-labeler evidence requirements; no ECE is claimed for them.
+
+Held-out rows never select a model. Only the selected model determines each
+question's status, escalation band and cascade verification. The report names
+the selection and lists candidate held-out ECE/Brier as **not used for selection**.
+A selected model that fails the held-out bars is not replaced with a held-out
+winner; the existing refusal or verified-teacher policy applies.
+
+Calibration stores each question's selected model ID and per-model identities,
+including the authored model list. Changes require recalibration. Standalone
+`grader grade` and `eval: grader` construct reusable backends and route instances
+to their question's selected model. Decision accounting records instance/model
+IDs; subscription judge calls retain the actual requested/reported model and
+usage. Escalations continue to share the existing per-output call budget.
+
 ## Labels and resume
 
 ```yaml

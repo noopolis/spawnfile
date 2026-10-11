@@ -23,3 +23,6 @@ YAML diagnostics show the first issue with line/column and a remaining issue cou
 External label-import manifests admit human/editor declarations only and validate
 declared context/labelers and unique vote coordinates before any golden write.
 Imported human/editor IDs must not collide with any configured teacher ID.
+
+Named models accept 1–4 unique IDs, mutually exclusive with legacy model syntax.
+The public decisionModels/graderForModel seams normalize default routing.

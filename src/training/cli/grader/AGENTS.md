@@ -31,3 +31,7 @@ replacement; it constructs no inference providers and preserves replay receipts.
 Import relabel validates stored structure before replacement and the complete current
 rubric afterward. Current refusal receipts are terminal on resume; explicit relabel
 clears them for retry, while asked membership remains in the denominator.
+
+Calibrate every authored model with its own identity/cache and concurrency bound.
+Select per question on fit loss before combining selected routes for cascade
+planning. Candidate held-out metrics are informational, never selection inputs.

@@ -1,6 +1,7 @@
 import type { CalibrationFile, CalibrationMetrics, GoldenSource } from '../../graders/index.js';
 
 export interface QuestionDiagnostics {
+  candidates?: { id: string; ece: number | null; brier: number | null }[];
   missingRate: number;
   boundedRate: number;
   sourceMix: Record<GoldenSource, number>;
@@ -16,7 +17,7 @@ export function calibrationReport(file: CalibrationFile, diagnostics: Record<str
 }): string {
   const lines = ['# Grader calibration', '',
     'Metrics measure agreement with teacher consensus, not validated correctness, unless human- or editor-adjudicated labels are present.',
-    'Held-out lineages never choose parameters or bands. ECE/Brier intervals use 1,000 whole-lineage bootstrap resamples (90%).',
+    'Held-out lineages never choose models, parameters or bands. ECE/Brier intervals use 1,000 whole-lineage bootstrap resamples (90%).',
     'Missing decisions remain in held-out counts and count wrong; Brier assigns loss 1 and ECE assigns maximum error to missing mass (conservative penalties, not imputed predictions).',
     'Teacher-only backends report independent-labeler agreement; they do not claim ECE or calibrated probabilities.',
     'Bounded Ollama scores use the conservative lower p(good): absent expected options get zero, absent unexpected options get the smallest candidate probability before normalization.',
@@ -31,6 +32,10 @@ export function calibrationReport(file: CalibrationFile, diagnostics: Record<str
   for (const [id, result] of Object.entries(file.questions)) {
     const d = diagnostics[id]!;
     lines.push('', `## ${safe(id)}`, '', ...result.failures.map(failure => `- ${failure}`));
+    lines.push(`- Selected model: ${safe(result.model ?? 'default')}.`);
+    for (const candidate of d.candidates ?? []) {
+      lines.push(`- Candidate ${safe(candidate.id)} held-out ECE=${number(candidate.ece)}, Brier=${number(candidate.brier)} (not used for selection).`);
+    }
     for (const [source, metrics] of Object.entries(d.bySource ?? {})) {
       lines.push(`- ${source}: n=${metrics.instances}, accuracy=${number(metrics.accuracy)}, Brier=${number(metrics.brier)}, ECE=${number(metrics.ece)}.`);
     }

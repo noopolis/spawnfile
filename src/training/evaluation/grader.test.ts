@@ -123,6 +123,8 @@ describe('grader builtin evaluation', () => {
     const { context, check, runtime } = await fixture([{ id: 'gate', check: { any: [{ not: { eval: 'equals', input: 'artifact:article', value: 'wrong' } }] } }]);
     const registry = createEvaluationRegistry();
     expect(registry.grader!.concurrency!(check, context)).toEqual([runtime.resource]);
+    runtime.resources = [runtime.resource, {}];
+    expect(registry.grader!.concurrency!(check, context)).toEqual(runtime.resources);
     expect(registry.grader!.concurrency!({ ...check, grader: 'absent', grader_binding: undefined }, context)).toEqual([]);
     expect(registry.grader!.concurrency!({ ...check, grader_binding: { gates: [{ check: { passed: 'sibling' } }] } }, context)).toBeUndefined();
     let active = 0; let maximum = 0;

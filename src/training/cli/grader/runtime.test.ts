@@ -6,10 +6,11 @@ import { stringify } from 'yaml';
 import type { DecisionBackend } from '../../contracts/grading.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { createCalibrationIdentity, loadGrader, loadLabels, parseGrader, sha256, type Grader,
-  type CalibrationFile } from '../../graders/index.js';
+  decisionModelIdentities, stableDigest, type CalibrationFile } from '../../graders/index.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
 import { backendIdentity } from './backend.js';
 import { buildGradingRuntime } from './runtime.js';
+import { runValidate } from './validate.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -17,7 +18,7 @@ const provider: InferenceProvider = { id: 'claude-subscription',
   capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
   generate: async () => { throw new Error('Builder must not generate'); } };
 
-async function fixture(model: Grader['model'] = { backend: 'jev-http', endpoint: 'http://localhost:8123', name: 'decision' }) {
+async function fixture(model: NonNullable<Grader['model']> = { backend: 'jev-http', endpoint: 'http://localhost:8123', name: 'decision' }) {
   const root = await mkdtemp(join(tmpdir(), 'grader-runtime-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml');
   const source = parseGrader({ schema: 'paideia.grader.v1', id: 'report',
@@ -134,4 +135,36 @@ it('refuses missing calibration, malformed calibration and unavailable exclusion
   await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('schema');
   await rm(f.grader.calibration);
   await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('ENOENT');
+});
+
+
+it('constructs every authored model once, validates identities and shares all endpoint resources', async () => {
+  const f = await fixture();
+  const single = await buildGradingRuntime(f.graderFile, f.dependencies);
+  const model = f.source.model!;
+  delete f.source.model;
+  f.source.models = [{ ...model, id: 'one' },
+    { id: 'two', backend: 'jev-http', endpoint: 'http://localhost:9999', name: 'different' }];
+  await writeFile(f.graderFile, stringify(f.source));
+  const grader = await loadGrader(f.graderFile);
+  const other: DecisionBackend = { identity: vi.fn(async () => ({ backend: 'jev-http', model: 'other' })),
+    score: async () => [] };
+  const backendFactory = vi.fn((view: Grader) => view.model!.backend !== 'teacher' && view.model!.name === 'different' ? other : f.backend);
+  const backends = { one: f.backend, two: other };
+  const modelIdentities = await decisionModelIdentities(grader, backends);
+  f.calibration.questions.q!.model = 'two';
+  f.calibration.identity = createCalibrationIdentity(grader, { ...f.calibration.identity, modelIdentities,
+    backendModel: stableDigest(modelIdentities) });
+  await writeFile(grader.calibration, JSON.stringify(f.calibration));
+  const dependencies = { ...f.dependencies, backend: backendFactory };
+  const runtime = await buildGradingRuntime(f.graderFile, dependencies);
+  expect(backendFactory).toHaveBeenCalledTimes(2);
+  expect(runtime.backends).toEqual(backends);
+  expect(runtime.resources).toHaveLength(2);
+  expect(runtime.resources![0]).toBe(single.resource);
+  expect(runtime.resources![1]).not.toBe(single.resource);
+  expect(await runValidate(f.graderFile, dependencies)).toEqual({ status: 'valid', calibration: true });
+  other.identity = async () => ({ backend: 'jev-http', model: 'changed' });
+  await expect(buildGradingRuntime(f.graderFile, dependencies)).rejects.toThrow('identity mismatch');
+  await expect(runValidate(f.graderFile, dependencies)).rejects.toThrow('identity mismatch');
 });
