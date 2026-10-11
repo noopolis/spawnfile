@@ -50,8 +50,8 @@ describe("Daimon attention policy compilation", () => {
     await attest();
     expect((await compile({})).agents[0].attention).toEqual({ maxBatchMessages: 8, maxBatchBytes: 12000 });
   });
-  it("accepts attention against the checked-in published pin without a local identity", async () => {
-    expect((await compile({ max_batch_messages: 2 })).agents[0].attention).toEqual({ maxBatchMessages: 2, maxBatchBytes: 12000 });
+  it("requires a re-pin before the published image grants attention authority", async () => {
+    await expect(compile({ max_batch_messages: 2 })).rejects.toThrow(/attention is disabled.*does not attest/u);
   });
   it.each([
     null, [], "auto", { typo: 1 }, { max_batch_messages: 0 }, { max_batch_messages: 33 },

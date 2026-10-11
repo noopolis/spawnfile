@@ -19,14 +19,11 @@ afterEach(async () => {
 });
 
 describe("public Daimon host fixture", () => {
-  it("compiles a public host against the CI-published Daimon index with no local identity", async () => {
+  it("requires a re-pin before production compiles can use the new manifest", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-public-daimon-"));
     temporaryDirectories.push(outputDirectory);
-    await compileProject(fixture, { outputDirectory });
-    const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
-    expect(dockerfile).toContain("COPY --from=noopolis/spawnfile-runtime-daimon@sha256:85875f67af630e8b4e667a72f20f0b491940cfb3feb7fe132a13a84678147747 ");
-    expect(dockerfile).toContain('amd64) expected="sha256:4714bbf377acdb098fcf90c0c91e55494f0996fca77e28cd599b6a72c7cac2dc"');
-    expect(dockerfile).toContain('arm64) expected="sha256:f48018b729b984fde30af433607087c2f72019aad59ccf26d2641f18757c2dc6"');
+    await expect(compileProject(fixture, { outputDirectory })).rejects.toThrow(/does not attest the compiler's exact contract manifest/u);
+    await expect(readUtf8File(path.join(outputDirectory, "Dockerfile"))).rejects.toThrow();
   });
 
   it("compiles against an explicit local identity without changing production registry pins", async () => {

@@ -1,16 +1,16 @@
 import path from "node:path";
 import { readFile } from "node:fs/promises";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
 import { parseDistributionReport } from "../distribution/index.js";
-import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
+import { capableDaimonManifest, useMatchingDaimonTestImage } from "../runtime/daimon/recording.test-helper.js";
 import { buildCompilePlan } from "./buildCompilePlan.js";
 import { compileProject } from "./compileProject.js";
 import { createMemoryArtifactBundle } from "./memoryArtifacts.js";
 import { resolveRecordingReport } from "./recordingReport.js";
 import { cleanTrainingProjects, trainingProject, writeTrainingFile } from "./training/plan/fixtures.test-helper.js";
 
-afterEach(cleanTrainingProjects);
+afterEach(async () => { vi.unstubAllEnvs(); await cleanTrainingProjects(); });
 const memory = (id: string) => ({ id, store: { kind: "json", path: `/data/${id}/events.jsonl` } });
 const agent = (name: string, training?: unknown) => ({ spawnfile_version: "0.1", kind: "agent", name, runtime: "daimon", memory: [memory(name)], ...(training ? { training } : {}) });
 
@@ -32,6 +32,7 @@ it("uses only compiled recording agents, protecting their own and accessible sha
 
 it("emits the opt-in field in real compile and distribution reports without loading training targets", async () => {
   const root = await trainingProject({ Spawnfile: agent("a") });
+  useMatchingDaimonTestImage(root);
   const off = await compileProject(root);
   expect(off.report).not.toHaveProperty("recording");
   // Use the compiler's emitted report path, which the Dockerfile copies into the image.

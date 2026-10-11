@@ -184,7 +184,7 @@ describe("Daimon contract manifest", () => {
     const vendoredRoot = path.dirname(fileURLToPath(import.meta.url));
     const vendored = await readVerifiedDaimonContractManifest(vendoredRoot);
     expect(vendored.digest).toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
-    expect(daimonSupportsWakeMoments(vendored.manifest)).toBe(false);
+    expect(daimonSupportsWakeMoments(vendored.manifest)).toBe(true);
     const bytes = await readFile(path.join(vendoredRoot, DAIMON_CONTRACT_MANIFEST_FILE), "utf8");
     const raw = JSON.parse(bytes) as { consumedConfigFields: string[] };
     expect(raw.consumedConfigFields).toContain("agents[].memory");

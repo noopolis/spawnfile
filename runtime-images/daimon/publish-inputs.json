@@ -19,7 +19,7 @@
     "version": "0.142.3"
   },
   "daimon": {
-    "commit": "834955934e102349335362c37524261625e38dbb",
+    "commit": "7758bd70b8ba33a63bb772195574be33a7950029",
     "package_version": "0.2.0",
     "source": "https://github.com/noopolis/daimon-harness.git"
   },

@@ -2,11 +2,11 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 
-import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
+import { capableDaimonManifest, useMatchingDaimonTestImage } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 import { cleanTrainingProjects, trainingProject, writeTrainingFile } from "./training/plan/fixtures.test-helper.js";
 
-afterEach(async () => { vi.useRealTimers(); await cleanTrainingProjects(); });
+afterEach(async () => { vi.useRealTimers(); vi.unstubAllEnvs(); await cleanTrainingProjects(); });
 const agent = (runtime: string, recording = true) => ({
   spawnfile_version: "0.1", kind: "agent", name: "writer", runtime,
   ...(recording ? { training: { record: { keep: "2h", volumes: ["state"] } } } : {}),
@@ -21,13 +21,22 @@ it.each(["openclaw", "picoclaw", "pi"])("rejects recording for %s with the exact
 
 it("rejects recording against the actual pinned image and requires a release and re-pin", async () => {
   const root = await trainingProject({ Spawnfile: agent("daimon") });
-  await expect(compileProject(root)).rejects.toMatchObject({ code: "validation_error", message: expect.stringContaining(
-    "pinned Daimon runtime image does not declare the wakeMoments capability; a Daimon release with it and a runtimes.yaml / contract-manifest re-pin are required"
+  await expect(compileProject(root)).rejects.toMatchObject({ code: "runtime_error", message: expect.stringContaining(
+    "Selected Daimon runtime image does not attest the compiler's exact contract manifest"
   ) });
+});
+
+it("still refuses a manifest without recording authority", async () => {
+  const root = await trainingProject({ Spawnfile: agent("daimon") });
+  const { wakeMoments, ...manifest } = capableDaimonManifest();
+  const incapable = { ...manifest,
+    consumedConfigFields: manifest.consumedConfigFields.filter((field) => field !== wakeMoments!.configField) };
+  await expect(compileProject(root, { daimonContractManifest: incapable })).rejects.toThrow(/does not declare the wakeMoments capability/u);
 });
 
 it("compiles an injected capable contract, emits snapshots at their mounted backing path, and protects the store", async () => {
   const root = await trainingProject({ Spawnfile: agent("daimon") });
+  useMatchingDaimonTestImage(root);
   const result = await compileProject(root, { daimonContractManifest: capableDaimonManifest() });
   const config = JSON.parse(await readFile(path.join(result.outputDirectory,
     "container/rootfs/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/daimon-organization-runtime.json"), "utf8"));
@@ -53,6 +62,7 @@ const emittedFiles = async (directory: string, relative = ""): Promise<Array<{ f
 it("keeps every non-recording artifact byte-identical with or without a capable manifest and training metadata", async () => {
   const manifest = agent("daimon", false);
   const root = await trainingProject({ Spawnfile: manifest });
+  useMatchingDaimonTestImage(root);
   vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-10-09T08:20:31Z"));
   const before = await compileProject(root);
   const bytes = await emittedFiles(before.outputDirectory);

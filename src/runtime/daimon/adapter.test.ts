@@ -382,24 +382,23 @@ describe("daimonAdapter", () => {
     );
   });
 
-  it("uses the pinned image because it attests the exact compiler contract", async () => {
-    const recipe = await createRuntimeInstallRecipe("daimon");
-    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:85875f67af630e8b4e667a72f20f0b491940cfb3feb7fe132a13a84678147747");
+  it("requires a re-pin for the new compiler contract", async () => {
+    await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(/does not attest the compiler's exact contract manifest/u);
   });
 
-  it("lowers schedules while retaining the MCP and non-Moltnet surface boundary", async () => {
+  it("degrades schedules pending a re-pin and retains the MCP and non-Moltnet surface boundary", async () => {
     await expect(daimonAdapter.compileAgent(createDaimonNode("schedule", "Schedule"))).resolves.toBeDefined();
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: {} },
       schedule: { every: "1m", kind: "every", prompt: "work" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
-      expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
+      expect.objectContaining({ key: "agent.schedule", outcome: "degraded" })
     ]) });
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: {} },
       schedule: { kind: "disabled" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
-      expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
+      expect.objectContaining({ key: "agent.schedule", outcome: "degraded" })
     ]) });
     await expect(daimonAdapter.compileAgent(createPiTestNode({
       runtime: { name: "daimon", options: { engine: "grok" } }
