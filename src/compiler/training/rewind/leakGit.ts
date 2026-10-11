@@ -3,6 +3,7 @@ import path from "node:path";
 import { rewindGit } from "./gitProcess.js";
 import { instantNanos } from "./instant.js";
 import type { LeakCheck, MaterializedInput } from "./contract.js";
+import { inspectGitIndexTimes, inspectGitWorktree } from "./leakGitPayload.js";
 
 /** Enumerate every stored object, independently of the materializer's chosen-object list. */
 export const inspectGitBundle = async (repository: string, input: MaterializedInput, report: LeakCheck): Promise<void> => {
@@ -53,5 +54,8 @@ export const inspectGitBundle = async (repository: string, input: MaterializedIn
       if (!match) { add(`Commit ${oid} has no valid ${role} date`); continue; }
       if (BigInt(match[1]!) * 1_000_000_000n > instantNanos(report.at)) add(`Commit ${oid} has a future ${role} date`);
     }
+  }
+  for (const inspect of [() => inspectGitWorktree(repository, commit), () => inspectGitIndexTimes(repository, report.at)]) {
+    try { await inspect(); } catch (error) { add(error instanceof Error ? error.message : String(error)); }
   }
 };

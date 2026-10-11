@@ -6,6 +6,7 @@ import * as deployment from "../../../deployment/index.js";
 import { BundleTarWriter } from "../../workspaceBundleTar.js";
 import { AT, BEFORE, emptyRecord, jsonl, rewindFixture, testGit } from "./fixtures.test-helper.js";
 import { materializeTrainingMoment } from "./materialize.js";
+import { composeMomentRecord } from "../../../recording/index.js";
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -32,6 +33,40 @@ const fixture = async (home = false) => {
 };
 
 describe("merged deployment resource history in rewind", () => {
+  it.each((["git", "bundle"] as const).flatMap((kind) => ["activation", "rollback"].map((boundary) => ({ kind, boundary }))))
+    ("downgrades a matched $kind record with non-exact $boundary", async ({ kind, boundary }) => {
+      const f = await fixture();
+      let sha256 = DIGEST;
+      if (kind === "bundle") {
+        const archive = path.join(f.root, "saved.tar"), writer = await BundleTarWriter.create(archive);
+        await writer.begin("tools.txt", 6, 0o644); await writer.data(Buffer.from("tools\n")); await writer.end(); await writer.finish();
+        const bytes = await readFile(archive), hex = createHash("sha256").update(bytes).digest("hex"); sha256 = `sha256:${hex}`;
+        await mkdir(path.join(f.historyDir, "bundles")); await writeFile(path.join(f.historyDir, "bundles", `${hex}.tar`), bytes);
+        const agent = f.project.compilePlan.nodes.find((node) => node.id === f.plan.agent.id)!.value;
+        if (agent.kind !== "agent") throw new Error("Expected agent");
+        const index = agent.workspaceResources!.findIndex((resource) => resource.id === "code");
+        agent.workspaceResources![index] = { scope: agent.workspaceResources![index]!.scope, sharing: "per_agent", id: "code", kind,
+          mount: "./code", mode: "readonly", source: "never-read.tar" };
+      }
+      const entry = f.entry(f.commit, { activation_exact: boundary !== "activation", activation_note: "Predecessor may still serve code",
+        ...(boundary === "rollback" ? { exact: false, rolled_back_at: "2026-10-09T08:20:32Z" } : {}),
+        resources: [{ id: "code", kind, sha256, ...(kind === "git" ? { commit: f.commit } : {}), agent_node_ids: ["agent:a"], declared_by: "team:publication" } as deployment.DeployResources["resources"][number]],
+        recording_agents: [{ node_id: "agent:a", slug: "a", directory: "/recording/a", keep_ms: 1000,
+          resources: [{ id: "code", kind }], feeds: [], memory: [], networks: [], snapshots: [] }] });
+      const record = composeMomentRecord({ agentNodeId: "agent:a", deploymentRecordPath: f.recordPath, deployResources: [entry],
+        row: { version: "noopolis.daimon.wake-moment.v1", agent_id: "agent:a", execution_id: "execution-17", started_at: AT,
+          deliveries: [{ acceptance_id: "accepted", delivery_id: "schedule:edition", kind: "schedule", occurred_at: AT }], snapshots: [] },
+        feedLandings: {}, memoryLedgers: {}, recordedAt: AT });
+      expect(record.resources).toHaveLength(1);
+      expect(record.errors).toContainEqual(expect.stringContaining("Deployment activation is non-exact"));
+      await jsonl(f.historyDir, "moments/pin.jsonl", [record]);
+      const { result, input } = await f.run();
+      expect(result.status, JSON.stringify(result.inputs)).toBe("materialized");
+      expect(result.record.matched).toBe(true);
+      expect(input).toMatchObject({ basis: "record", fidelity: "approximate", notes: record.errors,
+        source: kind === "git" ? { commit: f.commit } : { sha256 } });
+    });
+
   it.each([false, true])("uses the deployed commit instead of a newer selector (home=%s)", async (home) => {
     const f = await fixture(home), lookup = vi.spyOn(deployment, "deployResourcesAt");
     const entry = f.entry(); await f.log([entry]);

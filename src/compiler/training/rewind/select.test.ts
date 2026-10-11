@@ -101,6 +101,14 @@ describe("pure rewind record selection", () => {
     expect([first, second]).toEqual(before);
   });
 
+  it.each(["git", "bundle"] as const)("refuses tied %s pins with different activation fidelity", (kind) => {
+    const first = record(), second = structuredClone(first);
+    first.resources = second.resources = [kind === "git" ? { id: "repo", kind, commit: "a".repeat(40) }
+      : { id: "repo", kind, sha256: `sha256:${"a".repeat(64)}` }];
+    second.exact = false; second.errors = ["Deployment activation is non-exact"];
+    expect(() => selectMomentRecord([first, second], "agent:writer", at)).toThrow("different effective pin/fallback decisions");
+  });
+
   it("refuses conflicting bundle digests even when the declared source has a full commit pin", () => {
     const first = record(), second = record();
     first.resources = [{ id: "tools", kind: "bundle", sha256: `sha256:${"a".repeat(64)}` }];

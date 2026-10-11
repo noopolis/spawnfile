@@ -45,6 +45,13 @@ const eventFuture = (event: MoltnetEvent, at: string): boolean => [event.created
 /** Pure cut. Delivery offsets must be remapped after removing interior future events. */
 export const rewindMoltnetJson = (source: MoltnetSnapshot, at: string): MoltnetSnapshot => {
   const snapshot = structuredClone(source);
+  const futureAgents = new Set(Object.values(source.agents)
+    .filter((agent) => agent.created_at && compareInstants(agent.created_at, at) > 0).map((agent) => agent.agent_id));
+  for (const [key, agent] of Object.entries(snapshot.agents)) {
+    if (futureAgents.has(agent.agent_id)) {
+      delete snapshot.agents[key]; delete snapshot.attachment_delivery_cursors[agent.agent_id];
+    } else if (agent.updated_at && compareInstants(agent.updated_at, at) > 0) agent.updated_at = at;
+  }
   const futureRooms = new Set(Object.values(source.rooms)
     .filter((room) => compareInstants(room.created_at, at) > 0).map((room) => room.id));
   for (const id of futureRooms) {
@@ -56,12 +63,17 @@ export const rewindMoltnetJson = (source: MoltnetSnapshot, at: string): MoltnetS
       const candidates = source.attachment_delivery_events.filter((event) => event.room?.id === id
         && compareInstants(event.room.created_at, at) <= 0)
         .sort((a, b) => compareInstants(b.created_at, a.created_at));
-      const room = candidates.find((event) => compareInstants(event.created_at, at) <= 0)?.room
-        ?? candidates[0]?.room;
+      const room = candidates.find((event) => compareInstants(event.created_at, at) <= 0)?.room;
       if (!room) throw new Error(`Cannot restore Moltnet room ${id}: removal is after the moment but room metadata was not retained`);
       snapshot.rooms[id] = structuredClone(room);
     }
     delete snapshot.removed_rooms[id];
+  }
+  for (const room of Object.values(snapshot.rooms)) {
+    if (room.members) room.members = room.members.filter((id) => !futureAgents.has(id));
+  }
+  for (const members of Object.values(snapshot.direct_members)) {
+    for (const id of futureAgents) delete members[id];
   }
   for (const group of [snapshot.room_messages, snapshot.thread_messages, snapshot.direct_messages]) {
     for (const [id, messages] of Object.entries(group)) {
@@ -131,6 +143,12 @@ export const inspectMoltnetEvent = (event: MoltnetEvent, at: string, path: strin
 export const inspectMoltnetJson = async (path: string, at: string): Promise<MoltnetInspection> => {
   const snapshot = parseMoltnetSnapshot(JSON.parse(await readFile(path, "utf8")));
   const findings: MoltnetFinding[] = [];
+  for (const agent of Object.values(snapshot.agents)) {
+    for (const field of ["created_at", "updated_at"] as const) {
+      if (agent[field] && compareInstants(agent[field], at) > 0) findings.push({ class: "moltnet-event", path,
+        detail: `Agent ${agent.agent_id} has a future ${field}` });
+    }
+  }
   const messages = moltnetMessages(snapshot);
   for (const message of messages) if (compareInstants(message.created_at, at) > 0) {
     findings.push({ class: "moltnet-message", path, detail: `Message ${message.id} is later than the moment` });

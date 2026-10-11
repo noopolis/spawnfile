@@ -104,7 +104,7 @@ describe("independent source commit provenance", () => {
     if (resource.kind === "bundle") resource.build!.files!.ref = f.commit;
     f.context.history = undefined;
     const moment = await f.stage();
-    expect(moment.inputs[0]!.source).toEqual({ commit: f.commit, repository: f.repository });
+    expect(moment.inputs[0]!.source).toMatchObject({ commit: f.commit, repository: f.repository });
     expect((await leakCheckTrainingMoment(f.bundle)).findings).toEqual([]);
     await rm(f.repository, { recursive: true });
     expect((await leakCheckTrainingMoment(f.bundle)).findings).toContainEqual(expect.objectContaining({ class: "git-object" }));
@@ -118,5 +118,24 @@ describe("independent source commit provenance", () => {
     await stampTree(f.bundle, BEFORE, AT);
     expect((await leakCheckTrainingMoment(f.bundle, { historyDir: f.historyDir })).findings)
       .toContainEqual(expect.objectContaining({ class: "git-object", detail: "Feed source commit disagrees with moment provenance" }));
+  });
+
+  it.each(["selector-at", "pinned", "dependencies", "generated"])("compares %s bundle payload with historical roots and exclusions", async (selection) => {
+    const f = await fixture("bundle");
+    const commit = await commitTestGit(f.repository, { "package/keep.txt": "kept", "package/omit.txt": "excluded", "other.txt": "other" }, BEFORE);
+    if (f.context.input.section !== "resources" || f.context.input.declaration.kind !== "bundle") throw new Error("Expected bundle");
+    f.context.input.declarationBase = f.repository;
+    f.context.input.declaration.build = selection === "dependencies" ? { dependencies: { directory: "package", image: "node:22" } }
+      : selection === "generated" ? { generated: { command: ["never-run"], inputs: [{ root: "package", exclude: ["omit.txt"] }, { root: ".", exclude: ["package/**"] }] } }
+        : { files: { root: "package", exclude: ["omit.txt"], ...(selection === "pinned" ? { ref: commit } : {}) } };
+    const moment = await f.stage();
+    expect(moment.inputs[0]!.source.trees).toBeDefined();
+    expect((await leakCheckTrainingMoment(f.bundle, { historyDir: f.historyDir })).findings).toEqual([]);
+    // The gate must inspect bytes despite a valid receipt and producer-stamped times.
+    await writeFile(path.join(f.destination, selection === "generated" ? "package/keep.txt" : "keep.txt"), "future payload");
+    await stampTree(f.bundle, BEFORE, AT);
+    const check = await leakCheckTrainingMoment(f.bundle, { historyDir: f.historyDir });
+    expect(check.findings).toContainEqual(expect.objectContaining({ class: "git-object", detail: "Bundle bytes disagree with selected commit, roots and exclusions" }));
+    expect(check.findings.some((finding) => finding.class === "file-time")).toBe(false);
   });
 });

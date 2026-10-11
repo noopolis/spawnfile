@@ -2,7 +2,7 @@ import { lstat, rm } from "node:fs/promises";
 import type { DatabaseSync } from "node:sqlite";
 import { compareInstants } from "./instant.js";
 import { inspectMoltnetEvent, latestMoltnetMessage, moltnetMessages, rewindMoltnetJson } from "./moltnetJson.js";
-import { readMoltnetSqlite, sqliteInteger, sqliteText, sqliteJson } from "./moltnetSqliteData.js";
+import { readMoltnetSqlite, readMoltnetSqliteMigrations, sqliteInteger, sqliteText, sqliteJson } from "./moltnetSqliteData.js";
 import { moltnetEventSchema, type MoltnetFinding, type MoltnetInspection, type MoltnetMessage } from "./moltnetSchemas.js";
 
 const openSqlite = async (file: string, readOnly = false): Promise<DatabaseSync> => {
@@ -26,6 +26,21 @@ export const rewindMoltnetSqlite = async (file: string, at: string): Promise<Mol
     const remainingSeq = new Set(remainingEvents.map((row) => sqliteInteger(row, "seq")));
     database.exec("PRAGMA secure_delete=ON; PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE");
     try {
+      for (const [id, agent] of Object.entries(source.agents)) {
+        if (!cut.agents[id]) {
+          database.prepare("DELETE FROM agents WHERE agent_id = ?").run(id);
+          database.prepare("DELETE FROM room_members WHERE member_id = ?").run(id);
+          database.prepare("DELETE FROM dm_participants WHERE participant_id = ?").run(id);
+          database.prepare("DELETE FROM attachment_delivery_cursors WHERE agent_id = ?").run(id);
+        } else if (agent.updated_at !== cut.agents[id].updated_at) {
+          database.prepare("UPDATE agents SET updated_at = ? WHERE agent_id = ?").run(cut.agents[id].updated_at!, id);
+        }
+      }
+      for (const row of readMoltnetSqliteMigrations(database)) {
+        if (compareInstants(sqliteText(row, "applied_at"), at) > 0) {
+          database.prepare("UPDATE schema_migrations SET applied_at = ? WHERE version = ?").run(at, row.version!);
+        }
+      }
       const dropMessage = database.prepare("DELETE FROM messages WHERE id = ?");
       for (const message of moltnetMessages(source)) if (!keepMessages.has(message.id)) dropMessage.run(message.id);
       const dropRoom = database.prepare("DELETE FROM rooms WHERE id = ?"), restoreRoom = database.prepare("UPDATE rooms SET deleted_at = NULL WHERE id = ?");
@@ -95,6 +110,14 @@ export const inspectMoltnetSqlite = async (file: string, at: string): Promise<Mo
     const check = (instant: string, kind: MoltnetFinding["class"], detail: string) => {
       if (compareInstants(instant, at) > 0) findings.push({ class: kind, path: file, detail });
     };
+    for (const agent of Object.values(snapshot.agents)) {
+      for (const field of ["created_at", "updated_at"] as const) {
+        if (agent[field]) check(agent[field], "moltnet-event", `Agent ${agent.agent_id} has a future ${field}`);
+      }
+    }
+    for (const row of readMoltnetSqliteMigrations(database)) {
+      check(sqliteText(row, "applied_at"), "moltnet-event", `Schema migration ${row.version} has a future applied_at`);
+    }
     for (const message of messages) check(message.created_at, "moltnet-message", `Message ${message.id} is later than the moment`);
     for (const room of Object.values(snapshot.rooms)) check(room.created_at, "moltnet-room", `Room ${room.id} is later than the moment`);
     for (const [id, instant] of Object.entries(snapshot.removed_rooms)) check(instant, "moltnet-room", `Room ${id} has a future removal marker`);
