@@ -38,6 +38,7 @@ const record = (): DeploymentRecord => ({
   version: "spawnfile.deployment.v2",
 });
 const compileReport = (enabled = true, declared = false): CompileReport => ({
+  compile_fingerprint: "sf1:recording",
   container: {
     dockerfile: "Dockerfile",
     entrypoint: "entrypoint",
@@ -69,7 +70,7 @@ const compileReport = (enabled = true, declared = false): CompileReport => ({
   ...(enabled ? { recording } : {}),
 });
 const setupProject = async (enabled = true, declared = false): Promise<void> => {
-  await writeDeploymentRecord(root, record());
+  await writeDeploymentRecord(root, { ...record(), ...(enabled ? { recording } : {}) });
   await writeUtf8File(path.join(root, REPORT_FILENAME), JSON.stringify(compileReport(enabled, declared)));
 };
 const setupImage = async (enabled = true) => {
@@ -129,6 +130,16 @@ describe("recorded memory teardown", () => {
     expect(receipt.retained_volumes).toContain("recorded-memory");
     expect(receipt.units_stopped).toEqual(["organization"]);
     expect(execFile.mock.calls).toHaveLength(1);
+  });
+
+  it("preserves ordinary teardown after recompilation when neither deployment nor report records", async () => {
+    await setupProject(false);
+    await writeUtf8File(path.join(root, REPORT_FILENAME), JSON.stringify({ ...compileReport(false), compile_fingerprint: "sf1:recompiled" }));
+    const execFile = vi.fn(async () => ({ stderr: "", stdout: "" }));
+    const receipt = await downDeployment({ compiledOutputDirectory: root, deploymentName: "recorded", execFile,
+      force: true, removeVolumes: true });
+    expect(receipt.errors).toEqual([]);
+    expect(receipt.retained_volumes).toEqual([]);
   });
 
   it("leaves declared memory names retained and permits deleting unrelated owned volumes", async () => {

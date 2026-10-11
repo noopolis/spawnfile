@@ -24,6 +24,7 @@ src/compiler/
 ├── buildCompilePlanTraversal.ts # Graph traversal + recursion by manifest kind
 ├── buildCompilePlanTraversalHelpers.ts # Shared traversal helper primitives
 ├── compileProject.ts           # Adapter execution and output/report emission
+├── cleanCompileOutput.ts       # Clean generated output while retaining deployment records/history
 ├── compileProjectReports.ts    # Node report augmentation derived from compile support
 ├── recordingReport.ts          # Effective recording keep and accessible memory mount projection
 ├── compileProjectSupport.ts    # Shared compile-time artifact injection and file writing helpers
@@ -103,8 +104,11 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
 - Recording metadata is optional: only recording agents contribute to `recording.keep_ms`
   and `memory_mount_ids`. Reuse workspace git/bundle report pins in the distribution report,
   dropping host paths/URLs. Never resolve sources again for recording; off emits no fields.
-- Project `up` appends the home resource log after deployment record/readiness publication;
-  image `up` and drained release use `deployment/homeStore.ts` instead.
+- Project `up` persists recording protections and resource snapshots in its output-scoped
+  deployment record; clean compile preserves `deployments/`. Pins retain `agent_node_ids`
+  and `declared_by` from the resolved graph through distribution, without re-resolution.
+  Launch activation is captured before the runner; replacement without a stop/drain
+  barrier is explicitly inexact. Image `up` and release use the home publication path.
 - Built workspace bundles take identity from git, never from a content walk of
   unchanged files: release from `ls-tree` of a clean `HEAD`, dev from index
   blob ids plus hashes of only the files `git status` reports changed. The

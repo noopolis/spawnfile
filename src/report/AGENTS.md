@@ -20,6 +20,7 @@ The compiler should hand resolved facts into this folder. This folder should not
 
 - Reports should be machine-readable and stable.
 - Optional `recording` carries the maximum recording window and protected memory mount IDs.
-  Workspace git/bundle report IDs already name the resources agents see; history reuses them.
+  Workspace git/bundle report IDs name the resources agents see. Each pin retains
+  `agent_node_ids` and `declared_by` from compilation; history and distribution reuse them.
 - Capability keys should stay aligned with `specs/COMPILER.md` and `specs/SPEC.md`.
 - Keep report formatting separate from compiler orchestration.

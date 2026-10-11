@@ -157,7 +157,7 @@ appears between the `training-plan-schema` markers below.
 
 `spawnfile.moment-record.v1` records one wake of one compiled agent. Recording MUST
 be off without an effective `record`, with no recording I/O or artifact changes when
-off. Recording requires a Daimon runtime whose contract manifest declares `wakeMoments`;
+off, except reconciliation owed by an earlier recorded deployment or landing. Recording requires a Daimon runtime whose contract manifest declares `wakeMoments`;
 other runtimes fail compile. Runtime enforcement, pre-turn snapshots and composition
 land in the next packet; this packet supplies the host histories below.
 
@@ -174,7 +174,9 @@ A later `recordedAt` MUST NOT advance a pin.
   MUST NOT invent Moltnet metadata.
 - `resources` MUST use `{id, kind:"git", commit, sha256?}` or
   `{id, kind:"bundle", sha256}` from the deploy resource entry in effect at
-  `startedAt`, restricted to that agent's workspace resources. Bundles have no commit.
+  `startedAt`, selected by deployment record identity and `agent_node_ids` containing
+  that exact agent node ID. Bundles have no commit. An inexact activation boundary
+  MUST set the moment's `exact:false`; an overlapping predecessor can still run old pins.
 - `feeds` MUST use `{id, revision, tree, commit?, ref?, paths?, landedAt, period?}`
   from the landing entry in effect at `startedAt` for each consumed fed volume.
 - `memory` MUST use `{id, declaredBy, seq}` for each accessible bank. `seq` is the
@@ -227,8 +229,12 @@ entry, lookup returns no state. Invalid lines MUST be reported alongside valid e
 For each fed volume consumed by a recording agent, the host MUST append
 `landings.jsonl` beside `landed.json` after each successful land, generation re-land,
 retained-tree re-point or link repair. Provenance/period adoption MUST also be logged.
-When recording is enabled later or an append failed, a clean refresh MUST seed a
-missing entry from the verified host record, preserving its original landing instant.
+Before ANY replacement of `landed.json` (including revision advances, re-points,
+repairs and adoption), the publisher MUST reconcile its previous recording snapshot
+against the last log entry and append it if missing, preserving the original instant.
+A failed reconciliation MUST prevent replacement. A clean refresh also seeds history
+when recording is enabled later. Recorded host state retains the original source and
+keep window so a changed source declaration cannot rewrite pending provenance.
 The entry MUST follow a successful `landed.json` write and contain:
 `{version:"spawnfile.volume-feed-landing.v1", resource, volume, revision, tree,
 source, commit?, ref?, paths?, landed_at, period?}`. `landed_at` MUST equal
@@ -241,25 +247,60 @@ by revision digest but **not refetchable**. Prepared feeds also require their re
 include digests and recipe inputs; a revision does not promise reproducible prepare output.
 
 When any compiled agent records, project `up` and home deployment publication
-(including image `up` and release) MUST append
-`~/.spawnfile/deployments/<name>/resource-log.jsonl` after successful record/report
-publication. Each `{version:"spawnfile.deploy-resources.v1", deployment, deployed_at,
-report_sha256, resources}` entry MUST reuse `workspace_git_resources` and
-`workspace_bundles`, without resolving sources again. Their IDs are already workspace
-resource IDs. Git entries are `{id, kind:"git", commit, sha256, url?}`; bundles are
-`{id, kind:"bundle", sha256, origin?}`. `deployed_at` is the deployment record's
-creation instant; `report_sha256` hashes the exact persisted UTF-8 report bytes.
-The optional report `recording` field carries `keep_ms` and `memory_mount_ids`;
-image reports carry portable pins without creator-host paths or URLs.
+(including image `up` and release) MUST append a resource log beside their record:
+`<output>/deployments/<name>.resource-log.jsonl` for project records, and
+`~/.spawnfile/deployments/<name>/resource-log.jsonl` for home records. `deployment_id`
+is the absolute canonical record path; lookup MUST require that identity. Independent
+outputs with the same deployment name MUST NOT share history or retention.
 
-Both logs MUST append each complete JSON line in one write followed by fsync.
-Pruning MUST use an exclusive 0600 temporary file, fsync and rename under a writer
-lock. With recording off, neither log nor its lock may be read or written.
+Each `{version:"spawnfile.deploy-resources.v1", deployment, deployment_id, activated_at,
+activation_exact, activation_note?, deployed_at, report_sha256, resources}` entry MUST
+reuse `workspace_git_resources` and `workspace_bundles`, without resolving sources again.
+Every resource MUST retain its workspace-visible `id`, compiled `agent_node_ids`, and
+`declared_by` node ID when known. Git adds `{kind:"git", commit, sha256, url?}`; bundles
+add `{kind:"bundle", sha256, origin?}`. Ownership MUST survive compile and distribution
+projection, including equal IDs/digests with different commits. Image pins omit host
+paths and source URLs. Unowned legacy history MUST be reported as invalid, never guessed.
+
+Lookups and retention MUST use `activated_at`; `deployed_at` is informational record
+creation time. Activation ordering is path-specific:
+
+- Image `up` renames/stops the previous container, verifies it stopped, then samples
+  `activated_at` immediately before `docker run`. It waits for a later host-clock tick
+  than the stopped observation, so no old turn can have an equal timestamp.
+- Drained release first closes admission and waits for old turns, then calls image `up`
+  under the home lock; the same stop/verify/activation/start sequence applies.
+- Project `up` samples immediately before invoking its launch runner. First deployment
+  has no recorded predecessor. Replacement does not stop/drain its predecessor and MAY
+  overlap it: entries MUST set `activation_exact:false` with `activation_note`. Records
+  without a captured launch boundary (including recovered launches) are likewise inexact.
+
+The host clock MUST remain monotonic across these operations. Containers MUST share
+that clock; remote clock skew invalidates exact reconstruction. A moment arriving before
+publication MUST wait for its authoritative deployment record/history, or be inexact.
+
+The deployment record MUST persist `recording: {keep_ms, memory_mount_ids}` and its
+complete `resource_snapshot`, including the hash of the exact persisted UTF-8 report
+bytes. Before replacing a deployment record OR its cached report, the publisher MUST
+reconcile that snapshot against the last log entry. Reconciliation failure MUST abort
+replacement. Recompilation MUST preserve deployment records/history, including clean
+compiles; it cannot erase a pending snapshot. Retried publication of the same snapshot
+MUST NOT append a duplicate. Turning recording off still reconciles an owed predecessor.
+
+Host records and cached deployment reports MUST be published by file fsync, rename,
+and parent-directory fsync BEFORE log append. Both logs MUST append each complete JSON
+line in one write followed by file and directory fsync. Pruning MUST use an exclusive
+0600 temporary file, file fsync, rename and directory fsync under a writer lock.
+With recording off and no recorded predecessor, neither log nor its lock may be touched.
 A deploy-log failure after publication MUST be reported without rolling back the
 container named by the published deployment record.
+If record rename succeeds but directory fsync fails, the named container MUST also
+remain; no log entry may be appended until the authoritative record is re-synced.
 
-While recording is on, Spawnfile MUST refuse deletion of the agent's durable memory
-volumes unless explicitly overridden. `down --volumes --discard-recorded-memory`
+Spawnfile MUST enforce memory protection from the DEPLOYED record's `recording`
+metadata, independent of later compile settings. For recorded state, teardown with volume deletion MUST
+refuse a changed report fingerprint, missing protected mount, reduced keep, or dropped
+recording/mount protection unless explicitly overridden. `down --volumes --discard-recorded-memory`
 is that override; `--force` alone is insufficient. Author-declared shared volume names
 remain retained under the existing teardown rule. Internal fixture cleanup MUST apply
 the same guard. Spawnfile has no memory-ledger reset/prune command; release prunes only

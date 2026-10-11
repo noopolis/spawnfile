@@ -262,8 +262,8 @@ export const createContainerArtifacts = async (
     publishedPorts,
     ...(recording ? {
       recording,
-      workspaceGitResources: options.workspaceGitResources?.map(({ id, commit, sha256 }) => ({ id, commit, sha256 })),
-      workspaceBundles: options.workspaceBundles?.map(({ id, sha256, origin }) => ({ id, sha256, origin }))
+      workspaceGitResources: options.workspaceGitResources?.map(({ id, commit, sha256, agent_node_ids, declared_by }) => ({ id, commit, sha256, agent_node_ids, ...(declared_by ? { declared_by } : {}) })),
+      workspaceBundles: options.workspaceBundles?.map(({ id, sha256, origin, agent_node_ids, declared_by }) => ({ id, sha256, origin, agent_node_ids, ...(declared_by ? { declared_by } : {}) }))
     } : {}),
     resources: workspaceResources.map((resource) => ({
       id: resource.id,

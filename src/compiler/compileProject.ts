@@ -1,3 +1,4 @@
+import { cleanCompileOutput } from "./cleanCompileOutput.js";
 import path from "node:path";
 import { chmod } from "node:fs/promises";
 
@@ -285,7 +286,7 @@ export const compileProject = async (
     : path.join(path.dirname(plan.root), DEFAULT_OUTPUT_DIRECTORY);
 
   if (options.clean ?? true) {
-    await removeDirectory(outputDirectory);
+    await cleanCompileOutput(outputDirectory);
   }
   await ensureDirectory(outputDirectory);
   const workspaceBundles = await resolveWorkspaceBundles(plan, {

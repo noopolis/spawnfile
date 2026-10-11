@@ -81,7 +81,8 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
       ...(request.dockerContext ? { dockerContext: request.dockerContext } : {}),
       ...(request.dockerHost ? { dockerHost: request.dockerHost } : {}),
       envFileEnv: request.envFileEnv,
-      envFilePath: request.envFilePath ?? null
+      envFilePath: request.envFilePath ?? null,
+      now: request.now
     });
     return { containerName: result.containerName, deployMs: performance.now() - started };
   },

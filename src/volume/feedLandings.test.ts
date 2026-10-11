@@ -128,3 +128,62 @@ describe("feed landing history", () => {
     expect(readFeedLandings(fixture.target.stateDir).errors).toEqual(["line 4: invalid JSON or entry", "line 5: invalid JSON or entry"]);
   });
 });
+
+it("reconciles failed B before a different revision C, retaining the original source and instant", () => {
+  fixture = createFeedFixture({ record: { keepMs: 30 * day } });
+  refreshVolumeFeed(fixture.target, at(1));
+  writeSourceFiles(fixture.source, { "a.txt": "B\n" });
+  const open = fs.openSync;
+  vi.spyOn(fs, "openSync").mockImplementation((file, ...args) => {
+    if (file === logFile()) throw new Error("B append failed");
+    return open(file, ...args);
+  });
+  expect(() => refreshVolumeFeed(fixture.target, at(2))).toThrow("B append failed");
+  const pending = readFeedLanded(fixture.target.stateDir).record!.recording!.landing;
+  vi.restoreAllMocks();
+  const alternate = path.join(fixture.source, "new-source");
+  fs.mkdirSync(alternate);
+  writeSourceFiles(alternate, { "a.txt": "C\n" });
+  fixture.target.source = { kind: "directory", directory: alternate };
+  refreshVolumeFeed(fixture.target, at(3));
+  expect(entries().map((entry) => entry.landed_at)).toEqual([1, 2, 3].map((date) => at(date).now().toISOString()));
+  expect(entries()[1]).toEqual(pending);
+  expect(entries()[2]!.source).toEqual({ kind: "directory", directory: alternate });
+});
+
+it("does not replace the authoritative record if reconciling pending history fails", () => {
+  fixture = createFeedFixture({ record: { keepMs: 30 * day } });
+  refreshVolumeFeed(fixture.target, at(1));
+  fs.unlinkSync(logFile());
+  const before = readFeedLanded(fixture.target.stateDir).record;
+  writeSourceFiles(fixture.source, { "a.txt": "C\n" });
+  const open = fs.openSync;
+  vi.spyOn(fs, "openSync").mockImplementation((file, ...args) => {
+    if (file === logFile()) throw new Error("reconcile failed");
+    return open(file, ...args);
+  });
+  expect(() => refreshVolumeFeed(fixture.target, at(2))).toThrow("reconcile failed");
+  expect(readFeedLanded(fixture.target.stateDir).record).toEqual(before);
+});
+
+it("fsyncs landed.json, then renames and fsyncs its directory, before appending/fsyncing history", () => {
+  fixture = createFeedFixture({ record: { keepMs: 30 * day } });
+  const events: string[] = [], handles = new Map<number, string>();
+  const open = fs.openSync, write = fs.writeSync, sync = fs.fsyncSync, rename = fs.renameSync;
+  vi.spyOn(fs, "openSync").mockImplementation((file, ...args) => { const fd = open(file, ...args); handles.set(fd, String(file)); return fd; });
+  vi.spyOn(fs, "writeSync").mockImplementation(((fd: number, bytes: Uint8Array) => {
+    events.push(`write:${handles.get(fd)}`); return write(fd, bytes);
+  }) as typeof fs.writeSync);
+  vi.spyOn(fs, "fsyncSync").mockImplementation((fd) => { sync(fd); events.push(`sync:${handles.get(fd)}`); });
+  vi.spyOn(fs, "renameSync").mockImplementation((from, to) => { rename(from, to); events.push(`rename:${String(to)}`); });
+  refreshVolumeFeed(fixture.target, at(1));
+  const landed = path.join(fixture.target.stateDir, "landed.json");
+  const fileSync = events.findIndex((event) => event.startsWith(`sync:${landed}.`) && event.endsWith(".tmp"));
+  const renamed = events.indexOf(`rename:${landed}`), directorySync = events.indexOf(`sync:${fixture.target.stateDir}`);
+  const append = events.indexOf(`write:${logFile()}`), logSync = events.indexOf(`sync:${logFile()}`);
+  expect(fileSync).toBeGreaterThanOrEqual(0);
+  expect(fileSync).toBeLessThan(renamed);
+  expect(renamed).toBeLessThan(directorySync);
+  expect(directorySync).toBeLessThan(append);
+  expect(append).toBeLessThan(logSync);
+});

@@ -7,7 +7,11 @@ import { SpawnfileError } from "../shared/index.js";
 import type { OrganizationReadinessEvidence } from "../compiler/organizationReadyEvidence.js";
 
 import { inspectDockerDeployment } from "./dockerInspect.js";
-import { normalizeDeploymentName } from "./names.js";
+import { bindDeploymentRecording } from "./recordPublication.js";
+import type { DeploymentActivation, DeployResourceReport } from "./resourceLog.js";
+import { readUtf8File } from "../filesystem/index.js";
+import { REPORT_FILENAME } from "../shared/index.js";
+import { normalizeDeploymentName, resolveDeploymentRecordPath } from "./names.js";
 import { createDockerProbeGateway, type DockerProbeExecFile } from "./dockerProbeGateway.js";
 import {
   organizationReadinessFromProbeError,
@@ -46,7 +50,7 @@ export interface DockerDeploymentRunInvocationInput {
   dockerHost?: string | null;
 }
 
-export interface DockerDeploymentReportInput {
+export interface DockerDeploymentReportInput extends DeployResourceReport {
   compile_fingerprint?: string;
   container?: {
     moltnet?: {
@@ -61,7 +65,7 @@ export interface DockerDeploymentReportInput {
   root: string;
 }
 
-export interface WriteDockerDeploymentRecordInput {
+export interface WriteDockerDeploymentRecordInput extends DeploymentActivation {
   authProfileName: string | null;
   compileFingerprint: string;
   containerName: string | null;
@@ -138,6 +142,7 @@ export const createDockerDeploymentRecord = (
     auth_profile: input.authProfileName,
     compile_fingerprint: input.compileFingerprint,
     created_at: new Date().toISOString(),
+    ...(input.activated_at ? { activated_at: input.activated_at, activation_exact: input.activation_exact, activation_note: input.activation_note } : {}),
     ...(input.envFilePath ? { env_file: path.resolve(input.envFilePath) } : {}),
     manager: "docker",
     name,
@@ -194,7 +199,7 @@ export const writeDockerDeploymentRecord = async (
 ): Promise<string> =>
   writeDeploymentRecord(input.outputDirectory, createDockerDeploymentRecord(input));
 
-export const writeDockerDeploymentRecordForRun = async (input: {
+export const writeDockerDeploymentRecordForRun = async (input: DeploymentActivation & {
   authProfileName: string | null;
   envFilePath?: string;
   imageTag: string;
@@ -211,7 +216,8 @@ export const writeDockerDeploymentRecordForRun = async (input: {
     return null;
   }
 
-  return writeDockerDeploymentRecord({
+  const record = createDockerDeploymentRecord({
+    activated_at: input.activated_at, activation_exact: input.activation_exact, activation_note: input.activation_note,
     authProfileName: input.authProfileName,
     compileFingerprint: requireCompileFingerprint(input.report.compile_fingerprint),
     containerName: input.invocation.containerName,
@@ -242,6 +248,11 @@ export const writeDockerDeploymentRecordForRun = async (input: {
       timeoutMs: input.targetTimeoutMs
     })
   });
+  const recordPath = resolveDeploymentRecordPath(input.outputDirectory, record.name);
+  const bound = input.report.recording
+    ? bindDeploymentRecording(recordPath, record, input.report, await readUtf8File(path.join(input.outputDirectory, REPORT_FILENAME)))
+    : record;
+  return writeDeploymentRecord(input.outputDirectory, bound);
 };
 
 export interface ProbeDockerOrganizationReadinessInput {

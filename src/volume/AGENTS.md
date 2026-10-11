@@ -58,8 +58,11 @@ src/volume/
   is the maximum consumer `record.keep` (default 30d); no recording means no log reads or writes.
   Append and fsync only after `landed.json` succeeds, including generations, retained-tree re-points,
   link repairs and provenance/period adoption. Recording timestamps retain milliseconds at the change.
-  A clean refresh seeds missing history from the verified host record when recording is enabled later
-  or a previous append failed; it preserves the host identity's original landing instant.
+  Before every host-record replacement, reconcile the predecessor against the last entry.
+  The host record embeds the landing source/keep so failed appends survive source changes.
+  A clean refresh also seeds history when recording is enabled later. Preserve original
+  instants; refuse replacement when reconciliation fails. File fsync and directory fsync
+  after rename must complete before log append; pruning syncs its rename directory.
   Keep the newest entry at or before the retention cutoff as the state at the window's start.
   Invalid JSONL lines are reported beside valid entries; readers never silently trust them.
 - A revision is decided before anything runs: with `include`/`prepare` it is composed from the

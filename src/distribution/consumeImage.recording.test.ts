@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { acquireHomeDeploymentLock, readDeployResources, readHomeDeploymentRecord } from "../deployment/index.js";
+import { acquireHomeDeploymentLock, readDeployResources, readHomeDeploymentRecord, resolveHomeRecordPath, deployResourcesAt } from "../deployment/index.js";
 import { buildDistributionReport } from "./buildDistributionReport.js";
 import { consumeImageUp } from "./consumeImage.js";
 
@@ -14,13 +14,13 @@ beforeEach(() => { home = mkdtempSync(path.join(os.tmpdir(), "spawnfile-image-re
 afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }); });
 
 it.each(["off", "on", "release", "log-failure"])("image up records pins for %s", async (mode) => {
-  const pins = [{ id: "archive", commit: "a".repeat(40), sha256: `sha256:${"b".repeat(64)}` }];
+  const pins = [{ id: "archive", agent_node_ids: ["agent:writer"], commit: "a".repeat(40), sha256: `sha256:${"b".repeat(64)}` }];
   const report = buildDistributionReport({
     envVariables: [], generatedAt: new Date().toISOString(), internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [],
     organization: { agents: [], teams: [], project: "news" }, persistentMounts: [], portMappings: [], publishedPorts: [],
     resources: [], runtimeInstances: [], ...(mode === "off" ? {} : {
       recording: { keep_ms: 30 * 86_400_000, memory_mount_ids: [] }, workspaceGitResources: pins,
-      workspaceBundles: [{ id: "tools", sha256: `sha256:${"c".repeat(64)}`, origin: "prebuilt" as const }]
+      workspaceBundles: [{ id: "tools", agent_node_ids: ["agent:writer"], sha256: `sha256:${"c".repeat(64)}`, origin: "prebuilt" as const }]
     })
   });
   extract.mockResolvedValue({ report, compileFingerprint: report.compile_fingerprint });
@@ -42,7 +42,7 @@ it.each(["off", "on", "release", "log-failure"])("image up records pins for %s",
     mkdirSync(state, { recursive: true });
     writeFileSync(path.join(state, "resource-log.jsonl"), "{torn");
     await expect(consumeImageUp("example/news:v1", { deploymentName: "news", dockerHost: "unix:///test-only.sock", runDocker }))
-      .rejects.toThrow("incomplete final line");
+      .rejects.toThrow("Cannot reconcile deployment history");
     expect((await readHomeDeploymentRecord("news")).units[0]!.container_id).toBe(candidate);
     expect(runDocker.mock.calls.some(([args]) => args[0] === "rm" && args.includes(candidate))).toBe(false);
     return;
@@ -53,7 +53,7 @@ it.each(["off", "on", "release", "log-failure"])("image up records pins for %s",
       deploymentLockHeld: mode === "release", runDocker });
   } finally { await release(); }
   if (mode === "off") expect(existsSync(path.join(state, "resource-log.jsonl"))).toBe(false);
-  else expect(readDeployResources(state).entries[0]!.resources).toEqual([
-    { ...pins[0], kind: "git" }, { id: "tools", kind: "bundle", sha256: `sha256:${"c".repeat(64)}`, origin: "prebuilt" }
+  else expect(readDeployResources(resolveHomeRecordPath("news")).entries[0]!.resources).toEqual([
+    { ...pins[0], kind: "git" }, { id: "tools", agent_node_ids: ["agent:writer"], kind: "bundle", sha256: `sha256:${"c".repeat(64)}`, origin: "prebuilt" }
   ]);
 });

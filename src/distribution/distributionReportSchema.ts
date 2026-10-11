@@ -139,11 +139,15 @@ export const distributionReportSchema = z.object({
   }).strict(),
   version: z.literal(DISTRIBUTION_REPORT_VERSION),
   workspace_git_resources: z.array(z.object({
+    agent_node_ids: z.array(z.string().min(1)).min(1),
+    declared_by: z.string().min(1).optional(),
     id: z.string().min(1),
     commit: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u),
     sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u)
   }).strict()).optional(),
   workspace_bundles: z.array(z.object({
+    agent_node_ids: z.array(z.string().min(1)).min(1),
+    declared_by: z.string().min(1).optional(),
     id: z.string().min(1),
     sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
     origin: z.enum(["built", "prebuilt"]).optional()

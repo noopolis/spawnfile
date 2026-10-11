@@ -1,9 +1,9 @@
 // Recording history is host state, beside landed.json, and survives retirement of the physical trees.
 import path from "node:path";
 
-import { appendRetainedJsonl, entryAt, readRetainedJsonl } from "../filesystem/index.js";
+import { appendRetainedJsonl, entryAt, readRetainedJsonl, syncFileSync } from "../filesystem/index.js";
 
-import { isFeedRevision, isFeedTreeName, type FeedLandedRecord } from "./feedRecord.js";
+import { isFeedRevision, isFeedTreeName, readFeedLanded, writeFeedLanded, type FeedLandedRecord } from "./feedRecord.js";
 import type { FeedPreparedProvenance } from "./feedSource.js";
 import type { FeedTarget } from "./feedTarget.js";
 
@@ -61,6 +61,7 @@ export const feedLandingAt = (entries: readonly FeedLanding[], instant: string |
   entryAt(entries, instant, (entry) => entry.landed_at);
 
 const landingFromRecord = (target: FeedTarget, record: FeedLandedRecord): FeedLanding => {
+  if (record.recording) return record.recording.landing;
   const identity = record.identity, provenance = identity.source;
   const source: FeedLanding["source"] = target.source.kind === "git"
     ? { kind: "git", repo: target.source.repo }
@@ -76,17 +77,34 @@ const landingFromRecord = (target: FeedTarget, record: FeedLandedRecord): FeedLa
 
 /** Call only after writing the corresponding landed.json; the existing feed lock serializes writers. */
 export const appendFeedLanding = (target: FeedTarget, record: FeedLandedRecord, now: Date): void => {
-  if (!target.record) return;
+  const keepMs = record.recording?.keep_ms ?? target.record?.keepMs;
+  if (keepMs === undefined) return;
   const entry = landingFromRecord(target, record);
   appendRetainedJsonl(path.join(target.stateDir, FEED_LANDINGS_FILE), entry, {
-    isEntry: isFeedLanding, keepMs: target.record.keepMs, now, timeOf: (landing) => landing.landed_at
+    isEntry: isFeedLanding, keepMs, now, timeOf: (landing) => landing.landed_at
   });
 };
 
 /** A verified clean host record seeds opt-in history or repairs a previously failed append. */
 export const ensureFeedLanding = (target: FeedTarget, record: FeedLandedRecord, now: Date): void => {
-  if (!target.record) return;
+  if (!target.record && !record.recording) return;
   const expected = JSON.stringify(landingFromRecord(target, record));
-  if (readFeedLandings(target.stateDir).entries.some((entry) => JSON.stringify(entry) === expected)) return;
+  const history = readFeedLandings(target.stateDir);
+  if (history.errors.length) throw new Error(`Cannot reconcile feed history: ${history.errors.join("; ")}`);
+  if (JSON.stringify(history.entries.at(-1)) === expected) return;
+  // Also covers recovery after a previous host-record directory fsync failed.
+  syncFileSync(path.join(target.stateDir, "landed.json"));
   appendFeedLanding(target, record, now);
+};
+
+/** Reconcile the authoritative predecessor before ANY replacement, even a revision advance. */
+export const publishFeedLanded = (target: FeedTarget, record: FeedLandedRecord, now: Date): FeedLandedRecord => {
+  const previous = readFeedLanded(target.stateDir).record;
+  if (previous) ensureFeedLanding(target, previous, now);
+  const { recording: _previousRecording, ...next } = record;
+  const published = writeFeedLanded(target.stateDir, target.record ? {
+    ...next, recording: { keep_ms: target.record.keepMs, landing: landingFromRecord(target, next) }
+  } : next);
+  if (target.record) ensureFeedLanding(target, published, now);
+  return published;
 };

@@ -115,6 +115,7 @@ export const resolveWorkspaceGitPins = async (plan: CompilePlan, options: Resolv
     resolved.set(memoKey, {
       commit,
       facts: {
+        agent_node_ids: [],
         auth: auth === undefined ? "none" : auth.sshKey !== undefined ? "ssh_key" : "ssh_key_env",
         cache_key: key, commit, content_bytes: cached.contentBytes, file_count: cached.fileCount, id: resource.id, identity,
         platform, selector: selector.kind === "none" ? { kind: "default_branch" } : { kind: selector.kind, value: selector.value },
@@ -129,7 +130,11 @@ export const resolveWorkspaceGitPins = async (plan: CompilePlan, options: Resolv
       if (!isBuildPinnedGitResource(resource)) return resource;
       const { facts } = resolved.get(declarationKey(resource))!;
       const same = (existing: CompileReportWorkspaceGitResource): boolean => existing.id === resource.id && existing.url === facts.url && existing.commit === facts.commit && existing.sha256 === facts.sha256 && JSON.stringify(existing.selector) === JSON.stringify(facts.selector);
-      if (!result.report.some(same)) result.report.push({ ...facts, id: resource.id });
+      const declared_by = plan.nodes.find((entry) => entry.value.source === resource.scope.key)?.id;
+      let pin = result.report.find((entry) => same(entry) && entry.declared_by === declared_by);
+      if (!pin) { pin = { ...facts, id: resource.id, agent_node_ids: [], ...(declared_by ? { declared_by } : {}) }; result.report.push(pin); }
+      if (!pin.agent_node_ids.includes(node.id)) pin.agent_node_ids.push(node.id);
+      pin.agent_node_ids.sort();
       // From here on it is a bundle: same staging, same identity-checked read-only mount, no auth fields.
       return { id: resource.id, kind: "bundle", mode: "readonly", mount: resource.mount, scope: resource.scope, sha256: facts.sha256, sharing: "per_agent" };
     });
