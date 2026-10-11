@@ -6,7 +6,8 @@ import { agentManifest, cleanTrainingProjects, dataFiles, example, trainingProje
 import { materializeTrainingMoment, resolveTrainingMoment } from "./materialize.js";
 import { leakCheckTrainingMoment } from "./leakCheck.js";
 import * as gitMaterializer from "./git.js";
-import { AT, BEFORE, emptyRecord, jsonl, rewindFixture } from "./fixtures.test-helper.js";
+import * as volumeMaterializer from "./volumes.js";
+import { AT, BEFORE, FUTURE, emptyRecord, jsonl, rewindFixture, testGit } from "./fixtures.test-helper.js";
 
 afterEach(cleanTrainingProjects);
 afterEach(() => vi.restoreAllMocks());
@@ -22,7 +23,14 @@ describe("materializeTrainingMoment", () => {
     expect(result.status).toBe("materialized");
     expect(result.leakCheck).toEqual({ ok: true, findings: 0 });
     expect(result.inputs.map((input) => input.fidelity)).toEqual(["approximate", "overridden", "approximate", "approximate", "exact"]);
+    const inspectTimes = async (file: string): Promise<void> => {
+      const stats = await lstat(file);
+      expect(stats.mtimeMs, file).toBeLessThanOrEqual(Date.parse(AT));
+      expect(stats.atimeMs, file).toBeLessThanOrEqual(Date.parse(AT));
+      if (stats.isDirectory()) for (const name of await readdir(file)) await inspectTimes(path.join(file, name));
+    };
     expect((await leakCheckTrainingMoment(fixture.options.out, { historyDir: fixture.historyDir })).ok).toBe(true);
+    await inspectTimes(fixture.options.out);
     for (const input of result.inputs.filter((item) => item.kind !== "moltnet")) {
       expect((await lstat(path.join(fixture.options.out, input.path!))).mtime.toISOString()).toBe(new Date(BEFORE).toISOString());
     }
@@ -41,6 +49,45 @@ describe("materializeTrainingMoment", () => {
     expect(result.status).toBe("materialized");
     expect(result.record.matched).toBe(true);
     expect(result.inputs.filter((input) => input.fidelity === "approximate")).toEqual([]);
+  });
+  it("refuses a suppressed candidate's noncommit only for its pinned input", async () => {
+    const fixture = await rewindFixture();
+    const code = resolveTrainingMoment(fixture.plan, fixture.project, example.id).inputs.find((input) => input.id === "code")!;
+    if (code.section !== "resources" || code.declaration.kind !== "git") throw new Error("Expected git resource");
+    code.declaration.ref = fixture.commit; delete code.declaration.branch;
+    const blob = testGit(fixture.gitRepo, ["rev-parse", `${fixture.commit}:news.txt`]);
+    const first = { ...emptyRecord(), resources: [{ id: "code", kind: "git", commit: fixture.commit }] };
+    await jsonl(fixture.historyDir, "moments/candidates.jsonl", [first,
+      { ...first, resources: [{ id: "code", kind: "git", commit: blob }] }]);
+    let snapshotBeforeDiscard = "";
+    const correct = volumeMaterializer.materializeVolume;
+    vi.spyOn(volumeMaterializer, "materializeVolume").mockImplementation(async (context) => {
+      const result = await correct(context);
+      snapshotBeforeDiscard = await readFile(path.join(context.destination, "saved.txt"), "utf8");
+      return result;
+    });
+    const result = await materializeTrainingMoment(fixture.options);
+    expect(result.status).toBe("refused");
+    expect(result.inputs.find((input) => input.id === "code")!.refusal)
+      .toBe(`Recorded object ${blob} must be a commit object; found blob`);
+    expect(result.inputs.filter((input) => input.refusal !== null).map((input) => input.id)).toEqual(["code"]);
+    expect(result.inputs.find((input) => input.id === "edition-state"))
+      .toMatchObject({ fidelity: "approximate", source: { snapshot: "snapshot-1" }, refusal: null });
+    expect(snapshotBeforeDiscard).toBe("snapshot bytes\n");
+    expect(await readdir(fixture.options.out)).toEqual(["moment.json"]);
+  });
+  it("excludes other agents, other wakes, and unrelated inputs from candidate commit validation", async () => {
+    const fixture = await rewindFixture();
+    const code = resolveTrainingMoment(fixture.plan, fixture.project, example.id).inputs.find((input) => input.id === "code")!;
+    if (code.section !== "resources" || code.declaration.kind !== "git") throw new Error("Expected git resource");
+    code.declaration.ref = fixture.commit; delete code.declaration.branch;
+    const blob = testGit(fixture.gitRepo, ["rev-parse", `${fixture.commit}:news.txt`]);
+    const first = { ...emptyRecord(), resources: [{ id: "code", kind: "git", commit: fixture.commit }] };
+    await jsonl(fixture.historyDir, "moments/candidates.jsonl", [first,
+      { ...emptyRecord("agent:other"), resources: [{ id: "code", kind: "git", commit: blob }] },
+      { ...emptyRecord("agent:a", FUTURE), resources: [{ id: "code", kind: "git", commit: blob }] },
+      { ...first, resources: [...first.resources, { id: "unrelated", kind: "git", commit: blob }] }]);
+    expect((await materializeTrainingMoment(fixture.options)).status).toBe("materialized");
   });
   it("collects all missing-history refusals and leaves only moment.json", async () => {
     const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({
@@ -101,7 +148,8 @@ describe("materializeTrainingMoment", () => {
     expect(result.inputs.find((input) => input.id === "code")!.refusal).toContain("git-object");
     expect(await readdir(fixture.options.out)).toEqual(["leak-check.json", "moment.json"]);
     expect(JSON.parse(await readFile(path.join(fixture.options.out, "leak-check.json"), "utf8")).findings)
-      .toEqual(expect.arrayContaining([expect.objectContaining({ class: "git-object" })]));
+      .toEqual(expect.arrayContaining([expect.objectContaining({ class: "git-object", path: "resources/team%3Apublication/code",
+        detail: `Object ${fixture.futureCommit} is not reachable from ${fixture.commit}` })]));
     expect(result.at).toBe(AT);
   });
 });

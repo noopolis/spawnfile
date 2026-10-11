@@ -32,7 +32,17 @@ describe("memory rewind", () => {
     expect(() => selectMemoryPrefix(ledger(memoryEvent(1), { ...memoryEvent(2), seq: undefined }), AT)).toThrow(/leading run/);
     expect(selectMemoryPrefix(ledger({ ...memoryEvent(1), seq: undefined }, memoryEvent(2)), AT).events).toHaveLength(2);
   });
-  it("materializes an exact record prefix using only the public Mneme rebuild API", async () => {
+  it("rejects malformed JSON, invalid createdAt instants and duplicate JSON keys", () => {
+    expect(() => parseMemoryLedger("{broken}\n")).toThrow(/memory\/events.jsonl:1: invalid Mneme event/);
+    expect(() => ledger({ ...memoryEvent(1), createdAt: "not an instant" })).toThrow(/createdAt/);
+    expect(() => parseMemoryLedger(`${JSON.stringify(memoryEvent(1))}\n\n`)).toThrow(/memory\/events.jsonl:2/);
+    const payload = JSON.stringify(memoryEvent(1));
+    for (const duplicate of [payload.replace('"seq":1', '"seq":2,"s\\u0065q":1'),
+      payload.replace('"agentId":"a"', '"agentId":"b","agentId":"a"')]) {
+      expect(() => parseMemoryLedger(`${duplicate}\n`)).toThrow(/duplicate JSON key/);
+    }
+  });
+  it("materializes an exact record prefix without an index or a Mneme runtime dependency", async () => {
     const context = await setup();
     await jsonl(context.history!.root, `${base}/events.jsonl`, [memoryEvent(1), memoryEvent(2, AT)]);
     context.record = { ...emptyRecord(), memory: [{ id: "self", declaredBy: "agent:a", seq: 1, generation: 0 }] };
@@ -40,7 +50,8 @@ describe("memory rewind", () => {
     expect(result).toMatchObject({ fidelity: "exact", basis: "record", source: { seq: 1, generation: 0 } });
     expect(await readdir(path.join(context.destination, "memory"))).toEqual(["events.jsonl"]);
     expect(await readFile(path.join(context.destination, "memory/events.jsonl"), "utf8")).toBe(`${JSON.stringify(memoryEvent(1))}\n`);
-    expect(result.notes.join(" ")).toContain("public index rebuild");
+    expect(result.notes.join(" ")).toContain("without a Mneme runtime dependency");
+    expect(result.notes.join(" ")).toContain("Checksum verification is skipped");
   });
   it("includes the boundary and labels the timestamp prefix approximate", async () => {
     const context = await setup();

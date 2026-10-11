@@ -163,151 +163,32 @@ with zero recording cost when off. `record.keep` is snapshot retention.
 {
   "version": "spawnfile.moment-record.v1",
   "agent": "agent:writer",
-  "wake": {
-    "at": "2026-10-09T08:20:31.000Z",
-    "startedAt": "2026-10-09T08:20:31.250Z",
-    "executionId": "execution-17",
-    "deliveries": [{ "deliveryId": "moltnet:42", "kind": "message", "occurredAt": "2026-10-09T08:20:31.000Z" }],
-    "surface": "moltnet", "messageId": "42"
-  },
-  "recordedAt": "2026-10-09T08:20:32.000Z",
-  "exact": true,
-  "resources": [
-    { "id": "archive", "kind": "git", "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-    { "id": "tools", "kind": "bundle", "sha256": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
-  ],
-  "feeds": [{ "id": "news", "revision": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "tree": "trees/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.1", "commit": "dddddddddddddddddddddddddddddddddddddddd", "ref": "data/2026-10-09", "paths": ["published"], "landedAt": "2026-10-09T08:00:00.000Z", "period": "2026-10-09" }],
-  "memory": [{ "id": "self", "declaredBy": "agent:writer", "seq": 42 }],
-  "moltnet": [{ "network": "news", "cursor": "2026-10-09T08:20:31.250Z", "messageIds": ["42"] }],
-  "volumes": [{ "id": "edition-state", "snapshot": "incremental-snapshot-17" }]
+  "wake": { "at": "2026-10-09T08:20:31Z", "surface": "moltnet", "room": "assignment", "from": "brass", "messageId": "42" },
+  "recordedAt": "2026-10-09T08:20:32Z",
+  "resources": [{ "id": "archive", "kind": "git", "commit": "0123456789abcdef0123456789abcdef01234567" }],
+  "feeds": [{ "id": "news", "revision": "revision-id", "tree": "tree-id", "commit": "0123456789abcdef0123456789abcdef01234567", "paths": ["published"], "landedAt": "2026-10-09T08:00:00Z" }],
+  "memory": [{ "id": "self", "declaredBy": "agent:writer", "seq": 42, "generation": 3 }],
+  "moltnet": [{ "network": "news", "cursor": "wake-cursor" }],
+  "volumes": [{ "id": "edition-state", "snapshot": "incremental-snapshot-id" }]
 }
 ```
 
-### Host histories and retention
-
-`record.keep` bounds landing logs, deploy logs, snapshots and moment records; omission
-means **30d**. A shared history MUST use the maximum effective keep among its recording
-consumers (all recording agents for the deploy log). History-log pruning MUST keep entries newer
-than `now - keep` AND the newest entry at or before that cutoff, even across a long gap.
-Lookups are inclusive; equal timestamps use the last appended entry. Before the first
-entry, lookup returns no state. Invalid lines MUST be reported alongside valid entries.
-
-For each fed volume consumed by a recording agent, the host MUST append
-`landings.jsonl` beside `landed.json` after each successful land, generation re-land,
-retained-tree re-point or link repair. Provenance/period adoption MUST also be logged.
-Before ANY replacement of `landed.json` (including revision advances, re-points,
-repairs and adoption), the publisher MUST reconcile its previous recording snapshot
-against the last log entry and append it if missing, preserving the original instant.
-A failed reconciliation MUST prevent replacement. A clean refresh also seeds history
-when recording is enabled later. Recorded host state retains the original source and
-keep window so a changed source declaration cannot rewrite pending provenance.
-The entry MUST follow a successful `landed.json` write and contain:
-`{version:"spawnfile.volume-feed-landing.v1", resource, volume, revision, tree,
-source, commit?, ref?, paths?, switching_at, landed_at, period?}`. `switching_at`
-MUST be sampled immediately BEFORE the `current` rename, including link repair;
-`landed_at` remains the post-switch instant and MUST equal
-`identity.landed_at`; `period` is the host record's period. `source` MUST identify
-`{kind:"git", repo}` or `{kind:"directory", directory}` and preserve any `prepared`
-provenance. Git entries MUST carry the resolved commit and expanded requested ref;
-`paths`, when present, MUST be the expanded git paths. Commit, paths and revision
-permit refetch and verification without retaining trees. Directory feeds are verifiable
-by revision digest but **not refetchable**. Prepared feeds also require their recorded
-include digests and recipe inputs; a revision does not promise reproducible prepare output.
-Lookup inside either endpoint of `[switching_at, landed_at]` MUST return the incoming
-entry plus `ambiguous:true`. Outside transition windows, select the most recent
-`landed_at <= instant`. Adoption without a content switch uses `switching_at = landed_at`;
-old nonrecorded identities seeded on opt-in use the same degenerate window. Recording
-history missing a required transition boundary is invalid, never assumed exact.
-
-When any compiled agent records, project `up` and home deployment publication
-(including image `up` and release) MUST append a resource log beside their record:
-`<output>/deployments/<name>.resource-log.jsonl` for project records, and
-`~/.spawnfile/deployments/<name>/resource-log.jsonl` for home records. `deployment_id`
-is the absolute canonical record path; lookup MUST require that identity. Independent
-outputs with the same deployment name MUST NOT share history or retention.
-
-Each `{version:"spawnfile.deploy-resources.v1", deployment, deployment_id, activated_at,
-activation_exact, activation_note?, deployed_at, report_sha256, resources, recording_agents}` entry MUST
-reuse `workspace_git_resources` and `workspace_bundles`, without resolving sources again.
-`recording_agents` MUST copy the validated compiled recording facts for every recording
-agent: node ID, slug, recording directory, keep window, snapshot IDs, consumed feed IDs
-and volume names, git/bundle resource IDs, memory bank IDs with declaring node and ledger
-path, and attached Moltnet networks. These facts survive releases that remove or change
-inputs. Legacy entries without them remain readable but cannot produce exact moments.
-Every resource MUST retain its workspace-visible `id`, compiled `agent_node_ids`, and
-`declared_by` node ID when known. Git adds `{kind:"git", commit, sha256, url?}`; bundles
-add `{kind:"bundle", sha256, origin?}`. Ownership MUST survive compile and distribution
-projection, including equal IDs/digests with different commits. Image pins omit host
-paths and source URLs. Unowned legacy history MUST be reported as invalid, never guessed.
-With no effective recording agent, compile reports MUST omit `agent_node_ids` and
-`declared_by` and preserve the original resource deduplication and serialized shape.
-
-Lookups and retention MUST use `activated_at`; `deployed_at` is informational record
-creation time. Activation ordering is path-specific:
-
-- Image `up` renames/stops the previous container, verifies it stopped, then samples
-  `activated_at` immediately before `docker run`. It waits for a later host-clock tick
-  than the stopped observation, so no old turn can have an equal timestamp.
-- Drained release first closes admission and waits for old turns, then calls image `up`
-  under the home lock; the same stop/verify/activation/start sequence applies.
-- Project `up` samples immediately before invoking its launch runner. First deployment
-  has no recorded predecessor. Replacement does not stop/drain its predecessor and MAY
-  overlap it: entries MUST set `activation_exact:false` with `activation_note`. Records
-  without a captured launch boundary (including recovered launches) are likewise inexact.
-
-If a started candidate is removed on readiness or publication failure, image `up`,
-release and project `up` MUST append its pins with `{activated_at, rolled_back_at,
-exact:false, activation_exact:false}`. `rolled_back_at` is sampled after candidate
-removal, before restoration where applicable. This interval MUST NOT replace the
-predecessor's authoritative record. Lookup inside the inclusive interval returns the
-candidate with `exact:false`, even if it previously published a successful-looking
-snapshot; after the interval, that snapshot is excluded and the predecessor applies
-until another deployment activates. Retention MUST preserve intervals crossing the
-cutoff and the predecessor needed after rollback. No candidate history is written when
-recording is off. A failed candidate cleanup MUST NOT invent a completed rollback.
-These interval entries describe execution and removal, not successful publication;
-their append follows removal without requiring a new authoritative deployment record.
-
-The host clock MUST remain monotonic across these operations. Containers MUST share
-that clock; remote clock skew invalidates exact reconstruction. A moment arriving before
-publication MUST wait for its authoritative deployment record/history, or be inexact.
-
-The deployment record MUST persist `recording: {keep_ms, memory_mount_ids}` and its
-complete `resource_snapshot`, including the hash of the exact persisted UTF-8 report
-bytes. Before replacing a deployment record OR its cached report, the publisher MUST
-reconcile that snapshot against the last log entry. Reconciliation failure MUST abort
-replacement. Recompilation MUST preserve deployment records/history, including clean
-compiles; it cannot erase a pending snapshot. Retried publication of the same snapshot
-MUST NOT append a duplicate. Turning recording off still reconciles an owed predecessor.
-Writers MUST receive predecessor metadata from the lifecycle's existing record read;
-only effective recording or a recorded predecessor permits additional record reads.
-
-Host records and cached deployment reports MUST be published by file fsync, rename,
-and parent-directory fsync BEFORE log append. Both logs MUST append each complete JSON
-line in one write followed by file and directory fsync. Pruning MUST use an exclusive
-0600 temporary file, file fsync, rename and directory fsync under a writer lock.
-With recording off and no recorded predecessor, neither log nor its lock may be touched.
-Host-record/report writes in that case MUST retain their original write/rename sequence,
-permissions and bytes, without added reads, durable writes or fsyncs. A matching last
-log line MUST still be file- and directory-fsynced before reconciliation succeeds:
-visibility alone does not prove a previous failed append became durable.
-A deploy-log failure after publication MUST be reported without rolling back the
-container named by the published deployment record.
-If record rename succeeds but directory fsync fails, the named container MUST also
-remain; no log entry may be appended until the authoritative record is re-synced.
-
-Spawnfile MUST enforce memory protection from the DEPLOYED record's `recording`
-metadata, independent of later compile settings. For recorded state, teardown with volume deletion MUST
-refuse a changed report fingerprint, missing protected mount, reduced keep, or dropped
-recording/mount protection unless explicitly overridden. `down --volumes --discard-recorded-memory`
-is that override; `--force` alone is insufficient. Author-declared shared volume names
-remain retained under the existing teardown rule. Internal fixture cleanup MUST apply
-the same guard. Spawnfile has no memory-ledger reset/prune command; release prunes only
-images. This guarantee covers Spawnfile's deletion paths, not external Docker commands.
-Mneme stays independent and its ledger MUST NOT be truncated by recording retention.
-
-Rewind MUST use records when present; otherwise it is best effort and the trial MUST
-be labelled as such.
+`agent` is the exact node ID. `wake.at` MUST be the real wake time (not the dataset's
+authored trial time); `recordedAt` is capture time. Both are instants with an offset or
+`Z`; `messageId` is OPTIONAL. Resources identify the git/bundle resolved commit per
+build/deploy. Every recorded `resources[].commit`, `feeds[].commit`, and non-null
+landing-log `commit` MUST be a full 40- or 64-hex object ID, normalized to lowercase.
+Moving selectors and abbreviated IDs refuse. For every non-overridden input,
+rewind MUST verify matching moment-record IDs and every non-null landing-log ID
+as commit objects in that input's history repository; tree/blob IDs and annotated
+tag objects refuse without peeling. This validation also applies to pinned
+resources, feed-rule fallback, and retained feed trees; it does not change which
+valid commit takes selection precedence.
+Feeds identify the fed-volume landing-log entry in effect at the wake.
+Memory pins the Mneme ledger sequence and active curation generation for each declared
+bank; Moltnet pins each network's per-wake message cursor. Volumes identify an incremental
+snapshot for every effective `record.volumes` entry. Rewind MUST use records when present;
+otherwise it is best effort and the trial MUST be labelled as such.
 
 ## Rewind
 
@@ -384,7 +265,10 @@ the history file, line, and reason. History writers use these line shapes:
 Moment records match when `agent` equals the plan agent ID and `wake.at` is the
 same parsed instant as example `at`; different offset spellings are equivalent.
 Several matching records MUST agree in every field used for the selected
-inputs, otherwise the moment refuses. No matching record triggers each input's
+inputs, otherwise the moment refuses. Every matching record's commit IDs for each
+non-overridden input MUST pass history-object validation, including fields omitted
+from selection comparisons for pinned resources. An invalid candidate refuses
+its affected input. No matching record triggers each input's
 fallback rule. Fallbacks are labelled `approximate`; independent immutable pins
 and landing logs retain the exact fidelity specified below. All timestamp
 comparisons MUST compare instants, preserving RFC3339 nanoseconds where present,
@@ -423,8 +307,11 @@ trial preparation owns builds. Bundle output MAY be a plain tree. A prebuilt
 Generated inputs spanning multiple repositories or independently pinned input
 refs cannot be represented by this one-repository/one-commit history contract
 and MUST refuse. Bundle roots whose historical repository prefix cannot be
-established also refuse. Bundle file trees preserve the existing compiler's
-symlink refusal; excluded symlinks do not need materialization.
+established also refuse. Feed and bundle extraction MUST use raw tree/blob objects
+(`git ls-tree -r -z` and `git cat-file`, with `GIT_ATTR_NOSYSTEM=1`), without
+attribute-driven transforms, `export-subst`, or `export-ignore` semantics.
+Symlinks MUST be recreated as symlinks and pass the independent escape check;
+gitlink/submodule entries MUST refuse with an explicit unsupported-history error.
 
 Fed volumes select the newest landing with `landedAt <= at` when a landing log
 exists (`exact`, `landing-log`); no eligible landing refuses. A matching record
@@ -441,8 +328,8 @@ Feed bytes come from OPTIONAL retained `trees/<revision>/` when available.
 Otherwise a plain git feed re-extracts the landing's expanded paths at its commit
 and MUST verify the revision with the existing feed revision function. A mismatch
 refuses. `include` or `prepare` requires retained bytes; rewind MUST NOT run them.
-Unrecorded repository-local `info/attributes` also requires retained bytes;
-reconstruction otherwise honors the commit's archive attributes.
+Raw blob extraction ignores repository-local `info/attributes` as well as committed
+archive attributes; later tags cannot change historical file bytes.
 Output preserves the agent-visible `trees/<revision>/`, relative `current`
 symlink, and `.spawnfile-feed.json` (`spawnfile.volume-feed.v1`). Its `landed_at`
 is the selected landing time, or the selected commit's committer time for an
@@ -461,13 +348,24 @@ allowed only as a leading run. Invalid sequence or time ordering refuses.
 
 Memory output is `memory/<declaredBy>/<id>/memory/events.jsonl`. It MUST exclude
 `index.sqlite`, `causal*`, `authority-receipts.jsonl`, and `authority-receipts/`.
-The installed Mneme 0.1.1 package publicly exports `createMemoryIndex`; rewind
-rebuilds a temporary index from the selected ledger through this root API,
-verifies it can be queried, then discards it. No deep imports are permitted.
-Mneme rebuilds from its ledger before kernel searches; opening an index alone
-does NOT rebuild it. Trial preparation must retain that search/rebuild behavior.
-Mneme remains a development dependency: if its public rebuild API is unavailable,
-historical memory materialization refuses explicitly without auto-installing it.
+Spawnfile validates the ledger structurally without importing Mneme: every line
+MUST be a JSON event with an instant `createdAt`, and duplicate JSON keys refuse.
+Sequence, leading legacy run, LF termination, and prefix time ordering are checked
+locally. Event checksums are retained but not verified: Mneme 0.1.1 hashes
+`JSON.stringify(event)` (`node_modules/@noopolis/mneme/dist/identity/ids.js:15-17`)
+before the persisted event normalizes/defaults fields and injects its sequence
+(`node_modules/@noopolis/mneme/dist/store/store.js:249-274`); the original input
+and its property order cannot be recovered from the ledger alone.
+
+In installed Mneme 0.1.1, the index is rebuilt from the ledger before every index
+read: embedding recall at `node_modules/@noopolis/mneme/dist/runtime/runtime.js:86-87`,
+`memory.search` at `node_modules/@noopolis/mneme/dist/kernel/kernel.js:152-153`,
+and `memory.locate` at `node_modules/@noopolis/mneme/dist/kernel/kernel.js:207-208`.
+These sites read the store then call `this.index.rebuildFromEvents(allEvents)`.
+Opening an index alone does NOT rebuild it. A materialized bank without
+`index.sqlite` is complete because this index is derived state; trial preparation
+MUST preserve those rebuild-before-read consumers. Rewind requires no Mneme runtime
+dependency and does not create even a temporary index.
 Missing bank history also refuses unless the bank is overridden.
 
 Moltnet JSON and SQLite stores remove messages, rooms, and attachment-delivery
@@ -526,13 +424,15 @@ state. Its strict `spawnfile.leak-check.v1` result contains `{version, at, ok,
 checked, findings}`; counters cover files, git objects, memory events, Moltnet
 messages/events, and snapshots. Each finding carries `{input, class, path,
 detail}`; `input` is an input identity or `null` for bundle-level problems.
+Metadata is captured before payload reads; the checker restores the captured access
+times after inspection, preserving pre-existing future atimes for refusal.
 Every finding refuses the moment:
 
 | Class | Refusal condition |
 | --- | --- |
-| `file-time` | A file, directory, or symlink mtime is after `at`. |
+| `file-time` | A file, directory, or symlink atime or mtime is after `at`. |
 | `symlink-escape` | An absolute link or a lexically/physically escaping link resolves outside the bundle. |
-| `git-object` | Any commit author/committer time is after `at`, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. |
+| `git-object` | Any commit author/committer time is after `at`, any object is unreachable from the selected commit, or refs/remotes/reflogs/fetch metadata exceed the single branch. Any `.git` directory/gitfile or bare repository (`HEAD` + `objects/` + `refs/`) anywhere outside the materialized git resource repository also refuses, including inside feed trees and bundles. |
 | `memory-event` | Future ledger events, sequence gaps, invalid prefix ordering, or derived/audit files are present. |
 | `moltnet-message` / `moltnet-event` / `moltnet-room` | Retained messages, delivery events, or rooms are after `at`. |
 | `feed-identity` | `landed_at` is after `at` or `current` does not target a tree inside the volume. |

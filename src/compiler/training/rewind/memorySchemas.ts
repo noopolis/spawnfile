@@ -35,3 +35,21 @@ export const memoryEventSchema = z.object({
   origin: z.enum(["awake", "dream", "system"]).optional(), highWaterSeq: safeSequence.optional()
 }).strict();
 export type MemoryLedgerEvent = z.infer<typeof memoryEventSchema>;
+
+/** Mneme rejects duplicate JSON keys, including escaped and nested duplicates. */
+export const parseMemoryLedgerEvent = (line: string): MemoryLedgerEvent => {
+  const value: unknown = JSON.parse(line);
+  const objects: (Set<string> | null)[] = [];
+  let string = "";
+  for (const [token] of line.matchAll(/"(?:\\.|[^"\\])*"|[{}\[\]:]/gu)) {
+    if (token === "{") objects.push(new Set());
+    else if (token === "[") objects.push(null);
+    else if (token === "}" || token === "]") objects.pop();
+    else if (token === ":") {
+      const key = JSON.parse(string) as string, keys = objects.at(-1)!;
+      if (keys.has(key)) throw new Error(`duplicate JSON key ${JSON.stringify(key)}`);
+      keys.add(key);
+    } else string = token;
+  }
+  return memoryEventSchema.parse(value);
+};

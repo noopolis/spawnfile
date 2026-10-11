@@ -7,6 +7,7 @@ import { historyKey } from "./history.js";
 import { assertLocalGitRepository } from "./gitHistory.js";
 import { assertCommitNotFuture, commitAt, commitInstant, resolveRewindCommit, rewindGit } from "./gitProcess.js";
 import { exportGitTree, extractOverrideBundle } from "./gitTree.js";
+import { resolveRecordedCommit } from "./recordedCommit.js";
 import type { InputContext, InputResult } from "./types.js";
 
 export { commitAt, commitInstant, resolveRewindCommit, rewindGit, rewindGitEnvironment, rewindGitSync, selectCommitAt } from "./gitProcess.js";
@@ -60,13 +61,13 @@ const bundlePrefix = async (root: string, base: string): Promise<string> => {
 
 const materializeBundle = async (resource: BundleResource, context: InputContext, repository: string, commit: string): Promise<boolean> => {
   const build = resource.build;
-  if (!build) { await exportGitTree(repository, commit, context.destination, { refuseSymlinks: true }); return false; }
+  if (!build) { await exportGitTree(repository, commit, context.destination); return false; }
   if (build.files) {
-    await exportGitTree(repository, commit, context.destination, { root: await bundlePrefix(build.files.root, context.input.declarationBase), exclude: build.files.exclude, refuseSymlinks: true });
+    await exportGitTree(repository, commit, context.destination, { root: await bundlePrefix(build.files.root, context.input.declarationBase), exclude: build.files.exclude });
     return false;
   }
   if (build.dependencies) {
-    await exportGitTree(repository, commit, context.destination, { root: await bundlePrefix(build.dependencies.directory, context.input.declarationBase), refuseSymlinks: true });
+    await exportGitTree(repository, commit, context.destination, { root: await bundlePrefix(build.dependencies.directory, context.input.declarationBase) });
   } else {
     const origins = await Promise.all(build.generated!.inputs.map(async (input) => {
       try { return (await rewindGit(path.resolve(context.input.declarationBase, input.root), ["rev-parse", "--show-toplevel"])).toString().trim(); }
@@ -79,7 +80,7 @@ const materializeBundle = async (resource: BundleResource, context: InputContext
     for (const input of build.generated!.inputs) {
       if (input.ref !== undefined) throw new Error("Generated bundle inputs cannot pin a ref: the deferred command reads the work tree");
       const root = await bundlePrefix(input.root, context.input.declarationBase);
-      await exportGitTree(repository, commit, context.destination, { root, prefix: root, exclude: input.exclude, mergeIdentical: true, refuseSymlinks: true });
+      await exportGitTree(repository, commit, context.destination, { root, prefix: root, exclude: input.exclude, mergeIdentical: true });
     }
   }
   return true;
@@ -89,7 +90,10 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
   const { input, history } = context;
   if (input.section !== "resources" || input.declaration.kind === "volume") throw new Error("Git rewind requires a git or bundle resource");
   const resource = input.declaration, selector = selectorOf(resource), pinned = FULL_OBJECT.test(selector);
-  const record = input.overridden || pinned ? undefined : context.record?.resources.find((entry) => entry.id === input.id);
+  const matchingRecord = input.overridden ? undefined : context.record?.resources.find((entry) => entry.id === input.id);
+  const candidateCommits = input.overridden ? [] : context.candidateRecords?.flatMap((candidate) =>
+    candidate.resources.filter((entry) => entry.id === input.id).map((entry) => entry.commit)) ?? [];
+  const record = pinned ? undefined : matchingRecord;
   if (record && record.kind !== resource.kind) throw new Error(`Moment resource ${input.id} kind disagrees with its declaration`);
   if (input.overridden && resource.kind === "bundle" && resource.source) {
     await extractOverrideBundle(localRepositoryPath(resource.source, input.declarationBase), context.destination, resource.sha256);
@@ -97,14 +101,18 @@ export const materializeGit = async (context: InputContext): Promise<InputResult
   }
   if (resource.kind === "bundle" && resource.source && !record) throw new Error("Prebuilt bundle has no recorded commit and cannot be rewound; provide an override");
   let repository = input.overridden ? null : await history?.repository(`git/${historyKey(input)}`);
+  if ((matchingRecord || candidateCommits.length) && !repository) throw new Error(`Missing git history for recorded resource ${input.id}`);
   if (!repository && (pinned || input.overridden)) {
     const declared = localRoot(resource);
     if (declared) repository = localRepositoryPath(declared, input.declarationBase);
   }
   if (!repository) throw new Error(`Missing git history for ${input.id}; unpinned resources require --history`);
   await assertLocalGitRepository(repository, !input.overridden && history && repository.startsWith(`${history.root}${path.sep}`) ? history : undefined);
+  for (const commit of candidateCommits) await resolveRecordedCommit(repository, commit);
+  const recordedCommit = matchingRecord ? await resolveRecordedCommit(repository, matchingRecord.commit) : null;
   const selected = pinned || record || input.overridden
-    ? await resolveRewindCommit(repository, pinned ? selector : record?.commit ?? selector).then(async (commit) => ({ commit, instant: await commitInstant(repository!, commit) }))
+    ? await (record ? Promise.resolve(recordedCommit!) : resolveRewindCommit(repository, selector))
+      .then(async (commit) => ({ commit, instant: await commitInstant(repository!, commit) }))
     : await commitAt(repository, selector, context.at);
   if (!selected) throw new Error(`No first-parent commit for ${selector} exists at or before ${context.at}`);
   if (resource.kind === "bundle") await assertCommitNotFuture(repository, selected.commit, context.at);

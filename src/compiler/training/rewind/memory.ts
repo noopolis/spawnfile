@@ -1,9 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { historyKey } from "./history.js";
 import { compareInstants } from "./instant.js";
-import { memoryEventSchema, memoryGenerationSchema, type MemoryGeneration, type MemoryLedgerEvent } from "./memorySchemas.js";
+import { parseMemoryLedgerEvent, memoryGenerationSchema, type MemoryGeneration, type MemoryLedgerEvent } from "./memorySchemas.js";
 import type { InputContext, InputResult } from "./types.js";
 
 export interface MemoryLedger { lines: string[]; events: MemoryLedgerEvent[] }
@@ -14,7 +13,7 @@ export const parseMemoryLedger = (payload: string, label = "memory/events.jsonl"
   if (!payload.endsWith("\n")) throw new Error(`${label}: ledger must end with LF`);
   const lines = payload.slice(0, -1).split("\n");
   const events = lines.map((line, index) => {
-    try { return memoryEventSchema.parse(JSON.parse(line)); }
+    try { return parseMemoryLedgerEvent(line); }
     catch (error) { throw new Error(`${label}:${index + 1}: invalid Mneme event: ${reason(error)}`); }
   });
   return { lines, events };
@@ -72,25 +71,6 @@ export const selectMemoryGeneration = (
   return selected;
 };
 
-/** Public rebuild validates the cut without shipping copied or derived index/audit bytes. */
-const validateWithMneme = async (home: string): Promise<void> => {
-  let mneme: typeof import("@noopolis/mneme");
-  try { mneme = await import("@noopolis/mneme"); }
-  catch (error) { throw new Error(`Mneme public index rebuild is unavailable; install the optional @noopolis/mneme package: ${reason(error)}`); }
-  if (typeof mneme.createMemoryIndex !== "function") throw new Error("Mneme root does not export createMemoryIndex; cannot validate the rewind index");
-  const temporary = await mkdtemp(path.join(os.tmpdir(), "spawnfile-memory-index-"));
-  try {
-    const events = await new mneme.JsonlMemoryStore(home).read();
-    const index = mneme.createMemoryIndex({ runtimeHomePath: home, indexFilePath: path.join(temporary, "index.sqlite") });
-    try {
-      await index.rebuildFromEvents(events);
-      const indexed = await index.query({ limit: Math.max(events.length, 1) });
-      // query() is a positive completion signal, including the empty-ledger case.
-      if (!Array.isArray(indexed)) throw new Error("Mneme rebuild did not produce a readable index");
-    } finally { index.close(); }
-  } finally { await rm(temporary, { recursive: true, force: true }); }
-};
-
 export const materializeMemory = async (context: InputContext): Promise<InputResult> => {
   const { input, at, record, history, destination } = context;
   if (input.section !== "memory") throw new Error("Memory materialization requires a memory input");
@@ -110,12 +90,12 @@ export const materializeMemory = async (context: InputContext): Promise<InputRes
   const prefix = selectMemoryPrefix(parseMemoryLedger(payload, ledgerPath), at, pin?.seq);
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, "events.jsonl"), prefix.lines.length ? `${prefix.lines.join("\n")}\n` : "");
-  await validateWithMneme(destination);
   return {
     fidelity: pin ? "exact" : "approximate", basis: pin ? "record" : "created-at-prefix",
     source: { seq: prefix.events.length, generation: generation.generation },
-    notes: ["The selected ledger was validated by Mneme's public index rebuild. The temporary index was discarded; no derived or authority audit state is included.",
-      "Mneme 0.1.1 rebuilds its index before kernel searches, not merely when a runtime opens.",
+    notes: ["Spawnfile structurally validated the selected ledger without a Mneme runtime dependency; no derived or authority audit state is included.",
+      "Mneme 0.1.1 rebuilds its index from the ledger before every index read.",
+      "Checksum verification is skipped: Mneme 0.1.1 hashes the original input before normalization, which cannot be reconstructed exactly from stored events.",
       ...(generation.switchedAt === null ? ["No generation history: the current ledger is treated as original generation 0."] : [])],
     instant: prefix.events.at(-1)?.createdAt ?? generation.switchedAt ?? at
   };

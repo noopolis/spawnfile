@@ -129,16 +129,16 @@ describe("feed rewind", () => {
     await expect(materializeFeed(context)).rejects.toThrow("No feed landing");
   });
 
-  it("applies committed archive attributes and PAX long names when reconstructing feed bytes", async () => {
+  it("ignores archive attributes and preserves long names when reconstructing feed bytes", async () => {
     const { context, repository, resource } = await fixture();
     const longName = `published/${"x".repeat(150)}.txt`;
     const commit = await commitTestGit(repository, { ".gitattributes": "published/hidden.txt export-ignore\npublished/version.txt export-subst\n",
       "published/hidden.txt": "omitted\n", "published/version.txt": "$Format:%H$\n", [longName]: "long\n" }, "2026-10-09T08:10:00Z");
     resource.feed!.git!.ref = commit;
     await materializeFeed(context);
-    expect(await readFile(path.join(context.destination, "current/published/version.txt"), "utf8")).toBe(`${commit}\n`);
+    expect(await readFile(path.join(context.destination, "current/published/version.txt"), "utf8")).toBe("$Format:%H$\n");
     expect(await readFile(path.join(context.destination, "current", longName), "utf8")).toBe("long\n");
-    await expect(readFile(path.join(context.destination, "current/published/hidden.txt"))).rejects.toThrow();
+    expect(await readFile(path.join(context.destination, "current/published/hidden.txt"), "utf8")).toBe("omitted\n");
   });
 
   it("refuses retained history symlinks outside the history root", async () => {
@@ -149,9 +149,9 @@ describe("feed rewind", () => {
   });
 
   it("selects pure instant boundaries and refuses contradictory equal-instant landings", () => {
-    const revision = "a".repeat(64), landing = feedLandingSchema.parse({ revision, tree: revision, commit: "commit", ref: "main", paths: [], landedAt: AT });
+    const revision = "a".repeat(64), landing = feedLandingSchema.parse({ revision, tree: revision, commit: "a".repeat(40), ref: "main", paths: [], landedAt: AT });
     expect(selectFeedLanding([landing], "2026-10-09T10:20:31+02:00")).toBe(landing);
     expect(selectFeedLanding([landing], "2026-10-09T08:20:30.999Z")).toBeNull();
-    expect(() => selectFeedLanding([landing, { ...landing, commit: "other", landedAt: "2026-10-09T10:20:31+02:00" }], AT)).toThrow("Conflicting feed landings");
+    expect(() => selectFeedLanding([landing, { ...landing, commit: "b".repeat(40), landedAt: "2026-10-09T10:20:31+02:00" }], AT)).toThrow("Conflicting feed landings");
   });
 });
