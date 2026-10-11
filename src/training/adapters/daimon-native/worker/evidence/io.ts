@@ -11,12 +11,15 @@ export function object(value: unknown): Record<string, unknown> {
 export function timestamp(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
-export async function jsonLines(file: string, maximum = MAX_STREAM): Promise<unknown[]> {
+export async function jsonLines(file: string, maximum = MAX_STREAM, maximumLine = maximum): Promise<unknown[]> {
   let source: string;
   try { source = await readPrivateFile(file, maximum); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []; throw error; }
   if (source && !source.endsWith('\n')) throw new Error('Native evidence stream has a torn final record');
-  return source.split('\n').filter(Boolean).map(line => JSON.parse(line) as unknown);
+  return source.split('\n').filter(Boolean).map(line => {
+    if (Buffer.byteLength(line, 'utf8') + 1 > maximumLine) throw new Error('Native evidence record exceeds its byte bound');
+    return JSON.parse(line) as unknown;
+  });
 }
 
 export async function files(directory: string): Promise<string[]> {

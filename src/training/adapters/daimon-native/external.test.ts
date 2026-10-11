@@ -19,6 +19,18 @@ test('checks source identity, timeout and cancellation without accepting late ca
   const pending = nextExternalInput(hanging, context, Date.now() + 1000, controller.signal); controller.abort();
   await expect(pending).rejects.toThrow('cancelled');
 });
+test('accepts exact prepared transport replies while refusing prefix, missing publication and unknown fields', async () => {
+  const transport = { source: { kind: 'transport', deliveryId: 'moltnet:reply' } as const, publish: async () => undefined };
+  const next = async () => ({ ...input, transport });
+  expect(await nextExternalInput({ next }, context, Date.now() + 1000, new AbortController().signal)).toEqual({ ...input, transport });
+  for (const invalid of [
+    { ...input, transport: { ...transport, source: { kind: 'transport', deliveryIdPrefix: 'moltnet:' } } },
+    { ...input, transport: undefined }, { ...input, transport: { source: transport.source } }, { ...input, extra: 'ignored?' },
+  ]) {
+    await expect(nextExternalInput({ next: async () => invalid as Awaited<ReturnType<typeof next>> }, context,
+      Date.now() + 1000, new AbortController().signal)).rejects.toThrow();
+  }
+});
 test('sums independent wake usage once and preserves unknowns', () => {
   const row = { inputTokens: 10, outputTokens: 2, cachedInputTokens: 3, reasoningTokens: null, source: 'native' };
   expect(sumNativeUsage([{ ...row, reasoningTokens: 1 }])).toEqual({ ...row, reasoningTokens: 1 });

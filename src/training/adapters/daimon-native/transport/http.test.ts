@@ -46,6 +46,16 @@ it('rejects endpoint/path/auth/deadline/body changes before a request', async ()
   await expect(request('/trial/health', undefined, 100, AbortSignal.abort())).rejects.toThrow();
   expect(calls).toBe(0);
 });
+it('admits an authenticated arm-status GET only when transport mode is selected', async () => {
+  const calls: unknown[] = [];
+  const url = await endpoint((req, res) => {
+    calls.push({ method: req.method, path: req.url, auth: req.headers.authorization });
+    res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"state":"idle"}');
+  });
+  expect(await createNativeHttpClient(url, token, 'transport')('/trial/run')).toEqual({ state: 'idle' });
+  expect(calls).toEqual([{ method: 'GET', path: '/trial/run', auth: `Bearer ${token}` }]);
+  await expect(createNativeHttpClient(url, token, 'transport')('/trial/stop')).rejects.toThrow('Unsupported');
+});
 it('does not forward tokens on redirects or expose server error payloads', async () => {
   let leaked = 0;
   const destination = await endpoint((_req, res) => { leaked++; res.end('{}'); });

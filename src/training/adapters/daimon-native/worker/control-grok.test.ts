@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { createWorkerController, describeNativeFailure } from './control.js';
 import { activityFixture, configFixture, executionId, launchFixture, receiptFixture, traceFixture } from '../test-fixtures.js';
 import { grokConfigFor, grokLaunchFrom } from '../grok-fixtures.js';
@@ -10,7 +10,7 @@ const turn = 'c'.repeat(64);
 const usage = { v: 'noopolis.daimon.turn-usage.v1', agent: 'agent:writer', wake: executionId, engine: 'grok', at: '2026-09-17T00:00:02.000Z',
   input: 100, output: 10, cache_read: 50, cache_write: 0, total: 160, calls: 1, notional_usd: 0.0001, complete: true, turn, model: 'grok-4.6', limit_reason: 'none' };
 
-test('Grok controller reads the broker slot ledger, records engine identity and never reads Codex sessions', async () => {
+test.each(['absent', 'observed', 'zero'] as const)('Grok controller returns and persists %s provider-clock evidence with engine identity', async observation => {
   const f = await launchFixture();
   try {
     const launch = await grokLaunchFrom(f.launch, f.root);
@@ -26,10 +26,20 @@ test('Grok controller reads the broker slot ledger, records engine identity and 
     await mkdir(join(f.root, 'runtime/.codex/sessions'), { recursive: true });
     await writeFile(join(f.root, 'runtime/.codex/sessions/foreign.jsonl'), `${JSON.stringify({ type: 'turn_context', payload: { model: 'gpt-5.5' } })}\n`);
     await writeFile(launch.broker.usageLedgerPath, `${JSON.stringify(usage)}\n${JSON.stringify(usage)}\n`);
+    const provider_clock = observation === 'zero'
+      ? { requests: 0, linesRewritten: 0, requestsWithoutDateLine: 0, injectedDate: null, taskDate: null }
+      : { requests: 3, linesRewritten: 2, requestsWithoutDateLine: 1, linesIgnored: 4, injectedDate: '2026-10-11', taskDate: '2020-01-02' };
+    const seal = { v: 'noopolis.daimon.turn-seal.v1', agent: usage.agent, wake: executionId, engine: 'grok', at: usage.at,
+      turn, outcome: 'completed', requests: 3, model: usage.model, limit_reason: 'none', shell_clock: 'task', provider_clock };
+    if (observation !== 'absent') await writeFile(join(dirname(launch.broker.usageLedgerPath), 'turns.jsonl'), JSON.stringify(seal) + '\n');
     const result = await createWorkerController(host, config, options, 'unit-token', launch).run('wake', 'Assigned work');
     expect(result).toMatchObject({ status: 'completed', model: 'grok-4.6', engine: 'grok', reasoningEffort: 'low' });
     expect(result.native.usage).toEqual([usage]);
     expect(result.native.requests).toEqual([]);
+    for (const frame of [result, JSON.parse(await readFile(options.evidence, 'utf8')), JSON.parse(await readFile(join(launch.controlRoot, 'evidence.1.json'), 'utf8'))]) {
+      if (observation === 'absent') expect(frame.native).not.toHaveProperty('turnSeals');
+      else expect(frame.native.turnSeals).toEqual([seal]);
+    }
     expect(result.coverage.find(row => row.channel === 'usage')?.completeness).toBe('complete');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

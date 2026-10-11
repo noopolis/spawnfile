@@ -4,7 +4,7 @@ import { createWorkerController } from './control.js';
 import { MAX_TRIAL_WAKES } from './deliveries.js';
 import { assertFreshNativeEvidence } from './evidence/index.js';
 import { assertNativeProfile, verifyNativeWorkerStartup, verifyWorkerPaths } from './profile.js';
-import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
+import { configureNativeTaskClock, isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
 import { loadDaimonRuntime } from './public.js';
 import { createWorkerServer, listenWorker } from './server.js';
 import { persistNativeSandboxProjection } from './sandbox.js';
@@ -14,7 +14,7 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   // The same validation preparation can run through the public `verifyNativeWorkerStartup`.
   const { options, launch } = await verifyNativeWorkerStartup(args);
   const bytes = await readPrivateFile(options.config);
-  const runtime = await loadDaimonRuntime(launch.agent.engine);
+  const runtime = await loadDaimonRuntime(launch.agent.engine, launch.delivery);
   const grok = isGrokLaunch(launch) ? launch : undefined;
   const { createOrganizationRuntimeControlHost, parseOrganizationRuntimeConfig } = runtime;
   // Re-checked against Daimon's own parsed config, which may normalize what the raw bytes declared.
@@ -46,12 +46,16 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   process.env.DAIMON_WAKE_FUSE_MAX_TOKENS = String(launch.limits.maxTokens);
   delete process.env.DAIMON_WAKE_FUSE;
   // Engine-neutral names; the Codex aliases stay equal so older Codex runtimes keep their bound and Daimon never sees a conflict.
-  process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS = String(options.timeoutMs);
-  process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING = String(launch.limits.wakeTokenCeiling);
+  // Broker turn overrides may only lower the registered limits; the trial deadline still spans all wakes.
+  process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS = String(grok ? Math.min(options.timeoutMs, grok.broker.limits.timeoutMs) : options.timeoutMs);
+  process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING = String(grok ? Math.min(launch.limits.wakeTokenCeiling, grok.broker.limits.maxTokens) : launch.limits.wakeTokenCeiling);
   process.env.DAIMON_CODEX_WAKE_TIMEOUT_MS = process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS;
   process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING = process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING;
+  // Set only after this worker is running. Daimon consumes the loader path for
+  // child gates and strips it from engines; this process is never preloaded.
+  const taskClock = configureNativeTaskClock(launch.taskClock, options.timeoutMs);
   const host = createOrganizationRuntimeControlHost(config, { acceptanceStorePath: artifacts, controlToken: token });
-  const controller = createWorkerController(host, config, options, token, launch);
+  const controller = createWorkerController(host, config, options, token, launch, taskClock);
   const server = createWorkerServer(controller, token);
   try {
     await host.start();
@@ -65,6 +69,7 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
     process.stdout.write(`${JSON.stringify({ schema: 'paideia.daimon-native.ready.v1', trialId: options.trialId,
       agentId: config.agents[0]!.id, model: config.agents[0]!.engine.model,
       ...(grok ? { engine: 'grok', reasoningEffort: config.agents[0]!.engine.reasoningEffort } : {}), configSha256: options.configSha256,
+      ...(taskClock ? { taskClock } : {}), ...(launch.delivery === 'transport' ? { delivery: 'transport' } : {}),
       port: config.host.port, nativeHealth: health, nativeActivity: activity })}\n`);
   } catch (error) { await controller.stop(); server.closeAllConnections(); server.close(); throw error; }
   let shuttingDown = false;

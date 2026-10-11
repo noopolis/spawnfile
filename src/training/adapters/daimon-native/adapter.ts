@@ -1,4 +1,5 @@
-import type { NativeExecutionHandle } from './transport/index.js';
+import { boundedTransportCall, requestTransportDelivery, transportTerminalBinding, verifyPreparedTransport,
+  type NativeExecutionHandle, type NativeTransportDelivery, type PreparedTransportDelivery } from './transport/index.js';
 import { startOwnedChild, type NativeChildExecution } from './child/index.js';
 import { nextExternalInput, weakestNativeCoverage, type NativeExternalInputs } from './external.js';
 import type { SubjectAdapter, SubjectTurnResult } from '../../contracts/execution.js';
@@ -9,7 +10,9 @@ import { loadNativeLaunch } from './container/index.js';
 import { createNativeObserver } from './observations.js';
 import { readSealedBrokerRequests, readSealedBrokerSeal, readSealedBrokerUsage, type SealedBrokerUsageOptions } from './sealed-usage.js';
 
-export interface NativeAdapterOptions { timeoutMs?: number; startupMs?: number; docker?: DockerCommand; execution?: NativeChildExecution; externalInputs?: NativeExternalInputs; 
+export interface NativeAdapterOptions { timeoutMs?: number; startupMs?: number; docker?: DockerCommand; execution?: NativeChildExecution; externalInputs?: NativeExternalInputs;
+  /** Reserve the caller-owned transport source; the adapter publishes after the worker arms it. */
+  transportDelivery?: NativeTransportDelivery;
   /** How long a failed turn waits for the broker to seal its spend before reporting absence. */
   sealedUsage?: SealedBrokerUsageOptions }
 
@@ -25,6 +28,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
   const external = childExternal ?? dockerExternal;
   if (external && (!Number.isSafeInteger(external.maxDeliveries) || external.maxDeliveries < 1 || external.maxDeliveries > MAX_EXTERNAL_DELIVERIES || typeof external.next !== 'function')) throw new Error('Invalid external input policy');
   if (options.execution && options.docker) throw new Error('Select one native execution transport');
+  if (options.transportDelivery && typeof options.transportDelivery.prepare !== 'function') throw new Error('Invalid transport delivery provider');
   const docker = options.docker ?? dockerCommand();
   return {
     id: 'daimon-native',
@@ -35,6 +39,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
     async start(input) {
       if (input.signal?.aborted) throw new Error('Native subject start aborted');
       const launch = await loadNativeLaunch(input, !!execution);
+      if (launch.delivery === 'transport' && !options.transportDelivery) throw new Error('Transport delivery mode requires a transport delivery provider');
       const deadline = Date.now() + timeoutMs;
       const container: NativeExecutionHandle = execution
         ? await startOwnedChild(execution, launch, input.trialId, timeoutMs, input.signal, options.startupMs, input.protectedPaths)
@@ -47,7 +52,8 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
       let stopped = false;
       const sessionCancellation = new AbortController();
       const stop = async (reason: string) => { stopped = true; sessionCancellation.abort(); return container.stop(reason); };
-      const deliver = async (turn: {id: string; text: string}, signal: AbortSignal | undefined, controls?: DeliveryControls, observedWakeId = turn.id) => {
+      const deliver = async (turn: {id: string; text: string}, signal: AbortSignal | undefined, controls?: DeliveryControls, observedWakeId = turn.id,
+        transport?: PreparedTransportDelivery) => {
           if (stopped || signal?.aborted || input.signal?.aborted) throw new Error('Native subject cancelled before delivery');
           const signals = [input.signal, signal].filter((value): value is AbortSignal => value !== undefined);
           const cancelled = new AbortController();
@@ -57,8 +63,11 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
           let done = false;
           let terminal: TerminalEvidence | undefined;
           let failure: unknown;
-          const response = container.request<TerminalEvidence>('/trial/run', { wakeId: turn.id, text: turn.text, ...(controls ? { controls } : {}) },
-            Math.max(1, deadline - Date.now()) + 8000, cancelled.signal).then(value => { terminal = value; }, error => { failure = error; }).finally(() => { done = true; });
+          const body = { wakeId: turn.id, text: turn.text, ...(controls ? { controls } : {}) };
+          const response = (transport
+            ? requestTransportDelivery(container.request, { ...body, source: transport.source }, transport, deadline, cancelled.signal)
+            : container.request<TerminalEvidence>('/trial/run', body, Math.max(1, deadline - Date.now()) + 8000, cancelled.signal))
+            .then(value => { terminal = value; }, error => { failure = error; }).finally(() => { done = true; });
           try {
             while (!done) {
               await observer.checkpoint(observedWakeId);
@@ -68,6 +77,8 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             if (!terminal || terminal.schema !== 'paideia.daimon-native.trial.v1' || terminal.trialId !== input.trialId ||
                 terminal.wakeId !== turn.id || terminal.agentId !== launch.agent.id || terminal.model !== launch.agent.model ||
                 terminal.configSha256 !== launch.configSha256) throw new Error('Native terminal evidence identity mismatch');
+            const binding = transport ? transportTerminalBinding(terminal, transport.source) : 'bound';
+            if (binding === 'conflict') throw new Error('Native transport terminal evidence identity mismatch');
             if (terminal.blocked && terminal.status !== 'failed') throw new Error('Blocked native terminal cannot claim completion');
             await observer.checkpoint(observedWakeId);
             const usage = await observer.terminal(observedWakeId, terminal);
@@ -75,7 +86,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             // closed, the delivery stayed accepted and deferred, and the identity checks
             // above matched. The caller needs that apart from the bare `failed` status.
             return { result: { status: terminal.status, text: '', usage, error: terminal.error, coverage: terminal.coverage,
-              ...(terminal.blocked ? { blocked: terminal.blocked } : {}) } as SubjectTurnResult, terminal, verified: true };
+              ...(terminal.blocked ? { blocked: terminal.blocked } : {}) } as SubjectTurnResult, terminal, verified: binding === 'bound' };
           } catch (error) {
             const wasCancelled = stopped || signals.some(source => source.aborted);
             cancelled.abort();
@@ -117,10 +128,16 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
         const coverages: SubjectTurnResult['coverage'][] = [];
         const ids = new Set([turn.id]);
         let current = turn;
+        let transport: PreparedTransportDelivery | undefined;
         let controls: DeliveryControls | undefined = external ? { maxExternalDeliveries: external.maxDeliveries } : undefined;
         try {
+          if (launch.delivery === 'transport') {
+            transport = await boundedTransportCall(bound => options.transportDelivery!.prepare({ trialId: input.trialId, turnId: turn.id,
+              text: turn.text, launch, executionId: container.name }, bound), deadline, combined);
+            verifyPreparedTransport(transport);
+          }
           for (let ordinal = 0; ; ordinal++) {
-            const { result, terminal, verified } = await deliver(current, combined, controls, turn.id);
+            const { result, terminal, verified } = await deliver(current, combined, controls, turn.id, transport);
             coverages.push(result.coverage);
             // A cancelled wake never carries the deferral: cancellation is the machine's outcome.
             if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, usage: observer.usage(),
@@ -133,11 +150,14 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
               : await nextExternalInput(dockerExternal!, { ...common, containerName: container.name }, deadline, combined);
             combined.throwIfAborted();
             if (!next) return { ...result, status: 'failed', usage: observer.usage(), coverage: weakestNativeCoverage(coverages), stop: await stop('No matching external input') };
+            if (launch.delivery === 'transport' && !next.transport) throw new Error('Transport continuation requires a declared transport delivery');
+            if (launch.delivery !== 'transport' && next.transport) throw new Error('Direct delivery cannot publish a transport continuation');
             if (ids.has(next.id)) throw new Error('External input delivery ID was reused');
             ids.add(next.id);
             await observer.externalInput(turn.id, next);
             current = { id: next.id, text: next.text };
             controls = { source: next.source };
+            transport = next.transport;
           }
         } catch (error) {
           const wasCancelled = combined.aborted;

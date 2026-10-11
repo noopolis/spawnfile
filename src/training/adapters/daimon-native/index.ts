@@ -2,6 +2,7 @@ export { createDaimonNativeAdapter } from './adapter.js';
 export type { NativeAdapterOptions } from './adapter.js';
 export { parseNativeLaunch, nativeLaunchSchema } from './receipt/index.js';
 export type { NativeLaunch, NativeMount, VerifiedNativeLaunch } from './receipt/index.js';
+export type { NativeTaskClock, NativeTaskClockEvidence } from './receipt/index.js';
 
 /**
  * Launch preflight for callers that prepare a trial: `loadNativeLaunch` verifies
@@ -17,6 +18,8 @@ export type { NativeExternalInputs, NativeExternalInput, NativeChildExternalInpu
 
 export { createNativeHttpClient } from './transport/index.js';
 export type { NativeExecutionHandle, NativeWorkerPath, NativeWorkerRequest } from './transport/index.js';
+export type { NativeTransportDelivery, PreparedTransportDelivery } from './transport/index.js';
+export type { TransportDeliverySource } from './worker/index.js';
 
 export { createGrokSlotFreshnessStore, nativeChildArguments } from './child/index.js';
 export type { GrokSlotFreshness, GrokSlotFreshnessStore, NativeChildExecution } from './child/index.js';

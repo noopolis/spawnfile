@@ -6,3 +6,5 @@ export type { NativeSandboxProjection, NativeSandboxReceipt } from './sandbox.js
 export { bindGrokBrokerProjection, canonicalJson, grokBrokerProjectionSchema, grokProjectionSha256, grokSlotPreflightSchema, grokSubjectRoots, parseGrokBrokerReceipt, requiredGrokEvaluatorPaths } from './grok.js';
 export { grokTrialArtifactsDirectory, nativeTrialArtifactsRoot } from './artifacts.js';
 export type { GrokBrokerProjection, GrokBrokerReceipt, GrokSlotPreflight } from './grok.js';
+export { configureNativeTaskClock, nativeTaskClockSchema } from './task-clock.js';
+export type { NativeTaskClock, NativeTaskClockEvidence } from './task-clock.js';

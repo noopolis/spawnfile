@@ -52,6 +52,104 @@ arguments. That trusted caller code owns local transport startup; it must call
 the public worker afterward. Controls and bearer token stay under `/run/paideia`.
 The optional Daimon dependency is loaded only by the native worker.
 
+## Production transport delivery and task time
+
+Both receipt versions accept optional `delivery: "direct" | "transport"`.
+Omission retains the direct manual-wake behavior and old receipt shape. Transport
+works with Codex and child-process Grok; the caller owns the real isolated Moltnet
+server, its Daimon bridge, sender/room configuration and bootstrap lifecycle.
+
+The worker's isolated Bearer token authenticates every route. In transport mode,
+`POST /v2/wakes` uses Daimon's public `parseWakeAcceptanceRequest` and `host.accept`;
+it returns Daimon's acceptance unchanged (202), including `acceptance_id` and
+`request_digest`. Kind, text envelope and real `occurred_at` pass through unchanged.
+The bridge follows `GET /v2/wake-receipts/<acceptance_id>` to terminal. Existing
+`GET /v2/activity` and `GET /v2/availability` remain available. Direct mode refuses
+`POST /v2/wakes` and the transport arming read with 404.
+
+For a low-level caller:
+
+1. Start `POST /trial/run` with `{wakeId, source, controls?}`. `source` is exactly
+   `{kind: "transport", deliveryId: "moltnet:<message-id>"}` or
+   `{kind: "transport", deliveryIdPrefix: "moltnet:"}`. `text` is optional and is
+   never submitted to the native host in this mode.
+2. Poll authenticated `GET /trial/run` until its `wakeId` and `source` match and
+   `state` is `waiting` or `observing`; `idle` means no run is armed. Keep the POST
+   open while observing.
+3. Publish on the real transport. Only matching acceptances received after arming
+   can bind; retries of earlier deliveries cannot become the new wake. Terminal
+   sealing waits for in-flight admissions and repeats control/evidence reads if
+   admission changes during collection. It also waits for every agent acceptance
+   and activity row to be disposed and for native pending to be zero; unselected
+   queued work cannot escape the trial. Before the first arm and once sealed, new native identities get
+   HTTP 409 `{error: "transport_admission_sealed"}` before native admission until
+   the next run arms; retries of actually accepted identities still reach Daimon
+   for its own idempotency/conflict response. The POST
+   returns terminal evidence, or a clear failure if the expected delivery never
+   arrives before the real deadline.
+
+Adapter callers provide `transportDelivery.prepare(context, signal)`, returning
+`{source, publish(signal)}`. Preparation reserves the delivery identity; `publish`
+is invoked only after the matching run is armed. Configure this alongside
+`execution: {kind: "child-process"}` for shared-container transport. Deferred
+continuations keep the existing `id`, `text`, and content-hashed `source` evidence,
+and add `transport: {source, publish}`. That transport source must name an exact
+message ID. At most three continuations share the original deadline. Providers
+must honor cancellation and must not publish during preparation. Preparation and
+publication share the real deadline. Eight seconds of terminal grace preserve
+failure reports; success requires a valid worker completion timestamp before the
+original deadline. Cancellation remains immediate.
+
+Daimon owns inbox batching, dispositions, deferred items and clock projection.
+Evidence keeps every selected delivery's receipt and execution history in
+`transport.selectedDeliveries`, every observed batch and its availability budget
+in `transport.batches`, and original producer envelopes in `transport.deliveries`.
+The legacy `batch` remains the primary delivery's batch. Transport `native`
+retains all trial execution traces and usage; every selected execution must have
+a completed trace, observed batch membership and usage before success. A missed active batch
+observation fails closed. `renderedAllowances: "unavailable-public-api"` is
+deliberate: the inspected runtime computes allowances when the model calls
+`daimon_inbox`; its public control API has no retained copy of that response.
+Polling availability cannot establish what the engine saw. Exact rendered-budget
+capture requires a public Daimon evidence export; Paideia does not recreate it.
+
+`POST /v2/wakes` uses Daimon's 1,048,576-byte body limit. The worker decodes JSON
+objects and applies the authenticated control token; `host.accept` owns schema
+validation and its structured rejection response while admission is open. A sealed
+run's lifecycle refusal takes precedence for all new identities. Native HTTP conformance tests
+require the optional `@noopolis/daimon/runtime` package to be installed; they use
+its real public parser/digest and rejection API, with a persistence double for
+accepted retries. Core runtime use does not require the optional package.
+
+Optional receipt `taskClock: {origin, anchorEpochMs, libfaketimePath}` selects an advancing task
+clock. `origin` must be an ISO instant with `Z` or an explicit offset, within UTC
+years 1970–9999. Trial preparation must sample real `Date.now()` once and supply
+that safe-integer `anchorEpochMs` to both this receipt and the caller's Moltnet
+server/bridge clock contract. The worker preserves the caller anchor exactly;
+missing anchors are refused. At worker startup an anchor may be at most 1000 ms
+in the future (clock-skew tolerance) and at most `--timeout-ms` old (the trial
+deadline window), both inclusive. Prepare it near launch; an expired anchor fails
+instead of resetting the shared clock.
+
+The image supplies one `libfaketime*.so*` library path. The running worker sets
+`NOOPOLIS_TASK_CLOCK` to `{version: "noopolis.task-clock.v1", origin, anchorEpochMs}`
+unchanged from the caller's clock contract, and supplies `LD_PRELOAD` for Daimon's
+child gate before creating the host. Never preload the worker through its launch
+environment. Daimon and engines stay on real time; Daimon applies the advancing
+offset only to supported tool/MCP children. Ready and per-wake frames record the
+origin and anchor; every Paideia timeout remains real. Omission unsets the clock
+environment. Supply a clock-capable Daimon runtime and, for brokered Grok, its
+attested clocked worker configuration. No generic public runtime capability marker
+currently proves clock support; live container verification remains required.
+The inspected Daimon package does not publicly export its
+`realTimeProcessEnvironment` stripping helper. Paideia's startup tests therefore
+verify the installed contract and retained anchor, not downstream engine clock
+stripping; that private behavior needs Daimon's own tests and live verification.
+
+Producer delivery timestamps must remain real UTC milliseconds; Daimon shifts
+them once at dispatch. Historical dates inside text remain unchanged. This
+adapter leaves provider-prompt date correction to Daimon and preserves its observations.
+
 ## Evidence and cancellation
 
 The authenticated HTTP endpoint forwards actual native activity for production
@@ -65,6 +163,14 @@ Real MCP/Moltnet receipts yield partial tool observations; unobserved arguments
 and built-in tools remain absent. Native attention final prose is absent. Projects
 can evaluate authentic filed artifacts through their own collectors. Missing
 usage remains unknown. The terminal evidence retains preparation receipts.
+
+Each wake's complete frame is already persisted as `evidence.<ordinal>.json`
+beside the latest `evidence.json` in the private trial artifact root, and as an
+operator-only diagnostic in the run's raw `events.jsonl`. Inspect
+`native.modelContexts`, `native.requests`, and optional `native.turnSeals`.
+Seals retain `provider_clock` counters and dates (recovery: `rows[].providerClock`).
+Absence stays absent; this evidences broker rewriting, not provider delivery.
+Prompts remain private; the inspected seal writer omits `cleanupDiagnostic`.
 
 A completed execution that defers its inbox delivery stays a failed trial with
 `blocked: "awaiting-external-input"` in terminal evidence. Recorded usage and
@@ -145,7 +251,8 @@ records the declared `model` (`grok-4.6`, `grok-4.5`, `grok-build`) and
 
 | Member | Meaning |
 |---|---|
-| `projectionVersion`, `projectionSha256` | `noopolis.daimon.grok-broker-projection.v1` and the canonical digest the slot supervisor bound |
+| `projectionVersion`, `projectionSha256` | `noopolis.daimon.grok-broker-projection.v2` and the canonical digest the slot supervisor bound |
+| `workerConfigVariant` | Required `unclocked` or `clocked`, passed unchanged to Daimon; `taskClock` requires `clocked` |
 | `slot`, `workerUid`, `workerHomePath`, `architecture`, `usageLedgerPath`, `seccompProfileSha256`, `limits` | Passed verbatim to Daimon's `resolveOrganizationGrokBrokerProjection` |
 | `evaluatorPaths[]` | `{role, path}` for `run-root`, `context`, `sealed-inputs`, `judge-home`, `slot-ledger` (the usage ledger directory); passed as the projection's `denyPaths` |
 | `slotPreflightReceipt` | Input path contract: the root slot supervisor writes `noopolis.daimon.grok-slot-preflight.v2` here after provisioning or recycling the slot |
@@ -247,7 +354,11 @@ Startup, in order, with no model call and no `codex sandbox` process:
    if any is missing. The config must declare the same model and effort and no
    Codex sandbox; broker token limit must not exceed the launch wake ceiling.
 2. The resolved projection's canonical digest must equal Daimon's digest and the
-   launch receipt; its turn timeout must fit the trial deadline.
+   launch receipt; wake timeout/token overrides are capped by its registered limits.
+   Shorter trial deadlines lower the wake timeout. Codex is unchanged. The worker variant,
+   model/effort config pin and clock metadata must match; both v2 variants have
+   offline parity coverage against Daimon's public resolver. Linux shell-clock
+   operation still requires the provisioner's native container verification.
 3. The slot receipt must exist and pass Daimon's verifier (exact deny-path canaries,
    profile, seccomp, executable, and freshness: the launch nonce and a generation
    of at least `minGeneration`; v1 receipts are refused). Paideia then requires the control root and every

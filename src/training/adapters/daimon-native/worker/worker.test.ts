@@ -38,7 +38,7 @@ test('worker checks real receipt bytes before boot and serves native authenticat
     await writeFile(f.launch.config, bytes); await f.save();
     const args = ['--launch', f.launch.receiptFile, '--config', f.launch.config, '--config-sha256', f.launch.configSha256,
       '--control-root', f.launch.controlRoot, '--token-file', f.launch.tokenFile, '--evidence', join(f.launch.controlRoot, 'evidence'),
-      '--trial-id', 'unit-worker', '--timeout-ms', '1000', '--schedule-override', 'disabled'];
+      '--trial-id', 'unit-worker', '--timeout-ms', '3600000', '--schedule-override', 'disabled'];
     await expect(runDaimonNativeWorker(args.map(value => value === f.launch.configSha256 ? 'f'.repeat(64) : value))).rejects.toThrow('digest');
     await writeFile(join(f.launch.controlRoot, 'stale'), 'stale'); await expect(runDaimonNativeWorker(args)).rejects.toThrow('empty'); await rm(join(f.launch.controlRoot, 'stale'));
     const token = await readFile(f.launch.tokenFile, 'utf8');
@@ -52,6 +52,10 @@ test('worker checks real receipt bytes before boot and serves native authenticat
     await vi.waitFor(async () => { await expect(fetch('http://127.0.0.1:19783/trial/health')).rejects.toThrow(); });
     expect(stops).toBeGreaterThanOrEqual(4);
     expect(process.env['DAIMON_WAKE_FUSE_MAX_TOKENS']).toBe(String(f.launch.limits.maxTokens));
+    expect(process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS).toBe('3600000');
+    expect(process.env.DAIMON_CODEX_WAKE_TIMEOUT_MS).toBe('3600000');
+    expect(process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING).toBe('1000000');
+    expect(process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING).toBe('1000000');
   } finally {
     load.mockRestore(); once.mockRestore(); stdout.mockRestore(); Object.defineProperty(process, 'platform', { value: platform }); process.exitCode = exitCode;
     for (const key of Object.keys(process.env)) if (!(key in environment)) delete process.env[key]; Object.assign(process.env, environment);
@@ -94,8 +98,8 @@ test('Grok worker loads the Grok runtime capability, sets engine-neutral limits 
     await rm(launch.broker.usageLedgerPath);
     await runDaimonNativeWorker(args);
     expect(engines).toEqual(['grok', 'grok']);
-    expect(process.env['DAIMON_ENGINE_WAKE_TIMEOUT_MS']).toBe('900000');
-    expect(process.env['DAIMON_ENGINE_WAKE_TOKEN_CEILING']).toBe(String(launch.limits.wakeTokenCeiling));
+    expect(process.env['DAIMON_ENGINE_WAKE_TIMEOUT_MS']).toBe('480000');
+    expect(process.env['DAIMON_ENGINE_WAKE_TOKEN_CEILING']).toBe('400000');
     expect(process.env['DAIMON_CODEX_WAKE_TOKEN_CEILING']).toBe(process.env['DAIMON_ENGINE_WAKE_TOKEN_CEILING']);
     expect(process.env['DAIMON_TURN_USAGE_LEDGER_PATH']).toBe(launch.broker.usageLedgerPath);
     expect(process.env['DAIMON_TURN_REQUESTS_LEDGER_PATH']).toBe(join(dirname(launch.broker.usageLedgerPath), 'requests.jsonl'));

@@ -29,6 +29,7 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
   const agent = config.agents[0]!;
   const { broker } = launch;
   const projection = grokBrokerProjectionSchema.parse(resolve(config, agent.id, { slot: broker.slot, workerUid: broker.workerUid,
+    workerConfigVariant: broker.workerConfigVariant,
     workerHomePath: broker.workerHomePath, architecture: broker.architecture, usageLedgerPath: broker.usageLedgerPath, limits: broker.limits,
     // The deny mask Daimon lifts, and the value `projection_sha256` binds: never the per-trial artifact directory inside it.
     // `denyPaths` and `profileSha256` are the provisioner's verbatim values (see grokBrokerLaunchSchema): deriving the deny
@@ -38,7 +39,7 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
   const sha = grokProjectionSha256(projection);
   if (digest(projection) !== sha) throw new Error('Paideia and Daimon disagree on the Grok broker projection digest');
   if (projection.version !== broker.projectionVersion || sha !== broker.projectionSha256) throw new Error('Grok broker projection digest differs from the launch receipt');
-  if (projection.limits.timeoutMs > options.timeoutMs) throw new Error('Grok broker turn timeout exceeds the trial deadline');
+  // The registration is a ceiling. worker.ts lowers the per-wake override to the trial deadline.
   let slot: unknown;
   try { slot = JSON.parse(await readPrivateFile(broker.slotPreflightReceipt, 262144)); }
   catch (error) { throw new Error('Grok subject turns require the root slot supervisor preflight receipt', { cause: error }); }

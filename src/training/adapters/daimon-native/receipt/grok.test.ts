@@ -1,12 +1,15 @@
 import { expect, test } from 'vitest';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { bindGrokBrokerProjection, canonicalJson, grokProjectionSha256, parseGrokBrokerReceipt, requiredGrokEvaluatorPaths } from './grok.js';
+import { bindGrokBrokerProjection, canonicalJson, grokBrokerProjectionSchema, grokProjectionSha256, grokWorkerConfigPins,
+  parseGrokBrokerReceipt, requiredGrokEvaluatorPaths } from './grok.js';
 import { launchFixture } from '../test-fixtures.js';
-import { daimonProjectionGolden, daimonProjectionGoldenSha256, grokLaunchFrom, grokProjectionFor, slotPreflightFor } from '../grok-fixtures.js';
+import { daimonProjectionGolden, daimonProjectionGoldenSha256, daimonClockedProjectionGolden, daimonClockedProjectionGoldenSha256,
+  grokLaunchFrom, grokProjectionFor, slotPreflightFor } from '../grok-fixtures.js';
 
 test('canonical projection digest equals the digest Daimon binds into slot receipts', () => {
   expect(grokProjectionSha256(daimonProjectionGolden)).toBe(daimonProjectionGoldenSha256);
+  expect(grokProjectionSha256(daimonClockedProjectionGolden)).toBe(daimonClockedProjectionGoldenSha256);
   expect(canonicalJson({ b: [1, 'x', null, true], a: { d: 2, c: 1 } })).toBe('{"a":{"c":1,"d":2},"b":[1,"x",null,true]}');
   const sparse = [1]; sparse.length = 2;
   const accessor = Object.defineProperty({}, 'a', { get: () => 1, enumerable: true });
@@ -30,8 +33,8 @@ test('persisted Grok projection is bound to the trial, launch, digest and every 
       [{ ...bound, configSha256: 'f'.repeat(64) }, /trial/],
       [rebind({ ...projection, agentId: 'other' }), /agent/],
       [rebind({ ...projection, workspacePath: '/other' }), /agent/],
-      [rebind({ ...projection, model: 'grok-4.5' }), /model/],
-      [rebind({ ...projection, reasoningEffort: 'high' }), /model/],
+      [rebind({ ...projection, model: 'grok-4.5', workerConfigSha256: grokWorkerConfigPins.unclocked['grok-4.5'].low }), /model/],
+      [rebind({ ...projection, reasoningEffort: 'high', workerConfigSha256: grokWorkerConfigPins.unclocked['grok-4.6'].high }), /model/],
       [rebind({ ...projection, slot: 3 }), /slot/],
       [rebind({ ...projection, limits: { ...projection.limits, maxTokens: 1 } }), /slot/],
       [{ ...bound, projectionSha256: 'f'.repeat(64) }, /projection_sha256/],
@@ -50,6 +53,47 @@ test('persisted Grok projection is bound to the trial, launch, digest and every 
       [{ ...bound, slotPreflight: { ...bound.slotPreflight, generation: launch.broker.minGeneration - 1 } }, /stale: generation/],
     ];
     for (const [value, message, trial] of cases) expect(() => parseGrokBrokerReceipt(value, launch, trial ?? 'trial')).toThrow(message);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('v2 requires an explicit variant, its pinned config and exact clock metadata', () => {
+  const unclocked = daimonProjectionGolden, clocked = daimonClockedProjectionGolden;
+  expect(grokBrokerProjectionSchema.parse(unclocked)).toEqual(unclocked);
+  expect(grokBrokerProjectionSchema.parse(clocked)).toEqual(clocked);
+  for (const projection of [unclocked, clocked]) {
+    for (const invalid of [
+      { ...projection, version: 'noopolis.daimon.grok-broker-projection.v1' },
+      { ...projection, workerConfigVariant: undefined }, { ...projection, workerConfigVariant: 'other' },
+      { ...projection, workerConfigSha256: '0'.repeat(64) }, { ...projection, extra: true },
+    ]) expect(() => grokBrokerProjectionSchema.parse(invalid)).toThrow();
+  }
+  for (const invalid of [
+    { ...clocked, taskClock: undefined }, { ...unclocked, taskClock: clocked.taskClock },
+    { ...clocked, workerConfigSha256: unclocked.workerConfigSha256 },
+    { ...unclocked, workerConfigSha256: clocked.workerConfigSha256 },
+  ]) expect(() => grokBrokerProjectionSchema.parse(invalid)).toThrow();
+  for (const [key, value] of Object.entries(clocked.taskClock!)) {
+    expect(() => grokBrokerProjectionSchema.parse({ ...clocked,
+      taskClock: { ...clocked.taskClock, [key]: typeof value === 'number' ? value + 1 : `${value}/other` } })).toThrow();
+  }
+});
+
+test('a clocked launch refuses an unclocked projection even with matching digests and canaries', async () => {
+  const f = await launchFixture();
+  try {
+    const launch = await grokLaunchFrom(f.launch, f.root);
+    const unclocked = grokProjectionFor(launch);
+    const bound = bindGrokBrokerProjection(unclocked, slotPreflightFor(unclocked), 'trial', launch.configSha256);
+    launch.taskClock = { origin: '2024-02-29T00:00:00Z', anchorEpochMs: Date.now(), libfaketimePath: '/usr/local/lib/daimon/libfaketime.so.1' };
+    expect(() => parseGrokBrokerReceipt(bound, launch, 'trial')).toThrow('taskClock requires workerConfigVariant: clocked');
+    launch.broker.workerConfigVariant = 'clocked';
+    expect(() => parseGrokBrokerReceipt(bound, launch, 'trial')).toThrow('workerConfigVariant');
+    const clocked = grokProjectionFor(launch);
+    launch.broker.projectionSha256 = grokProjectionSha256(clocked);
+    const clockedBound = bindGrokBrokerProjection(clocked, slotPreflightFor(clocked), 'trial', launch.configSha256);
+    expect(parseGrokBrokerReceipt(clockedBound, launch, 'trial')).toEqual(clockedBound);
+    launch.broker.workerConfigVariant = 'unclocked';
+    expect(() => parseGrokBrokerReceipt(clockedBound, launch, 'trial')).toThrow('workerConfigVariant');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

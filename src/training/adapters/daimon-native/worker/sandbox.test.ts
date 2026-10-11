@@ -31,9 +31,10 @@ test('worker resolves exact control-host inputs and refuses another native agent
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
-test('Grok slot projection is resolved by Daimon, digest-bound to the launch and requires a verified supervisor receipt', async () => {
+test.each(['unclocked', 'clocked'] as const)('%s Grok projection is resolved by Daimon, bound to the launch and requires a verified supervisor receipt', async variant => {
   const f = await launchFixture();
   try {
+    if (variant === 'clocked') f.launch.taskClock = { origin: '2024-02-29T00:00:00Z', anchorEpochMs: Date.now(), libfaketimePath: '/usr/local/lib/daimon/libfaketime.so.1' };
     const launch = await grokLaunchFrom(f.launch, f.root);
     const config = grokConfigFor(configFixture());
     config.agents[0]!.workspacePath = launch.workspace.target; config.agents[0]!.runtimeHomePath = '/native/home';
@@ -58,8 +59,9 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     const persist = () => persistNativeSandboxProjection(runtime, config, options, launch);
     await assert.rejects(persistNativeSandboxProjection({} as NativeRuntimeModule, config, options, launch), /lacks the Grok broker/);
     await assert.rejects(persist(), /root slot supervisor preflight receipt/);
-    const [, agentId, context] = calls[0] as [unknown, string, { denyPaths: string[]; acceptanceStorePath: string; slot: number; limits: unknown }];
+    const [, agentId, context] = calls[0] as [unknown, string, { denyPaths: string[]; acceptanceStorePath: string; slot: number; limits: unknown; workerConfigVariant: string }];
     assert.equal(agentId, 'agent:writer'); assert.equal(context.acceptanceStorePath, launch.controlRoot); assert.equal(context.slot, 0);
+    assert.equal(context.workerConfigVariant, variant);
     // The provisioner's verbatim deny list reaches Daimon, not the evaluator-root subset.
     assert.deepEqual(context.denyPaths, [...launch.broker.denyPaths]); assert.deepEqual(context.limits, launch.broker.limits);
     await writeGrokSlotReceipt(launch);
@@ -84,13 +86,21 @@ test('Grok slot projection is resolved by Daimon, digest-bound to the launch and
     await writeGrokSlotReceipt(launch, slotPreflightFor(projection, projection.denyPaths, launch.broker.minGeneration - 1, launch.broker.expectedNonce));
     await assert.rejects(persist(), /stale: generation/);
     await writeGrokSlotReceipt(launch);
-    await assert.rejects(persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch), /timeout exceeds/);
     await assert.rejects(readFile(join(artifacts, 'sandbox-projection.json')), /ENOENT/);
-    await persist();
+    await persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch);
     assert.deepEqual(calls.at(-1), { expectedNonce: launch.broker.expectedNonce, minGeneration: launch.broker.minGeneration });
     const receipt = JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8'));
     assert.equal(receipt.schema, 'paideia.daimon-native.grok-broker-projection.v1');
     assert.equal(receipt.projectionSha256, launch.broker.projectionSha256);
     assert.equal(receipt.slotPreflight.projection_sha256, launch.broker.projectionSha256);
+    assert.equal(receipt.projection.workerConfigVariant, variant);
+    if (variant === 'clocked') {
+      // Even a resolver/verifier pair that certifies an unclocked slot cannot
+      // satisfy a clocked launch. Match all digests to isolate that refusal.
+      projection = grokProjectionFor({ ...launch, broker: { ...launch.broker, workerConfigVariant: 'unclocked' } });
+      launch.broker.projectionSha256 = grokProjectionSha256(projection);
+      await writeGrokSlotReceipt(launch, slotPreflightFor(projection));
+      await assert.rejects(persist(), /workerConfigVariant/);
+    }
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

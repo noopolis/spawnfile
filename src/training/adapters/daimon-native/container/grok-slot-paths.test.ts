@@ -17,7 +17,7 @@ const instructions = 'Compiler-owned identity';
  * `/run/paideia` evaluator root. Nothing here is inside the trial runtime home,
  * which is exactly what the Codex rules require and the container cannot give.
  */
-async function slotFixture() {
+async function slotFixture(workerConfigVariant: 'unclocked' | 'clocked' = 'unclocked') {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'grok-slot-paths-')));
   const slot = join(root, 'run/training/slot');
   const paths = {
@@ -36,6 +36,8 @@ async function slotFixture() {
   await writeFile(files.env, 'TRIAL_FIXTURE=unit\n', { mode: 0o600 });
   const launch: GrokNativeLaunch = {
     schema: 'paideia.daimon-native.launch.v2', image: `sha256:${'a'.repeat(64)}`,
+    ...(workerConfigVariant === 'clocked' ? { taskClock: { origin: '2024-02-29T00:00:00Z', anchorEpochMs: Date.now(),
+      libfaketimePath: '/usr/local/lib/daimon/libfaketime.so.1' } } : {}),
     config: files.config, configSha256: sha256(config), sourceConfigSha256: sha256(config),
     tokenFile: files.token, envFile: files.env, controlRoot: paths.state, workerRoot: paths.worker,
     host: { bindHost: '127.0.0.1', port: 19700 },
@@ -47,7 +49,7 @@ async function slotFixture() {
     limits: { maxTokens: 8_000_000, wakeTokenCeiling: 1_000_000 },
     overrides: { schedule: { before: { kind: 'every', interval_ms: 60_000 }, after: { kind: 'disabled' }, reason: 'Isolated single trial' },
       selection: { before: ['agent:writer', 'agent:editor'], after: ['agent:writer'], reason: 'Selected subject only' } },
-    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v1', projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
+    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v2', workerConfigVariant, projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(root, 'var/lib/daimon-workers/2200'), architecture: 'arm64', usageLedgerPath: join(paths.usage, 'usage.jsonl'),
       profileSha256: 'c'.repeat(64),
       // The provisioner's verbatim deny list: a superset of the evaluator roots (the canary subset).
@@ -72,8 +74,8 @@ async function slotFixture() {
   return { root, paths, launch, input, save, publish };
 }
 
-test('the training container fixed slot paths load as a Grok child launch', async () => {
-  const f = await slotFixture();
+test.each(['unclocked', 'clocked'] as const)('the training container fixed slot paths load as a %s Grok child launch', async variant => {
+  const f = await slotFixture(variant);
   try {
     // Neither anchor the Codex rules use is available: the control root is outside the runtime home and is not empty.
     expect(f.launch.controlRoot.startsWith(`${f.input.runtimeHomePath}/`)).toBe(false);
@@ -84,6 +86,10 @@ test('the training container fixed slot paths load as a Grok child launch', asyn
     expect(loaded.controlRoot).toBe(f.paths.state);
     expect(loaded.projections).toEqual([{ role: 'home', source: f.paths.runtimeHome, target: f.paths.runtimeHome }]);
     expect(nativeTrialArtifactsRoot(loaded, f.input.trialId).startsWith(`${f.paths.state}/`)).toBe(true);
+    if (variant === 'clocked') {
+      f.launch.broker.workerConfigVariant = 'unclocked'; await f.publish();
+      await expect(loadNativeLaunch(f.input, true)).rejects.toThrow('taskClock requires workerConfigVariant: clocked');
+    }
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

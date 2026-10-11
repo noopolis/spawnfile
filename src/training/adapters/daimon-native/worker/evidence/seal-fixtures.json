@@ -1,0 +1,216 @@
+[
+  {
+    "name": "clocked failure with all MCP observations",
+    "entry": {
+      "agent": "agent:writer",
+      "wake": "11111111-1111-4111-8111-111111111111",
+      "at": "2026-10-11T09:00:00.000Z"
+    },
+    "terminal": {
+      "version": "noopolis.daimon.engine-broker.v3",
+      "kind": "failed",
+      "requestId": "request-1",
+      "turnId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "outcome": "failed",
+      "usage": null,
+      "model": "grok-4.6",
+      "requests": 3,
+      "limitReason": "timeout",
+      "code": "limit_exceeded",
+      "shellClock": "task",
+      "providerClock": {
+        "requests": 3,
+        "linesRewritten": 2,
+        "requestsWithoutDateLine": 1,
+        "linesIgnored": 4,
+        "injectedDate": "2026-10-11",
+        "taskDate": "2020-01-02"
+      },
+      "cleanupDiagnostic": "task clock reset failed; slot fenced until restart",
+      "diagnostic": {
+        "status": "cancelled",
+        "stage": "wait",
+        "failureClass": "cancelled",
+        "profileApplied": false,
+        "exitCode": 0,
+        "termSignal": 9,
+        "workerPid": 123,
+        "workerUid": 2200,
+        "startTicks": "50",
+        "reason": "worker cancelled mid-turn"
+      },
+      "mcpCalls": {
+        "started": 2,
+        "answered": 1,
+        "undecoded": 0,
+        "outstanding": [
+          {
+            "name": "use_tool",
+            "outstandingMs": 430112
+          }
+        ],
+        "refusals": {
+          "route": 1,
+          "expired": 2,
+          "exhausted": 3,
+          "unrouted": 4,
+          "oversized": 5
+        },
+        "tunnels": {
+          "opened": 2,
+          "closed": 1,
+          "delivered": 1,
+          "open": [
+            {
+              "openMs": 420000,
+              "delivered": false
+            }
+          ]
+        }
+      }
+    },
+    "seal": {
+      "v": "noopolis.daimon.turn-seal.v1",
+      "agent": "agent:writer",
+      "wake": "11111111-1111-4111-8111-111111111111",
+      "at": "2026-10-11T09:00:00.000Z",
+      "engine": "grok",
+      "turn": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "outcome": "failed",
+      "requests": 3,
+      "model": "grok-4.6",
+      "limit_reason": "timeout",
+      "shell_clock": "task",
+      "provider_clock": {
+        "requests": 3,
+        "linesRewritten": 2,
+        "requestsWithoutDateLine": 1,
+        "linesIgnored": 4,
+        "injectedDate": "2026-10-11",
+        "taskDate": "2020-01-02"
+      },
+      "code": "limit_exceeded",
+      "diagnostic": {
+        "status": "cancelled",
+        "stage": "wait",
+        "failure_class": "cancelled",
+        "exit_code": 0,
+        "term_signal": 9,
+        "reason": "worker cancelled mid-turn"
+      },
+      "mcp": {
+        "started": 2,
+        "answered": 1,
+        "undecoded": 0,
+        "outstanding": [
+          {
+            "name": "use_tool",
+            "outstanding_ms": 430112
+          }
+        ],
+        "refusals": {
+          "route": 1,
+          "expired": 2,
+          "exhausted": 3,
+          "unrouted": 4,
+          "oversized": 5
+        },
+        "tunnels": {
+          "opened": 2,
+          "closed": 1,
+          "delivered": 1,
+          "open": [
+            {
+              "open_ms": 420000,
+              "delivered": false
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "completed turn with no injected date line",
+    "entry": {
+      "agent": "agent:writer",
+      "wake": "11111111-1111-4111-8111-111111111111",
+      "at": "2026-10-11T09:00:00.000Z"
+    },
+    "terminal": {
+      "version": "noopolis.daimon.engine-broker.v3",
+      "kind": "completed",
+      "requestId": "request-2",
+      "turnId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "text": "complete",
+      "workerPid": 123,
+      "workerUid": 2200,
+      "workerStartTime": "50",
+      "outcome": "completed",
+      "usage": null,
+      "model": "grok-4.6",
+      "requests": 1,
+      "limitReason": "none",
+      "shellClock": "gap",
+      "providerClock": {
+        "requests": 1,
+        "linesRewritten": 0,
+        "requestsWithoutDateLine": 1,
+        "injectedDate": null,
+        "taskDate": null
+      }
+    },
+    "seal": {
+      "v": "noopolis.daimon.turn-seal.v1",
+      "agent": "agent:writer",
+      "wake": "11111111-1111-4111-8111-111111111111",
+      "at": "2026-10-11T09:00:00.000Z",
+      "engine": "grok",
+      "turn": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "outcome": "completed",
+      "requests": 1,
+      "model": "grok-4.6",
+      "limit_reason": "none",
+      "shell_clock": "gap",
+      "provider_clock": {
+        "requests": 1,
+        "linesRewritten": 0,
+        "requestsWithoutDateLine": 1,
+        "injectedDate": null,
+        "taskDate": null
+      }
+    }
+  },
+  {
+    "name": "legacy failure without optional instruments",
+    "entry": {
+      "agent": "agent:writer",
+      "wake": "11111111-1111-4111-8111-111111111111",
+      "at": "2026-10-11T09:00:00.000Z"
+    },
+    "terminal": {
+      "version": "noopolis.daimon.engine-broker.v3",
+      "kind": "failed",
+      "requestId": "request-3",
+      "turnId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "outcome": "failed",
+      "usage": null,
+      "model": "grok-4.6",
+      "requests": 0,
+      "limitReason": "none",
+      "code": "invalid_request"
+    },
+    "seal": {
+      "v": "noopolis.daimon.turn-seal.v1",
+      "agent": "agent:writer",
+      "wake": "11111111-1111-4111-8111-111111111111",
+      "at": "2026-10-11T09:00:00.000Z",
+      "engine": "grok",
+      "turn": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "outcome": "failed",
+      "requests": 0,
+      "model": "grok-4.6",
+      "limit_reason": "none",
+      "code": "invalid_request"
+    }
+  }
+]

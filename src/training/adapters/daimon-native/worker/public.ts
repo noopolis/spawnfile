@@ -1,8 +1,10 @@
 import type { NativeConfig, NativeHost } from './types.js';
 import type { NativeSandboxProjection } from '../receipt/index.js';
+import type { NativeWakeRequest } from './wake-delivery/index.js';
 
 /** Grok projection options passed to Daimon verbatim from the launch receipt's broker section. */
 export interface GrokBrokerProjectionOptions {
+  workerConfigVariant: 'unclocked' | 'clocked';
   slot: number; workerUid: number; workerHomePath: string; architecture: 'arm64' | 'x64'; usageLedgerPath: string;
   limits: { maxRequests: number; maxTokens: number; timeoutMs: number }; acceptanceStorePath: string; denyPaths: readonly string[]; seccompProfileSha256: string;
   /** The provisioner's sandbox profile digest; Daimon refuses a value that differs from its own render. */
@@ -11,6 +13,7 @@ export interface GrokBrokerProjectionOptions {
 
 /** Structural public seam keeps the optional runtime out of Paideia core installs. */
 export interface NativeRuntimeModule {
+  parseWakeAcceptanceRequest?(value: unknown): NativeWakeRequest;
   parseOrganizationRuntimeConfig(value: unknown): NativeConfig;
   createOrganizationRuntimeControlHost(value: unknown, options: { acceptanceStorePath: string; controlToken: string }): NativeHost;
   resolveOrganizationCodexSandboxProjection(value: unknown, agentId: string, options: { acceptanceStorePath: string }): Promise<NativeSandboxProjection>;
@@ -21,7 +24,7 @@ export interface NativeRuntimeModule {
 
 const grokExports = ['resolveOrganizationGrokBrokerProjection', 'grokBrokerProjectionSha256', 'verifyGrokSlotPreflightReceipt'] as const;
 
-export async function loadDaimonRuntime(engine: 'codex' | 'grok' = 'codex'): Promise<NativeRuntimeModule> {
+export async function loadDaimonRuntime(engine: 'codex' | 'grok' = 'codex', _delivery: 'direct' | 'transport' = 'direct'): Promise<NativeRuntimeModule> {
   const packageName = '@noopolis/daimon/runtime';
   let loaded: Record<string, unknown>;
   try { loaded = await import(packageName) as Record<string, unknown>; }

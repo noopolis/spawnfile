@@ -10,3 +10,5 @@ export type { NativeConfig, NativeHost, NativeReceipt, NativeActivity, NativeAva
 
 export { verifyExternalSource, MAX_EXTERNAL_DELIVERIES, MAX_TRIAL_WAKES } from './deliveries.js';
 export type { ExternalInputSource, DeliveryControls } from './deliveries.js';
+export { parseTransportSource, matchTransportSource } from './wake-delivery/index.js';
+export type { TransportDeliverySource, TransportRunState, TransportEvidence } from './wake-delivery/index.js';

@@ -5,7 +5,8 @@ import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEv
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { admittedExecutions, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
   type TerminalEvidence } from '../worker/index.js';
-import { createNativeHttpClient, type NativeExecutionHandle } from '../transport/index.js';
+import { createNativeHttpClient, transportTerminalBinding, type NativeExecutionHandle } from '../transport/index.js';
+import { parseTransportSource, type TransportDeliverySource } from '../worker/index.js';
 import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
 import type { NativeChildExecution } from './types.js';
@@ -44,7 +45,7 @@ function childSecrets(launch: VerifiedNativeLaunch, env: NodeJS.ProcessEnv, toke
 
 async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
   token: string, startup: AbortSignal, protectedPaths: readonly string[], grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
-  const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token);
+  const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token, launch.delivery);
   const diagnostics = await childDiagnostics(nativeTrialArtifactsRoot(launch, trialId), trialId, launch.configSha256,
     childSecrets(launch, env, token));
   const child = spawn(process.execPath, nativeChildArguments(launch, trialId, timeoutMs), {
@@ -202,7 +203,8 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       if (failure || exited) throw new Error('Owned native worker is no longer alive');
       // Recorded before the call, so a delivery whose frame never arrives is still
       // this trial's own wake with its own cause rather than a gap in the ledger.
-      const wake = path !== '/trial/run' ? undefined : named((body as { wakeId?: unknown })?.wakeId);
+      const wake = path !== '/trial/run' || body === undefined ? undefined : named((body as { wakeId?: unknown })?.wakeId);
+      if (wake && launch.delivery === 'transport') wake.source = parseTransportSource((body as { source?: unknown }).source);
       if (wake) wakes.push(wake);
       const result = await http<T>(path, body, ms, signal);
       if (wake) bindTerminalEvidence(wake, result as TerminalEvidence, launch, trialId, fault => { sealed ??= fault; });
@@ -218,7 +220,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
 }
 
 /** One delivery's place in the ledger: which wake it was, and why its frame cannot be scored. */
-interface WakeEvidence { wakeId: string; unevidenced?: TerminalEvidenceMissing }
+interface WakeEvidence { wakeId: string; source?: TransportDeliverySource; unevidenced?: TerminalEvidenceMissing }
 
 /**
  * The delivery's own wake name, at the bound the worker's gate admits.
@@ -261,11 +263,23 @@ export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence
   seal: (fault: TerminalEvidenceMissing) => void): void {
   const own = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
     value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
-    value.wakeId === wake.wakeId && !!value.receipt && !!value.activity &&
-    value.receipt.agent_id === launch.agent.id && value.receipt.delivery_id === `${trialId}:${value.wakeId}`;
+    value.wakeId === wake.wakeId;
+  const binding = launch.delivery === 'transport' ? transportTerminalBinding(value, wake.source)
+    : value.receipt && value.activity && value.receipt.agent_id === launch.agent.id &&
+      value.receipt.delivery_id === `${trialId}:${value.wakeId}` ? 'bound' : 'conflict';
   wake.unevidenced = 'terminal-unbound';
-  if (!own) { seal('terminal-unbound'); return; }
+  if (!own || binding === 'conflict') { seal('terminal-unbound'); return; }
   try {
+    if (binding === 'incomplete') {
+      if (value.activity) admittedExecutions(value.activity, launch.agent.id);
+      const ids = new Set<string>();
+      for (const trace of value.native.traces) {
+        if (trace.agent_id !== launch.agent.id) throw new Error('Native execution evidence identity mismatch');
+        if (ids.has(trace.turn_id)) throw new Error(AMBIGUOUS_NATIVE_EXECUTION);
+        ids.add(trace.turn_id);
+      }
+      return;
+    }
     validateNativeFrame(value.activity!, value.receipt!, value.native.traces, launch.agent.id, value.executionId);
     const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
     if (!trace || trace.status !== 'completed') return;

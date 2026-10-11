@@ -8,6 +8,21 @@ receipts, authenticated native activity, closed telemetry and verified containme
 Use public module indexes across child boundaries; no sibling implementation imports.
 Keep adjacent tests, files below 400 lines and per-file coverage above 90 percent.
 
+`wake-delivery/` owns transport source matching and route acceptance observation.
+Direct mode keeps its original manual delivery. Transport mode decodes bounded
+JSON objects (1,048,576 bytes) and delegates schema rejection to Daimon's host
+through authenticated `/v2/wakes`, while `/trial/run` only arms and observes;
+its GET form is the caller's publication barrier. Never pre-stamp task time or
+attribute a transport wake by trace count. An unobserved live batch fails closed;
+current availability is labelled separately from unavailable rendered allowances.
+`evidence/execution.ts` owns shared trace and execution attribution checks.
+Install optional task-clock environment only inside the already-running worker;
+record the same origin/anchor in readiness and each terminal frame.
+Seal transport outcomes atomically against route admission; re-read control and
+native evidence whenever the admission generation changes. Preserve and validate
+every selected delivery's execution history, including separate batches and
+deferred revisits. Receipt completion alone never proves execution success.
+
 External continuations are opt-in, sourced, bounded to three deliveries and share
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and
 aggregate usage once; cancellation must stop the owned runtime.
@@ -118,6 +133,10 @@ Grok usage comes from the broker's per-slot ledger, never this process: rows nee
 `-build` alias) and a `turn` key. Byte-identical replays of one turn count once;
 differing rows under one turn fail. Estimated requests keep coverage partial.
 Load the Grok runtime exports only for Grok launches and fail closed if absent.
+Grok per-wake timeout and token overrides are the minimum of the trial/launch
+limit and the broker registration. A shorter trial may lower the broker ceiling;
+the persisted projection still records the registration, and the trial deadline
+still spans all wakes. Codex limits and aliases retain their original behavior.
 
 `verifyNativeWorkerStartup` is the public, side-effect-free composition of the
 startup checks, for callers that must validate a prepared launch before starting

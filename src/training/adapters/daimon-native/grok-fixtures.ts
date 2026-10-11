@@ -1,17 +1,17 @@
 import { chmod, copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { grokProjectionSha256, type GrokBrokerProjection, type GrokSlotPreflight } from './receipt/grok.js';
+import { grokProjectionSha256, grokWorkerConfigPins, type GrokBrokerProjection, type GrokSlotPreflight } from './receipt/grok.js';
 import type { GrokNativeLaunch, NativeLaunch } from './receipt/index.js';
 import type { NativeConfig } from './worker/index.js';
 
 /** Byte-exact output of Daimon's resolver for its `fixtures/grok-slot-preflight/projection-input.json`. */
 export const daimonProjectionGolden: GrokBrokerProjection = {
-  version: 'noopolis.daimon.grok-broker-projection.v1', agentId: 'foreman',
+  version: 'noopolis.daimon.grok-broker-projection.v2', agentId: 'foreman',
   workspacePath: '/var/lib/spawnfile/instance/workspace/agents/foreman', runtimeHomePath: '/var/lib/spawnfile/instance/homes/foreman',
   workerUid: 2200, slot: 0, profilePath: '/var/lib/daimon-workers/2200/.grok/sandbox.toml',
   profileSha256: '2a1dcab471092eab77565838b17a5cf138489e3daa1349612ebcedcdb69e23c4',
   denyPaths: ['/run/paideia', '/run/paideia/control', '/run/training/inputs', '/var/lib/spawnfile/daimon/grok-bootstrap-auth', '/var/lib/spawnfile/daimon/grok-subscription-realm'],
-  workerConfigSha256: 'eed6a451150a72b2cb528b30c23b3d51c7d3bc38c67a8985d4dcdf956ff214d3',
+  workerConfigSha256: 'ab58499ac32678097c146479896f2b8a8e2b0e39aea22dc0a60b6227e370538e', workerConfigVariant: 'unclocked',
   systemPromptSha256: '2c31c0085a54a4efbf9c0cf0b8124c56e47f38691b7f0c7fa233a74abaa8ddf8', grokCliVersion: '1.0.34',
   grokExecutableSha256: '39ab87666877d64ef3a40aa60fbe0c3b6a6acd7001b78fe60e2c76bb6cfc4a94', nativeAbiVersion: 2,
   model: 'grok-4.6', reasoningEffort: 'low', limits: { maxRequests: 24, maxTokens: 400000, timeoutMs: 480000 },
@@ -19,7 +19,14 @@ export const daimonProjectionGolden: GrokBrokerProjection = {
   attestation: { platform: 'linux/landlock', enforced: true, restrictNetwork: true, profileName: 'daimon-strict', sandboxRuntime: 'bubblewrap',
     eventsPath: '/var/lib/daimon-workers/2200/.grok/sessions/sandbox-events.jsonl' },
 };
-export const daimonProjectionGoldenSha256 = '9e8bbd4e9337df40b90d5a382ece6c3745cb5e11038d10ea17b5032408bf30e4';
+export const daimonProjectionGoldenSha256 = 'e901d9c26e101c05aad57dde8120ac9704b667fd97d206d36e01802c131bb337';
+export const daimonClockedProjectionGolden: GrokBrokerProjection = {
+  ...daimonProjectionGolden, workerConfigVariant: 'clocked',
+  workerConfigSha256: '634ec9ce49c9e8d508b574e7b183678330359cfed63738df209a38963c730dab',
+  taskClock: { preloadPath: '/usr/local/lib/daimon/libfaketime.so.1', timestampFilePath: '/run/daimon-engine-broker/task-clock/faketime',
+    directoryPath: '/run/daimon-engine-broker/task-clock', directoryMode: 493, fileMode: 420, ownerUid: 2100, maxRegistrations: 1 },
+};
+export const daimonClockedProjectionGoldenSha256 = 'a835b8782428c1d31862cbbb6bd860f67b4e160bb2b23a6bf3a0ba10187b621f';
 
 export const fixtureNonce = '5f0e2a1c9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f';
 const realm = ['/var/lib/spawnfile/daimon/grok-bootstrap-auth', '/var/lib/spawnfile/daimon/grok-subscription-realm'];
@@ -57,7 +64,8 @@ export async function grokLaunchFrom<T extends NativeLaunch>(launch: T, root: st
   Object.assign(next, { schema: 'paideia.daimon-native.launch.v2', agent: { id: launch.agent.id, engine: 'grok', model: 'grok-4.6', reasoningEffort: 'low' },
     credentials: [], limits: { maxTokens: 8000000, wakeTokenCeiling: 1000000 }, ...moved, controlRoot: state,
     projections: [{ role: 'home', source: runtimeHome, target: home.source === home.target ? runtimeHome : home.target }],
-    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v1', projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
+    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v2', workerConfigVariant: launch.taskClock ? 'clocked' : 'unclocked',
+      projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(slot, 'worker-home'), architecture: 'arm64', usageLedgerPath: join(roots['slot-ledger'], 'usage.jsonl'),
       seccompProfileSha256: '7'.repeat(64), limits: { maxRequests: 24, maxTokens: 400000, timeoutMs: 480000 },
       // The provisioner's verbatim values the projection digest binds: the realm entries, the control
@@ -81,9 +89,11 @@ export function grokConfigFor(config: NativeConfig): NativeConfig {
 export function grokProjectionFor(launch: GrokNativeLaunch, extraDeny: readonly string[] = []): GrokBrokerProjection {
   const { broker } = launch;
   const home = launch.projections.find(row => row.role === 'home')!.target;
-  return { ...daimonProjectionGolden, agentId: launch.agent.id, workspacePath: launch.workspace.target, runtimeHomePath: home,
+  const golden = broker.workerConfigVariant === 'clocked' ? daimonClockedProjectionGolden : daimonProjectionGolden;
+  return { ...golden, agentId: launch.agent.id, workspacePath: launch.workspace.target, runtimeHomePath: home,
     workerUid: broker.workerUid, slot: broker.slot, profilePath: `${broker.workerHomePath}/.grok/sandbox.toml`,
     denyPaths: [...new Set([...broker.denyPaths, ...extraDeny])].sort(),
+    workerConfigSha256: grokWorkerConfigPins[broker.workerConfigVariant][launch.agent.model][launch.agent.reasoningEffort],
     model: launch.agent.model, reasoningEffort: launch.agent.reasoningEffort, limits: { ...broker.limits }, usageLedgerPath: broker.usageLedgerPath,
     seccompProfileSha256: broker.seccompProfileSha256, attestation: { ...daimonProjectionGolden.attestation, eventsPath: `${broker.workerHomePath}/.grok/sessions/sandbox-events.jsonl` } };
 }
