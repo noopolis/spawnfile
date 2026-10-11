@@ -34,6 +34,12 @@ export function keyTerms(text: string): string[] {
   const stop = new Set(['that', 'this', 'with', 'from', 'have', 'were', 'been', 'said', 'will', 'they', 'their', 'there', 'than', 'into']);
   return [...new Set(text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])].filter(word => word.length > 3 && !stop.has(word));
 }
+/** Replace the selected numeric value everywhere, without touching citation tokens. */
+export function replaceNumber(text: string, before: string, after: string, templates?: CheckTemplates): string {
+  const claim = templates ? maskCitations(text, templates) : text;
+  return text.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu, (value, offset: number) =>
+    numeric(value) === numeric(before) && claim.slice(offset, offset + value.length) === value ? after : value);
+}
 export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decomposition, inputs: DecompositionInputs,
   templates: CheckTemplates, seed: string): TrapMutation | undefined {
   const located = locateSpan(inputs.output, unit.text);
@@ -89,12 +95,8 @@ export function mutationFor(kind: TrapKind, unit: AtomicUnit, _document: Decompo
     return { path, before, after: `${before} ${located.source}`, source: located.source, replacement: located.source };
   }
   if (valueBefore && valueAfter && !replacement) {
-    let changed = false;
-    replacement = kind === 'number-substitution' ? located.source.replace(/(?<![\p{L}\p{N}])\d+(?:[,.]\d+)*(?![\p{L}\p{N}])/gu, (value, offset: number) => {
-      if (changed || value !== valueBefore || claim.slice(offset, offset + value.length) !== value) return value;
-      changed = true;
-      return valueAfter!;
-    }) : located.source.replace(valueBefore, valueAfter);
+    replacement = kind === 'number-substitution'
+      ? replaceNumber(located.source, valueBefore, valueAfter, templates) : located.source.replaceAll(valueBefore, valueAfter);
   }
   if (!replacement || replacement === located.source) return undefined;
   return { ...located, after: located.before.replace(located.source, replacement), replacement,

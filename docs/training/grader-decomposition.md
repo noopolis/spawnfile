@@ -51,7 +51,8 @@ binding 20:30–06:30 Europe/Berlin window. A configured `grok_window` is
 intersected with that outer bound and can only narrow it.
 The end boundary is exclusive. No API-key fallback is available.
 
-Criteria are answer-to-description maps. Noul uses quoted `"true"` and `"false"`
+Criteria are answer-to-description maps. The labels `missing`, `abstain`,
+`uncertain` and `unchanged` are reserved and rejected as criteria keys. Noul uses quoted `"true"` and `"false"`
 keys; score uses quoted integer keys with descriptions. `expected` lists good answers. State reads
 are `unit`, `unit.cited_rows`, `output.<path>`, `context.<name>`, `paragraph`, and
 `neighbors`. Paragraph and sentence addresses are zero-based. A template can add
@@ -156,7 +157,12 @@ projections share a batch. All teachers answer before any sees peer answers.
 Responses are strict objects keyed by check ID, with `answer`, optional `p`, and
 optional verbatim evidence `span`. Teachers may abstain. Probability `p` contributes
 that much mass to the selected answer; unassigned mass stays explicitly unknown.
-Missing and abstaining teachers retain their share of the denominator.
+Missing and abstaining teachers retain their share of the denominator. Persisted
+non-answers use `answer: null` with a typed `status` (`missing`, `abstain` or
+`uncertain`), so provider failures cannot collide with an authored answer label.
+An agreed final requires real, positive-confidence teacher answers; adjudication
+cannot supply missing independent support. Council protocol v3 invalidates older
+checkpoints; regenerate them in a fresh destination.
 
 Disagreement or abstention triggers one adversarial adjudication round for the
 output. The default adjudicator is selected from the active teachers after window
@@ -185,6 +191,14 @@ Every decomposition is included in coverage: an output with no validated defect
 trap is reported as uncovered, including outputs whose trap bundle is absent.
 Any uncovered output means STOP.
 
+Completeness separately requires **missing base checks <= 0%**. Every unique
+instantiated base check participates: missing placeholders, state or condition
+fields, rejected-unit checks, and any null council final count as missing.
+Any missing check means STOP, even with perfect traps and controls elsewhere in
+the same output. JSON and Markdown reports include counts by template and output;
+rejected-unit accounting remains separately visible. Variants never enter this
+base completeness denominator.
+
 Instability must be at most 5%, with all unique ready base checks in the
 denominator. Agreed checks count as stable; any uncertain adjudication counts as
 unstable, including two identical uncertain answers. Missing-state checks stay
@@ -201,7 +215,9 @@ validation recomputes preconditions from the saved variant and source rows:
 - Numbers are extracted from citation-free claim text and heading-free evidence;
   mutations preserve citation tokens. Numbers must appear in cited evidence with formatting normalized; replacements
   preserve digit count and precision, differ by at most 20%, and occur nowhere
-  in cited rows. Units remain unchanged. Unchanged option controls retain the
+  in cited rows. Every occurrence of the selected numeric value is replaced,
+  including equivalent comma formatting, while citation tokens are preserved.
+  Measurement units remain unchanged. Unchanged option controls retain the
   legitimate base number; format controls also exercise comma normalization when
   available.
 - Entity originals must occur in cited rows. Replacements come from the same
@@ -209,7 +225,10 @@ validation recomputes preconditions from the saved variant and source rows:
   cited rows. The current conservative recognizer supports personal honorifics
   and explicit organization suffixes; ambiguous bare names are ineligible.
   Honorific/legal-suffix variants, shared head tokens and contained names are
-  rejected as potentially co-referent.
+  rejected as potentially co-referent. Every occurrence of the selected entity is
+  replaced. Both substitution kinds update extracted fields consistently and
+  independently reject variants retaining the original value in claim text
+  (excluding citation tokens).
 - Negation requires an affirmative verbatim cited sentence counterpart and only
   inserts a negator. Exactly one auxiliary is required, with no preceding
   who/which/that/when/because/although/if marker. Has/have/had require a recognized

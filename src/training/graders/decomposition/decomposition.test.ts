@@ -120,3 +120,11 @@ describe('deterministic check instantiation', () => {
     expect(instantiateChecks(templates, document, inputs)).toHaveLength(1);
   });
 });
+
+it.each(['missing', 'abstain', 'uncertain', 'unchanged'])('reserves %s for non-answer state', label => {
+  const { templates } = fixture();
+  templates.templates[0]!.type = 'choice';
+  templates.templates[0]!.criteria = { present: 'Present', [label]: 'Not present' };
+  templates.templates[0]!.expected = ['present'];
+  expect(() => parseCheckTemplates(templates)).toThrow('invalid criteria');
+});

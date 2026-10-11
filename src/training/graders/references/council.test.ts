@@ -94,7 +94,7 @@ describe('independent council execution', () => {
       options.providers.c = provider('yes', () => { vi.setSystemTime(new Date('2026-10-12T04:30:00Z')); return '{"a":{"answer":"yes"}}'; });
       const output = await runCouncil(options);
       expect(options.providers.g.generate).not.toHaveBeenCalled(); expect(output.skipped[0]!.reason).toContain('closed before');
-      expect(output.checks.a!.teachers.g).toEqual({ answer: 'missing' });
+      expect(output.checks.a!.teachers.g).toEqual({ answer: null, status: 'missing' });
     } finally { vi.useRealTimers(); }
   });
   it('propagates abort rather than completing or dispatching further calls', async () => {
@@ -219,4 +219,31 @@ it('uses a private run secret, strips peer probabilities, retains spans and rota
   expect(a.every((vote: object) => !Object.hasOwn(vote, 'p'))).toBe(true);
   expect(b).toEqual([...a.slice(1), a[0]]);
   for (let i = 0; i < a.length; i++) expect(b[i]).not.toEqual(a[i]);
+});
+
+it('keeps failed teachers distinct from authored missing labels even when adjudication chooses them', async () => {
+  const options = setup();
+  options.instances[0]!.criteria = { present: 'Present', missing: 'Absent' };
+  options.instances[0]!.options = ['present', 'missing'];
+  options.providers.c = provider('missing', request => {
+    if (!request.system!.includes('Adversarially')) throw new Error('offline');
+    return '{"a":{"answer":"missing"}}';
+  });
+  vi.mocked(options.providers.a!.generate).mockRejectedValue(new Error('offline'));
+  const result = await runCouncil(options);
+  expect(result.checks.a).toMatchObject({ final: null, status: 'uncertain', unknown_mass: 1,
+    distribution: { present: 0, missing: 0 }, teachers: {
+      c: { answer: null, status: 'missing' }, a: { answer: null, status: 'missing' },
+    } });
+  expect(result.calls.filter(call => call.phase === 'adjudication')).toHaveLength(2);
+});
+it('cannot promote abstentions to an authored answer or adjudicated final', async () => {
+  const options = setup();
+  options.instances[0]!.criteria = { yes: 'Yes', abstain: 'Legacy label' };
+  options.instances[0]!.options = ['yes', 'abstain'];
+  options.providers.a = provider('abstain');
+  options.providers.c = provider('abstain');
+  const result = await runCouncil(options);
+  expect(result.checks.a).toMatchObject({ final: null, unknown_mass: 1, status: 'uncertain' });
+  expect(result.checks.a!.teachers.a).toEqual({ answer: null, status: 'abstain' });
 });

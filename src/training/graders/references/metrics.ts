@@ -15,7 +15,26 @@ export function adjudicationInstability(outputs: CouncilOutput[], variant = fals
   return { items: adjudicated.length, unstable: count, rate: adjudicated.length ? count / adjudicated.length : 0 };
 }
 function unstable(check: CouncilOutput['checks'][string]): boolean {
-  return check.status === 'uncertain' || check.adjudication.some(vote => vote.answer === 'uncertain') || check.adjudication.length > 0 && (check.adjudication.length !== 2 || check.adjudication[0]!.answer !== check.adjudication[1]!.answer);
+  return check.status === 'uncertain' || check.adjudication.some(vote => vote.answer === null) || check.adjudication.length > 0 && (check.adjudication.length !== 2 || check.adjudication[0]!.answer !== check.adjudication[1]!.answer);
+}
+/** Every unique instantiated base check participates, including rejected units. */
+function baseCompleteness(outputs: CouncilOutput[], outputIds: string[]) {
+  const unique = new Map<string, { outputId: string; templateId: string; missing: boolean }>();
+  for (const [index, output] of outputs.entries()) for (const [id, check] of Object.entries(output.checks)) {
+    const key = JSON.stringify([output.outputDigest, id]);
+    const missing = check.ready === false || check.final === null;
+    if (!unique.has(key) || missing) unique.set(key, {
+      outputId: outputIds[index] ?? output.outputDigest, templateId: check.template_id, missing,
+    });
+  }
+  const rows = [...unique.values()];
+  const count = (items: typeof rows) => {
+    const missing = items.filter(item => item.missing).length;
+    return { total: items.length, missing, rate: items.length ? missing / items.length : 0 };
+  };
+  const group = (key: 'outputId' | 'templateId') => Object.fromEntries([...new Set(rows.map(row => row[key]))]
+    .map(value => [value, count(rows.filter(row => row[key] === value))]));
+  return { ...count(rows), byTemplate: group('templateId'), byOutput: group('outputId') };
 }
 function accuracy(rows: TrapAssessment[]) {
   const correct = rows.filter(row => row.actual !== null && (row.intended === 'unchanged' ?
@@ -33,6 +52,7 @@ export function referenceQuality(baseOutputs: CouncilOutput[], traps: TrapAssess
     .map(value => [value, accuracy(rows.filter(trap => trap[key] === value))]));
   const byKind = grouped(known, 'kind'), byTemplate = grouped(known, 'templateId');
   const instability = adjudicationInstability(baseOutputs);
+  const completeness = baseCompleteness(baseOutputs, population.outputIds);
   const outputIds = [...new Set(population.outputIds)];
   const uncovered = outputIds.filter(id => !known.some(trap => trap.outputId === id));
   const coverage = { missingChecks: population.rejectedUnits ?? 0, total: outputIds.length, covered: outputIds.length - uncovered.length, uncovered,
@@ -42,6 +62,7 @@ export function referenceQuality(baseOutputs: CouncilOutput[], traps: TrapAssess
   if (consistency.accuracy === null || consistency.accuracy < 0.95) failures.push('consistency must be >= 0.95 with nonempty validated controls');
   if (!coverage.total || coverage.uncovered.length) failures.push('every output must have a validated known-answer trap');
   if (coverage.missingChecks) failures.push('rejected units remain missing checks');
+  if (completeness.missing) failures.push('missing base checks must be <= 0%');
   if (instability.rate > 0.05) failures.push('base adjudication instability must be <= 0.05');
   const failingKinds = Object.entries(byKind).filter(([, score]) => score.total >= 10 && score.accuracy! < 0.95).map(([kind]) => kind);
   const failingTemplates = Object.entries(byTemplate).filter(([, score]) => score.total >= 10 && score.accuracy! < 0.95).map(([id]) => id);
@@ -49,7 +70,7 @@ export function referenceQuality(baseOutputs: CouncilOutput[], traps: TrapAssess
     ...failingTemplates.map(id => `known-answer template ${id} accuracy must be >= 0.95`));
   const insufficientKinds = Object.entries(byKind).filter(([, score]) => score.total < 10).map(([id]) => id);
   const insufficientTemplates = Object.entries(byTemplate).filter(([, score]) => score.total < 10).map(([id]) => id);
-  return { gate: failures.length ? 'STOP' as const : 'PASS' as const, failures, knownAnswer, consistency, coverage, byKind, byTemplate,
+  return { gate: failures.length ? 'STOP' as const : 'PASS' as const, failures, knownAnswer, consistency, coverage, completeness, byKind, byTemplate,
     consistencyByKind: grouped(controls, 'kind'), consistencyByTemplate: grouped(controls, 'templateId'),
     insufficientKinds, insufficientTemplates, failingKinds, failingTemplates, instability, variantAdjudication: adjudicationInstability(population.variantOutputs ?? [], true),
     optionPermutation: accuracy(controls.filter(trap => trap.kind === 'option-permutation')),
@@ -65,7 +86,7 @@ export function leaveOneTeacherOut(outputs: CouncilOutput[]) {
       if (!others.length) continue;
       const score = scores[id] ??= { items: 0, agreement: 0, softAgreement: 0 };
       const { distribution } = averageAnswers(Object.keys(check.distribution), others);
-      const mass = distribution[answer.answer] ?? 0;
+      const mass = answer.answer === null ? 0 : distribution[answer.answer] ?? 0;
       score.items++; score.softAgreement += mass;
       // A strict majority of all peers is required, including missing/abstaining peers.
       if (mass > 0.5) score.agreement++;

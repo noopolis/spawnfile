@@ -19,3 +19,5 @@ keys are integer strings; noul keys are true and false. Trap intent is operator
 configuration under template.traps; no question wording is interpreted as truth.
 Run the adjacent Vitest tests, TypeScript and ESLint checks; mutation-check span
 verification. Keep each source/test under 400 lines and coverage above 90%.
+
+Criteria cannot use reserved missing, abstain, uncertain or unchanged labels.

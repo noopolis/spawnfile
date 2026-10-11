@@ -14,3 +14,7 @@ verbatim affirmative claim, and repetition must appear in the check projection.
 Ambiguous cases remain uncovered; operator answer vocabulary stays explicit.
 Run adjacent Vitest tests and scoped coverage, lint and TypeScript. Mutation-check
 validation rejection, keep source/tests under 400 lines and coverage above 90%.
+
+Substitutions remove every occurrence of the chosen fact from claim text and
+update fields consistently. Independently reject any surviving original value;
+numeric equivalence includes comma formatting, while citations remain unchanged.

@@ -2,7 +2,7 @@ import { stableDigest } from '../format/index.js';
 import { evidenceRows, instantiateChecks, normalizeWhitespace, readPath, textLeaves, validateDecomposition } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs } from '../decomposition/index.js';
 import type { Trap } from './types.js';
-import { formatParaphrase, keyTerms, replaceLeaf } from './mutations.js';
+import { formatParaphrase, keyTerms, replaceLeaf, replaceNumber } from './mutations.js';
 
 import { affirmativeCounterpart, articleEntities, entityType, coReferent, maskCitations, withoutHeadings, negationAuxiliary, negator, numbers, numeric, plausibleNumber } from './preconditions.js';
 
@@ -51,7 +51,7 @@ export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: Decomposition
       const textChanged = normalizeWhitespace(expectedText) !== normalizeWhitespace(base.text);
       const expectedFields = Object.fromEntries(Object.entries(base.fields ?? {}).flatMap(([key, value]) => {
         if (value === undefined) return [];
-        const expected = textChanged && mutation.value_before && mutation.value_after ? value.replace(mutation.value_before, mutation.value_after) : value;
+        const expected = textChanged && mutation.value_before && mutation.value_after ? (kind === 'number-substitution' ? replaceNumber(value, mutation.value_before, mutation.value_after) : value.replaceAll(mutation.value_before, mutation.value_after)) : value;
         return normalizeWhitespace(expected) && normalizeWhitespace(expectedText).includes(normalizeWhitespace(expected)) ? [[key, expected]] : [];
       }));
       if (stableDigest(changed.fields ?? {}) !== stableDigest(expectedFields) ||
@@ -94,7 +94,11 @@ export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: Decomposition
   if (kind === 'number-substitution' || kind === 'entity-substitution') {
     const before = mutation.value_before; const after = mutation.value_after;
     if (!before || !after || !cited || cited.toLowerCase().includes(after.toLowerCase()) ||
-      (kind === 'entity-substitution' && mutation.replacement !== mutation.source.replace(before, after)) || before === after) reasons.push('substitution not absent from cited evidence');
+      (kind === 'entity-substitution' && mutation.replacement !== mutation.source.replaceAll(before, after)) || before === after) reasons.push('substitution not absent from cited evidence');
+    const mutatedClaim = maskCitations([mutation.replacement,
+      storedUnits.find(item => item.id === unit.id)?.text ?? ''].join('\n'), templates);
+    if (before && (kind === 'number-substitution' ? numbers(mutatedClaim).some(value => numeric(value) === numeric(before)) :
+      mutatedClaim.includes(before))) reasons.push('original value remains in mutated claim');
     if (kind === 'number-substitution') {
       if (!before || !after || !plausibleNumber(before, after)) reasons.push('invalid numeric substitution');
       const oldNumbers = numbers(maskCitations(mutation.source, templates)), newNumbers = numbers(maskCitations(mutation.replacement, templates));
@@ -105,8 +109,8 @@ export function validateTrap(trap: Trap, unit: AtomicUnit, inputs: Decomposition
           (value, offset: number) => claim.slice(offset, offset + value.length) === value ? '#' : value);
       };
       const oldShape = shape(mutation.source), newShape = shape(mutation.replacement);
-      if (stableDigest(unit.cites ?? []) !== stableDigest(storedUnits.find(item => item.id === unit.id)?.cites ?? []) || oldShape !== newShape || oldNumbers.length !== newNumbers.length || differences.length !== 1 ||
-        differences[0]?.value !== before || differences[0]?.next !== after) reasons.push('numeric substitution changed a different token');
+      if (stableDigest(unit.cites ?? []) !== stableDigest(storedUnits.find(item => item.id === unit.id)?.cites ?? []) || oldShape !== newShape || oldNumbers.length !== newNumbers.length || !differences.length ||
+        differences.some(item => numeric(item.value) !== numeric(before ?? '') || item.next !== after)) reasons.push('numeric substitution changed a different token');
       const values = numbers(cited).map(numeric);
       if (!before || !values.includes(numeric(before))) reasons.push('original number absent from cited evidence');
       if (after && values.includes(numeric(after))) reasons.push('numeric value already in cited evidence');

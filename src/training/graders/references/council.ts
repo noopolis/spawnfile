@@ -101,17 +101,17 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
   for (const teacher of active) {
     for (const batch of batches.values()) {
       const answers = await invoke(teacher, batch);
-      for (const instance of batch) checks[instance.id]!.teachers[teacher.id] = answers?.[instance.id] ?? { answer: 'missing' };
+      for (const instance of batch) checks[instance.id]!.teachers[teacher.id] = answers?.[instance.id] ?? { answer: null, status: 'missing' };
     }
   }
   const disputed: CheckInstance[] = [];
   for (const instance of instances) {
     const check = checks[instance.id]!;
-    for (const teacher of active) check.teachers[teacher.id] ??= { answer: 'missing' };
+    for (const teacher of active) check.teachers[teacher.id] ??= { answer: null, status: 'missing' };
     const answers = Object.values(check.teachers);
     Object.assign(check, averageAnswers(instance.options, answers));
     if (instance.status !== 'ready') continue;
-    if (answers.every(a => a.answer === answers[0]!.answer && Object.hasOwn(instance.criteria, a.answer) && (a.p ?? 1) > 0)) {
+    if (answers.length > 0 && answers.every(a => a.answer !== null && a.answer === answers[0]!.answer && Object.hasOwn(instance.criteria, a.answer) && (a.p ?? 1) > 0)) {
       check.final = answers[0]!.answer; check.status = 'agreed';
     } else disputed.push(instance);
   }
@@ -123,11 +123,11 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     for (const run of [0, 1]) {
       const ordered = run === 0 ? competing : Object.fromEntries(Object.entries(competing).map(([id, votes]) => [id, votes.length % 2 ? [...votes.slice(1), votes[0]!] : [...votes].reverse()]));
       const answers = await invoke(adjudicator, disputed, ordered, run);
-      for (const instance of disputed) checks[instance.id]!.adjudication.push(answers?.[instance.id] ?? { answer: 'uncertain' });
+      for (const instance of disputed) checks[instance.id]!.adjudication.push(answers?.[instance.id] ?? { answer: null, status: 'uncertain' });
     }
     for (const instance of disputed) {
       const check = checks[instance.id]!, [first, second] = check.adjudication;
-      if (Object.entries(check.teachers).some(([id, vote]) => id !== adjudicator.id && vote.answer === first!.answer && (vote.p ?? 1) > 0) && first!.answer !== 'uncertain' && first!.answer === second!.answer && (first!.p ?? 1) > 0 && (second!.p ?? 1) > 0) {
+      if (Object.entries(check.teachers).some(([id, vote]) => id !== adjudicator.id && vote.answer !== null && vote.answer === first!.answer && (vote.p ?? 1) > 0) && first!.answer !== null && Object.hasOwn(instance.criteria, first!.answer) && first!.answer === second!.answer && (first!.p ?? 1) > 0 && (second!.p ?? 1) > 0) {
         check.final = first!.answer; check.status = 'adjudicated';
       }
     }

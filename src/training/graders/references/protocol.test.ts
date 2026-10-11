@@ -27,8 +27,10 @@ describe('strict council protocol', () => {
   it('accepts probability, verbatim span, abstention and adjudication uncertainty', () => {
     const value = { [instance.id]: { answer: 'yes', p: 0.8, span: 'Verbatim' } };
     expect(decodeCouncilAnswers(JSON.stringify(value), [instance])).toEqual(value);
-    expect(decodeCouncilAnswers(JSON.stringify({ [instance.id]: { answer: 'abstain' } }), [instance])).not.toBeNull();
-    expect(decodeCouncilAnswers(JSON.stringify({ [instance.id]: { answer: 'uncertain' } }), [instance], true)).not.toBeNull();
+    expect(decodeCouncilAnswers(JSON.stringify({ [instance.id]: { answer: 'abstain' } }), [instance]))
+      .toEqual({ [instance.id]: { answer: null, status: 'abstain' } });
+    expect(decodeCouncilAnswers(JSON.stringify({ [instance.id]: { answer: 'uncertain' } }), [instance], true))
+      .toEqual({ [instance.id]: { answer: null, status: 'uncertain' } });
   });
   it.each(['broken', 'null', '[]', '{}', '{"support@c1":null}', '{"support@c1":[]}',
     '{"support@c1":{"answer":"yes"},"support@c1":{"answer":"no"}}',

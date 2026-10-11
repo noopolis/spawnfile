@@ -72,3 +72,34 @@ it('binds trap generation to current completed base references and rejects missi
   await writeFile(references, JSON.stringify({ ...content, digest: stableDigest(content) }));
   await expect(runTraps({ ...f.traps, references })).rejects.toThrow('incomplete');
 });
+
+it.each(['placeholder', 'condition', 'null-final'])('stops %s base checks despite perfect traps on another check', async mode => {
+  const f = await fixture();
+  const extra = { ...f.templates.templates[0]!, id: 'actor', traps: {} };
+  if (mode === 'placeholder') extra.instructions = 'Check {unit.fields.object}';
+  const templates = { ...f.templates, templates: [...f.templates.templates,
+    { ...extra, ...(mode === 'condition' ? { when: { field: 'object', equals: 'items' } } : {}) }] };
+  await writeFile(f.templatesFile, JSON.stringify(templates));
+  await runDecompose(f.decompose, f.dependencies);
+  f.generate.mockImplementation(async request => {
+    const prompt = JSON.parse(request.prompt);
+    const answers = prompt.questions.map((question: { check_id: string; evidence?: { unit: { text: string } } }) => {
+      const text = (prompt.projection ?? question.evidence).unit.text as string;
+      return [question.check_id, { answer: question.check_id.startsWith('actor@')
+        ? question.evidence ? 'uncertain' : 'abstain' : text.includes('12') ? 'supported' : 'unsupported' }];
+    });
+    return { text: JSON.stringify(Object.fromEntries(answers)), model: request.model, route: 'subscription', usage: null };
+  });
+  await runReference({ ...f.reference, traps: undefined }, f.dependencies);
+  await runTraps({ ...f.traps, references: f.reference.out });
+  const result = await runReference(f.reference, f.dependencies);
+  expect(result).toMatchObject({ gate: 'STOP', coverage: { covered: 1, missingChecks: 0 },
+    knownAnswer: { accuracy: 1 }, consistency: { accuracy: 1 },
+    completeness: { total: 2, missing: 1, rate: 0.5, byTemplate: { actor: { total: 1, missing: 1 } } } });
+  const artifact = JSON.parse(await readFile(result.file, 'utf8'));
+  expect(artifact.quality.completeness).toEqual(result.completeness);
+  const report = await readFile(result.reportFile, 'utf8');
+  expect(report).toContain('Missing base checks: 50.00% (1/2); required <= 0%.');
+  expect(report).toContain('Missing base checks for template actor: 1/1.');
+  expect(report).toContain(`Missing base checks for output ${Object.keys(result.completeness.byOutput)[0]}: 1/2.`);
+});

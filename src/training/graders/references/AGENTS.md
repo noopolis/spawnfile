@@ -13,3 +13,7 @@ replay received responses; retry generation-error and invalid-response calls on
 incomplete resume. Complete reuse also pins active teachers and window state. Preserve
 original usage and separate attempt receipts. Grok configuration intersects the fixed
 20:30–06:30 Europe/Berlin bound and cannot widen it.
+
+Non-answers have null answers and typed statuses, never authored-label sentinels.
+Every instantiated base check counts toward zero-missing completeness, including
+unready checks and null finals; report counts per template and output.

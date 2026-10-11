@@ -3,7 +3,8 @@ import type { CheckInstance } from '../decomposition/index.js';
 
 export interface CouncilTeacher { id: string; provider: string; model: string; effort?: string }
 export interface GrokWindow { start: string; end: string; timeZone?: string }
-export interface TeacherAnswer { answer: string; p?: number; span?: string }
+export type TeacherAnswer = ({ answer: string; status?: never } |
+  { answer: null; status: 'missing' | 'abstain' | 'uncertain' }) & { p?: number; span?: string };
 export interface ReferenceCall {
   id: string; teacher: string; provider: string; requestedModel: string;
   reportedModel: string | null; route: string | null; prompt_digest: string;

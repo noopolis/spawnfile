@@ -22,7 +22,7 @@ export function grokWindowOpen(now: Date, window: GrokWindow = defaultGrokWindow
 export function averageAnswers(options: string[], answers: TeacherAnswer[]) {
   const distribution = Object.fromEntries(options.map(option => [option, 0]));
   for (const vote of answers) {
-    if (Object.hasOwn(distribution, vote.answer)) distribution[vote.answer]! += (vote.p ?? 1) / answers.length;
+    if (vote.answer !== null && Object.hasOwn(distribution, vote.answer)) distribution[vote.answer]! += (vote.p ?? 1) / answers.length;
   }
   return { distribution, unknown_mass: Math.max(0, 1 - Object.values(distribution).reduce((sum, p) => sum + p, 0)) };
 }

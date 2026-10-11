@@ -1,7 +1,7 @@
 import { stableDigest, sha256 } from '../format/index.js';
 import { instantiateChecks, normalizeWhitespace, trapKinds, validateDecomposition } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs, TrapKind } from '../decomposition/index.js';
-import { mutationFor, replaceLeaf } from './mutations.js';
+import { mutationFor, replaceLeaf, replaceNumber } from './mutations.js';
 import { validateTrap } from './validation.js';
 import type { Trap, TrapSet } from './types.js';
 
@@ -14,7 +14,7 @@ function variantDocument(document: Decomposition, unit: AtomicUnit, kind: TrapKi
       ? item.cites.map(id => id === before ? after! : id) : item.cites;
     const changed = text !== normalizeWhitespace(item.text);
     const fields = changed && before && after && item.fields ? Object.fromEntries(Object.entries(item.fields)
-      .map(([key, value]) => [key, value?.replace(before, after)])) : item.fields;
+      .map(([key, value]) => [key, kind === 'number-substitution' ? replaceNumber(value!, before, after) : value?.replaceAll(before, after)])) : item.fields;
     const source_span = changed ? undefined : item.source_span;
     const { source_span: _span, ...rest } = item;
     return { ...rest, text, ...(cites ? { cites } : {}), ...(fields ? { fields } : {}),

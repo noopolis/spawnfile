@@ -4,7 +4,7 @@ import type { CheckReference, CouncilOutput, TrapAssessment } from './types.js';
 
 function check(adjudication: string[] = []): CheckReference {
   return { digest: 'x', template_id: 'support', teachers: { a: { answer: 'yes' }, b: { answer: 'no' } },
-    distribution: { yes: 0.5, no: 0.5 }, unknown_mass: 0, adjudication: adjudication.map(answer => ({ answer })), final: adjudication.length ? null : 'yes', status: adjudication.length ? 'adjudicated' : 'agreed' };
+    distribution: { yes: 0.5, no: 0.5 }, unknown_mass: 0, adjudication: adjudication.map(answer => answer === 'uncertain' ? { answer: null, status: 'uncertain' as const } : { answer }), final: !adjudication.length || adjudication.every(answer => answer === 'yes') ? 'yes' : null, status: adjudication.length ? 'adjudicated' : 'agreed' };
 }
 function output(checks: CheckReference[]): CouncilOutput {
   return { outputDigest: 'output', identity: 'identity', digest: 'digest', complete: true,
@@ -26,10 +26,14 @@ describe('council quality gate', () => {
     expect(quality.knownAnswer).toEqual({ total: 3, correct: 1, accuracy: 1 / 3 });
     expect(quality.insufficientKinds).toEqual(['number-substitution']); expect(quality.insufficientTemplates).toEqual(['other', 'support']);
   });
-  it('passes exactly 95% accuracy and 5% instability and stops just outside the boundary', () => {
+  it('passes exactly 95% accuracy but stops missing finals even at the 5% instability boundary', () => {
     const traps = [...Array.from({ length: 19 }, () => correct), { ...correct, actual: 'yes' }];
     const checks = [...Array.from({ length: 19 }, () => check(['yes', 'yes'])), check(['yes', 'no'])];
-    expect(referenceQuality([output(checks)], [...traps, control], population).gate).toBe('PASS');
+    expect(referenceQuality([output(checks.slice(0, 19))], [...traps, control], population).gate).toBe('PASS');
+    const missing = referenceQuality([output(checks)], [...traps, control], population);
+    expect(missing.gate).toBe('STOP');
+    expect(missing.failures).toEqual(['missing base checks must be <= 0%']);
+    expect(missing.instability.rate).toBe(0.05);
     expect(referenceQuality([output(checks.slice(1))], [...traps, control], population).gate).toBe('STOP');
     expect(referenceQuality([output(checks)], [...traps.slice(1), control], population).gate).toBe('STOP');
   });
@@ -73,7 +77,7 @@ describe('council quality gate', () => {
   it('scores teachers against references excluding themselves, including missing peer mass', () => {
     const disagreement = check();
     const allYes = check(); allYes.teachers.b = { answer: 'yes' };
-    const missing = check(); missing.teachers.b = { answer: 'missing' };
+    const missing = check(); missing.teachers.b = { answer: null, status: 'missing' };
     const results = leaveOneTeacherOut([output([disagreement, allYes, missing])]);
     expect(results.a).toEqual({ items: 3, agreement: 1 / 3, softAgreement: 1 / 3 });
     expect(results.b).toEqual({ items: 3, agreement: 1 / 3, softAgreement: 1 / 3 });
@@ -110,4 +114,26 @@ it('counts rejected units as missing coverage, excludes unready checks and prese
 it('treats an uncertain final as unstable even when both adjudication labels match', () => {
   const unresolved = { ...check(['yes', 'yes']), status: 'uncertain' as const };
   expect(adjudicationInstability([output([unresolved])])).toEqual({ items: 1, unstable: 1, rate: 1 });
+});
+
+it.each([
+  { ready: false, final: null },
+  { ready: true, final: null },
+  { ready: false, final: 'yes' },
+])('stops every missing base check independently of traps and instability: %j', missing => {
+  const checks = [...Array.from({ length: 20 }, () => check()), { ...check(), ...missing, template_id: 'actor' }];
+  const result = referenceQuality([output(checks)], [correct, control], population);
+  expect(result.gate).toBe('STOP');
+  expect(result.failures).toContain('missing base checks must be <= 0%');
+  expect(result.completeness).toEqual({ total: 21, missing: 1, rate: 1 / 21,
+    byTemplate: { support: { total: 20, missing: 0, rate: 0 }, actor: { total: 1, missing: 1, rate: 1 } },
+    byOutput: { output: { total: 21, missing: 1, rate: 1 / 21 } } });
+  expect(result.coverage.missingChecks).toBe(0);
+});
+it('counts a duplicate missing base check once, preserves missing copies and ignores variants', () => {
+  const base = output([{ ...check(), ready: false, final: null }]);
+  for (const outputs of [[base, output([check()])], [output([check()]), base], [base, base]]) {
+    expect(referenceQuality(outputs, [correct, control], { variantOutputs: [output([check()])], outputIds: [] }).completeness)
+      .toMatchObject({ total: 1, missing: 1, rate: 1, byOutput: { output: { total: 1, missing: 1 } } });
+  }
 });

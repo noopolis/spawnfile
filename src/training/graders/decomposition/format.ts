@@ -64,7 +64,7 @@ export function parseCheckTemplates(value: unknown): CheckTemplates {
   if (new Set(result.teachers?.map(t => t.id)).size !== (result.teachers?.length ?? 0)) throw new Error('duplicate teacher id');
   for (const template of result.templates) {
     const options = Object.keys(template.criteria);
-    if (options.length < 2 || options.some(key => ['abstain', 'uncertain', 'unchanged'].includes(key))) throw new Error(`${template.id}: invalid criteria`);
+    if (options.length < 2 || options.some(key => ['missing', 'abstain', 'uncertain', 'unchanged'].includes(key))) throw new Error(`${template.id}: invalid criteria`);
     if (template.type === 'noul' && (options.length !== 2 || !options.includes('true') || !options.includes('false'))) throw new Error(`${template.id}: noul criteria require true/false`);
     if (template.type === 'score' && options.some(key => !/^-?\d+$/.test(key))) throw new Error(`${template.id}: score criteria require integer keys`);
     if (new Set(template.expected).size !== template.expected.length || template.expected.some(key => !options.includes(key))) throw new Error(`${template.id}: invalid expected answer`);

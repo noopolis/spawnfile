@@ -4,7 +4,7 @@ import type { CouncilOutput } from './types.js';
 
 describe('reference policy', () => {
   it('averages only supplied answer mass without renormalizing missing teachers', () => {
-    const result = averageAnswers(['yes', 'no'], [{ answer: 'yes', p: 0.8 }, { answer: 'no' }, { answer: 'abstain' }, { answer: 'missing' }]);
+    const result = averageAnswers(['yes', 'no'], [{ answer: 'yes', p: 0.8 }, { answer: 'no' }, { answer: null, status: 'abstain' }, { answer: null, status: 'missing' }]);
     expect(result.distribution).toEqual({ yes: 0.2, no: 0.25 }); expect(result.unknown_mass).toBe(0.55);
     expect(averageAnswers(['yes'], []).unknown_mass).toBe(1);
   });
@@ -29,4 +29,9 @@ describe('reference policy', () => {
     expect(reusableCouncil({ ...output, outputDigest: 'changed' }, 'b')).toBe(false);
     expect(reusableCouncil({ ...output, complete: false } as unknown as CouncilOutput, 'b')).toBe(false);
   });
+});
+
+it('does not coerce null non-answers into the authored label null', () => {
+  expect(averageAnswers(['null', 'yes'], [{ answer: null, status: 'missing' }]))
+    .toEqual({ distribution: { null: 0, yes: 0 }, unknown_mass: 1 });
 });
