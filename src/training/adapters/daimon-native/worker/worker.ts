@@ -52,10 +52,10 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING = process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING;
   // Set only after this worker is running. Daimon consumes the loader path for
   // child gates and strips it from engines; this process is never preloaded.
-  const taskClock = configureNativeTaskClock(launch.taskClock);
+  const taskClock = configureNativeTaskClock(launch.taskClock, options.timeoutMs);
   const host = createOrganizationRuntimeControlHost(config, { acceptanceStorePath: artifacts, controlToken: token });
   const controller = createWorkerController(host, config, options, token, launch, taskClock);
-  const server = createWorkerServer(controller, token, runtime.parseWakeAcceptanceRequest);
+  const server = createWorkerServer(controller, token);
   try {
     await host.start();
     const health = await host.health();

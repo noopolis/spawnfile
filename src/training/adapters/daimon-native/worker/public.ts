@@ -23,7 +23,7 @@ export interface NativeRuntimeModule {
 
 const grokExports = ['resolveOrganizationGrokBrokerProjection', 'grokBrokerProjectionSha256', 'verifyGrokSlotPreflightReceipt'] as const;
 
-export async function loadDaimonRuntime(engine: 'codex' | 'grok' = 'codex', delivery: 'direct' | 'transport' = 'direct'): Promise<NativeRuntimeModule> {
+export async function loadDaimonRuntime(engine: 'codex' | 'grok' = 'codex', _delivery: 'direct' | 'transport' = 'direct'): Promise<NativeRuntimeModule> {
   const packageName = '@noopolis/daimon/runtime';
   let loaded: Record<string, unknown>;
   try { loaded = await import(packageName) as Record<string, unknown>; }
@@ -31,7 +31,6 @@ export async function loadDaimonRuntime(engine: 'codex' | 'grok' = 'codex', deli
   if (typeof loaded['parseOrganizationRuntimeConfig'] !== 'function' || typeof loaded['createOrganizationRuntimeControlHost'] !== 'function') {
     throw new Error('Installed Daimon lacks the native organization control host');
   }
-  if (delivery === 'transport' && typeof loaded['parseWakeAcceptanceRequest'] !== 'function') throw new Error('Installed Daimon lacks the public transport wake parser');
   if (engine === 'grok') {
     if (grokExports.some(name => typeof loaded[name] !== 'function')) throw new Error('Installed Daimon lacks the Grok broker projection and slot preflight capability');
   } else if (typeof loaded['resolveOrganizationCodexSandboxProjection'] !== 'function') throw new Error('Installed Daimon lacks exact native sandbox projection capability');

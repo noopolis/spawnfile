@@ -150,3 +150,35 @@ it.each(['arm', 'publish', 'failure'] as const)('cancels the request when %s can
   expect(requestSignal?.aborted).toBe(true);
   expect(publish).toHaveBeenCalledTimes(phase === 'arm' ? 0 : 1);
 });
+
+it.each(['deadline', 'cancel'] as const)('keeps %s active after publication succeeds, through terminal receipt', async kind => {
+  vi.useFakeTimers();
+  try {
+    const cancelled = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    let finish!: (value: TerminalEvidence) => void;
+    const request = (async (_path: string, body?: unknown, _timeout?: number, current?: AbortSignal) => {
+      if (!body) return { state: 'waiting', wakeId: 'task', source };
+      requestSignal = current;
+      return new Promise<TerminalEvidence>(resolve => { finish = resolve; });
+    }) as NativeWorkerRequest;
+    const publish = vi.fn(async () => undefined);
+    const result = requestTransportDelivery(request, { wakeId: 'task', source }, { source, publish }, Date.now() + 100, cancelled.signal);
+    const rejected = expect(result).rejects.toThrow(kind === 'deadline' ? 'deadline' : 'cancelled');
+    await vi.advanceTimersByTimeAsync(10);
+    expect(publish).toHaveBeenCalledOnce();
+    if (kind === 'deadline') await vi.advanceTimersByTimeAsync(100);
+    else cancelled.abort();
+    finish(frame()); // A late successful receipt cannot undo the refusal.
+    await rejected;
+    expect(requestSignal?.aborted).toBe(true);
+  } finally { vi.useRealTimers(); }
+});
+
+it('refuses late completion even when a blocked event loop has not fired the deadline timer', async () => {
+  vi.useFakeTimers();
+  try {
+    const deadline = Date.now() + 100;
+    await expect(boundedTransportCall(async () => { vi.setSystemTime(deadline); return frame(); }, deadline, signal())).rejects.toThrow('deadline');
+  } finally { vi.useRealTimers(); }
+});

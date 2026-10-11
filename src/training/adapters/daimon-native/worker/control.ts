@@ -4,7 +4,7 @@ import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
 import { dirname, join } from 'node:path';
 import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, wakeEvidenceFile, writeEvidence } from './evidence/index.js';
 import { isGrokLaunch, type NativeLaunch, type NativeTaskClockEvidence } from '../receipt/index.js';
-import { createTransportDelivery, parseTransportSource, type TransportDeliverySource } from './wake-delivery/index.js';
+import { createTransportDelivery, parseTransportSource, validateTransportExecutions, type TransportDeliverySource } from './wake-delivery/index.js';
 import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeEvidenceSource, NativeHost,
   NativeReceipt, TerminalEvidence, WorkerOptions } from './types.js';
 
@@ -108,76 +108,90 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           event: { version: 'noopolis.daimon.wake.v2', kind: 'manual', text, occurred_at: startedAt } }));
         if (accepted.state !== 'accepted') throw new Error(`Native acceptance refused: ${accepted.code}`);
         if (incoming) deliveryId = incoming.evidence.deliveryId!;
-        while (true) {
-          if (cancellation.signal.aborted) throw new Error(timedOut ? 'Native trial deadline exceeded' : 'Native trial cancelled');
-          [receipt, activity, availability] = await owned(Promise.all([
-            host.wakeReceipt(token, accepted.acceptance_id), host.activityV2(token), host.availability(token),
-          ]));
-          if (!receipt || !activity || !availability) throw new Error('Authenticated native control evidence disappeared');
-          if (receipt.delivery_id !== deliveryId || receipt.agent_id !== agent.id) throw new Error('Native receipt identity mismatch');
-          if (!Array.isArray(activity.executions)) throw new Error('Native activity omitted execution authority');
-          // The runtime's own binding of this delivery to an execution, and its own
-          // account of everything else it is running for this trial meanwhile.
-          claimed = claimedExecution(receipt, activity, deliveryId, agent.id) ?? claimed;
-          incoming?.observe(receipt, activity, availability, claimed);
-          for (const row of activity.executions) if (row.agent_id === agent.id) history.add(row.execution_id);
-          if (!activity.executions.length) {
-            const traces = await readClosedTraces(agent.runtimeHomePath, agent.id);
-            // The runtime's own binding first; only for a delivery it has disposed
-            // of, on a runtime admitting nothing, may this wake answer for the
-            // execution that closed inside its own window instead.
-            if (!incoming) claimed ??= disposedWakeExecution(receipt, traces, history);
-            if (claimed) {
-              executionId = executionClosed(activity, receipt, traces, agent.id, claimed);
-              if (executionId) {
-                receipt = await owned(host.wakeReceipt(token, accepted.acceptance_id));
-                activity = await owned(host.activityV2(token));
-                availability = await owned(host.availability(token));
-                if (!receipt || !activity || !availability) throw new Error('Authenticated terminal control evidence disappeared');
-                if (receipt.delivery_id !== deliveryId) throw new Error('Native receipt identity mismatch');
-                incoming?.observe(receipt, activity, availability, claimed);
+        for (;;) {
+          // Capture admission before any asynchronous snapshot/collection. A route
+          // request that enters or settles meanwhile requires another full pass.
+          const generation = incoming?.generation();
+          while (true) {
+            if (cancellation.signal.aborted) throw new Error(timedOut ? 'Native trial deadline exceeded' : 'Native trial cancelled');
+            [receipt, activity, availability] = await owned(Promise.all([
+              host.wakeReceipt(token, accepted.acceptance_id), host.activityV2(token), host.availability(token),
+            ]));
+            if (!receipt || !activity || !availability) throw new Error('Authenticated native control evidence disappeared');
+            if (receipt.delivery_id !== deliveryId || receipt.agent_id !== agent.id) throw new Error('Native receipt identity mismatch');
+            if (!Array.isArray(activity.executions)) throw new Error('Native activity omitted execution authority');
+            // The runtime's own binding of this delivery to an execution, and its own
+            // account of everything else it is running for this trial meanwhile.
+            claimed = claimedExecution(receipt, activity, deliveryId, agent.id) ?? claimed;
+            incoming?.observe(receipt, activity, availability, claimed);
+            for (const row of activity.executions) if (row.agent_id === agent.id) history.add(row.execution_id);
+            if (!activity.executions.length) {
+              const traces = await readClosedTraces(agent.runtimeHomePath, agent.id);
+              // The runtime's own binding first; only for a delivery it has disposed
+              // of, on a runtime admitting nothing, may this wake answer for the
+              // execution that closed inside its own window instead.
+              if (!incoming) claimed ??= disposedWakeExecution(receipt, traces, history);
+              if (claimed) {
                 executionId = executionClosed(activity, receipt, traces, agent.id, claimed);
-                if (executionId) break;
+                if (executionId) {
+                  receipt = await owned(host.wakeReceipt(token, accepted.acceptance_id));
+                  activity = await owned(host.activityV2(token));
+                  availability = await owned(host.availability(token));
+                  if (!receipt || !activity || !availability) throw new Error('Authenticated terminal control evidence disappeared');
+                  if (receipt.delivery_id !== deliveryId) throw new Error('Native receipt identity mismatch');
+                  incoming?.observe(receipt, activity, availability, claimed);
+                  executionId = executionClosed(activity, receipt, traces, agent.id, claimed);
+                  if (executionId && (!incoming || incoming.closed(traces))) break;
+                }
               }
+              const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
+              if (failure) throw new Error(`Native execution failed before terminal telemetry: ${failure}`);
+              // Budget snapshots can pause immediately after this execution was admitted.
+              // Only its closed trace or the bounded deadline can establish completion.
             }
-            const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
-            if (failure) throw new Error(`Native execution failed before terminal telemetry: ${failure}`);
-            // Budget snapshots can pause immediately after this execution was admitted.
-            // Only its closed trace or the bounded deadline can establish completion.
+            await pause(100, cancellation.signal);
           }
-          await pause(100, cancellation.signal);
+          native = await owned(collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id,
+            incoming ? undefined : executionId, agent.engine.model!, incoming ? [] : others(), source));
+          if (cancellation.signal.aborted) throw new Error('Native trial cancelled');
+          if (incoming) {
+            // Synchronously seal against route admission before deciding a terminal
+            // outcome. No in-flight acceptance can be omitted by this snapshot.
+            if (!incoming.seal(generation!)) { await pause(100, cancellation.signal); continue; }
+            validateTransportExecutions(incoming.evidence, native, activity, agent.id);
+          }
+          // The trace this wake's own execution closed, never whichever one came
+          // first: an unbound wake has no trace to speak for it, and reading another
+          // wake's would report that wake's disposition as this delivery's.
+          const trace = native.traces.find(row => row.turn_id === executionId);
+          const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
+          if (!native.usage.length) {
+            // Name what WAS observed: a bare "no usage" cannot distinguish a turn that never ran from
+            // one that ran without metering, and the runtime home is wiped with the slot.
+            const observed = `traces=${native.traces.length} contexts=${native.modelContexts.length} requests=${native.requests?.length ?? 0}`;
+            throw new Error(`Closed native execution omitted token usage evidence (${observed} receipt=${receipt.state} execution=${executionId ?? 'none'}${failure ? ` availability=${failure}` : ''})`);
+          }
+          if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
+          if (!failure && trace?.status === 'completed' && incoming?.evidence.deferredDeliveryIds.length) {
+            blocked = 'awaiting-external-input';
+            throw new Error('Native execution completed; transport batch deliveries blocked awaiting external input');
+          }
+          if (incoming?.evidence.unresolvedDeliveryIds.length) throw new Error('Transport trial deliveries remain unresolved');
+          if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
+          if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
+            throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage));
+          }
+          status = 'completed';
+          break;
         }
-        if (incoming && !incoming.evidence.batch) throw new Error('Transport execution closed without observable batch membership');
-        native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, others(), source);
-        // The trace this wake's own execution closed, never whichever one came
-        // first: an unbound wake has no trace to speak for it, and reading another
-        // wake's would report that wake's disposition as this delivery's.
-        const trace = native.traces.find(row => row.turn_id === executionId);
-        const failure = availability.agents.find(row => row.agent_id === agent.id)?.error;
-        if (!native.usage.length) {
-          // Name what WAS observed: a bare "no usage" cannot distinguish a turn that never ran from
-          // one that ran without metering, and the runtime home is wiped with the slot.
-          const observed = `traces=${native.traces.length} contexts=${native.modelContexts.length} requests=${native.requests?.length ?? 0}`;
-          throw new Error(`Closed native execution omitted token usage evidence (${observed} receipt=${receipt.state} execution=${executionId ?? 'none'}${failure ? ` availability=${failure}` : ''})`);
-        }
-        if (!native.modelContexts.length) throw new Error('Closed native execution omitted model identity evidence');
-        if (!failure && trace?.status === 'completed' && incoming?.evidence.deferredDeliveryIds.length) {
-          blocked = 'awaiting-external-input';
-          throw new Error('Native execution completed; transport batch deliveries blocked awaiting external input');
-        }
-        if (incoming?.evidence.unresolvedDeliveryIds.length) throw new Error('Transport trial deliveries remain unresolved');
-        if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
-        if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
-          throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage));
-        }
-        status = 'completed';
       } catch (failure) {
         error = timedOut ? incoming && !incoming.evidence.deliveryId ? 'Transport delivery deadline exceeded: no matching delivery arrived'
           : 'Native trial deadline exceeded' : failure instanceof Error ? failure.message : String(failure);
         status = cancellation.signal.aborted && !timedOut ? 'cancelled' : 'failed';
         if (!blocked) await stop();
         try {
-          native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id, executionId, agent.engine.model!, others(), source);
+          native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id,
+            incoming ? undefined : executionId, agent.engine.model!, incoming ? [] : others(), source);
         } catch (collectionError) { blocked = undefined; await stop(); error += `; evidence collection failed: ${String(collectionError)}`; }
       } finally { clearTimeout(timer); incoming?.finish(); }
       const continuing = gate.finish(executionId, blocked === 'awaiting-external-input');

@@ -4,6 +4,7 @@ import { z } from 'zod';
 /** Daimon's documented environment contract; the optional runtime owns clocked child launches. */
 export const nativeTaskClockSchema = z.strictObject({
   origin: z.string().refine(validOrigin, 'Expected valid task clock ISO instant with Z or an explicit offset in UTC years 1970..9999'),
+  anchorEpochMs: z.number().int('Expected task clock anchorEpochMs to be a safe integer'),
   libfaketimePath: z.string().min(1).refine(value => !/[\s:\0]/u.test(value) &&
     /^libfaketime[^/]*\.so[^/]*$/u.test(posix.basename(value)), 'Expected a single libfaketime*.so* library path'),
 });
@@ -21,7 +22,8 @@ export interface NativeTaskClockEvidence {
  * Daimon derives tool-only FAKETIME and strips clocks from engine/auth launches.
  */
 export function configureNativeTaskClock(
-  taskClock: NativeTaskClock | undefined, environment: NodeJS.ProcessEnv = process.env, now: () => number = Date.now,
+  taskClock: NativeTaskClock | undefined, timeoutMs: number,
+  environment: NodeJS.ProcessEnv = process.env, now: () => number = Date.now,
 ): NativeTaskClockEvidence | undefined {
   if (taskClock === undefined) {
     delete environment.NOOPOLIS_TASK_CLOCK;
@@ -29,8 +31,14 @@ export function configureNativeTaskClock(
     return undefined;
   }
   const clock = nativeTaskClockSchema.parse(taskClock);
-  const anchorEpochMs = now();
-  if (!Number.isSafeInteger(anchorEpochMs)) throw new Error('Native task clock anchorEpochMs must be a safe integer');
+  const realNow = now();
+  if (!Number.isSafeInteger(realNow)) throw new Error('Native task clock validation requires a safe integer real timestamp');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('Native task clock requires a positive safe integer trial timeout');
+  const { anchorEpochMs } = clock;
+  // One caller-owned anchor synchronizes the transport and runtime. Permit only
+  // 1 s of clock skew; preparation cannot reuse a previous deadline window.
+  if (anchorEpochMs - realNow > 1000) throw new Error('Native task clock anchorEpochMs is more than 1000 ms in the future');
+  if (realNow - anchorEpochMs > timeoutMs) throw new Error('Native task clock anchorEpochMs is older than the trial deadline window');
   const evidence: NativeTaskClockEvidence = { version: 'noopolis.task-clock.v1', origin: clock.origin, anchorEpochMs };
   environment.NOOPOLIS_TASK_CLOCK = JSON.stringify(evidence);
   environment.LD_PRELOAD = clock.libfaketimePath;

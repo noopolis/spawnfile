@@ -10,7 +10,7 @@ const request: NativeWakeRequest = { agent_id: 'agent:writer', delivery_id: 'tri
 const accepted = { ...receiptFixture(), state: 'accepted' as const };
 const available = { version: 'availability', state: 'running', agents: [] };
 
-test('acceptances begun before arming and conflicting public identities cannot bind', async () => {
+test('acceptances begun before arming cannot bind', async () => {
   let resolve!: (value: NativeAcceptance) => void;
   const host = { accept: vi.fn(() => new Promise<NativeAcceptance>(done => { resolve = done; })) } as unknown as NativeHost;
   const transport = createTransportDelivery(host, 'agent:writer');
@@ -18,11 +18,36 @@ test('acceptances begun before arming and conflicting public identities cannot b
   const run = transport.begin('task', source);
   resolve(accepted); await early;
   expect(transport.state().state).toBe('waiting');
-  vi.mocked(host.accept).mockResolvedValue({ ...accepted, acceptance_id: 'other', agent_id: 'foreign' });
-  await transport.accept(request); expect(transport.state().state).toBe('waiting');
-  vi.mocked(host.accept).mockResolvedValue({ ...accepted, acceptance_id: 'new', delivery_id: 'foreign' });
-  await transport.accept(request); expect(transport.state().state).toBe('waiting');
   run.finish(); expect(transport.state()).toEqual({ state: 'idle' });
+});
+
+test.each(['agent_id', 'delivery_id'] as const)('a conflicting returned %s cannot bind a fresh delivery', async field => {
+  // Each conflict reaches an undecided queue, so deleting its identity check
+  // really does bind the forged acceptance and makes this test fail.
+  const host = { accept: vi.fn().mockResolvedValue({ ...accepted, [field]: 'foreign' }) } as unknown as NativeHost;
+  const transport = createTransportDelivery(host, 'agent:writer');
+  const run = transport.begin('task', source);
+  await transport.accept(request);
+  expect(host.accept).toHaveBeenCalledOnce();
+  expect(transport.state().state).toBe('waiting');
+  expect(run.evidence.deliveryId).toBeUndefined();
+  expect(run.evidence.deliveries).toEqual([]);
+  run.finish();
+});
+
+test('terminal sealing settles admission and requires an unchanged generation', async () => {
+  let resolve!: (value: NativeAcceptance) => void;
+  const transport = createTransportDelivery({ accept: () => new Promise<NativeAcceptance>(done => { resolve = done; }) } as unknown as NativeHost, 'agent:writer');
+  const run = transport.begin('task', source);
+  const before = run.generation();
+  const pending = transport.accept(request);
+  expect(run.seal(run.generation())).toBe(false); // Same generation, but still in flight.
+  resolve(accepted); await pending;
+  expect(run.seal(before)).toBe(false); // Settled, but evidence predates admission.
+  expect(run.evidence.unresolvedDeliveryIds).toEqual([request.delivery_id]);
+  expect(run.closed([])).toBe(false);
+  expect(run.seal(run.generation())).toBe(true);
+  expect(transport.state()).toEqual({ state: 'idle' });
 });
 
 test('rejections are forwarded and do not poison a later genuine acceptance', async () => {
@@ -36,6 +61,41 @@ test('rejections are forwarded and do not poison a later genuine acceptance', as
   expect(run.evidence.batch).toBeUndefined();
   expect(run.evidence.deliveries).toHaveLength(1);
   run.finish();
+});
+
+test('selected receipt identity cannot change after native acceptance', async () => {
+  const transport = createTransportDelivery({ accept: async () => accepted } as unknown as NativeHost, 'agent:writer');
+  const run = transport.begin('task', source);
+  await transport.accept(request);
+  expect(() => run.observe({ ...receiptFixture(), acceptance_id: 'foreign' }, activityFixture(), available)).toThrow('acceptance identity');
+  run.finish();
+});
+
+test('sealed runs refuse new admission, retain authentic retries, and reopen only on the next arm', async () => {
+  const host = { accept: vi.fn().mockResolvedValue(accepted) } as unknown as NativeHost;
+  const transport = createTransportDelivery(host, 'agent:writer');
+  const run = transport.begin('task', source);
+  await transport.accept(request);
+  expect(run.seal(run.generation())).toBe(true);
+  const next = { ...request, delivery_id: 'next' };
+  await expect(transport.accept(next)).rejects.toThrow('transport_admission_sealed');
+  expect(host.accept).toHaveBeenCalledTimes(1);
+  expect(await transport.accept(request)).toEqual(accepted);
+  expect(host.accept).toHaveBeenCalledTimes(2);
+  const current = transport.begin('next', { kind: 'transport', deliveryId: 'next' });
+  vi.mocked(host.accept).mockResolvedValue({ ...accepted, acceptance_id: 'new', delivery_id: 'next' });
+  await transport.accept(next);
+  expect(await current.accepted).toMatchObject({ delivery_id: 'next' });
+  current.finish();
+});
+
+test.each(['agent_id', 'delivery_id'] as const)('a mismatched native %s never earns an idempotent retry after sealing', async field => {
+  const host = { accept: vi.fn().mockResolvedValue({ ...accepted, [field]: 'foreign' }) } as unknown as NativeHost;
+  const transport = createTransportDelivery(host, 'agent:writer');
+  const run = transport.begin('task', source);
+  await transport.accept(request); run.finish();
+  await expect(transport.accept(request)).rejects.toThrow('transport_admission_sealed');
+  expect(host.accept).toHaveBeenCalledOnce();
 });
 
 test('a thrown persistence error before arming permits a genuine later retry', async () => {
@@ -96,5 +156,6 @@ test('an in-flight acceptance cannot move from an older armed run to its success
   old.finish(); const current = transport.begin('new', source);
   resolve(accepted); await arrival;
   expect(transport.state()).toMatchObject({ state: 'waiting', wakeId: 'new' });
+  expect(old.seal(old.generation())).toBe(false);
   current.finish();
 });

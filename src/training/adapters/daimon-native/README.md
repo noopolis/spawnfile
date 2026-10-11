@@ -77,7 +77,12 @@ For a low-level caller:
    `state` is `waiting` or `observing`; `idle` means no run is armed. Keep the POST
    open while observing.
 3. Publish on the real transport. Only matching acceptances received after arming
-   can bind; retries of earlier deliveries cannot become the new wake. The POST
+   can bind; retries of earlier deliveries cannot become the new wake. Terminal
+   sealing waits for in-flight admissions and repeats control/evidence reads if
+   admission changes during collection. Once sealed, new native identities get
+   HTTP 409 `{error: "transport_admission_sealed"}` before native admission until
+   the next run arms; retries of actually accepted identities still reach Daimon
+   for its own idempotency/conflict response. The POST
    returns terminal evidence, or a clear failure if the expected delivery never
    arrives before the real deadline.
 
@@ -88,23 +93,44 @@ is invoked only after the matching run is armed. Configure this alongside
 continuations keep the existing `id`, `text`, and content-hashed `source` evidence,
 and add `transport: {source, publish}`. That transport source must name an exact
 message ID. At most three continuations share the original deadline. Providers
-must honor cancellation and must not publish during preparation.
+must honor cancellation and must not publish during preparation. The shared real
+deadline stays active through terminal receipt, including after publication
+succeeds. Request/shutdown grace cannot turn late completion into success.
 
 Daimon owns inbox batching, dispositions, deferred items and clock projection.
-Evidence binds the real delivery ID and observed native execution, records all
-IDs from its active batch, original producer envelopes, deferred batch members,
-and a current availability budget with its observation time. A missed active batch
+Evidence keeps every selected delivery's receipt and execution history in
+`transport.selectedDeliveries`, every observed batch and its availability budget
+in `transport.batches`, and original producer envelopes in `transport.deliveries`.
+The legacy `batch` remains the primary delivery's batch. Transport `native`
+retains all trial execution traces and usage; every selected execution must have
+a completed trace, observed batch membership and usage before success. A missed active batch
 observation fails closed. `renderedAllowances: "unavailable-public-api"` is
 deliberate: the inspected runtime computes allowances when the model calls
 `daimon_inbox`; its public control API has no retained copy of that response.
 Polling availability cannot establish what the engine saw. Exact rendered-budget
 capture requires a public Daimon evidence export; Paideia does not recreate it.
 
-Optional receipt `taskClock: {origin, libfaketimePath}` selects an advancing task
+`POST /v2/wakes` uses Daimon's 1,048,576-byte body limit. The worker decodes JSON
+objects and applies the authenticated control token; `host.accept` owns schema
+validation and its structured rejection response while admission is open. A sealed
+run's lifecycle refusal takes precedence for all new identities. Native HTTP conformance tests
+require the optional `@noopolis/daimon/runtime` package to be installed; they use
+its real public parser/digest and rejection API, with a persistence double for
+accepted retries. Core runtime use does not require the optional package.
+
+Optional receipt `taskClock: {origin, anchorEpochMs, libfaketimePath}` selects an advancing task
 clock. `origin` must be an ISO instant with `Z` or an explicit offset, within UTC
-years 1970–9999. The image supplies one `libfaketime*.so*` library path. The running
-worker sets `NOOPOLIS_TASK_CLOCK` to `{version: "noopolis.task-clock.v1", origin,
-anchorEpochMs}` using real `Date.now()`, and supplies `LD_PRELOAD` for Daimon's
+years 1970–9999. Trial preparation must sample real `Date.now()` once and supply
+that safe-integer `anchorEpochMs` to both this receipt and the caller's Moltnet
+server/bridge clock contract. The worker preserves the caller anchor exactly;
+missing anchors are refused. At worker startup an anchor may be at most 1000 ms
+in the future (clock-skew tolerance) and at most `--timeout-ms` old (the trial
+deadline window), both inclusive. Prepare it near launch; an expired anchor fails
+instead of resetting the shared clock.
+
+The image supplies one `libfaketime*.so*` library path. The running worker sets
+`NOOPOLIS_TASK_CLOCK` to `{version: "noopolis.task-clock.v1", origin, anchorEpochMs}`
+unchanged from the caller's clock contract, and supplies `LD_PRELOAD` for Daimon's
 child gate before creating the host. Never preload the worker through its launch
 environment. Daimon and engines stay on real time; Daimon applies the advancing
 offset only to supported tool/MCP children. Ready and per-wake frames record the
@@ -112,6 +138,10 @@ origin and anchor; every Paideia timeout remains real. Omission unsets the clock
 environment. Supply a clock-capable Daimon runtime and, for brokered Grok, its
 attested clocked worker configuration. No generic public runtime capability marker
 currently proves clock support; live container verification remains required.
+The inspected Daimon package does not publicly export its
+`realTimeProcessEnvironment` stripping helper. Paideia's startup tests therefore
+verify the installed contract and retained anchor, not downstream engine clock
+stripping; that private behavior needs Daimon's own tests and live verification.
 
 Producer delivery timestamps must remain real UTC milliseconds; Daimon shifts
 them once at dispatch. Historical dates inside text remain unchanged. This

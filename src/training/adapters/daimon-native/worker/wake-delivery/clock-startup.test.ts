@@ -10,7 +10,10 @@ import type { NativeConfig, NativeHost } from '../types.js';
 
 const clock = { origin: '2001-01-01T12:30:00+02:00', libfaketimePath: '/usr/lib/faketime/libfaketime.so.1' };
 
-test.each([true, false])('worker installs task-clock contract before host creation and emits only declared evidence (enabled=%s)', async enabled => {
+// Daimon's realTimeProcessEnvironment is private: its public package exports no
+// stripping helper. This verifies Paideia startup, not downstream engine launches.
+test.each(['enabled', 'disabled', 'future', 'expired'] as const)(
+  'worker validates the caller anchor before host creation and emits it unchanged (%s)', async mode => {
   const f = await launchFixture();
   const platform = process.platform, environment = { ...process.env }, exitCode = process.exitCode;
   const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -24,9 +27,10 @@ test.each([true, false])('worker installs task-clock contract before host creati
   }) as typeof process.once);
   let created: { realNow: number; clock: string | undefined; preload: string | undefined } | undefined;
   let stopped = false;
+  let stopCalls = 0;
   const host = {
     start: async () => undefined,
-    stop: async () => { stopped = true; return {}; },
+    stop: async () => { stopCalls++; stopped = true; return {}; },
     health: async () => ({ version: 'noopolis.daimon.organization-runtime-health.v1', state: 'running', agents: [] }),
     activityV2: async () => ({ version: 'native-unit', items: [], executions: [] }),
   } as unknown as NativeHost;
@@ -45,7 +49,9 @@ test.each([true, false])('worker installs task-clock contract before host creati
     Object.defineProperty(process, 'platform', { value: 'linux' });
     process.env.NOOPOLIS_TASK_CLOCK = 'stale clock must not reach the host';
     process.env.LD_PRELOAD = '/stale/libfaketime.so.1';
-    if (enabled) f.launch.taskClock = clock;
+    const anchorEpochMs = Date.now() + (mode === 'future' ? 10_000 : mode === 'expired' ? -6000 : -2000);
+    if (mode !== 'disabled') f.launch.taskClock = { ...clock, anchorEpochMs };
+    if (mode === 'enabled') f.launch.delivery = 'transport';
     const config = configFixture(f.root);
     f.launch.host.port = config.host.port;
     f.launch.workspace.target = config.agents[0]!.workspacePath;
@@ -56,21 +62,27 @@ test.each([true, false])('worker installs task-clock contract before host creati
     await writeFile(f.launch.config, bytes);
     await f.save();
     const before = Date.now();
-    await runDaimonNativeWorker(['--launch', f.launch.receiptFile, '--config', f.launch.config,
+    const starting = runDaimonNativeWorker(['--launch', f.launch.receiptFile, '--config', f.launch.config,
       '--config-sha256', f.launch.configSha256, '--control-root', f.launch.controlRoot,
       '--token-file', f.launch.tokenFile, '--evidence', join(f.launch.controlRoot, 'evidence'),
       '--trial-id', 'unit-clock-startup', '--timeout-ms', '5000', '--schedule-override', 'disabled']);
+    if (mode === 'future' || mode === 'expired') {
+      await expect(starting).rejects.toThrow(mode === 'future' ? 'more than 1000 ms in the future' : 'older than the trial deadline window');
+      expect(created).toBeUndefined();
+      expect(listen).not.toHaveBeenCalled();
+      return;
+    }
+    await starting;
     expect(created).toBeDefined();
     const readyLine = stdout.mock.calls.map(([value]) => String(value)).find(value => value.includes('paideia.daimon-native.ready.v1'));
     expect(readyLine).toBeDefined();
-    const ready = JSON.parse(readyLine!) as { taskClock?: NativeTaskClockEvidence };
-    if (enabled) {
-      expect(ready.taskClock).toEqual({ version: 'noopolis.task-clock.v1', origin: clock.origin, anchorEpochMs: expect.any(Number) });
-      expect(ready.taskClock!.anchorEpochMs).toBeGreaterThanOrEqual(before);
-      expect(ready.taskClock!.anchorEpochMs).toBeLessThanOrEqual(created!.realNow);
+    const ready = JSON.parse(readyLine!) as { taskClock?: NativeTaskClockEvidence; delivery?: string };
+    if (mode === 'enabled') {
+      expect(ready.taskClock).toEqual({ version: 'noopolis.task-clock.v1', origin: clock.origin, anchorEpochMs });
       expect(created!.clock).toBe(JSON.stringify(ready.taskClock));
       expect(created!.preload).toBe(clock.libfaketimePath);
       expect(ready.taskClock).not.toHaveProperty('libfaketimePath');
+      expect(ready.delivery).toBe('transport');
     } else {
       expect(ready).not.toHaveProperty('taskClock');
       expect(created!.clock).toBeUndefined();
@@ -79,9 +91,10 @@ test.each([true, false])('worker installs task-clock contract before host creati
     expect(created!.realNow).toBeGreaterThanOrEqual(before);
     expect(process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS).toBe('5000');
     expect(listen).toHaveBeenCalledWith(expect.anything(), '127.0.0.1', config.host.port);
-    handlers[0]!();
+    handlers[0]!(); handlers[0]!();
     await vi.waitFor(() => expect(stdout.mock.calls.some(([value]) => String(value).includes('paideia.daimon-native.stop.v1'))).toBe(true));
     expect(stopped).toBe(true);
+    expect(stopCalls).toBe(1);
   } finally {
     if (handlers.length && !stopped) {
       handlers[0]!();

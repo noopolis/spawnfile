@@ -5,7 +5,9 @@ import { grokLaunchFrom } from '../grok-fixtures.js';
 import { parseNativeLaunch } from './schema.js';
 import { configureNativeTaskClock, nativeTaskClockSchema } from './task-clock.js';
 
-const clock = { origin: '2024-02-29T12:00:00+02:00', libfaketimePath: '/usr/lib/faketime/libfaketime.so.1' };
+const clock = { origin: '2024-02-29T12:00:00+02:00', anchorEpochMs: 1_800_000_000_123,
+  libfaketimePath: '/usr/lib/faketime/libfaketime.so.1' };
+const timeoutMs = 5000;
 afterEach(() => vi.unstubAllEnvs());
 
 test('existing receipts preserve their exact shape while direct/transport and a task clock are opt-in for both engines', async () => {
@@ -48,7 +50,7 @@ test('invalid origins fail closed before changing environment', () => {
     '2024-01-32T00:00:00Z', '1969-12-31T23:59:59.999Z', '1970-01-01T00:00:00+00:01',
     '9999-12-31T23:59:59-00:01', '10000-01-01T00:00:00Z', '2024-02-29T12:00:00+24:00']) {
     const env = { UNRELATED: 'retained' };
-    expect(() => configureNativeTaskClock({ ...clock, origin }, env)).toThrow('task clock ISO instant');
+    expect(() => configureNativeTaskClock({ ...clock, origin }, timeoutMs, env, () => clock.anchorEpochMs)).toThrow('task clock ISO instant');
     expect(env).toEqual({ UNRELATED: 'retained' });
   }
 });
@@ -58,23 +60,60 @@ test('invalid preload names, loader lists and unknown clock fields fail closed',
     '/tmp/libfaketime.so.1:/tmp/other.so', 'libfaketime.so.1 libother.so', 'libfaketime.so.1:libfaketimeMT.so.1',
     '/tmp/libfaketime.so.1\0ignored', '/tmp/libfaketime.so.1\n']) {
     const env = {};
-    expect(() => configureNativeTaskClock({ ...clock, libfaketimePath }, env)).toThrow();
+    expect(() => configureNativeTaskClock({ ...clock, libfaketimePath }, timeoutMs, env, () => clock.anchorEpochMs)).toThrow('libfaketime');
     expect(env).toEqual({});
   }
-  for (const value of [null, [], {}, { origin: clock.origin }, { ...clock, anchorEpochMs: 42 },
+  for (const value of [null, [], {}, { origin: clock.origin },
     { ...clock, version: 'noopolis.task-clock.v1' }]) expect(() => nativeTaskClockSchema.parse(value)).toThrow();
 });
 
-test('clock environment contains exact version/origin/real anchor and no derived clock controls', () => {
+test('task clock requires a caller-supplied safe-integer anchor', async () => {
+  const f = await launchFixture();
+  try {
+    const { receiptFile: _, ...launch } = f.launch;
+    const { anchorEpochMs: __, ...missing } = clock;
+    expect(() => parseNativeLaunch({ ...launch, taskClock: missing })).toThrow('anchorEpochMs');
+    for (const anchorEpochMs of [undefined, null, '1800000000123', NaN, Infinity, -Infinity, 1.5,
+      Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1]) {
+      expect(() => parseNativeLaunch({ ...launch, taskClock: { ...clock, anchorEpochMs } })).toThrow('anchorEpochMs');
+    }
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('clock environment retains the exact caller anchor instead of minting one at startup', () => {
   const env: NodeJS.ProcessEnv = { PATH: '/bin', LD_PRELOAD: '/stale.so', NOOPOLIS_TASK_CLOCK: 'stale' };
-  const anchorEpochMs = 1_800_000_000_123;
-  const evidence = configureNativeTaskClock(clock, env, () => anchorEpochMs);
+  const { anchorEpochMs } = clock;
+  const evidence = configureNativeTaskClock(clock, timeoutMs, env, () => anchorEpochMs + 1234);
   expect(evidence).toEqual({ version: 'noopolis.task-clock.v1', origin: clock.origin, anchorEpochMs });
   expect(env).toEqual({ PATH: '/bin', LD_PRELOAD: clock.libfaketimePath,
     NOOPOLIS_TASK_CLOCK: '{"version":"noopolis.task-clock.v1","origin":"2024-02-29T12:00:00+02:00","anchorEpochMs":1800000000123}' });
+});
+
+test('anchor freshness admits inclusive deadline and one-second future boundaries', () => {
+  for (const elapsedMs of [-1000, 0, timeoutMs]) {
+    const evidence = configureNativeTaskClock(clock, timeoutMs, {}, () => clock.anchorEpochMs + elapsedMs);
+    expect(evidence!.anchorEpochMs).toBe(clock.anchorEpochMs);
+  }
+});
+
+test('future or expired anchors are refused before environment mutation', () => {
+  for (const [elapsedMs, reason] of [[-1001, 'more than 1000 ms in the future'],
+    [timeoutMs + 1, 'older than the trial deadline window']] as const) {
+    const env = { NOOPOLIS_TASK_CLOCK: 'original', LD_PRELOAD: '/original.so' };
+    expect(() => configureNativeTaskClock(clock, timeoutMs, env, () => clock.anchorEpochMs + elapsedMs)).toThrow(reason);
+    expect(env).toEqual({ NOOPOLIS_TASK_CLOCK: 'original', LD_PRELOAD: '/original.so' });
+  }
+});
+
+test('invalid real clocks and trial windows cannot bypass anchor freshness validation', () => {
   for (const invalid of [NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
     const unchanged = {};
-    expect(() => configureNativeTaskClock(clock, unchanged, () => invalid)).toThrow('anchorEpochMs must be a safe integer');
+    expect(() => configureNativeTaskClock(clock, timeoutMs, unchanged, () => invalid)).toThrow('safe integer real timestamp');
+    expect(unchanged).toEqual({});
+  }
+  for (const invalid of [NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1, 0, -1]) {
+    const unchanged = {};
+    expect(() => configureNativeTaskClock(clock, invalid, unchanged, () => clock.anchorEpochMs)).toThrow('positive safe integer trial timeout');
     expect(unchanged).toEqual({});
   }
 });
@@ -82,23 +121,23 @@ test('clock environment contains exact version/origin/real anchor and no derived
 test('absent clock unsets contract values without sampling an anchor', () => {
   const env: NodeJS.ProcessEnv = { PATH: '/bin', LD_PRELOAD: clock.libfaketimePath, NOOPOLIS_TASK_CLOCK: 'stale' };
   const now = vi.fn(() => 42);
-  expect(configureNativeTaskClock(undefined, env, now)).toBeUndefined();
+  expect(configureNativeTaskClock(undefined, timeoutMs, env, now)).toBeUndefined();
   expect(env).toEqual({ PATH: '/bin' });
   expect(now).not.toHaveBeenCalled();
 });
 
-test('default environment configuration samples the current real clock without shifting this worker', () => {
+test('default environment configuration retains a supplied anchor without shifting this worker', () => {
   vi.stubEnv('NOOPOLIS_TASK_CLOCK', undefined);
   vi.stubEnv('LD_PRELOAD', undefined);
   const before = Date.now();
-  const evidence = configureNativeTaskClock(clock)!;
+  const declared = { ...clock, anchorEpochMs: before - 2000 };
+  const evidence = configureNativeTaskClock(declared, timeoutMs)!;
   const after = Date.now();
-  expect(evidence.anchorEpochMs).toBeGreaterThanOrEqual(before);
-  expect(evidence.anchorEpochMs).toBeLessThanOrEqual(after);
+  expect(evidence.anchorEpochMs).toBe(declared.anchorEpochMs);
   expect(after - before).toBeLessThan(1000);
   expect(JSON.parse(process.env.NOOPOLIS_TASK_CLOCK!)).toEqual(evidence);
   expect(process.env.LD_PRELOAD).toBe(clock.libfaketimePath);
-  configureNativeTaskClock(undefined);
+  configureNativeTaskClock(undefined, timeoutMs);
   expect(process.env.NOOPOLIS_TASK_CLOCK).toBeUndefined();
   expect(process.env.LD_PRELOAD).toBeUndefined();
 });

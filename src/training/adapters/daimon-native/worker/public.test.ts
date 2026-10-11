@@ -14,10 +14,7 @@ test('optional native package is loaded only through its public runtime contract
   vi.doMock('@noopolis/daimon/runtime', () => ({ parseOrganizationRuntimeConfig, createOrganizationRuntimeControlHost,
     resolveOrganizationCodexSandboxProjection: vi.fn(), parseWakeAcceptanceRequest: undefined }));
   expect((await loadDaimonRuntime()).createOrganizationRuntimeControlHost).toBe(createOrganizationRuntimeControlHost);
-  await expect(loadDaimonRuntime('codex', 'transport')).rejects.toThrow('public transport wake parser');
-  vi.doMock('@noopolis/daimon/runtime', () => ({ parseOrganizationRuntimeConfig, createOrganizationRuntimeControlHost,
-    resolveOrganizationCodexSandboxProjection: vi.fn(), parseWakeAcceptanceRequest: vi.fn() }));
-  expect(typeof (await loadDaimonRuntime('codex', 'transport')).parseWakeAcceptanceRequest).toBe('function');
+  expect((await loadDaimonRuntime('codex', 'transport')).createOrganizationRuntimeControlHost).toBe(createOrganizationRuntimeControlHost);
   const grok = { resolveOrganizationGrokBrokerProjection: vi.fn(), grokBrokerProjectionSha256: vi.fn(), verifyGrokSlotPreflightReceipt: vi.fn() };
   for (const missing of Object.keys(grok)) {
     vi.doMock('@noopolis/daimon/runtime', () => ({ parseOrganizationRuntimeConfig, createOrganizationRuntimeControlHost, ...grok, [missing]: undefined }));

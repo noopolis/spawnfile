@@ -37,6 +37,7 @@ export async function boundedTransportCall<T>(callback: (signal: AbortSignal) =>
   try {
     const value = await Promise.race([callback(controller.signal), interrupted]);
     if (signal.aborted) throw new Error('Transport delivery cancelled');
+    if (Date.now() >= deadline) throw new Error('Native trial deadline exceeded awaiting transport delivery');
     return value;
   } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); controller.abort(); }
 }
@@ -65,14 +66,14 @@ export function transportTerminalBinding(value: TerminalEvidence, source: Transp
 /** Start observation, prove the matching run is armed, then let the provider publish. */
 export async function requestTransportDelivery(request: NativeWorkerRequest, body: { wakeId: string; source: TransportDeliverySource },
   delivery: PreparedTransportDelivery, deadline: number, signal: AbortSignal): Promise<TerminalEvidence> {
-  const cancellation = new AbortController();
-  const combined = AbortSignal.any([signal, cancellation.signal]);
-  let settled = false;
-  const terminal = request<TerminalEvidence>('/trial/run', body, Math.max(1, deadline - Date.now()) + 8000, combined)
-    .finally(() => { settled = true; });
-  try {
+  // Keep the same real deadline through terminal receipt. The socket's grace is
+  // only an infrastructure bound; it never grants the subject more working time.
+  return boundedTransportCall(async bound => {
+    let settled = false;
+    const terminal = request<TerminalEvidence>('/trial/run', body, Math.max(1, deadline - Date.now()) + 8000, bound)
+      .finally(() => { settled = true; });
     let publishing = false;
-    const publish = boundedTransportCall(async bound => {
+    const publish = (async () => {
       for (;;) {
         const status = await request<{ state: string; wakeId?: string; source?: TransportDeliverySource }>(
           '/trial/run', undefined, Math.max(1, deadline - Date.now()), bound);
@@ -83,10 +84,10 @@ export async function requestTransportDelivery(request: NativeWorkerRequest, bod
       bound.throwIfAborted();
       publishing = true;
       await delivery.publish(bound);
-    }, deadline, combined);
+    })();
     // A rejected run never publishes; a provider failure aborts the owned request.
     await Promise.race([publish, terminal]);
     if (publishing) await publish;
     return await terminal;
-  } finally { cancellation.abort(); }
+  }, deadline, signal);
 }

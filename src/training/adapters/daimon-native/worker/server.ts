@@ -2,10 +2,9 @@ import type { DeliveryControls } from './deliveries.js';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { WorkerController } from './control.js';
-import { parseTransportSource, type NativeWakeRequest } from './wake-delivery/index.js';
+import { parseTransportSource, TransportAdmissionClosedError } from './wake-delivery/index.js';
 
-export function createWorkerServer(controller: WorkerController, token: string, parseWake?: (value: unknown) => NativeWakeRequest): Server {
-  if (controller.transport && !parseWake) throw new Error('Transport delivery requires Daimon public wake parsing');
+export function createWorkerServer(controller: WorkerController, token: string): Server {
   const authenticated = (request: IncomingMessage): boolean => {
     const hash = (value: string) => createHash('sha256').update(value).digest();
     return timingSafeEqual(hash(request.headers.authorization ?? ''), hash(`Bearer ${token}`));
@@ -38,10 +37,10 @@ export function createWorkerServer(controller: WorkerController, token: string, 
         return reply(response, 200, controller.transport.state());
       }
       if (controller.transport && request.method === 'POST' && url.pathname === '/v2/wakes') {
-        if (request.headers['content-type'] !== 'application/json') return reply(response, 400, { error: 'content_type_required' });
-        const value = await body(request, 65_536);
-        const parsed = parseWake!({ ...value, token });
-        const result = await controller.transport.accept(parsed);
+        if (request.headers['content-type'] !== 'application/json') return reply(response, 400, { error: 'content-type must be application/json' });
+        const value = await body(request, 1_048_576, { bound: 'request body is too large', object: 'request body must be an object' });
+        // Daimon's host owns schema rejection and its structured acceptance body.
+        const result = await controller.transport.accept({ ...value, token });
         const status = result.state === 'accepted' ? 202 : result.state === 'stopped' ? 409
           : result.code === 'invalid_request' ? 400 : result.code === 'unauthorized' ? 401 : 409;
         return reply(response, status, result);
@@ -61,7 +60,8 @@ export function createWorkerServer(controller: WorkerController, token: string, 
         finally { response.removeListener('close', abandoned); }
       }
       return reply(response, 404, { error: 'not_found' });
-    })().catch(error => reply(response, 400, { error: error instanceof Error ? error.message : 'worker_request_failed' }));
+    })().catch(error => reply(response, error instanceof TransportAdmissionClosedError ? 409 : 400,
+      { error: error instanceof Error ? error.message : 'worker_request_failed' }));
   });
   server.requestTimeout = 30_000;
   server.headersTimeout = 10_000;
@@ -81,16 +81,17 @@ function reply(response: ServerResponse, status: number, value: unknown): void {
   response.end(`${JSON.stringify(value)}\n`);
 }
 
-async function body(request: IncomingMessage, maximum = 32_768): Promise<Record<string, unknown>> {
+async function body(request: IncomingMessage, maximum = 32_768,
+  errors = { bound: 'Worker request body exceeds its bound', object: 'Worker request must be an object' }): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
     const bytes = Buffer.from(chunk as Uint8Array);
     size += bytes.length;
-    if (size > maximum) throw new Error('Worker request body exceeds its bound');
+    if (size > maximum) throw new Error(errors.bound);
     chunks.push(bytes);
   }
   const value: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Worker request must be an object');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(errors.object);
   return value as Record<string, unknown>;
 }

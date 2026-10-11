@@ -1,3 +1,5 @@
+import type { NativeReceipt } from '../types.js';
+
 export type TransportDeliverySource = { kind: 'transport'; deliveryId: string; deliveryIdPrefix?: never }
   | { kind: 'transport'; deliveryIdPrefix: string; deliveryId?: never };
 
@@ -23,6 +25,11 @@ export interface TransportEvidence {
   deliveries: { acceptanceId: string; deliveryId: string; event: NativeWakeRequest['event'] }[];
   /** Complete only when the public active execution projection was observed. */
   batch?: { executionId: string; deliveryIds: string[]; observedAt: string };
+  /** Every selected delivery, including peers without a route-observed envelope. */
+  selectedDeliveries?: { deliveryId: string; executionIds: string[]; receipt?: NativeReceipt }[];
+  /** All observed executions of selected deliveries, including deferred revisits. */
+  batches?: { executionId: string; deliveryIds: string[]; observedAt: string;
+    allowances?: { source: 'availability'; observedAt: string; budget: unknown } }[];
   deferredDeliveryIds: string[];
   /** Selected across this trial's wakes; later input cannot erase unfinished work. */
   unresolvedDeliveryIds: string[];
