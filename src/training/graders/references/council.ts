@@ -56,7 +56,7 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
   const invoke = async (teacher: CouncilTeacher, batch: CheckInstance[], competing?: Record<string, TeacherAnswer[]>, run?: number) => {
     options.signal?.throwIfAborted();
     const prompt = councilPrompt(batch, competing);
-    const id = stableDigest([identity, teacher.id, prompt.digest, batch.map(instance => instance.id), run ?? null]);
+    const id = stableDigest([identity, teacher.id, prompt.digest, batch.map(instance => ({ id: instance.id, unit: instance.unit_id, template: instance.template_id, state: instance.digest })), run ?? null]);
     const existing = calls.findLast(call => call.id === id && ['received', 'completed'].includes(call.outcome));
     if (existing && existing.outcome !== 'received') return existing.answers ?? null;
     if (!existing && teacher.provider === 'grok' && !grokWindowOpen(options.now ?? new Date(), window)) {

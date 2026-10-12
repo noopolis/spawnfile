@@ -23,13 +23,13 @@ async function prepared() {
 it('generates deterministic traps and scores council references with checkpoint resume and markdown report', async () => {
   const f = await prepared();
   const result = await runTraps(f.traps);
-  expect(result.generated).toBe(2);
+  expect(result.generated).toBe(1);
   expect(await runTraps(f.traps)).toEqual(result);
   const reference = await runReference(f.reference, f.dependencies);
-  expect(reference).toMatchObject({ gate: 'STOP', outputs: 3, knownAnswer: { total: 0, correct: 0, accuracy: null }, diagnostic: { total: 1, correct: 1, accuracy: 1 }, consistency: { total: 1, correct: 1 } });
+  expect(reference).toMatchObject({ gate: 'STOP', outputs: 2, knownAnswer: { total: 0, correct: 0, accuracy: null }, diagnostic: { total: 0, correct: 0, accuracy: null }, consistency: { total: 1, correct: 1 } });
   const artifact = JSON.parse(await readFile(f.reference.out, 'utf8'));
   expect(artifact).toMatchObject({ schema: 'paideia.references.v1', digest: expect.any(String) });
-  expect(Object.values(artifact.outputs)).toHaveLength(3);
+  expect(Object.values(artifact.outputs)).toHaveLength(2);
   expect(await readFile(reference.reportFile, 'utf8')).toContain('Council references: STOP');
   expect(await readFile(reference.reportFile, 'utf8')).toContain('codex: 100.00% agreement');
   const calls = f.generate.mock.calls.length;
@@ -54,7 +54,7 @@ it('reports failing traps/templates and retains missing council answers as failu
     model: request.model, route: 'subscription', usage: null }));
   const result = await runReference(f.reference, f.dependencies);
   expect(result.gate).toBe('STOP');
-  expect(await readFile(result.reportFile, 'utf8')).toContain('WARNING: number-substitution: known_answer coerced to diagnostic');
+  expect(await readFile(result.reportFile, 'utf8')).not.toContain('WARNING:');
   expect(await readFile(result.reportFile, 'utf8')).toContain('DIAGNOSTIC accuracy by template');
 });
 
@@ -98,7 +98,7 @@ it('writes empty trap artifacts and counts discarded mutations', async () => {
   const f = await fixture();
   f.unit.text = 'Alice reported items.';
   f.unit.fields.quantity = '';
-  f.templates.templates[0]!.traps = { 'number-substitution': 'unsupported' } as typeof f.templates.templates[0]['traps'];
+  f.templates.templates[0]!.traps = { 'injected-redundancy': 'unsupported' } as typeof f.templates.templates[0]['traps'];
   await writeFile(join(f.root, 'output.json'), JSON.stringify({ body: [`${f.unit.text} [A1]`] }));
   await writeFile(f.templatesFile, JSON.stringify(f.templates));
   await runDecompose(f.decompose, f.dependencies);
@@ -180,7 +180,7 @@ it('does not call or count unaffected duplicate checks in trap variants', async 
   const artifact = JSON.parse(await readFile(result.file, 'utf8'));
   const outputs = Object.entries(artifact.outputs) as [string, { checks: Record<string, unknown> }][];
   expect(outputs.filter(([key]) => key.includes(':')).map(([, output]) => Object.keys(output.checks)))
-    .toEqual([['support@x1'], ['support@x1']]);
+    .toEqual([['support@x1']]);
   expect(outputs.find(([key]) => !key.includes(':'))![1].checks).toHaveProperty('other@x1');
 });
 

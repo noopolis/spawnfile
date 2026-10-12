@@ -1,23 +1,18 @@
 import { stableDigest, sha256 } from '../format/index.js';
 import { instantiateChecks, trapDeclaration, normalizeWhitespace, trapKinds, validateDecomposition } from '../decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs, TrapKind } from '../decomposition/index.js';
-import { mutationFor, replaceLeaf, replaceNumber } from './mutations.js';
+import { mutationFor, replaceLeaf } from './mutations.js';
 import { validateTrap } from './validation.js';
 import type { Trap, TrapSet } from './types.js';
 
-function variantDocument(document: Decomposition, unit: AtomicUnit, kind: TrapKind, source: string, replacement: string,
-  before?: string, after?: string): Decomposition {
+function variantDocument(document: Decomposition, kind: TrapKind, source: string, replacement: string): Decomposition {
   if (kind === 'injected-redundancy' || kind === 'option-permutation') return structuredClone(document);
   function transform(item: AtomicUnit): AtomicUnit {
     const text = normalizeWhitespace(item.text).replace(normalizeWhitespace(source), normalizeWhitespace(replacement));
-    const cites = kind === 'citation-swap' && item.cites && (item.id === unit.id || text !== normalizeWhitespace(item.text))
-      ? item.cites.map(id => id === before ? after! : id) : item.cites;
     const changed = text !== normalizeWhitespace(item.text);
-    const fields = changed && before && after && item.fields ? Object.fromEntries(Object.entries(item.fields)
-      .map(([key, value]) => [key, kind === 'number-substitution' ? replaceNumber(value!, before, after) : value?.replaceAll(before, after)])) : item.fields;
     const source_span = changed ? undefined : item.source_span;
     const { source_span: _span, ...rest } = item;
-    return { ...rest, text, ...(cites ? { cites } : {}), ...(fields ? { fields } : {}),
+    return { ...rest, text,
       ...(source_span === undefined ? {} : { source_span }) };
   }
   return { ...document, units: document.units.map(transform), ...(document.audit
@@ -49,8 +44,7 @@ export function generateTraps(templates: CheckTemplates, document: Decomposition
         : mutationFor(kind, unit, document, inputs, templates, seed);
       if (!mutation) { discard('no unambiguous eligible mutation'); continue; }
       const output = permutation ? structuredClone(inputs.output) : replaceLeaf(inputs.output, mutation.path, mutation.after);
-      let decomposition = variantDocument(document, unit, kind, mutation.source, mutation.replacement,
-        mutation.value_before, mutation.value_after);
+      let decomposition = variantDocument(document, kind, mutation.source, mutation.replacement);
       decomposition.output = { from: 'embedded-output.json', sha256: sha256(JSON.stringify(output)) };
       const invalid = validateDecomposition(decomposition, { ...inputs, output }, templates);
       if (invalid.rejected.length) { discard('mutation invalidated another extracted span'); continue; }

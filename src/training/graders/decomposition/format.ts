@@ -1,8 +1,7 @@
 import { z } from 'zod';
 import { identifier, parseSchema, parseYaml, rowsSchema } from '../format/index.js';
 
-export const trapKinds = ['number-substitution', 'entity-substitution', 'negation-flip', 'citation-swap',
-  'injected-redundancy', 'format-paraphrase', 'option-permutation'] as const;
+export const trapKinds = ['injected-redundancy', 'format-paraphrase', 'option-permutation'] as const;
 export type TrapKind = typeof trapKinds[number];
 const id = identifier.refine(value => !value.includes('@'), '@ is reserved for check IDs');
 const reference = z.strictObject({ from: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/) });

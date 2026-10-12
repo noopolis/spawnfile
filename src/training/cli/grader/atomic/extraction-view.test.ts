@@ -20,12 +20,12 @@ it('allowlists both extraction and audit prompts, retaining declarations but no 
     templates: [{ ...f.templates.templates[0], id: 'SECRET_ID', instructions: 'SECRET_INSTRUCTIONS',
       criteria: { SECRET_YES: 'SECRET_CRITERION', SECRET_NO: 'SECRET_OTHER_CRITERION' },
       expected: ['SECRET_YES'], dimension: 'SECRET_DIMENSION', severity: 'critical',
-      traps: { 'number-substitution': 'SECRET_NO' }, locations: ['body'],
+      traps: { 'injected-redundancy': 'SECRET_NO' }, locations: ['body'],
       when: { field: 'quantity', equals: 'SECRET_CONDITION_VALUE' } }] }));
   await runDecompose(f.decompose, f.dependencies);
   expect(f.generate).toHaveBeenCalledTimes(2);
   for (const [request] of f.generate.mock.calls) {
-    expect(request.prompt).not.toMatch(/SECRET_|expected|criteria|traps|dimension|severity|instructions|number-substitution/);
+    expect(request.prompt).not.toMatch(/SECRET_|expected|criteria|traps|dimension|severity|instructions|injected-redundancy/);
     expect(JSON.parse(request.prompt)).toMatchObject({
       kinds: ['claim'], kind_descriptions: { claim: 'Factual assertion' },
       templates: [{ applies_to: 'claim', locations: ['body'], when: { field: 'quantity' } }],
@@ -47,7 +47,7 @@ it.each(['expected', 'criteria', 'traps', 'instructions', 'dimension', 'severity
   switch (field) {
     case 'expected': template.expected = ['unsupported']; break;
     case 'criteria': template.criteria.supported = 'Different grading criterion'; break;
-    case 'traps': template.traps!['number-substitution'] = { answer: 'supported', known_answer: false }; break;
+    case 'traps': template.traps!['injected-redundancy'] = { answer: 'supported', known_answer: false }; break;
     case 'instructions': template.instructions = 'Different grading instruction'; break;
     case 'dimension': template.dimension = 'different'; break;
     case 'severity': template.severity = 'minor'; break;
@@ -76,7 +76,7 @@ it('reuses extraction after an audit failure and grading-only edits', async () =
   const before = (await checkpoint(f)).value;
   await writeFile(f.templatesFile, stringify({ ...f.templates, templates: [{ ...f.templates.templates[0],
     expected: ['unsupported'], criteria: { supported: 'New rubric', unsupported: 'New negative rubric' },
-    traps: { 'number-substitution': 'supported' } }] }));
+    traps: { 'injected-redundancy': 'supported' } }] }));
   expect(await runDecompose(f.decompose, f.dependencies)).toMatchObject({ completed: 1 });
   const after = (await checkpoint(f)).value;
   expect(after.identity).toBe(before.identity);

@@ -123,11 +123,11 @@ it('drains in-flight teachers after a checkpoint failure and starts no more batc
   for (const provider of Object.values(options.providers)) expect(provider.generate).toHaveBeenCalledTimes(1);
 });
 
-it('pins batch size and the v6 protocol and refuses v5 checkpoint reuse', async () => {
+it('pins batch size and the v7 protocol and refuses v6 checkpoint reuse', async () => {
   const options = setup(1), result = await runCouncil(options);
-  expect(councilPromptVersion).toBe('paideia.council.v6');
+  expect(councilPromptVersion).toBe('paideia.council.v7');
   await expect(runCouncil({ ...options, previous: result, batchSize: 1 })).rejects.toThrow('Stale');
-  const identity = stableDigest({ version: 'paideia.council.v5', output: options.outputDigest,
+  const identity = stableDigest({ version: 'paideia.council.v6', output: options.outputDigest,
     instances: options.instances, teachers: options.teachers, batchSize: 40, adjudicator: 'c', window: defaultGrokWindow,
     windowOpen: false, active: ['c', 'a'], seed: 'paideia.council', timeoutMs: 120_000 });
   const { digest: _digest, ...old } = { ...result, identity };
@@ -173,3 +173,31 @@ it.each([false, true])('keeps identical batches bound to their check IDs across 
   expect(options.providers.a!.generate).toHaveBeenCalledTimes(3);
   expect(options.providers.c!.generate).toHaveBeenCalledTimes(disputed ? 9 : 3);
 });
+
+it.each(['unit_id', 'template_id', 'digest', 'projection', 'status'] as const)(
+  'refuses resume when full check identity changes: %s', async field => {
+    const options = setup(2);
+    options.instances = options.instances.map(i => ({ ...i, instructions: 'Supported?', projection: { text: 'Same evidence' } }));
+    const result = await runCouncil(options);
+    const instances = structuredClone(options.instances);
+    Object.assign(instances[0]!, { [field]: field === 'projection' ? { text: 'New state' } : field === 'status' ? 'missing' : 'changed' });
+    await expect(runCouncil({ ...options, instances, previous: result })).rejects.toThrow('Stale');
+    for (const provider of Object.values(options.providers)) expect(provider.generate).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each(['unit_id', 'template_id', 'digest'] as const)(
+  'gives identical prompts distinct call identities when %s changes', async field => {
+    const options = setup(1);
+    const original = await runCouncil(options);
+    const instances = structuredClone(options.instances);
+    instances[0]![field] = 'changed';
+    const changed = await runCouncil({ ...options, instances });
+    expect(changed.calls.map(call => call.prompt_digest)).toEqual(original.calls.map(call => call.prompt_digest));
+    for (const call of changed.calls) {
+      expect(original.calls.some(previous => previous.id === call.id)).toBe(false);
+      expect(call.answers).toEqual({ 'check-0': { answer: 'yes' } });
+    }
+    for (const provider of Object.values(options.providers)) expect(provider.generate).toHaveBeenCalledTimes(2);
+  },
+);

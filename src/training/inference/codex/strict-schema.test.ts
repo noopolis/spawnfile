@@ -66,13 +66,13 @@ it('normalizes opted-in fences and preserves valid non-null optional values', as
 });
 it('translates nested arrays, references, unions and literal keyword names', () => {
   const input = { type: 'object', additionalProperties: false, properties: {
-    minimum: { type: 'string', minLength: 1, maxLength: 5, pattern: '^a', format: 'email', enum: ['minimum'] },
+    minimum: { type: 'string', minLength: 1, maxLength: 5, pattern: '^a', format: 'email' },
     rows: { type: 'array', items: { $ref: '#/definitions/row' } },
     choice: { anyOf: [{ type: 'object', additionalProperties: false, properties: { x: { type: 'number' } } }, { type: 'null' }] },
   }, definitions: { row: { type: ['object', 'null'], additionalProperties: false, properties: { p: { type: 'number', minimum: 0 } } } } };
   const result = codexStrictSchema(input);
   expect(result['properties']).toMatchObject({
-    minimum: { anyOf: [{ type: 'string', enum: ['minimum'] }, { type: 'null' }] },
+    minimum: { anyOf: [{ type: 'string' }, { type: 'null' }] },
     rows: { anyOf: [{ type: 'array', items: { $ref: '#/definitions/row' } }, { type: 'null' }] },
   });
   expect(result['definitions']).toEqual({ row: { type: ['object', 'null'], properties: { p: { anyOf: [{ type: 'number' }, { type: 'null' }] } }, required: ['p'], additionalProperties: false } });
@@ -140,10 +140,27 @@ it('preserves originally nullable optional data and removes only added placehold
 });
 
 
-it.each(['anyOf', 'oneOf'])('preserves valid nullable data in a later %s branch', keyword => {
-  const original = { [keyword]: [
+it('preserves valid nullable data in a later anyOf branch', () => {
+  const original = { anyOf: [
     { type: 'object', additionalProperties: false, properties: { x: { type: 'string' } } },
     { type: 'object', additionalProperties: false, properties: { x: { type: 'null' } } },
   ] };
   expect(normalizeCodexResponse('{"x":null}', original)).toBe('{"x":null}');
+});
+
+it('refuses ambiguous nullable union normalization instead of erasing legitimate data', async () => {
+  const original = { anyOf: [
+    { type: 'object', additionalProperties: false, properties: { x: { type: 'string' }, y: { type: 'number' } } },
+    { type: 'object', additionalProperties: false, properties: { x: { type: 'null' }, y: { type: 'number' } } },
+  ] };
+  const text = '{"x":null,"y":null}';
+  expect(() => normalizeCodexResponse(text, original)).toThrow('ambiguous union');
+  await expect(provider(text, codexStrictSchema(original)).generate({ model: 'chosen', prompt: 'judge', responseSchema: original }))
+    .rejects.toMatchObject({ kind: 'invalid-response', usage: { inputTokens: 10 } });
+  expect(() => normalizeCodexResponse(text, { oneOf: original.anyOf })).toThrow('cannot preserve oneOf');
+});
+
+it('normalizes equivalent union interpretations once', () => {
+  const branch = { type: 'object', additionalProperties: false, properties: { x: { type: 'string' } } };
+  expect(normalizeCodexResponse('{"x":null}', { anyOf: [branch, branch] })).toBe('{}');
 });

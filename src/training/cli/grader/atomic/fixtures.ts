@@ -7,12 +7,12 @@ import type { InferenceProvider } from '../../../contracts/execution.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-export async function fixture(trapKind: 'number-substitution' | 'injected-redundancy' = 'number-substitution') {
+export async function fixture(trapKind: 'format-paraphrase' | 'injected-redundancy' = 'format-paraphrase') {
   const root = await mkdtemp(join(tmpdir(), 'atomic-cli-')); roots.push(root);
   const templates = { schema: 'paideia.check-templates.v1', templates: [{ id: 'support', applies_to: 'claim', type: 'choice',
     instructions: 'Is {unit.text} supported?', criteria: { supported: 'Supported', unsupported: 'Unsupported' },
     expected: ['supported'], state: ['unit', 'unit.cited_rows'], dimension: 'facts', severity: 'major',
-    traps: { [trapKind]: 'unsupported', 'option-permutation': 'unchanged' } as Record<string, string> }],
+    traps: { [trapKind]: trapKind === 'format-paraphrase' ? 'unchanged' : 'unsupported', 'option-permutation': 'unchanged' } as Record<string, string> }],
     context: { evidence: { rows: { leading_citations: 'previous', heading: '^## ([A-Z][0-9]+)', cite: '\\[([A-Z][0-9]+)\\]' } } },
     teachers: [{ id: 'codex', provider: 'codex', model: 'test-codex' }, { id: 'claude', provider: 'claude', model: 'test-claude' },
       { id: 'grok', provider: 'grok', model: 'test-grok' }] };

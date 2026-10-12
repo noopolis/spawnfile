@@ -37,10 +37,6 @@ templates:
     dimension: grounding
     severity: critical
     traps:
-      number-substitution: { answer: unsupported, known_answer: false }
-      entity-substitution: unsupported
-      negation-flip: unsupported
-      citation-swap: unsupported
       format-paraphrase: unchanged
       option-permutation: unchanged
 ```
@@ -72,13 +68,11 @@ safely be assigned an intended answer from their wording. Only mapped templates
 participate in each trap. The explicit form is
 `{ answer: <label>, known_answer: true|false }`; shorthand requests known-answer status.
 
-**Citation-swap, negation-flip, entity-substitution and number-substitution are
-always DIAGNOSTIC.** Core coerces `known_answer: true` and shorthand mappings for
-these four kinds to diagnostic and emits a warning in JSON and Markdown reports.
-Lexical validation cannot prove their intended non-entailment, and there is no
-operator override. The mutations still run and report diagnostic accuracy by kind
-and template; they never enter known-answer accuracy, group floors, consistency
-gates or known-answer output coverage.
+**Citation-swap, negation-flip, entity-substitution and number-substitution have
+been removed.** Their lexical validators cannot prove non-entailment. Template
+mappings for these kinds now fail parsing, including diagnostic mappings; saved
+variants are rejected before inference. Remove these mappings and regenerate trap
+bundles. No semantic substitution generator remains.
 
 Only visibility-validated **injected-redundancy** remains eligible for known-answer
 defect accuracy and output coverage. **Format-paraphrase** and **option-permutation**
@@ -196,17 +190,27 @@ use the same teacher concurrently. Independent calls never contain peer answers;
 adjudication waits for every teacher's queue to finish. Each adjudication pass
 uses the same batch-size bound.
 
+Codex refuses schemas with undeclared required properties or free-form objects
+before launching inference. It also refuses `maxProperties` constraints and
+`oneOf`/`allOf` compositions whose constraints would change during translation
+or depend on references. Optional transport placeholders are removed only when
+the original property rejects null; valid nullable data is retained. Union responses
+with multiple valid but different normalized interpretations are rejected rather
+than choosing an interpretation that could erase legitimate data. Original schema
+constraints are checked after normalization.
+
 ## Reference interpretation
 
-Responses are strict objects keyed by check ID, with `answer`, optional `p`, and
+Responses use positional keys `q1` through `qN`, mapped to full check IDs in code, with `answer`, optional `p`, and
 optional verbatim evidence `span`. Teachers may abstain. Probability `p` contributes
 that much mass to the selected answer; unassigned mass stays explicitly unknown.
 Missing and abstaining teachers retain their share of the denominator. Persisted
 non-answers use `answer: null` with a typed `status` (`missing`, `abstain` or
 `uncertain`), so provider failures cannot collide with an authored answer label.
 An agreed final requires real, positive-confidence teacher answers; adjudication
-cannot supply missing independent support. Council protocol v4 invalidates older
-checkpoints; regenerate them in a fresh destination. Batch size also enters checkpoint
+cannot supply missing independent support. Council protocol v7 pins ordered check IDs, unit IDs, template IDs and state
+digests in every call identity; the enclosing checkpoint also pins all instances.
+Identical rendered questions remain distinct checks. It invalidates older checkpoints; regenerate them in a fresh destination. Batch size also enters checkpoint
 identity, so changing it requires a fresh destination.
 
 Disagreement or abstention triggers one adversarial adjudication round for the
@@ -251,11 +255,10 @@ outside this ready-check denominator. Synthetic variants cannot dilute that popu
 adjudication is reported separately; only affected checks are evaluated for a
 variant, and duplicate variant check digests count once in that diagnostic.
 
-### Known limits of lexically validated traps
+### Why semantic trap kinds were removed
 
-Independent validation proves that the mutation happened and its lexical
-preconditions hold; it cannot prove non-entailment. These four kinds are therefore
-always diagnostic, even when an operator declares a known answer:
+Lexical preconditions cannot prove non-entailment. These counterexamples explain
+why the four generators and their validation logic were removed:
 
 - **Citation swap:** a replacement row can paraphrase the claim without sharing
   a content word. “The physician resigned” remains supported by “The doctor quit.”
@@ -271,51 +274,17 @@ always diagnostic, even when an operator declares a known answer:
   changed number. Evidence of exactly 10 dollars supports both “a sum not
   exceeding 10 dollars” and “a sum not exceeding 11 dollars.”
 
-The 95% thresholds apply only to eligible controls. Diagnostic results cannot
-certify accuracy or compensate for missing known-answer coverage.
+The 95% thresholds still apply to the remaining redundancy and consistency
+controls. Removing unsupported kinds does not relax known-answer coverage.
+Legacy metric inputs remain diagnostic and cannot earn gate credit.
 
-Number/entity, negation, citation, redundancy and formatting mutations alter output
-content; evidence remains untouched. Embedded variant decompositions address the
-serialized `output` payload as `embedded-output.json`; this is bundle metadata, not a separate
-filesystem reference. Option permutation changes only criterion order. Independent
-validation recomputes preconditions from the saved variant and source rows:
-
-- Numbers are extracted from citation-free claim text and heading-free evidence;
-  mutations preserve citation tokens. Numbers must appear in cited evidence with formatting normalized; replacements
-  preserve digit count and precision, differ by at most 20%, and occur nowhere
-  in cited rows. Every occurrence of the selected numeric value is replaced,
-  including equivalent comma formatting, while citation tokens are preserved.
-  The existing whole-unit lexical eligibility rule reduces bad diagnostics; it
-  does not guarantee exact quantities or non-entailment. The
-  entire unit text (including citation text) and every claim field must contain no
-  bound, approximation or comparison vocabulary: at most, at least, up to, more
-  than, less than, fewer, over, under, above, below, about, around, roughly, nearly,
-  almost, approximately, some, or so, plus, minimum, maximum, ~, >, <, ≥ or ≤.
-  They must also contain no range construction: between … and, from … to, or a
-  dash or “to” between numbers, including intervening currency/unit words.
-  Qualifiers on other quantities also exclude the whole unit. Construction and
-  independent validation recompute the same eligibility rule.
-  Measurement units remain unchanged. Unchanged option controls retain the
-  legitimate base number; format controls also exercise comma normalization when
-  available.
-- Entity originals must occur in cited rows. Replacements come from the same
-  article, have the same independently recognizable type, and are absent from
-  cited rows. The current conservative recognizer supports personal honorifics
-  and explicit organization suffixes; ambiguous bare names are ineligible.
-  Honorific/legal-suffix variants, shared head tokens and contained names are
-  rejected as potentially co-referent. Every occurrence of the selected entity is
-  replaced. Both substitution kinds update extracted fields consistently and
-  independently reject variants retaining the original value in claim text
-  (excluding citation tokens).
-- Negation requires an affirmative verbatim cited sentence counterpart and only
-  inserts a negator. Exactly one auxiliary is required, with no preceding
-  who/which/that/when/because/although/if marker. Has/have/had require a recognized
-  past participle. Existing negations, ambiguous clauses and paraphrased evidence
-  are ineligible; this is a conservative surface check, not a full grammar parser.
-- Citation swaps require exactly one cited row and one citation token, plus a replacement row with no shared content word of four
-  or more characters after stop-word removal.
-- Redundancy requires changed rendered state exposing both occurrences to every
-  affected check. A unit-only projection cannot observe a neighboring insertion.
+Redundancy and formatting mutations alter output content; evidence remains
+untouched. Embedded variant decompositions address the serialized `output` payload
+as `embedded-output.json`; this is bundle metadata, not a separate filesystem
+reference. Option permutation changes only criterion order. Independent validation
+checks the saved variant against the original output and decomposition. Redundancy
+requires changed rendered state exposing both occurrences to every affected check;
+a unit-only projection cannot observe a neighboring insertion.
 
 Rejected mutations are counted with reasons. Validation does not regenerate
 candidates. Authored answer mappings remain the contract between these mechanical

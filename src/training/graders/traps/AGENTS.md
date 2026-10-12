@@ -1,29 +1,20 @@
 # Deterministic planted traps
 
-Owns output-only mutations and independent structural/lexical validation.
+Owns output-only mutations and independent structural validation.
 Public seam is index.ts; consume decomposition and format public barrels only.
 Never mutate evidence or guess intended answers from question prose. Operators
 bind trap kinds to answer keys with template.traps; unchanged controls compare
-against baseline council answers, never assume expected means observed truth.
-Defects require supplied base council finals in every affected template’s expected
-set. Only uniquely located spans can mutate. Ambiguous/unavailable/invalid mutations
-are discarded and counted with reasons. Structural eligibility requires independently recomputed cited-row preconditions;
-validation never reruns generation. Numeric replacements preserve magnitude, entity
-replacements require recognizable matching types, negation only inserts into a
-verbatim affirmative claim, and repetition must appear in the check projection.
-Ambiguous cases remain uncovered; operator answer vocabulary stays explicit.
+against baseline council answers. Defects require supplied expected base finals.
+Only uniquely located spans can mutate; unavailable/invalid mutations are discarded
+with reasons. Validation never reruns generation. Repetition must appear in every
+affected check projection. Keep output, unit population, citations and unrelated
+metadata pinned independently of generation.
+
+Supported kinds: injected-redundancy, format-paraphrase, option-permutation.
+Number/entity substitutions, citation swaps and negation flips were removed because
+lexical checks cannot prove non-entailment. Reject their template mappings and saved
+variants; never restore them as diagnostic generators. Legacy metrics remain unable
+to award these kinds known-answer credit.
+
 Run adjacent Vitest tests and scoped coverage, lint and TypeScript. Mutation-check
 validation rejection, keep source/tests under 400 lines and coverage above 90%.
-
-Substitutions remove every occurrence of the chosen fact from claim text and
-update fields consistently. Independently reject any surviving original value;
-numeric equivalence uses parsed values (commas, decimal zeroes and percentage
-numbers), while citations remain unchanged. Number traps retain a whole-unit lexical filter: reject
-bound, approximation or comparison vocabulary and range constructions anywhere
-in the entire unit text or any claim field, before construction and independently
-in validation. Qualifiers on other quantities also make the whole unit ineligible. This filter cannot
-certify quantity semantics. Core reference metrics always treat number/entity
-substitution, citation swap and negation as diagnostic, regardless of authored
-known-answer status. Only visibility-validated redundancy is a known-answer defect;
-format and option controls measure consistency. Entity survival
-checks ignore case and normalize whitespace.
