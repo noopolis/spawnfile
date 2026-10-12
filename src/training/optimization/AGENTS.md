@@ -58,3 +58,21 @@ publishes a new child identity with parent lineage before callbacks. Completed c
 replay exactly, pending calls preserve cumulative attempt counts, and the paired
 GEPA checkpoint restores its sampler/history. Missing child journals can finish
 interrupted fork initialization; missing ordinary resume journals still fail.
+
+Population mode is enabled only by `search`. It uses the same strict callbacks,
+complete validation captures and selected-score verification as legacy GEPA.
+The host additionally verifies per-case vectors, round lineage, declared edit scope
+and Pareto/top-k retention, seed training, strategy/attempt records and stop
+feasibility. Accepted components bind to host-recorded generation response text.
+Behavioral/lexical heuristics are explicitly bridge-reported-v2, not independently
+verified novelty evidence; do not imply host certification. Pre-round budget
+feasibility does not replay the unrecorded Python parent shuffle. Search and scope bind checkpoint identity. Population
+reconstructs state from settled host callbacks, with no Python pickle. P6 may replace
+Python's sequential `Evaluator.evaluate_many` while preserving request-order results.
+Defaults: Pareto selection, rewrite share 0.5, behavioral floor 0.08, hypothesis
+similarity 0.6, patience equal to rounds, and no declared boundaries.
+
+`boundaries.ts` validates preserve/require-text/forbid-text declarations and seed
+admission before bridge launch/checkpoint restoration. The host independently checks
+all candidate evaluations and returned candidates against the original seed. Unsupported
+prose constraints fail closed; exact text gates do not certify semantic compliance.

@@ -30,6 +30,7 @@ export interface TrainingOptions {
   bridge: DspyOptimizationOptions['bridge'];
   budget: DspyOptimizationOptions['budget'];
   proposal?: DspyOptimizationOptions['proposal'];
+  search?: DspyOptimizationOptions['search'];
   checkpoint?: { directory: string; resume: boolean; identity: string; maxRecoveryAttempts?: number;
     fork?: NonNullable<DspyOptimizationOptions['checkpoint']>['fork'] & { trainingDigest: string; trainingIdentity: string; receiptDigest: string } };
   seed?: number;
@@ -63,7 +64,9 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     criteria.set(dataset, await freezeCriteria(dataset, options.native.evaluation, options.native.registry,
       `${phase}:${dataset.id}:${dataset.sourceDigest}:${dataset.sharedPlanDigest}`));
   }
-  const baselineComponents = Object.fromEntries(candidateComponents(options.baseline).map(component => [component.id, component.text]));
+  const components = candidateComponents(options.baseline);
+  const baselineComponents = Object.fromEntries(components.map(component => [component.id, component.text]));
+  const editScope = options.search ? Object.fromEntries(components.map(component => [component.id, component.heading ?? 'whole-file' as const])) : undefined;
   if (!Object.keys(baselineComponents).length) throw new Error('No declared editable components');
   const checkpoint = await TrainingCheckpoint.open(options, [partition.train, partition.validation, options.test]);
   const trials: TrialReport[] = [...checkpoint?.reports ?? []];
@@ -130,12 +133,12 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   if (checkpoint?.optimizer && options.checkpoint) {
     const restored = await readDspyCheckpointEvidence({ id: options.id, components: baselineComponents,
       trainCaseIds: partition.train.records.map(record => record.id), validationCaseIds: partition.validation.records.map(record => record.id),
-      budget: options.budget, seed: options.seed, proposal: options.proposal, checkpoint: options.checkpoint });
+      budget: options.budget, seed: options.seed, proposal: options.proposal, search: options.search, editScope, checkpoint: options.checkpoint });
     await options.onProgress?.({ type: 'optimizer.restored', payload: restored });
   }
   const optimizer = checkpoint?.optimizer ?? await runDspyOptimization({ id: options.id, components: baselineComponents,
     trainCaseIds: partition.train.records.map(record => record.id), validationCaseIds: partition.validation.records.map(record => record.id),
-    bridge: options.bridge, checkpoint: options.checkpoint, proposal: options.proposal,
+    bridge: options.bridge, checkpoint: options.checkpoint, proposal: options.proposal, search: options.search, editScope,
     onRestore: async evidence => { await options.onProgress?.({ type: 'optimizer.restored', payload: evidence }); }, budget: options.budget, seed: options.seed, signal: options.signal,
     validateComponents: components => { candidateFor(components); },
     generate: async (request, signal) => {

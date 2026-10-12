@@ -18,3 +18,8 @@ Owns the minimal Python boundary to released DSPy 3.3.1 and GEPA 0.1.4.
   requires the real optimizer conformance test, not source inspection alone.
 - Simulated-host tests run actual DSPy optimization and verify changed multi-file
   bundles reach callbacks. They do not establish real native-agent acceptance.
+
+- Optional authored population search lives beside legacy GEPA in `search/` under
+  the process package. Planning and realization use only declared boundaries and
+  train evidence; no implicit role/interface preservation prompt. Follow exact
+  defaults and resume limits in README/protocol. P6 concurrency is a separate owner.

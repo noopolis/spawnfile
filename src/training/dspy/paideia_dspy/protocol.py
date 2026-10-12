@@ -51,6 +51,26 @@ class ProposalPolicy(StrictModel):
     history_bytes: Annotated[int, Field(ge=1024, le=262144)] | None = None
 
 
+class Search(StrictModel):
+    variants: Annotated[int, Field(ge=1, le=1000)]
+    keep: Annotated[int, Field(ge=1, le=1000)]
+    rounds: Annotated[int, Field(ge=1, le=2**53 - 1)]
+    selection: Literal["pareto", "top-k"] = "pareto"
+    rewriteShare: Annotated[float, Field(ge=0, le=1)] = 0.5
+    minChange: Annotated[float, Field(ge=0, le=1)] = 0.08
+    hypothesisSimilarity: Annotated[float, Field(ge=0, le=1)] = 0.6
+    patience: Annotated[int, Field(ge=1, le=2**53 - 1)] | None = None
+    boundaries: Annotated[list[Annotated[str, Field(min_length=1, max_length=500)]], Field(max_length=50)] = []
+
+    @model_validator(mode="after")
+    def population_size(self):
+        if self.keep > self.variants:
+            raise ValueError("search.keep must not exceed search.variants")
+        if self.patience is None:
+            self.patience = self.rounds
+        return self
+
+
 class OptimizeRequest(StrictModel):
     schema_version: Literal["paideia.dspy.v1"] = Field(alias="schema")
     kind: Literal["optimize"]
@@ -60,6 +80,8 @@ class OptimizeRequest(StrictModel):
     validationCaseIds: Annotated[list[TextId], Field(min_length=1, max_length=10000)]
     budget: Budget
     proposal: ProposalPolicy | None = None
+    search: Search | None = None
+    editScope: dict[TextId, Literal["whole-file"] | Annotated[list[TextId], Field(min_length=1)]] | None = None
     checkpoint: Checkpoint | None = None
     recovery: Recovery | None = None
     seed: Annotated[int, Field(ge=0, le=2**32 - 1)] = 0
@@ -73,6 +95,13 @@ class OptimizeRequest(StrictModel):
             raise ValueError("training and validation case IDs must be disjoint")
         if self.budget.maxMetricCalls < len(validation):
             raise ValueError("budget must cover the complete baseline validation")
+        if self.search:
+            if self.budget.maxMetricCalls < len(validation) + len(train):
+                raise ValueError("budget.maxMetricCalls must cover seed validation and train cases")
+            if self.budget.maxProposals < self.search.keep + self.search.variants:
+                raise ValueError("budget.maxProposals must cover search.keep + search.variants")
+        if self.editScope is not None and set(self.editScope) != set(self.components):
+            raise ValueError("editScope must describe exactly the editable components")
         return self
 
 

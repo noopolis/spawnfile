@@ -68,6 +68,7 @@ it('resolves registered fixtures and narrow edits during dry-run without constru
   expect(JSON.parse(f.cli.stdout.shift()!)).toMatchObject({ status: 'valid', records: 2 });
   expect(await main([...f.args, '--dry-run'], f.cli.io, f.dependencies)).toBe(0);
   const plan = JSON.parse(f.cli.stdout.join(''));
+  expect(plan.editableResources).toEqual([{ resource: 'AGENTS.md', scope: { headings: [['Policy', 'Prose']] } }]);
   expect(plan).toMatchObject({ modelCallsMade: 0, readiness: { integration: { id: 'fixture/workspace', version: '1' } } });
   for (const boundary of [f.integration.createAdapter, f.integration.prepareEnvironment, f.dependencies.inference]) expect(boundary).not.toHaveBeenCalled();
   await expect(stat(join(f.cli.root, '.runtime'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -107,6 +108,61 @@ it('rejects unsupported preparation before constructing native or inference clie
   expect(f.cli.stderr.join('')).toContain('unsupported preparation');
   expect(f.integration.createAdapter).not.toHaveBeenCalled(); expect(f.dependencies.inference).not.toHaveBeenCalled();
   await expect(stat(join(f.cli.root, 'out'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('executes resolved population settings through the CLI and real bridge with fake inference and subjects', async () => {
+  const f = await fixture();
+  const boundaries: string[] = [];
+  const optimizer = { method: 'gepa' as const, model: 'local-model', variants: 2, keep: 2, budget: { rounds: 2 } };
+  const dataset = await readFile(join(f.cli.root, 'train.yaml'), 'utf8');
+  await writeFile(join(f.cli.root, 'train.yaml'), dataset + `training: ${JSON.stringify({
+    models: { reflection: { provider: 'ollama', model: 'local-model' } },
+    optimizer: { ...optimizer, model: 'reflection', boundaries },
+  })}\n`);
+  f.integration.trainingOptimizer = async () => optimizer;
+  f.integration.editPolicies = { 'AGENTS.md': 'whole-file' };
+  f.integration.prepareEnvironment = async paths => {
+    expect(await readFile(join(paths.workspace, 'SOUL.md'), 'utf8')).toBe('An independent writer.\n');
+    return {};
+  };
+  const concepts = ['Compare contrasting source accounts', 'Enforce strict quotation attribution',
+    'Rank uncertainty by confidence categories', 'Apply explicit chronology checks'];
+  const strategies: string[] = [];
+  let planned = 0;
+  f.dependencies.modelInference = () => ({ id: 'fake-population', capabilities: {
+    tools: 'disabled', billing: 'local', temperature: false, seed: false,
+  }, async generate(request) {
+    expect(request.model).toBe('local-model');
+    const payload = JSON.parse(request.prompt);
+    expect(payload.boundaries).toEqual(boundaries);
+    expect(Object.values(payload.editScope)).toEqual(['whole-file']);
+    expect(request.prompt).not.toContain('selection');
+    const body = payload.phase === 'planning'
+      ? { hypotheses: payload.strategies.map((strategy: string) => {
+        strategies.push(strategy);
+        const hypothesis = concepts[planned++]!;
+        return { strategy, hypothesis, targetedCriteria: ['correct'], plan: hypothesis };
+      }) }
+      : { components: Object.fromEntries(Object.keys(payload.currentComponents).map(key => [key,
+        `# IMPROVED\n${payload.plannedHypothesis.hypothesis}.\nNever invent claims.\nOnly publish verified evidence.\n`])),
+      hypothesis: payload.plannedHypothesis.hypothesis, expectedImpact: { correct: 'Improve correctness.' } };
+    return { text: JSON.stringify(body), model: 'local-model', route: 'fake-population', usage: null };
+  } });
+  const args = ['train', '--spawnfile-context', f.context.path, '--train', 'train.yaml', '--test', 'test.yaml',
+    '--editable', 'AGENTS.md', '--validation-group', 'b', '--max-trials', '20', '--max-proposals', '12',
+    '--bridge-command', f.cli.bridge, '--out', 'population', '--timeout-ms', '15000'];
+  expect(await main(args, f.cli.io, f.dependencies), f.cli.stderr.join('')).toBe(0);
+  const index = JSON.parse(await readFile(join(f.cli.root, 'population', 'invocation.json'), 'utf8')) as InvocationIndex;
+  const store = await openExperimentStore(join(f.cli.root, 'population'));
+  const report = JSON.parse((await store.readBlob(index.report, {
+    audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId],
+  })).toString());
+  expect(report.optimizer.provenance.optimizer).toBe('paideia.population');
+  expect(report.optimizer.provenance.rounds.map((round: { kept: number[] }) => round.kept)).toEqual([[0], [1, 2], [1, 2]]);
+  expect(report.optimizer.provenance.candidates).toHaveLength(5);
+  expect(strategies.sort()).toEqual(['refine', 'refine', 'rewrite', 'rewrite']);
+  expect(f.cli.observedInstructions.some(text => text.startsWith('# IMPROVED'))).toBe(true);
+  expect(report.heldOut.map((row: { meanScore: number }) => row.meanScore)).toEqual([0, 1]);
 });
 
 it('requires the immutable native integration identity and rejects source drift', async () => {
@@ -155,4 +211,35 @@ it('binds canonical selection and validate plans to the trusted inference image 
   const split = await prepareSpawnfileInputs(splitArgs, f.cli.io, { ...f.integration, inferenceExecutionIdentity: 'image:one' });
   expect(() => validateDatasetSplit(split.datasets.load('train.yaml', true), split.datasets.load('test.yaml', true))).not.toThrow();
   expect(f.seen).toEqual([]);
+});
+
+
+it('executes frozen comparisons without resolving the inherited optimizer', async () => {
+  const f = await fixture();
+  const dataset = await readFile(join(f.cli.root, 'train.yaml'), 'utf8');
+  const comparison = { candidate: { name: 'frozen', replacements: [{ resource: 'AGENTS.md', source: 'variant.md' }] } };
+  await writeFile(join(f.cli.root, 'variant.md'), '# Policy\nKeep identity locked.\n\n## Prose\nIMPROVED\n');
+  await writeFile(join(f.cli.root, 'train.yaml'), dataset + `training: ${JSON.stringify({ models: { unused: { provider: 'ollama', model: 'unused' } }, comparison })}\n`);
+  f.integration.trainingOptimizer = vi.fn(async () => { throw new Error('Inherited optimizer must not resolve'); });
+  // Remove optimizer flags by name, preserving the fixture's native setup.
+  const argv: string[] = [];
+  for (let i = 0; i < f.args.length; i++) {
+    if (['--optimizer-model', '--max-proposals'].includes(f.args[i]!)) i++;
+    else argv.push(f.args[i]!);
+  }
+  for (const dryRun of [true, false]) {
+    expect(await main([...argv, '--out', 'comparison', ...(dryRun ? ['--dry-run'] : [])], f.cli.io, f.dependencies),
+      f.cli.stderr.join('')).toBe(0);
+  }
+  for (const flag of ['--optimizer-model', '--bridge-command', '--max-proposals', '--repair-measurements', '--repair-context']) {
+    expect(await main([...argv, '--dry-run', flag, '1'], f.cli.io, f.dependencies)).toBe(2);
+    expect(f.cli.stderr.at(-1)).toContain(`Comparison cannot use ${flag}`);
+  }
+  expect(f.integration.trainingOptimizer).not.toHaveBeenCalled();
+  expect(f.cli.observedInstructions).toHaveLength(6);
+  expect(f.cli.observedInstructions.filter(text => text.includes('IMPROVED'))).toHaveLength(3);
+  const index = JSON.parse(await readFile(join(f.cli.root, 'comparison/invocation.json'), 'utf8')) as InvocationIndex;
+  const store = await openExperimentStore(join(f.cli.root, 'comparison'));
+  const report = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId] })).toString());
+  expect(report.provenance).toEqual({ mode: 'authored-comparison', optimizerCalls: 0 });
 });

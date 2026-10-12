@@ -51,6 +51,10 @@ class Checkpoint:
 
     def _identity(self, experiment_id, execution):
         request = self.session.request.model_dump(exclude={"checkpoint", "recovery"})
+        # Preserve legacy checkpoint identity bytes when population fields are absent.
+        for field in ("search", "editScope"):
+            if request[field] is None:
+                del request[field]
         request["id"] = experiment_id
         return hashlib.sha256(_bytes({
             "request": request, "execution": execution, "versions": ["dspy3.3.1", "gepa0.1.4"],

@@ -17,6 +17,9 @@ GEPA_VERSION = "0.1.4"
 def optimize(request: OptimizeRequest, host):
     if version("dspy") != DSPY_VERSION or version("gepa") != GEPA_VERSION:
         raise BridgeError("version_mismatch", "install the pinned DSPy and GEPA releases")
+    if request.search is not None:
+        from .search.population import optimize_population
+        return optimize_population(request, host)
     session = Session(request, host)
     checkpoint = Checkpoint(session) if request.checkpoint else None
     student = NativeProgram(session)

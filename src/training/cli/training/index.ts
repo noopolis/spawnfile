@@ -5,3 +5,5 @@ export { commandCheckpoint } from './checkpoint.js';
 export { reserveOutput } from './output-lock.js';
 
 export { prepareComparison } from './comparison.js';
+
+export { resolveTrainingOptimizer, populationSearch, bridgeProposal, editableResources } from './optimizer.js';

@@ -1,3 +1,5 @@
+import { readSpawnfileContext } from './spawnfile/index.js';
+import { resolveTrainingOptimizer, populationSearch, bridgeProposal } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
 import { partitionTraining } from '../experiments/training/index.js';
@@ -118,7 +120,8 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         inference: { provider: native.inference!, model: optimizerModel! },
         bridge: bridge!,
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
-        proposal: args.training?.optimizer?.proposal,
+        proposal: bridgeProposal(args.training?.optimizer),
+        search: populationSearch(args.training?.optimizer),
         checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2, ...(fork ? {fork} : {})},
         onProgress: async (event) => {
           await journal.observe(event);
@@ -183,7 +186,10 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   try {
-    const args = authoredArguments(parseArguments(argv), io);
+    const authored = authoredArguments(parseArguments(argv), io);
+    const context = authored.command === 'train' && authored.flags['spawnfile-context'] && dependencies.spawnfile?.trainingOptimizer
+      ? readSpawnfileContext(resolve(io.cwd, one(authored, 'spawnfile-context'))) : undefined;
+    const args = await resolveTrainingOptimizer(authored, dependencies.spawnfile, context);
     if (args.command === 'help') { io.stdout(helpText); return 0; }
     const timeoutMs = count(args, 'timeout-ms', 180000, 3600000);
     const deadline = new AbortController();

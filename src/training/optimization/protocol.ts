@@ -17,19 +17,39 @@ export const proposalPolicySchema = z.object({
   max_attempts: z.number().int().min(1).max(5).optional(), history_entries: z.number().int().min(1).max(100).optional(),
   history_bytes: z.number().int().min(1024).max(262144).optional(),
 }).strict();
+export const searchSchema = z.object({
+  variants: z.number().int().min(1).max(1000), keep: z.number().int().min(1).max(1000),
+  rounds: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), selection: z.enum(['pareto', 'top-k']).default('pareto'),
+  rewriteShare: z.number().min(0).max(1).default(0.5), minChange: z.number().min(0).max(1).default(0.08),
+  hypothesisSimilarity: z.number().min(0).max(1).default(0.6), patience: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
+  boundaries: z.array(z.string().min(1).max(500)).max(50).default([]),
+}).strict().superRefine((value, context) => {
+  if (value.keep > value.variants) context.addIssue({ code: 'custom', path: ['keep'], message: 'keep must not exceed variants' });
+}).transform(value => ({ ...value, patience: value.patience ?? value.rounds }));
+export const editScopeSchema = z.record(id, z.union([z.literal('whole-file'), z.array(id).min(1)]));
 export const startSchema = z.object({
   schema: z.literal(DSPY_SCHEMA), kind: z.literal('optimize'), id, components: componentsSchema,
   trainCaseIds: z.array(id).min(1).max(10000), validationCaseIds: z.array(id).min(1).max(10000),
   recovery: z.object({ evaluations: count, proposals: count }).strict().optional(),
   checkpoint: z.object({ directory: id, identity: id, fork: z.object({ directory: id, identity: id, id,
     digest: z.string().regex(/^sha256:[a-f0-9]{64}$/) }).strict().optional() }).strict().optional(),
-  proposal: proposalPolicySchema.optional(),
+  proposal: proposalPolicySchema.optional(), search: searchSchema.optional(), editScope: editScopeSchema.optional(),
   budget: budgetSchema, seed: z.number().int().min(0).max(2 ** 32 - 1).default(0),
 }).strict().superRefine((value, context) => {
   const train = new Set(value.trainCaseIds), validation = new Set(value.validationCaseIds);
   if (train.size !== value.trainCaseIds.length || validation.size !== value.validationCaseIds.length
       || value.trainCaseIds.some((caseId) => validation.has(caseId))) {
     context.addIssue({ code: 'custom', message: 'Training and validation IDs must be unique and disjoint' });
+  }
+  if (value.search && value.budget.maxProposals < value.search.keep + value.search.variants) {
+    context.addIssue({ code: 'custom', path: ['budget', 'maxProposals'], message: 'maxProposals must cover keep + variants' });
+  }
+  if (value.search && value.budget.maxMetricCalls < validation.size + train.size) {
+    context.addIssue({ code: 'custom', path: ['budget', 'maxMetricCalls'], message: 'maxMetricCalls must cover seed validation and train cases' });
+  }
+  if (value.editScope && (Object.keys(value.editScope).length !== Object.keys(value.components).length
+      || Object.keys(value.components).some(key => !Object.hasOwn(value.editScope!, key)))) {
+    context.addIssue({ code: 'custom', path: ['editScope'], message: 'editScope must describe every editable component' });
   }
   if (value.budget.maxMetricCalls < validation.size) {
     context.addIssue({ code: 'custom', message: 'Budget must cover complete baseline validation' });
@@ -68,17 +88,33 @@ export const requestSchema = z.discriminatedUnion('method', [
   z.object({ ...common, kind: z.literal('request'), method: z.literal('generate'), params: generateParamsSchema }).strict(),
 ]);
 const captureSchema = z.object({ caseId: id, split: z.enum(['train', 'validation']), captureId: id }).strict();
+const changeEvidenceSchema = z.object({
+  behavioralChange: z.number().min(0).max(1).nullable(), lexicalChange: z.number().min(0).max(1).nullable(),
+  status: z.enum(['accepted', 'rejected']), rejectionReason: z.string().nullable(),
+}).strict();
+export const populationRoundSchema = z.object({
+  round: count, parents: z.array(count), kept: z.array(count).min(1),
+  variants: z.array(z.object({
+    slot: count, parent: count, strategy: z.enum(['rewrite', 'refine']), hypothesis: z.string(),
+    targetedCriteria: z.array(id), behavioralChange: z.number().min(0).max(1).nullable(),
+    lexicalChange: z.number().min(0).max(1).nullable(), status: z.enum(['accepted', 'rejected', 'empty']),
+    rejectionReason: z.string().nullable(), candidateIndex: count.nullable(), attempts: z.array(changeEvidenceSchema),
+  }).strict()),
+}).strict();
 export const resultSchema = z.object({
   ...common, kind: z.literal('result'), components: componentsSchema,
   provenance: z.object({
-    optimizer: z.literal('dspy.GEPA'), dspyVersion: z.literal('3.3.1'), gepaVersion: z.literal('0.1.4'),
+    optimizer: z.enum(['dspy.GEPA', 'paideia.population']), dspyVersion: z.literal('3.3.1'), gepaVersion: z.literal('0.1.4'),
     seed: count, evaluations: count, proposals: count, selectedCandidateIndex: count,
     candidates: z.array(z.object({
       components: componentsSchema, parents: z.array(count.nullable()).min(1),
       validationScore: z.number().min(0).max(1), discoveryEvaluations: count,
+      perCaseScores: z.record(id, z.number().min(0).max(1)).optional(),
     }).strict()).min(1),
+    rounds: z.array(populationRoundSchema).optional(), stopReason: id.optional(), editScope: editScopeSchema.optional(),
+    changeEvidence: z.literal('bridge-reported-v2').optional(),
     captures: z.array(captureSchema),
-    generations: z.array(z.object({ model: id, usage: usageSchema, modelBasis }).strict()),
+    generations: z.array(z.object({ model: id, usage: usageSchema, modelBasis, text: z.string().optional() }).strict()),
   }).strict(),
 }).strict();
 export const errorSchema = z.object({ ...common, kind: z.literal('error'),

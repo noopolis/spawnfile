@@ -47,7 +47,7 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
   }
   function route(value: unknown, location: string, judge = false): void {
     const policy = object(value, location);
-    fields(policy, ['model', 'fallbacks', 'attempts', 'timeout_ms', ...(judge ? ['template', 'citation_repairs', 'protocol'] : ['proposal'])], location);
+    fields(policy, ['model', 'fallbacks', 'attempts', 'timeout_ms', ...(judge ? ['template', 'citation_repairs', 'protocol'] : ['proposal', 'method', 'variants', 'keep', 'budget', 'selection', 'boundaries', 'patience'])], location);
     const primary = string(policy.model, `${location}.model`);
     const fallbacks = policy.fallbacks === undefined ? [] : uniqueStrings(policy.fallbacks, `${location}.fallbacks`);
     if (fallbacks.includes(primary)) fail(`${location}.fallbacks`, 'primary model cannot be its own fallback');
@@ -61,11 +61,43 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     if (policy.protocol === 'evidence-ids' && policy.citation_repairs === 1) fail(`${location}.citation_repairs`, 'citation repair is not supported for evidence-ids');
     if (policy.proposal !== undefined) {
       const proposal = object(policy.proposal, `${location}.proposal`);
-      fields(proposal, ['strategy', 'min_change', 'max_attempts', 'history_entries', 'history_bytes'], `${location}.proposal`);
+      fields(proposal, ['strategy', 'min_change', 'rewrite_share', 'hypothesis_similarity', 'max_attempts', 'history_entries', 'history_bytes'], `${location}.proposal`);
       if (proposal.strategy !== undefined) oneOf(proposal.strategy, ['refine', 'rewrite'], `${location}.proposal.strategy`);
-      if (proposal.min_change !== undefined) number(proposal.min_change, `${location}.proposal.min_change`, 0, 1);
+      for (const field of ['min_change', 'rewrite_share', 'hypothesis_similarity']) {
+        if (proposal[field] !== undefined) number(proposal[field], `${location}.proposal.${field}`, 0, 1);
+      }
       for (const [field, min, max] of [['max_attempts', 1, 5], ['history_entries', 1, 100], ['history_bytes', 1024, 262144]] as const) {
         if (proposal[field] !== undefined) integer(proposal[field], `${location}.proposal.${field}`, min, max);
+      }
+    }
+    if (!judge) {
+      if (policy.method !== undefined) oneOf(policy.method, ['gepa'], `${location}.method`);
+      for (const field of ['variants', 'keep', 'patience']) {
+        if (policy[field] !== undefined) integer(policy[field], `${location}.${field}`);
+      }
+      if (policy.selection !== undefined) oneOf(policy.selection, ['pareto', 'top-k'], `${location}.selection`);
+      if (policy.budget !== undefined) {
+        const budget = object(policy.budget, `${location}.budget`);
+        fields(budget, ['rounds'], `${location}.budget`);
+        integer(budget.rounds, `${location}.budget.rounds`);
+      }
+      if (policy.boundaries !== undefined) {
+        if (!Array.isArray(policy.boundaries) || policy.boundaries.length > 50) fail(`${location}.boundaries`, 'expected at most 50 strings');
+        for (const [index, boundary] of (policy.boundaries as unknown[]).entries()) {
+          if (string(boundary, `${location}.boundaries[${index}]`).length > 500) fail(`${location}.boundaries[${index}]`, 'expected 1..500 characters');
+        }
+      }
+      if (policy.variants !== undefined) {
+        integer(policy.keep, `${location}.keep`, 1, policy.variants as number);
+        if (policy.budget === undefined) fail(`${location}.budget.rounds`, 'required when variants is present');
+      } else {
+        for (const field of ['keep', 'budget', 'selection', 'boundaries', 'patience']) {
+          if (policy[field] !== undefined) fail(`${location}.${field}`, 'requires optimizer.variants');
+        }
+        const proposal = policy.proposal as Record<string, unknown> | undefined;
+        for (const field of ['rewrite_share', 'hypothesis_similarity']) {
+          if (proposal?.[field] !== undefined) fail(`${location}.proposal.${field}`, 'requires optimizer.variants');
+        }
       }
     }
     if (policy.template !== undefined) {
@@ -113,6 +145,11 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     for (const [key, value] of Object.entries(budget)) {
       integer(value, `${path}.budget.${key}`, 1, key === 'timeout_ms' ? 3_600_000 : key === 'max_trials' ? 10_000 : 1000);
     }
+  }
+  const optimizer = config.optimizer as { variants?: number; keep?: number } | undefined;
+  const maxProposals = (config.budget as { max_proposals?: number } | undefined)?.max_proposals;
+  if (optimizer?.variants !== undefined && maxProposals !== undefined && maxProposals < optimizer.variants + optimizer.keep!) {
+    fail(`${path}.budget.max_proposals`, 'must be at least optimizer.keep + optimizer.variants');
   }
   if (config.cache !== undefined) {
     const cache = object(config.cache, `${path}.cache`);
