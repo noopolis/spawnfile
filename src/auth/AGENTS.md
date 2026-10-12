@@ -8,6 +8,8 @@ This folder owns Spawnfile-managed auth profiles and auth import flows.
 src/auth/
 ├── index.ts            # Barrel exports
 ├── trainingAuth.ts     # Public opaque training ingress staging to fixed native leaves
+├── trainingGrokWriteback.ts # Journal-verified atomic return of renewed training Grok auth to the host import
+├── trainingGrokWritebackLock.ts # Persistent non-secret SQLite transaction lock; kernel releases it on process death
 ├── types.ts            # Auth profile types
 ├── paths.ts            # Spawnfile auth home and profile path helpers
 ├── profileStore.ts     # Read/write auth profiles and imported auth material
