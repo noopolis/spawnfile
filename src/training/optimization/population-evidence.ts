@@ -77,8 +77,8 @@ export function verifyPopulationEvidence(result: DspyResult, start: DspyStart, c
       }
       const realization = realized.get(slot.slot);
       if (!realization || !isDeepStrictEqual(realization.components, candidate.components)
-          || realization.hypothesis !== slot.hypothesis || !realization.expectedImpact
-          || !isDeepStrictEqual(Object.keys(realization.expectedImpact).sort(), [...slot.targetedCriteria].sort())) {
+          || realization.hypothesis !== slot.hypothesis || !Array.isArray(realization.expectedImpact)
+          || !isDeepStrictEqual(realization.expectedImpact.map(item => item?.criterion).sort(), [...slot.targetedCriteria].sort())) {
         throw new Error('Population accepted candidate contradicts recorded realization response');
       }
       discovered.add(candidateIndex);

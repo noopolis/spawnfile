@@ -30,7 +30,7 @@ function fixture() {
   host.generations.push(...[
     { hypotheses: rounds[1]!.variants.map(slot => ({ strategy: slot.strategy, targetedCriteria: slot.targetedCriteria })) },
     ...rounds[1]!.variants.map(slot => ({ components: candidates[slot.candidateIndex]!.components,
-      hypothesis: slot.hypothesis, expectedImpact: { quality: 'improves' } })),
+      hypothesis: slot.hypothesis, expectedImpact: [{ criterion: 'quality', effect: 'improves' }] })),
   ].map(body => ({ model: 'fake', usage: null, route: 'fake', text: JSON.stringify(body) })));
   const result = resultSchema.parse({ schema: DSPY_SCHEMA, kind: 'result', id: start.id, components: candidates[1]!.components,
     provenance: { optimizer: 'paideia.population', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
@@ -225,4 +225,15 @@ it('rejects continuation after an observed patience stop', () => {
   f.result.provenance.candidates[0]!.validationScore = 0.9;
   f.result.provenance.rounds!.push({ round: 2, parents: [1, 3], variants: [], kept: [1, 3] });
   expect(() => verifyPopulationEvidence(f.result, f.start, f.host.completed)).toThrow('continued after');
+});
+
+it.each([
+  { quality: 'improves' }, [], [null], [{ effect: 'improves' }],
+  [{ criterion: 'invented', effect: 'improves' }],
+  [{ criterion: 'quality', effect: 'first' }, { criterion: 'quality', effect: 'second' }],
+])('rejects recorded impact criteria inconsistent with the accepted slot: %j', expectedImpact => {
+  const f = fixture();
+  const generation = f.result.provenance.generations[1]!;
+  generation.text = JSON.stringify({ ...JSON.parse(generation.text!), expectedImpact });
+  expect(() => verifyPopulationEvidence(f.result, f.start, f.host.completed)).toThrow('recorded realization');
 });

@@ -28,7 +28,7 @@ it('passes the authored rewrite policy through the CLI into real GEPA reflection
           expect(JSON.stringify(request.responseSchema)).toContain('expectedImpact');
           return { text: JSON.stringify({ components: Object.fromEntries(Object.keys(payload.currentComponents)
             .map(key => [key, 'IMPROVED: Answer the requested task directly and verify the result.\n'])),
-          hypothesis: 'Replace the vague baseline with an explicit output instruction.', expectedImpact: { correct: 'Improve correct output.' } }),
+          hypothesis: 'Replace the vague baseline with an explicit output instruction.', expectedImpact: [{ criterion: 'correct', effect: 'Improve correct output.' }] }),
           model: 'fixture', route: 'fixture', usage: null };
         } }),
     };

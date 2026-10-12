@@ -145,7 +145,7 @@ it('executes resolved population settings through the CLI and real bridge with f
       }) }
       : { components: Object.fromEntries(Object.keys(payload.currentComponents).map(key => [key,
         `# IMPROVED\n${payload.plannedHypothesis.hypothesis}.\nNever invent claims.\nOnly publish verified evidence.\n`])),
-      hypothesis: payload.plannedHypothesis.hypothesis, expectedImpact: { correct: 'Improve correctness.' } };
+      hypothesis: payload.plannedHypothesis.hypothesis, expectedImpact: [{ criterion: 'correct', effect: 'Improve correctness.' }] };
     return { text: JSON.stringify(body), model: 'local-model', route: 'fake-population', usage: null };
   } });
   const args = ['train', '--spawnfile-context', f.context.path, '--train', 'train.yaml', '--test', 'test.yaml',

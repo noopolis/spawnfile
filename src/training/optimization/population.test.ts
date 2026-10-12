@@ -34,7 +34,7 @@ function populationOptions() {
         return { strategy, hypothesis: concept, targetedCriteria: ['quality'], plan: concept };
       }) }
       : { components: { 'AGENTS.md': `${payload.plannedHypothesis.hypothesis}.\nNever invent claims.\nOnly publish verified evidence for ${callbackId}.` },
-        hypothesis: payload.plannedHypothesis.hypothesis, expectedImpact: { quality: 'Improve evidence precision.' } };
+        hypothesis: payload.plannedHypothesis.hypothesis, expectedImpact: [{ criterion: 'quality', effect: 'Improve evidence precision.' }] };
     return { text: JSON.stringify(text), model: 'simulated-subscription', usage: null, route: 'simulated-subscription' };
   };
   options.evaluate = async (request, _signal, callbackId) => {
