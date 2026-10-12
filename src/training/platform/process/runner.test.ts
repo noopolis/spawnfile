@@ -194,14 +194,15 @@ it('bounds multiplexed callbacks, correlates out-of-order atomic responses and d
   } }));
   await vi.waitFor(() => expect(ready).toHaveLength(4));
   expect(ready).not.toContain(4);
-  releases.get(0)!();
+  // The fifth callback must take ANY free lane, even while callback zero waits.
+  releases.get(2)!();
   await vi.waitFor(() => expect(ready).toHaveLength(5));
-  for (const id of [4, 3, 2, 1]) releases.get(id)!();
+  for (const id of [4, 3, 1, 0]) releases.get(id)!();
   const result = await child.completion;
   expect(result.exitCode).toBe(0);
   expect(result.error).toBeUndefined();
   expect(JSON.parse(result.stderr)).toEqual(completed.map(id => ({ id })));
-  expect(completed).toEqual([0, 4, 3, 2, 1]);
+  expect(completed).toEqual([2, 4, 3, 1, 0]);
   for (const concurrency of [0, 9, 1.5]) expect(() => runProcess(options('', { callbackConcurrency: concurrency }))).toThrow('1..8');
 });
 

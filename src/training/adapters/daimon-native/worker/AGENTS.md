@@ -142,3 +142,6 @@ still spans all wakes. Codex limits and aliases retain their original behavior.
 startup checks, for callers that must validate a prepared launch before starting
 anything. It leaves out Daimon's own config parse, which needs the runtime peer,
 and the worker runs it as its first step so the two cannot drift.
+
+Bind `DAIMON_ENGINE_BROKER_SLOT` from the verified Grok launch before creating
+the native host; clear it for Codex. An inherited selector is never authoritative.

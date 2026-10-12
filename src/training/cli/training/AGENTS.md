@@ -23,3 +23,7 @@ fail every call closed. The home root must be owned by the training uid with mod
 `close()` on the grant pool on every exit path (completion, failure, SIGINT/SIGTERM),
 so grants are handed back instead of waiting out their ten-minute TTL.
 
+
+Capped containers set `PAIDEIA_MODEL_REQUEST_CAP=broker`. Reject all reachable
+non-broker routes, fallbacks and legacy defaults before constructing providers;
+native grader routes also lack shared admission and are refused.

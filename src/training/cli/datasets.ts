@@ -5,6 +5,7 @@ import type { CostDataset } from '../cases/index.js';
 import type { CheckNode, ResolvedDataset, ResolutionOptions } from '../contracts/index.js';
 import { buildGradingRuntime, type GraderDependencies } from './grader/index.js';
 import type { GradingRuntime } from '../graders/index.js';
+import { assertModelRequestAdmission } from '../inference/index.js';
 
 /** Visit logical check positions only; arbitrary evaluator parameters are data. */
 function graderChecks(dataset: ResolvedDataset): CheckNode[] {
@@ -56,6 +57,7 @@ export class CliDatasets {
   async buildGraders(dependencies: GraderDependencies = {}, requireExclusions = false): Promise<Record<string, GradingRuntime>> {
     const graders: Record<string, GradingRuntime> = {};
     for (const dataset of this.loaded.values()) for (const check of graderChecks(dataset)) {
+      assertModelRequestAdmission('native-grader', 'grader');
       const filename = check.grader as string;
       const binding = check.grader_binding as { definitionDigest: string; calibrationDigest: string };
       const runtime = graders[filename] ?? await buildGradingRuntime(filename, dependencies);

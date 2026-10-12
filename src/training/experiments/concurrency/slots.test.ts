@@ -66,7 +66,11 @@ it('validates provisioner identity and preserves serial legacy defaults', async 
   expect(trialConcurrency(8)).toBe(8);
   await expect(loadTrialSlots({ concurrency: 9 })).rejects.toThrow();
   await expect(loadTrialSlots({ slots, concurrency: 5 })).rejects.toThrow('exceeds');
-  await expect(loadTrialSlots({ slots: slots.slice(0, 2) })).rejects.toThrow('exceeds');
+  for (const count of [1, 2, 4, 8]) {
+    const provisioned = Array.from({ length: count }, (_, index) => ({ index, workerUid: 2200 + index,
+      roots: { workspace: `/slots/${index}` }, ports: { base: 20000 + index * 100, count: 100 } }));
+    expect((await loadTrialSlots({ slots: provisioned })).concurrency).toBe(count);
+  }
   expect((await loadTrialSlots({ slots: slots.slice(0, 2), concurrency: 2 })).concurrency).toBe(2);
   for (const patch of [{ index: 0 }, { workerUid: 2200 }, { ports: slots[0]!.ports }]) {
     await expect(loadTrialSlots({ slots: [slots[0]!, { ...slots[1]!, ...patch }] })).rejects.toThrow('disjoint');

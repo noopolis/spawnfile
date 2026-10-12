@@ -6,3 +6,4 @@ export { createGrokBrokerInference, createGrokInference, GrokGrantPool, type Gro
 export { createOllamaInference, type OllamaInferenceOptions } from './ollama/index.js';
 export { validateInferenceSchema, validateInferenceResponse } from './response-schema.js';
 export { captureInferenceDiagnostic } from './diagnostic.js';
+export { assertModelRequestAdmission } from './request-cap.js';

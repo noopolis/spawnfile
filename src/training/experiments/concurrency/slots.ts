@@ -40,7 +40,7 @@ export async function loadTrialSlots(options: { concurrency?: number; slotsFile?
       }
     }
   }
-  const concurrency = options.concurrency ?? 4;
+  const concurrency = options.concurrency ?? parsed.length;
   if (concurrency > parsed.length) throw new Error('Trial concurrency exceeds provisioned slots');
   return { concurrency, pool: new SlotPool(parsed.slice(0, concurrency)), slots: parsed };
 }

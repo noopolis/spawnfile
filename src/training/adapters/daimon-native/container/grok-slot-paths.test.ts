@@ -49,7 +49,7 @@ async function slotFixture(workerConfigVariant: 'unclocked' | 'clocked' = 'unclo
     limits: { maxTokens: 8_000_000, wakeTokenCeiling: 1_000_000 },
     overrides: { schedule: { before: { kind: 'every', interval_ms: 60_000 }, after: { kind: 'disabled' }, reason: 'Isolated single trial' },
       selection: { before: ['agent:writer', 'agent:editor'], after: ['agent:writer'], reason: 'Selected subject only' } },
-    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v2', workerConfigVariant, projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
+    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v3', workerConfigVariant, projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(root, 'var/lib/daimon-workers/2200'), architecture: 'arm64', usageLedgerPath: join(paths.usage, 'usage.jsonl'),
       profileSha256: 'c'.repeat(64),
       // The provisioner's verbatim deny list: a superset of the evaluator roots (the canary subset).

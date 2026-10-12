@@ -58,7 +58,7 @@ const grokAgent = z.strictObject({ id: identity, engine: nativeEngines.extract([
  * party that recomputes this projection passes these same values.
  */
 export const grokBrokerLaunchSchema = z.strictObject({
-  projectionVersion: z.literal('noopolis.daimon.grok-broker-projection.v2'),
+  projectionVersion: z.literal('noopolis.daimon.grok-broker-projection.v3'),
   workerConfigVariant: z.enum(['unclocked', 'clocked']),
   projectionSha256: digest,
   slot: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),

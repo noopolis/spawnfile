@@ -51,7 +51,7 @@ const variants = [
 ] as const;
 
 describe.skipIf(!daimon)('Daimon Grok contract parity (skipped only when @noopolis/daimon/runtime is absent)', () => {
-  it('keeps the separate evaluator inference config pins unchanged under manifest v4', () => {
+  it('keeps the separate evaluator inference config pins unchanged under manifest v5', () => {
     const pin = daimonGrokInferenceClientPin;
     for (const model of grokModels) for (const reasoningEffort of grokReasoningEfforts) {
       const bytes = contract().renderGrokInferenceClientConfig({ model, reasoningEffort, baseUrl: pin.proxyBaseUrl, envKey: pin.envKey });
@@ -69,15 +69,20 @@ describe.skipIf(!daimon)('Daimon Grok contract parity (skipped only when @noopol
   });
 
   it.each(variants)('accepts every $variant model/effort config unchanged and refuses pin drift', ({ variant }) => {
-    for (const model of grokModels) for (const reasoningEffort of grokReasoningEfforts) {
+    for (let slot = 0; slot < 8; slot++) for (const model of grokModels) for (const reasoningEffort of grokReasoningEfforts) {
       const config = structuredClone(input.config);
       config.agents[0]!.engine = { kind: 'grok', model, reasoningEffort };
-      const projection = contract().resolveOrganizationGrokBrokerProjection(config, 'foreman', { ...input.options, workerConfigVariant: variant });
+      const projection = contract().resolveOrganizationGrokBrokerProjection(config, 'foreman', { ...input.options, slot, workerUid: 2200 + slot,
+        workerHomePath: `/var/lib/daimon-workers/${2200 + slot}`, workerConfigVariant: variant });
       const parsed = grokBrokerProjectionSchema.parse(projection);
       expect(parsed).toEqual(projection);
-      expect(parsed.workerConfigSha256).toBe(grokWorkerConfigPins[variant][model][reasoningEffort]);
+      if (slot === 0) expect(parsed.workerConfigSha256).toBe(grokWorkerConfigPins[variant][model][reasoningEffort]);
       expect(grokProjectionSha256(parsed)).toBe(contract().grokBrokerProjectionSha256(projection));
       expect(() => grokBrokerProjectionSchema.parse({ ...parsed, workerConfigSha256: 'f'.repeat(64) })).toThrow('pinned variant/model/effort');
+      if (variant === 'clocked') {
+        expect(() => grokBrokerProjectionSchema.parse({ ...parsed, taskClock: { ...parsed.taskClock,
+          timestampFilePath: `/run/daimon-engine-broker/task-clock/slot-${(slot + 1) % 8}/faketime` } })).toThrow('belong to its slot');
+      }
     }
   });
 

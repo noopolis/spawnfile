@@ -55,8 +55,8 @@ export function runProcess(options: ProcessOptions): RunningProcess {
   let stderr = '';
   let pending = '';
   let bytes = 0;
-  const lanes: Promise<void>[] = Array.from({ length: concurrency }, () => Promise.resolve());
-  let nextLane = 0;
+  const queue: string[] = [];
+  const callbacks = new Set<Promise<void>>();
   const callbackController = new AbortController();
   const exists = (): boolean => {
     if (pid === undefined) return false;
@@ -103,10 +103,22 @@ export function runProcess(options: ProcessOptions): RunningProcess {
     void stop('observation or output failure');
   };
   const enqueue = (line: string): void => {
-    const lane = nextLane++ % concurrency;
-    lanes[lane] = lanes[lane]!.then(async () => {
-      if (failure === undefined && !callbackController.signal.aborted && line.trim().length > 0) await deliver(line);
-    }).catch(rejectProtocol);
+    if (line.trim().length > 0) queue.push(line);
+    dispatch();
+  };
+  const dispatch = (): void => {
+    if (failure !== undefined || callbackController.signal.aborted) { queue.length = 0; return; }
+    while (queue.length > 0 && callbacks.size < concurrency) {
+      const line = queue.shift()!;
+      const callback = Promise.resolve().then(() => {
+        if (failure === undefined && !callbackController.signal.aborted) return deliver(line);
+      }).catch(rejectProtocol).finally(() => { callbacks.delete(callback); dispatch(); });
+      callbacks.add(callback);
+    }
+  };
+  const drainCallbacks = async (): Promise<void> => {
+    // Finishing callbacks may start queued work; a snapshot alone misses it.
+    while (callbacks.size > 0) await Promise.all([...callbacks]);
   };
   const deliver = async (line: string): Promise<void> => {
     const callback = new AbortController();
@@ -157,7 +169,7 @@ export function runProcess(options: ProcessOptions): RunningProcess {
       } else enqueue(pending);
       const drain = setTimeout(() => callbackController.abort(new Error('Native process closed')),
         options.closureDrainMs ?? 2_000);
-      void Promise.all(lanes).then(async () => {
+      void drainCallbacks().then(async () => {
         clearTimeout(drain);
         callbackController.abort(new Error('Native process closed'));
         if (stopping !== undefined) await stopping;

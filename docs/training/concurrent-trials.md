@@ -1,7 +1,7 @@
 # Concurrent trial implementation status
 
 Implemented: `TrainingOptions.concurrency` and `train --concurrency` accept 1..8.
-The default is 4 with provisioned descriptors (insufficient slots are rejected),
+The default is the provisioned descriptor count (Spawnfile defaults to 4),
 or the existing serial behavior when `/run/paideia/slots.json` is absent. Explicit
 parallelism without descriptors fails before launching work. `slotsFile` /
 `--slots-file` select another read-only descriptor file; trusted integrations may
@@ -34,9 +34,17 @@ Model-free tests cover four simultaneous stored trials, a fifth blocked until
 closure and collection, out-of-order response correlation, quarantine, concurrent
 journal/checkpoint publication and atomic callback budget reservations.
 
-Not implemented: `maxRunRequests`, lowered per-wake request limits, reconciliation
-against sealed Grok requests, and shared subject/judge/grant admission. Those cannot
-be guaranteed by post-hoc token accounting. They require a compatible public runtime
-limit/admission contract. No global Grok request-cap guarantee is made by this change.
+Paideia does not accept a runtime-neutral `maxRunRequests` option: post-hoc token
+accounting cannot enforce model admission. Brokered Spawnfile training configures
+`broker.maxRunRequests` (default 1000) in Daimon's shared proxy instead. That cap
+covers subject, judge and optimizer requests routed through the broker, including
+credential retries, and survives slot recycle and broker restart. Spawnfile retains
+the budget in a dedicated volume keyed by the run's output directory across container
+replacement. Capped containers set `PAIDEIA_MODEL_REQUEST_CAP=broker`; Paideia
+rejects non-broker judge/optimizer routes, fallbacks and legacy defaults before
+provider construction. Native graders are also rejected because their model routes
+do not share broker admission. Uncapped runs retain the existing provider choices.
+The launcher does not inject optimizer concurrency controls into comparisons;
+comparison execution remains serial.
 The full cross-repository descriptor/launch contract and actual native-agent overlap
 still require integration verification. No models or external services were used.

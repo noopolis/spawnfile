@@ -1,3 +1,4 @@
+import { grokClockedWorkerConfigPins } from './grok-clocked-pins.js';
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
 import { z } from 'zod';
@@ -8,41 +9,53 @@ const canonical = z.string().max(4096).refine(value => posix.isAbsolute(value) &
   value !== '/' && !value.endsWith('/') && !value.includes('\0'), 'canonical absolute path');
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 
-/** Independent manifest v4 worker pins; inference client configs have their own grant pins. */
+/** Independent manifest v5 worker pins; inference client configs have their own grant pins. */
 export const grokWorkerConfigPins = {
   unclocked: {
     'grok-4.6': { low: 'ab58499ac32678097c146479896f2b8a8e2b0e39aea22dc0a60b6227e370538e', medium: 'df1a5cc84346e7f6bf6090492fbd19faaefb42953e3bb2e8c6cbc0572242403f', high: '65b0212564fb74042b1503d293fb8d3620276033264c0efade2a539ca09218e3' },
     'grok-4.5': { low: '8247127c3625ff7c5d8d527a53596b89ec6557a821ac46cfd00bd122b90daff6', medium: '59288cee61297bb8c002097061a48f77b09d310754187a253ee089f7172a9155', high: 'c63c3387ce92d94ec3f690abfe98942afcd7c9e17ff84816bbe751f340ab251f' },
     'grok-build': { low: 'fb343f2809903f26d21681470943235031f946e99085542fd89555eb7782cbb5', medium: '8a587ef75c90eab70d19b24583e60051d6fba9d90c558839fdbb15588b4cc656', high: 'a23724e00d670caee185ba7690d2daa868173e53905cf446f5329666f01ab4e3' },
   },
-  clocked: {
-    'grok-4.6': { low: '634ec9ce49c9e8d508b574e7b183678330359cfed63738df209a38963c730dab', medium: 'dacd7e1c2de68d9edd2250b436d76e67046d071f163d56b7c291a315f2342e8c', high: '7aac64db19a2f59967bbbe1ed7a8b748985927f0f15cad847eb8cd20535eb70b' },
-    'grok-4.5': { low: '831a68af36566ae24c1a8301b3fa866167fd173bf22334c2caf897c6d41c8a15', medium: 'f517dfefb0b6ee6252d20bd81c057afca6d6f382c92c686d0b83e91a4a77ac07', high: 'bf9d36286ec81fd5d37a726c5835d11349e8cc91bafe1428fef7171a3c509091' },
-    'grok-build': { low: '22adfcb78a281e768f878996de8665e56ff698bf9c46bf06ce894ef9c21c2512', medium: '74c5362427c371e06bbf4ea5f3e10024fdb8ea468103b2206f7f4e873572932a', high: '127e592c0df2c43de51559ae7c90e607f59e2b1ccf5b8c0a082cd64e46ab7823' },
-  },
+  clocked: grokClockedWorkerConfigPins[0],
 } as const;
 
 export const grokTaskClockPin = {
-  preloadPath: '/usr/local/lib/daimon/libfaketime.so.1', timestampFilePath: '/run/daimon-engine-broker/task-clock/faketime',
-  directoryPath: '/run/daimon-engine-broker/task-clock', directoryMode: 0o755, fileMode: 0o644, ownerUid: 2100, maxRegistrations: 1,
+  "preloadPath": "/usr/local/lib/daimon/libfaketime.so.1",
+  "timestampFilePath": "/run/daimon-engine-broker/task-clock/slot-0/faketime",
+  "directoryPath": "/run/daimon-engine-broker/task-clock/slot-0",
+  "rootDirectoryPath": "/run/daimon-engine-broker/task-clock",
+  "directoryMode": 493,
+  "fileMode": 420,
+  "ownerUid": 2100,
+  "version": "noopolis.daimon.grok-broker-task-clock.v2",
+  "slotDirectoryPattern": "/run/daimon-engine-broker/task-clock/slot-{slot}",
+  "slotFilePattern": "/run/daimon-engine-broker/task-clock/slot-{slot}/faketime",
+  "workerView": "own-directory-visible-sibling-directories-denied"
 } as const;
 
-/** Structural mirror of Daimon's public `noopolis.daimon.grok-broker-projection.v2`; Daimon stays the resolver. */
+/** Structural mirror of Daimon's public `noopolis.daimon.grok-broker-projection.v3`; Daimon stays the resolver. */
 export const grokBrokerProjectionSchema = z.strictObject({
-  version: z.literal('noopolis.daimon.grok-broker-projection.v2'), agentId: z.string().min(1).max(128),
+  version: z.literal('noopolis.daimon.grok-broker-projection.v3'), agentId: z.string().min(1).max(128),
   workspacePath: canonical, runtimeHomePath: canonical, workerUid: count, slot: count, profilePath: canonical, profileSha256: sha,
   denyPaths: z.array(canonical).min(1).max(256), workerConfigSha256: sha, systemPromptSha256: sha, grokCliVersion: z.string().min(1).max(64),
   workerConfigVariant: z.enum(['unclocked', 'clocked']),
-  taskClock: z.strictObject({ preloadPath: z.literal(grokTaskClockPin.preloadPath), timestampFilePath: z.literal(grokTaskClockPin.timestampFilePath),
-    directoryPath: z.literal(grokTaskClockPin.directoryPath), directoryMode: z.literal(grokTaskClockPin.directoryMode),
-    fileMode: z.literal(grokTaskClockPin.fileMode), ownerUid: z.literal(grokTaskClockPin.ownerUid), maxRegistrations: z.literal(grokTaskClockPin.maxRegistrations) }).optional(),
+  taskClock: z.strictObject({ preloadPath: z.literal(grokTaskClockPin.preloadPath), timestampFilePath: canonical,
+    directoryPath: canonical, directoryMode: z.literal(grokTaskClockPin.directoryMode),
+    fileMode: z.literal(grokTaskClockPin.fileMode), ownerUid: z.literal(grokTaskClockPin.ownerUid), version: z.literal(grokTaskClockPin.version), rootDirectoryPath: z.literal(grokTaskClockPin.rootDirectoryPath),
+    slotDirectoryPattern: z.literal(grokTaskClockPin.slotDirectoryPattern), slotFilePattern: z.literal(grokTaskClockPin.slotFilePattern),
+    workerView: z.literal(grokTaskClockPin.workerView) }).optional(),
   grokExecutableSha256: sha, nativeAbiVersion: count, model: z.enum(grokModels), reasoningEffort: z.enum(grokReasoningEfforts),
   limits: z.strictObject({ maxRequests: count, maxTokens: count, timeoutMs: count }), usageLedgerPath: canonical, seccompProfileSha256: sha,
   attestation: z.strictObject({ platform: z.literal('linux/landlock'), enforced: z.literal(true), restrictNetwork: z.literal(true),
     profileName: z.string().min(1).max(128), sandboxRuntime: z.literal('bubblewrap'), eventsPath: canonical }),
 }).refine(projection => (projection.workerConfigVariant === 'clocked') === (projection.taskClock !== undefined),
   { message: 'Grok taskClock must match workerConfigVariant', path: ['taskClock'] })
-  .refine(projection => projection.workerConfigSha256 === grokWorkerConfigPins[projection.workerConfigVariant][projection.model][projection.reasoningEffort],
+  .refine(projection => !projection.taskClock || (projection.taskClock.directoryPath === grokTaskClockPin.slotDirectoryPattern.replace('{slot}', String(projection.slot))
+    && projection.taskClock.timestampFilePath === grokTaskClockPin.slotFilePattern.replace('{slot}', String(projection.slot))),
+    { message: 'Grok taskClock must belong to its slot', path: ['taskClock'] })
+  .refine(projection => projection.workerConfigSha256 === (projection.workerConfigVariant === 'clocked'
+    ? grokClockedWorkerConfigPins[projection.slot]?.[projection.model][projection.reasoningEffort]
+    : grokWorkerConfigPins.unclocked[projection.model][projection.reasoningEffort]),
     { message: 'Grok worker config digest differs from the pinned variant/model/effort', path: ['workerConfigSha256'] });
 export type GrokBrokerProjection = z.infer<typeof grokBrokerProjectionSchema>;
 
