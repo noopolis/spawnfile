@@ -1,4 +1,5 @@
 import io
+import hashlib
 import json
 
 import pytest
@@ -35,19 +36,25 @@ def test_writer_encodes_newlines_and_unicode_in_one_protocol_line(monkeypatch):
         write_message(writer, {"a": "large"})
 
 
+def identity(method, params, ordinal=1):
+    key = hashlib.sha256(json.dumps([method, params], sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return f"{key}:{ordinal}"
+
+
 def response(**outcome):
-    return {"schema": SCHEMA, "kind": "response", "id": "call-1", **outcome}
+    return {"schema": SCHEMA, "kind": "response", "id": identity("generate", {}), **outcome}
 
 
 def test_serial_host_correlates_ids_and_preserves_structured_params():
-    replies = [response(result={"one": 1}), {**response(result={"two": 2}), "id": "call-2"}]
+    ids = [identity("evaluate", {"components": {"A": "first\nsecond"}}), identity("generate", {"options": {}})]
+    replies = [{**response(result={"one": 1}), "id": ids[0]}, {**response(result={"two": 2}), "id": ids[1]}]
     reader = io.BytesIO(("\n".join(json.dumps(r) for r in replies) + "\n").encode())
     writer = io.StringIO()
     host = JsonlHost(reader, writer)
     assert host("evaluate", {"components": {"A": "first\nsecond"}}) == {"one": 1}
     assert host("generate", {"options": {}}) == {"two": 2}
     sent = [json.loads(line) for line in writer.getvalue().splitlines()]
-    assert [message["id"] for message in sent] == ["call-1", "call-2"]
+    assert [message["id"] for message in sent] == ids
     assert sent[0]["params"]["components"]["A"] == "first\nsecond"
 
 

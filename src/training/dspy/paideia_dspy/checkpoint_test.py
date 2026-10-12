@@ -17,6 +17,12 @@ class JournalHost:
         self.subject = SimulatedHost()
         self.fail = True
 
+    def checkpoint(self):
+        return {"sequence": self._sequence}
+
+    def restore(self, state):
+        self._sequence = state["sequence"]
+
     def __call__(self, method, params):
         self._sequence += 1
         if self._sequence == self.fail_at and self.fail:

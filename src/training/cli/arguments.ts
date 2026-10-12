@@ -19,7 +19,7 @@ const graderFlags: Record<string, readonly string[]> = {
 };
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
-  train: [...common, 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
+  train: [...common, 'concurrency', 'slots-file', 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
 };
 
 export const helpText = `Paideia — explicit local native-agent experiments
@@ -49,6 +49,7 @@ Configured judge policies cannot be replaced by --judge or conflicting citation 
 The optimizer bridge defaults to the installed paideia-dspy executable for YAML-configured training.
 Train accepts repeated --validation-group GROUP, or freezes an internal group partition.
 --max-trials N (default 20, ceiling 10000) includes conservative reserved sealed-test trials.
+--concurrency N (1..8; default 4 with provisioned slots, otherwise 1); --slots-file FILE overrides /run/paideia/slots.json.
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).
 train --dry-run resolves local inputs and prints an API-equivalent cost plan without launching any runtime or model.
 train --resume reopens the same --out with unchanged execution inputs and cumulative optimizer budgets.

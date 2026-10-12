@@ -206,3 +206,15 @@ test('each Grok trial owns a fresh directory inside the shared slot control root
     await expect(loadNativeLaunch({ ...f.input, trialId: 'slot-trial-2' }, true)).resolves.toBeDefined();
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
+
+test('the native loader rejects a receipt from a different lease before starting a child', async () => {
+  const f = await slotFixture();
+  try {
+    const slot = { index: f.launch.broker.slot, workerUid: f.launch.broker.workerUid,
+      roots: { workspace: f.paths.workspace, runtimeHome: f.paths.runtimeHome, workerHome: f.launch.broker.workerHomePath,
+        usageLedger: f.launch.broker.usageLedgerPath, preflightReceipt: f.launch.broker.slotPreflightReceipt,
+        controlRoot: f.paths.state }, ports: { base: f.launch.host.port, count: 1 } };
+    expect(await loadNativeLaunch({ ...f.input, slot }, true)).toMatchObject({ broker: f.launch.broker });
+    await expect(loadNativeLaunch({ ...f.input, slot: { ...slot, index: slot.index + 1 } }, true)).rejects.toThrow('leased slot identity');
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});

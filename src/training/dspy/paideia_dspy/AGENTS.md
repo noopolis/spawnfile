@@ -37,3 +37,8 @@ released DSPy GEPA integration. Inherit the bridge guide.
   commits parent lineage before callbacks. Parent directories remain read-only.
   Child resume requires the same lineage; importing never resets callback IDs,
   completed outcomes, sampler state or attempt budgets.
+
+Protocol v2 uses one locked whole-line writer and one response reader dispatching
+by callback ID. Session locks protect reservations/bookkeeping, never host calls.
+Replay IDs use request content plus occurrence counts, saved explicitly with the
+paired checkpoint, rather than deriving a sequence from completed-result count.

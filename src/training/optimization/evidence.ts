@@ -13,7 +13,8 @@ export async function verifyDspyResult(result: DspyResult, host: DspyHost, signa
   }
   const captures = completed.map(({ caseId, split, result: evaluated }) => ({ caseId, split, captureId: evaluated.captureId }));
   // Checkpoint JSON canonicalizes object keys; array order and every value remain authoritative.
-  if (!isDeepStrictEqual(captures, provenance.captures)
+  const ordered = (rows: typeof captures) => [...rows].sort((a, b) => a.captureId.localeCompare(b.captureId));
+  if (!isDeepStrictEqual(ordered(captures), ordered(provenance.captures))
       || !isDeepStrictEqual(generations.map(({ model, usage, modelBasis }) => ({ model, usage,
         ...(modelBasis === undefined ? {} : { modelBasis }) })), provenance.generations)) {
     throw new Error('DSPy terminal capture or inference provenance does not match host evidence');

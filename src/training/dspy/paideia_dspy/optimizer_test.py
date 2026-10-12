@@ -63,3 +63,18 @@ def test_installed_release_mismatch_fails_before_any_callback(monkeypatch):
     with pytest.raises(BridgeError, match="pinned"):
         optimize(request(), host)
     assert host.calls == []
+
+
+def test_real_gepa_uses_all_configured_threads_for_baseline_validation():
+    import threading
+    barrier = threading.Barrier(4, timeout=2)
+    calls = []
+    def host(method, params):
+        assert method == "evaluate"
+        calls.append(params["caseId"])
+        barrier.wait()
+        return {"score": 0.0, "feedback": "", "output": "", "captureId": params["caseId"]}
+    result = optimize(request(concurrency=4, validationCaseIds=["v0", "v1", "v2", "v3"],
+                              budget={"maxMetricCalls": 4, "maxProposals": 1}), host)
+    assert sorted(calls) == ["v0", "v1", "v2", "v3"]
+    assert result["provenance"]["evaluations"] == 4

@@ -10,7 +10,7 @@ describe('bounded process protocol', () => {
   it('delivers async lines in order, including the final unterminated line', async () => {
     const lines: string[] = [];
     const result = await runProcess(options('process.stdout.write("one\\n\\ntwo");process.stderr.write("diagnostic")', {
-      onLine: async (line) => { await new Promise((resolve) => setTimeout(resolve, 5)); lines.push(line); },
+      onLine: async (line) => { await new Promise((resolve) => setTimeout(resolve, line === 'one' ? 15 : 0)); lines.push(line); },
     })).completion;
     expect(lines).toEqual(['one', 'two']);
     expect(result).toMatchObject({ exitCode: 0, stderr: 'diagnostic', cancelled: false });
@@ -173,4 +173,50 @@ describe('bounded process protocol', () => {
     expect(signals).toHaveLength(2);
     expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
+});
+
+it('bounds multiplexed callbacks, correlates out-of-order atomic responses and drains cancellation', async () => {
+  const ready: number[] = [], completed: number[] = [];
+  const releases = new Map<number, () => void>();
+  const child = runProcess(options(`
+    const readline = require('node:readline');
+    let responses = [];
+    readline.createInterface({input: process.stdin}).on('line', line => {
+      responses.push(JSON.parse(line));
+      if (responses.length === 5) { process.stderr.write(JSON.stringify(responses)); process.exit(0); }
+    });
+    for (let i=0;i<5;i++) console.log(i);
+  `, { keepStdinOpen: true, callbackConcurrency: 4, onLine: async (line, signal) => {
+    const id = Number(line); ready.push(id);
+    await new Promise<void>(resolve => { releases.set(id, resolve); signal.addEventListener('abort', () => resolve(), { once: true }); });
+    completed.push(id);
+    await child.write(`${JSON.stringify({ id })}\n`);
+  } }));
+  await vi.waitFor(() => expect(ready).toHaveLength(4));
+  expect(ready).not.toContain(4);
+  releases.get(0)!();
+  await vi.waitFor(() => expect(ready).toHaveLength(5));
+  for (const id of [4, 3, 2, 1]) releases.get(id)!();
+  const result = await child.completion;
+  expect(result.exitCode).toBe(0);
+  expect(result.error).toBeUndefined();
+  expect(JSON.parse(result.stderr)).toEqual(completed.map(id => ({ id })));
+  expect(completed).toEqual([0, 4, 3, 2, 1]);
+  for (const concurrency of [0, 9, 1.5]) expect(() => runProcess(options('', { callbackConcurrency: concurrency }))).toThrow('1..8');
+});
+
+it('aborts every concurrent callback and waits for their cleanup', async () => {
+  let started = 0, cleaned = 0;
+  const child = runProcess(options('for(let i=0;i<5;i++)console.log(i);setInterval(()=>{},10)', {
+    callbackConcurrency: 4,
+    onLine: async (_line, signal) => {
+      started++;
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => { cleaned++; resolve(); }, { once: true }));
+    },
+  }));
+  await vi.waitFor(() => expect(started).toBe(4));
+  await child.stop('test cancellation');
+  await child.completion;
+  expect(cleaned).toBe(4);
+  expect(started).toBe(4);
 });

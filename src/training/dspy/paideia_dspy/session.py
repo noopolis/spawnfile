@@ -43,7 +43,8 @@ class Session:
         self.healthy()
         try:
             result = response_type.model_validate(self.host(method, params))
-            self.results.append({"method": method, "params": params, "result": result.model_dump()})
+            with self._lock:
+                self.results.append({"method": method, "params": params, "result": result.model_dump()})
             return result
         except Exception as error:
             self.failure = error if isinstance(error, BridgeError) else BridgeError(
@@ -71,9 +72,10 @@ class Session:
                 raise BridgeError("budget_exhausted", "native evaluation attempt budget exhausted")
             # A failed host attempt consumes a slot; repeated feedback calls do not.
             self.evaluations += 1
-            result = self._call("evaluate", {
-                "caseId": case_id, "split": split, "components": components,
-            }, EvaluationResult)
+        result = self._call("evaluate", {
+            "caseId": case_id, "split": split, "components": components,
+        }, EvaluationResult)
+        with self._lock:
             if split == "validation" and (result.feedback or result.output):
                 self.failure = BridgeError("split_violation", "validation returns scalar selection evidence only")
                 raise self.failure
@@ -89,9 +91,10 @@ class Session:
             if self.proposals + self.extra_proposals >= self.request.budget.maxProposals:
                 raise BridgeError("budget_exhausted", "reflection proposal attempt budget exhausted")
             self.proposals += 1
-            result = self._call("generate", {
-                "purpose": "reflection", "messages": messages, "options": options,
-            }, GenerationResult)
+        result = self._call("generate", {
+            "purpose": "reflection", "messages": messages, "options": options,
+        }, GenerationResult)
+        with self._lock:
             generation = {"model": result.model, "usage": result.usage}
             if "modelBasis" in result.model_fields_set:
                 generation["modelBasis"] = result.modelBasis

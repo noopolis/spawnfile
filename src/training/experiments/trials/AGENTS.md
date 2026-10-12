@@ -65,3 +65,7 @@ plan still outranks the deferral: an evaluation that could not measure remains
 unscorable instead of being published as a behavioural zero.
 
 Evaluation services preserve injected grader runtimes alongside judges and embeddings.
+
+Preparation receives the caller's leased `slot` descriptor unchanged; SubjectStart
+receives the same identity. Runtime integrations own resource mapping. Never infer
+fixed worker identities, ports or paths in the experiment layer.

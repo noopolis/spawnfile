@@ -58,3 +58,9 @@ publishes a new child identity with parent lineage before callbacks. Completed c
 replay exactly, pending calls preserve cumulative attempt counts, and the paired
 GEPA checkpoint restores its sampler/history. Missing child journals can finish
 interrupted fork initialization; missing ordinary resume journals still fail.
+
+Protocol v2 multiplexes up to the configured concurrency. Callback IDs are reserved
+before asynchronous work; native attempt capacity is reserved before validation.
+Journal mutations serialize complete read/change/publish transactions. Capture
+provenance compares identities independent of completion order. Drain callbacks on
+shutdown; incomplete host work retains its owned home and never claims settled work.

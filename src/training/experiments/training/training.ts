@@ -1,3 +1,6 @@
+import { MutationQueue } from '../../platform/mutations/index.js';
+import { loadTrialSlots } from '../concurrency/index.js';
+import type { TrialSlot } from '../../contracts/trial-slot.js';
 import { repairMeasurement } from '../repair/index.js';
 import { recoverMeasurement, recoverStoredReport } from './recovery.js';
 import type { RescoreReport } from '../replay/index.js';
@@ -19,6 +22,9 @@ import { trainingFeedback } from './feedback.js';
 import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
 export interface TrainingOptions {
+  concurrency?: number;
+  slotsFile?: string;
+  slots?: readonly TrialSlot[];
   id: string;
   baseline: CandidateManifest;
   train: ResolvedDataset;
@@ -54,6 +60,12 @@ export interface TrainingReport {
     executionIdentity: string; receiptDigest: string; inheritedTrialIds: string[] };
 }
 export async function trainAgent(options: TrainingOptions): Promise<TrainingReport> {
+  if ('maxRunRequests' in options) throw new Error('Run-wide Grok request admission is not implemented; maxRunRequests cannot be enforced');
+  const { concurrency, pool, slots } = await loadTrialSlots(options);
+  const progress = options.onProgress;
+  const mutations = new MutationQueue();
+  options = { ...options, concurrency, slots,
+    onProgress: progress ? event => mutations.run(() => progress(event)) : undefined };
   validateCandidate(options.baseline);
   const partition = options.validation ? { train: options.train, validation: options.validation }
     : partitionTraining(options.train, options.validationGroups);
@@ -112,7 +124,11 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     }
     const id = entry?.id ?? randomUUID();
     await options.onProgress?.({ type: 'trial.queued', payload: { caseId, phase, candidateId: candidate.id } });
-    const report = await runStoredTrial({ ...options.native, id, phase, record: structuredClone(record), candidate,
+    const lease = await pool?.acquire(signal ?? options.signal);
+    let confirmed = false;
+    let report: TrialReport;
+    try {
+    report = await runStoredTrial({ ...options.native, slot: lease?.slot, id, phase, record: structuredClone(record), candidate,
       datasetId: dataset.id, datasetDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest,
       signal: signal ?? options.signal, evaluation: criteria.get(dataset)!,
       protectedPaths: [...options.native.protectedPaths ?? [], ...options.checkpoint ? [options.checkpoint.directory] : []],
@@ -120,7 +136,9 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
         await options.native.observeEvent?.(event);
         await options.onProgress?.({ type: 'trial.progress', payload: { trialId: id, caseId, phase, candidateId: candidate.id, event } });
       } });
+    confirmed = report.hostWork === 'settled' && report.stop?.state === 'acknowledged' && report.stop.quiescence === 'confirmed';
     await checkpoint?.complete(key, report);
+    } finally { lease?.release(confirmed); }
     trials.push(report);
     await options.onProgress?.({ type: 'trial.finished', payload: report });
     return report;
@@ -130,12 +148,12 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   if (checkpoint?.optimizer && options.checkpoint) {
     const restored = await readDspyCheckpointEvidence({ id: options.id, components: baselineComponents,
       trainCaseIds: partition.train.records.map(record => record.id), validationCaseIds: partition.validation.records.map(record => record.id),
-      budget: options.budget, seed: options.seed, proposal: options.proposal, checkpoint: options.checkpoint });
+      concurrency, budget: options.budget, seed: options.seed, proposal: options.proposal, checkpoint: options.checkpoint });
     await options.onProgress?.({ type: 'optimizer.restored', payload: restored });
   }
   const optimizer = checkpoint?.optimizer ?? await runDspyOptimization({ id: options.id, components: baselineComponents,
     trainCaseIds: partition.train.records.map(record => record.id), validationCaseIds: partition.validation.records.map(record => record.id),
-    bridge: options.bridge, checkpoint: options.checkpoint, proposal: options.proposal,
+    concurrency, bridge: options.bridge, checkpoint: options.checkpoint, proposal: options.proposal,
     onRestore: async evidence => { await options.onProgress?.({ type: 'optimizer.restored', payload: evidence }); }, budget: options.budget, seed: options.seed, signal: options.signal,
     validateComponents: components => { candidateFor(components); },
     generate: async (request, signal) => {

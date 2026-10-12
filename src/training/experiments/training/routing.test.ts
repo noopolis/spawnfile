@@ -79,7 +79,7 @@ function baselineOptimizer(onMetric?: (result: Awaited<ReturnType<optimization.D
       if (split === 'validation') validationScore = response.score;
       captures.push({ caseId: split, split, captureId: response.captureId });
     }
-    return { schema: 'paideia.dspy.v1', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 2, proposals: 0,
         selectedCandidateIndex: 0, candidates: [{ components: request.components, parents: [null], validationScore, discoveryEvaluations: 0 }],
         captures, generations: [] } };

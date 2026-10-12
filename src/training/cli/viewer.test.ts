@@ -116,7 +116,7 @@ describe('usable persisted viewer command', () => {
       expect(progress.costs.observed.lines[3]).toMatchObject({ model: null, requestedModel: 'observed', modelBasis: 'unknown' });
       expect(progress.costs.observed.lines.at(-1)).toMatchObject({ role: 'optimizer', model: null, outcome: 'generation-error', amount: null });
       expect(progress.costs.observed.total).toBeNull();
-      const optimizer: DspyResult = { schema: 'paideia.dspy.v1', kind: 'result', id: 'live', components: { text: 'PRIVATE' },
+      const optimizer: DspyResult = { schema: 'paideia.dspy.v2', kind: 'result', id: 'live', components: { text: 'PRIVATE' },
         provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 1, proposals: 1, selectedCandidateIndex: 0,
           candidates: [{ components: { text: 'PRIVATE' }, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],
           captures: [{ caseId: trial.recordId, split: 'validation', captureId: trial.id }], generations: [{ model: 'observed', usage: null }] } };
@@ -191,7 +191,7 @@ it.each([false, true])('retains restored sealed spending through failure (select
     if (frozen) {
       await live.observe({ type: 'training.started', payload: { train: [], validation: [native.recordId] } });
       await live.observe({ type: 'trial.restored', payload: { ...native, phase: 'validation' } });
-      const optimizer: DspyResult = { schema: 'paideia.dspy.v1', kind: 'result', id: 'restored', components: {},
+      const optimizer: DspyResult = { schema: 'paideia.dspy.v2', kind: 'result', id: 'restored', components: {},
         provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
           evaluations: 1, proposals: 0, selectedCandidateIndex: 0, generations: [],
           candidates: [{ components: {}, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],

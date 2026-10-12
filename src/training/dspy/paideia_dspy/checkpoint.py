@@ -99,9 +99,8 @@ class Checkpoint:
             item["params"]["caseId"]: EvaluationResult.model_validate(item["result"])
             for item in self.session.results[:len(self.session.request.validationCaseIds)]
         }
-        # JSONL callback numbering is the durable call identity, not a new attempt.
-        if hasattr(self.session.host, "_sequence"):
-            self.session.host._sequence = len(self.session.results)
+        if hasattr(self.session.host, "restore"):
+            self.session.host.restore(saved["callbacks"])
         sample = saved["sampler"]
         for key, value in sample.items():
             if key == "rng":
@@ -123,6 +122,7 @@ class Checkpoint:
             "session": {name: getattr(self.session, name) for name in
                         ["evaluations", "proposals", "captures", "generations", "results", "proposal_records", "proposal_stopped"]},
             "sampler": sample,
+            "callbacks": self.session.host.checkpoint() if hasattr(self.session.host, "checkpoint") else {},
         }
         if self.lineage is not None:
             payload["lineage"] = self.lineage

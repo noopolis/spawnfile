@@ -14,6 +14,8 @@ export class DspyHost {
   readonly completed: CompletedEvaluation[] = [];
   readonly generations: InferenceResult[] = [];
   readonly inferenceAttempts: InferenceAttempt[] = [];
+  private reservedEvaluations = 0;
+  private readonly workInFlight = new Set<Promise<unknown>>();
   private readonly calls = new Set<string>();
   private readonly captures = new Set<string>();
 
@@ -36,7 +38,9 @@ export class DspyHost {
     signal.throwIfAborted();
     this.pending += 1;
     const work = Promise.resolve().then(operation);
-    void work.then(() => { this.pending -= 1; }, () => { this.pending -= 1; });
+    this.workInFlight.add(work);
+    const settled = () => { this.pending -= 1; this.workInFlight.delete(work); };
+    void work.then(settled, settled);
     let listener!: () => void;
     const interrupted = new Promise<never>((_resolve, reject) => {
       listener = () => reject(new Error('DSPy host work was cancelled'));
@@ -44,6 +48,16 @@ export class DspyHost {
     });
     try { return await Promise.race([work, interrupted]); }
     finally { signal.removeEventListener('abort', listener); }
+  }
+
+  async drain(timeoutMs: number): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Promise.allSettled([...this.workInFlight]).then(() => this.pending === 0),
+        new Promise<false>(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); }),
+      ]);
+    } finally { clearTimeout(timer); }
   }
 
   async validate(components: Record<string, string>, signal: AbortSignal): Promise<void> {
@@ -56,12 +70,12 @@ export class DspyHost {
 
   async handle(request: DspyRequest, signal: AbortSignal): Promise<unknown> {
     if (this.calls.has(request.id)) throw new Error('DSPy reused a callback ID');
+    this.calls.add(request.id);
     const entry = await this.checkpoint?.begin(request, this.start.budget);
-    if (entry?.result !== undefined) { this.calls.add(request.id); return entry.result; }
-    if (this.calls.size >= this.start.budget.maxMetricCalls + this.start.budget.maxProposals) {
+    if (entry?.result !== undefined) return entry.result;
+    if (this.calls.size > this.start.budget.maxMetricCalls + this.start.budget.maxProposals) {
       throw new Error('DSPy exceeded its total callback budget');
     }
-    this.calls.add(request.id);
     if (request.method === 'generate') {
       if (this.proposals >= this.start.budget.maxProposals) throw new Error('DSPy exceeded its proposal budget');
       this.proposals += 1;
@@ -88,8 +102,10 @@ export class DspyHost {
     const params = request.params;
     const allowed = params.split === 'train' ? this.start.trainCaseIds : this.start.validationCaseIds;
     if (!allowed.includes(params.caseId)) throw new Error('DSPy requested a case outside its declared split');
-    if (this.evaluations >= this.start.budget.maxMetricCalls) throw new Error('DSPy exceeded its native evaluation budget');
-    await this.validate(params.components, signal);
+    if (this.evaluations + this.reservedEvaluations >= this.start.budget.maxMetricCalls) throw new Error('DSPy exceeded its native evaluation budget');
+    this.reservedEvaluations += 1;
+    try { await this.validate(params.components, signal); }
+    finally { this.reservedEvaluations -= 1; }
     this.evaluations += 1;
     const frozen = Object.freeze({ ...params, components: Object.freeze({ ...params.components }) });
     const result = evaluationSchema.parse(await this.work(() => this.options.evaluate(frozen, signal, request.id), signal));

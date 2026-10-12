@@ -59,6 +59,8 @@ describe('terminal optimization evidence', () => {
       await expect(verifyDspyResult(changed, f.host, f.signal)).rejects.toThrow('provenance');
     }
     const reordered = structuredClone(f.result); reordered.provenance.captures.reverse();
+    await expect(verifyDspyResult(reordered, f.host, f.signal)).resolves.toBeUndefined();
+    reordered.provenance.captures[0] = { ...reordered.provenance.captures[1]! };
     await expect(verifyDspyResult(reordered, f.host, f.signal)).rejects.toThrow('provenance');
   });
 

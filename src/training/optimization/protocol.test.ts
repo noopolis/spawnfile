@@ -24,7 +24,7 @@ describe('strict DSPy protocol', () => {
   ])('rejects invalid start: %j', (patch) => { expect(() => startSchema.parse(start(patch))).toThrow(); });
 
   it('rejects duplicate keys before JSON.parse can hide their conflicting values', () => {
-    const line = '{"schema":"paideia.dspy.v1","kind":"error","id":"x","id":"y","error":{"code":"bad","message":"x"}}';
+    const line = '{"schema":"paideia.dspy.v2","kind":"error","id":"x","id":"y","error":{"code":"bad","message":"x"}}';
     expect(() => decodeMessage(line)).toThrow('duplicate');
     expect(() => decodeMessage(line.replace('"id":"y"', '"\\u0069d":"y"'))).toThrow('duplicate');
   });

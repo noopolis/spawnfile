@@ -33,6 +33,8 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       sourceDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest })}\n`);
     return 0;
   }
+  if (args.command === 'train' && args.flags.concurrency) count(args, 'concurrency', 4, 8);
+  if (args.training?.comparison && (args.flags.concurrency || args.flags['slots-file'])) throw new Error('Comparison does not support trial concurrency controls');
   if (args.command === 'train' && args.flags['dry-run']) return dryRunTraining(args, io, dependencies);
   if (args.flags['spawnfile-context'] && !dependencies.spawnfile) throw new Error('Spawnfile native training requires a supported isolated preparation integration; no native trial was started');
   const inputs = await prepareCliInputs(args, io, dependencies);
@@ -113,7 +115,9 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         .every(trial => (report.rescores?.findLast(score => score.runId === trial.id)?.status ?? trial.status) === 'pass') ? 0 : 1;
     }
     if (test !== undefined) {
-      const report = await trainAgent({ id, baseline: native.candidate, train: dataset, test,
+      const report = await trainAgent({
+        concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined,
+        slotsFile: args.flags['slots-file'] ? resolve(io.cwd, one(args, 'slots-file')) : undefined, id, baseline: native.candidate, train: dataset, test,
         validationGroups: args.flags['validation-group'], native: base,
         inference: { provider: native.inference!, model: optimizerModel! },
         bridge: bridge!,

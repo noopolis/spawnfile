@@ -110,3 +110,22 @@ it('keeps settled attempt receipts when response validation or an outer abort re
     expect(host.inferenceAttempts).toEqual(attempts);
   }
 });
+
+it('reserves evaluation capacity before asynchronous validation and refuses duplicate in-flight IDs', async () => {
+  const { host, start, options } = hostFixture();
+  start.budget.maxMetricCalls = 1;
+  let release!: () => void;
+  options.validateComponents = () => new Promise<void>(resolve => { release = resolve; });
+  const signal = new AbortController().signal;
+  const request = evaluateRequest('reserved', start.components);
+  const first = host.handle(request, signal);
+  while (!release) await Promise.resolve();
+  await expect(host.handle(request, signal)).rejects.toThrow('reused');
+  await expect(host.handle(evaluateRequest('second', start.components), signal)).rejects.toThrow('evaluation budget');
+  expect(host.evaluations).toBe(0);
+  expect(await host.drain(1)).toBe(false);
+  release();
+  await first;
+  expect(await host.drain(10)).toBe(true);
+  expect(host.evaluations).toBe(1);
+});

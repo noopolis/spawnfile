@@ -1,3 +1,4 @@
+import type { TrialSlot } from './trial-slot.js';
 /** Native execution is independent of the dataset language and evaluator registry. */
 export interface Usage {
   inputTokens: number | null;
@@ -205,6 +206,7 @@ export interface FixtureTool {
 }
 
 export interface SubjectStart {
+  slot?: TrialSlot;
   trialId: string;
   workspacePath: string;
   runtimeHomePath: string;

@@ -63,3 +63,9 @@ becomes a zero the optimizer can learn from instead of an infrastructure error.
 `failed` still means the machine broke and still refuses to produce a number.
 
 Evaluation services preserve injected grader runtimes alongside judges and embeddings.
+
+Training resolves runtime-neutral slot descriptors before opening checkpoints.
+Pass a lease to preparation and subject start; retain it through closure, collection
+and stored-report publication. Unconfirmed closure or unsettled host work quarantines
+that slot. Progress and checkpoint mutations serialize independently of subject work.
+Slot descriptors and effective concurrency bind checkpoint identity.

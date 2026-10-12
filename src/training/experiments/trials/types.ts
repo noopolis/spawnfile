@@ -1,3 +1,4 @@
+import type { TrialSlot } from '../../contracts/trial-slot.js';
 import type { ResolvedRecord, TaskInput } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, EvaluationSnapshot, PlanEvaluation, Verdict } from '../../contracts/evaluation.js';
 import type { FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectStartupDiagnostic, SubjectTurnResult } from '../../contracts/execution.js';
@@ -11,6 +12,7 @@ export interface PreparedTrial {
 }
 export interface TrialEvent { type: string; payload: unknown }
 export interface TrialOptions {
+  slot?: TrialSlot;
   id: string;
   phase: 'train' | 'validation' | 'test';
   record: ResolvedRecord;

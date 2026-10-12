@@ -95,3 +95,10 @@ describe('CLI through actual cases/candidates/experiments/storage', () => {
     expect(fixture.stderr).toEqual([]);
   });
 });
+
+it('validates concurrency bounds before dry-run can ignore them', async () => {
+  const fixture = await cliFixture(); roots.push(fixture.root);
+  expect(await main(['train', '--train', 'data.yaml', '--dry-run', '--concurrency', '9'], fixture.io, fixture.dependencies)).toBe(2);
+  expect(fixture.stderr.join('')).toContain('integer');
+  expect(fixture.observedInstructions).toEqual([]);
+});
