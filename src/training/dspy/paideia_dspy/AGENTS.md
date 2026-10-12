@@ -37,3 +37,9 @@ released DSPy GEPA integration. Inherit the bridge guide.
   commits parent lineage before callbacks. Parent directories remain read-only.
   Child resume requires the same lineage; importing never resets callback IDs,
   completed outcomes, sampler state or attempt budgets.
+
+- `search/` owns opt-in population rounds, behavioral novelty and bounded retention.
+  Omitted search dispatches to the unchanged released GEPA invocation. The search
+  package reconstructs state by settled host-journal replay, without pickle; failed
+  or uncertain recovery offsets and population forks fail closed before callbacks.
+  `Evaluator.evaluate_many` preserves request order; only sequential execution ships.

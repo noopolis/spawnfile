@@ -108,3 +108,47 @@ storage. If mandatory summaries alone cannot fit, oldest rows are omitted with a
 explicit count. These limits describe partial context; they never claim all text
 was shown. Final upstream state is paired with proposal bookkeeping on completion;
 exact resume restores rejected proposals and does not repeat completed work.
+
+## Authored population search
+
+With `optimizer.variants` present, Paideia runs the explicit population algorithm
+beside GEPA. Declare `keep` and `budget.rounds` too (`1 <= keep <= variants`):
+
+```yaml
+training:
+  optimizer:
+    method: gepa
+    model: reflection
+    variants: 4
+    keep: 2
+    budget: { rounds: 3 }
+    selection: pareto
+    boundaries: ["Keep quoted text verbatim."]
+    proposal:
+      rewrite_share: 0.5
+      min_change: 0.08
+      hypothesis_similarity: 0.6
+      max_attempts: 2
+```
+
+Defaults: method `gepa`, selection `pareto`, rewrite share `0.5`, behavioral floor
+`0.08`, hypothesis similarity threshold `0.6`, patience equal to rounds (off),
+boundaries `[]`, realization attempts `2`. Existing history limits remain 20
+entries and 65536 bytes. Omitted total proposal cap derives as
+`rounds * (keep + variants) * max_attempts`; it must fit the existing 1000 ceiling,
+and an explicit cap must be at least `keep + variants`. Planning calls count.
+The unchanged legacy proposal defaults apply when variants is absent.
+
+Each round plans distinct hypotheses using train-only feedback, realizes complete
+component replacements, rejects duplicates/insufficient behavioral change before
+trials, evaluates complete validation, and retains a bounded Pareto or top-k pool.
+Provenance includes both change measures, rejected attempts, per-case scores,
+rounds, stop reason and effective whole-file/heading scope. See
+[the protocol](protocol.md#optional-population-search) for exact wire shapes,
+behavioral scoring and the ordered Evaluator seam reserved for P6.
+
+Deterministic simulated tests cover search and actual-process host verification.
+Settled-callback checkpoint resume replays with no extra spend or Python pickle.
+Population recovery with uncertain/failed attempts and checkpoint forks fails
+closed; start a new run for those cases. These tests make no claim of live model
+quality or native-agent improvement.
