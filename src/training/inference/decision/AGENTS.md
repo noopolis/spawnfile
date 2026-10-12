@@ -39,3 +39,8 @@ usage, response-model basis, billing and wall time, even for invalid responses.
 Verify: npx vitest run src/inference/decision; npx eslint src/inference/decision;
 npx tsc --noEmit. Exercise missing options, bounds, first tokens, batching,
 identity mismatch, cancellation and unsupported provider contracts.
+
+TypeSafe is a separate explicit paid API route, owned by typesafe/. Its versioned
+identity needs no canary. Capabilities declare API billing and batch support;
+request receipts contain allowlisted accounting only. Never feed its key into
+shared HTTP rejection diagnostics or raw-score caches.

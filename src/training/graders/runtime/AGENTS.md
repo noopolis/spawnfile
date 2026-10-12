@@ -20,3 +20,9 @@ before and after scoring, and require a backend for every selected model. Preser
 single-model callers through the default route. Persist model IDs in decision
 accounting without inventing provider calls; shared endpoint resources cover every
 constructed model. Teacher selections keep their own route and bypass Platt.
+
+Identity and score calls append dispatched receipts to a caller-owned collector.
+Never derive invocation ownership from backend history or receipt offsets.
+Paid grading failures retain invocation-scoped, allowlisted decision receipts on
+DecisionAccountingError after started provider work settles; never attach request
+payloads or provider response extensions to failure accounting.

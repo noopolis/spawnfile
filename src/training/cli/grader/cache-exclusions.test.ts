@@ -186,3 +186,12 @@ it('separates Jev caches and calibration identity when server preparation or dec
   expect(new Set(calibrations.map(stableDigest)).size).toBe(3);
   expect(scoringCalls).toBe(3);
 });
+
+it('does not hide a dispatched batch spend-cap miss behind another result cached during that batch', async () => {
+  const directory = await temporary();
+  const provider: DecisionBackend = { ...backend(async requests => requests.map((r, i) => i === 0 ? result(r.key)
+    : { key: r.key, status: 'missing', probabilities: null, reason: 'spend cap' })), capabilities: { billing: 'api', batch: true } };
+  const requests = [request('a'), { ...request('a'), key: 'b' }];
+  expect(await cachedScores(directory, provider, 'batch', requests, 2)).toEqual([result('a'),
+    { key: 'b', status: 'missing', probabilities: null, reason: 'spend cap' }]);
+});

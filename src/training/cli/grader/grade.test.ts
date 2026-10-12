@@ -11,7 +11,7 @@ import { backendIdentity } from './backend.js';
 import { runExpand, runGrade } from './grade.js';
 
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture(checkGate = false) {
   const root = await mkdtemp(join(tmpdir(), 'grader-grade-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml'), outputFile = join(root, 'output.json');
@@ -206,4 +206,46 @@ it('grader expand prints adjusted sentence units for citations after a period', 
     ['q@p0.s0', 'One. [E1][E7]', 'ready'], ['q@p0.s1', 'Two. [E2]', 'ready'],
     ['q@p0.s2', 'Three.', 'not-applicable'],
   ]);
+});
+
+it('grades on the explicit TypeSafe route with accounting and propagates CLI spend-cap missing reasons', async () => {
+  const f = await fixture();
+  f.grader.model = { backend: 'typesafe', endpoint: 'https://api.typesafe.ai/v1/systemone', name: 'jev-1.13.0', concurrency: 8 };
+  await writeFile(f.graderFile, stringify(f.grader));
+  const { graderBackend } = await import('./backend.js');
+  vi.stubEnv('TYPESAFE_API_KEY', 'FAKE_GRADE_API_KEY');
+  f.calibration.identity = createCalibrationIdentity(f.grader, { ...f.calibration.identity,
+    backendModel: await backendIdentity(f.grader, graderBackend(f.grader)) });
+  await writeFile(f.grader.calibration, JSON.stringify(f.calibration));
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ model: 'jev-1.13.0',
+    answers: { q: { type: 'noul', noul: 0.99 } }, usage: { input_tokens: 100, output_tokens: 1 } }));
+  vi.stubGlobal('fetch', fetch);
+  const passed = await runGrade(f);
+  expect(passed).toMatchObject({ status: 'pass', backendBilling: 'api', decisionAccounting: { requests: 1, inputTokens: 100, outputTokens: 1 } });
+  expect(passed.decisionAccounting!.usd).toBeCloseTo(0.0000042, 12);
+  const output: string[] = [];
+  expect(await main(['grader', 'grade', '--grader', f.graderFile, '--output', f.outputFile,
+    '--context', `evidence=${f.contextFiles.evidence}`, '--context', `policy=${f.contextFiles.policy}`, '--max-spend-usd', '0'],
+  { cwd: f.root, stdout: text => output.push(text), stderr: text => { throw new Error(text); } })).toBe(1);
+  expect(JSON.parse(output[0]!)).toMatchObject({ status: 'unknown', coverage: 0,
+    decisions: [{ reason: 'spend cap' }], decisionAccounting: { requests: 0, usd: 0 } });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('emits sanitized accounting for paid grading failure before returning nonzero', async () => {
+  const f = await fixture();
+  f.backend.capabilities = { billing: 'api' };
+  f.backend.score = async (_requests, _signal, receipts) => {
+    receipts!.push({ billing: 'api', model: 'paid', endpoint: 'https://example.test', inputTokens: 100,
+      outputTokens: 0, usd: 0.1, estimatedInputTokens: 120, estimatedUsd: 0.12, latencyMs: 2, status: 200 });
+    throw new Error('infrastructure unavailable');
+  };
+  const stdout: string[] = [], stderr: string[] = [];
+  expect(await main(['grader', 'grade', '--grader', f.graderFile, '--output', f.outputFile,
+    '--context', `evidence=${f.contextFiles.evidence}`, '--context', `policy=${f.contextFiles.policy}`], {
+    cwd: f.root, stdout: text => stdout.push(text), stderr: text => stderr.push(text),
+  }, { grader: f.dependencies })).toBe(2);
+  expect(JSON.parse(stdout[0]!)).toMatchObject({ schema: 'paideia.grader-failure.v1', status: 'failed', command: 'grade',
+    decisionAccounting: { requests: 1, inputTokens: 100, usd: 0.1, receipts: [{ status: 200 }] } });
+  expect(stderr.join('')).toContain('infrastructure unavailable');
 });

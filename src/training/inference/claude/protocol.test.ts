@@ -34,10 +34,12 @@ it('retains cache-write totals and duration without charging writes again as unc
 
 it('strips API/provider overrides while preserving saved login integration', () => {
   for (const name of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK',
-    'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDECODE', 'CLAUDE_CODE_SIMPLE', 'OPENAI_API_KEY', 'CODEX_API_KEY']) vi.stubEnv(name, 'sensitive');
+    'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDECODE', 'CLAUDE_CODE_SIMPLE', 'OPENAI_API_KEY', 'CODEX_API_KEY', 'TYPESAFE_API_KEY']) vi.stubEnv(name, 'sensitive');
   vi.stubEnv('CLAUDE_CONFIG_DIR', '/selected/native/login');
   const env = claudeEnvironment();
   expect(env['ANTHROPIC_API_KEY']).toBeUndefined();
+  expect(env['TYPESAFE_API_KEY']).toBeUndefined();
+  expect(process.env['TYPESAFE_API_KEY']).toBe('sensitive');
   expect(env['CLAUDE_CODE_USE_BEDROCK']).toBeUndefined();
   expect(env['CLAUDECODE']).toBeUndefined();
   expect(env['CLAUDE_CONFIG_DIR']).toBe('/selected/native/login');

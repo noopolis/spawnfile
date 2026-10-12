@@ -69,3 +69,12 @@ it.each(['validate', 'label', 'calibrate', 'grade', 'expand'])('accepts the boun
   expect(count(args, 'timeout-ms', 180000, 3600000)).toBe(3600000);
   expect(() => count({ ...args, flags: { ...args.flags, 'timeout-ms': ['3600001'] } }, 'timeout-ms', 180000, 3600000)).toThrow('integer');
 });
+
+it('allows finite nonnegative spend caps only for grader calibrate and grade', () => {
+  for (const command of ['calibrate', 'grade']) {
+    const args = ['grader', command, '--grader', 'g.yaml', ...(command === 'grade' ? ['--output', 'o.json'] : [])];
+    expect(parseArguments([...args, '--max-spend-usd', '0.005']).flags['max-spend-usd']).toEqual(['0.005']);
+    for (const value of ['-1', 'NaN', 'Infinity', ' ']) expect(() => parseArguments([...args, '--max-spend-usd', value])).toThrow();
+  }
+  expect(() => parseArguments(['grader', 'validate', '--grader', 'g.yaml', '--max-spend-usd', '1'])).toThrow('Unsupported');
+});

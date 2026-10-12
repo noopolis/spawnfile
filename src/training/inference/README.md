@@ -116,3 +116,14 @@ final agent message. Any item other than an agent message or reasoning refuses
 the attempt as `tool-call`, without retry. The capability is `contained`, distinct
 from `disabled`; graders accept this containment contract. Fake-binary and event
 stream tests verify the adapter contract; they do not establish live model quality.
+
+`createTypeSafeDecision` is a separate, explicitly selected **paid API** decision
+route (`billing: api`), never an implicit fallback. It reads `TYPESAFE_API_KEY`
+only at construction (missing refuses), sends System One typed questions, and
+requires a pinned response version such as `jev-1.13.0`. It groups equal states,
+splits estimated token/question limits, retries overload/rate limits within the
+deadline, and reserves a shared spend budget before every attempt. Receipts retain
+only allowlisted usage, latency, status, endpoint and model fields; no headers,
+raw errors or response bodies are captured. Cache/calibration identities include
+the version and endpoint; no canary request is needed. See the grader guide for
+configurable price estimates, spend-cap missing results and accounting limits.

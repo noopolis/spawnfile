@@ -13,8 +13,8 @@ const common = ['runtime', 'model', 'instructions', 'supporting', 'locked', 'res
 const graderFlags: Record<string, readonly string[]> = {
   validate: ['grader', 'timeout-ms'],
   label: ['grader', 'import', 'inputs', 'teachers', 'relabel', 'adjudication', 'concurrency', 'limit', 'timeout-ms'],
-  calibrate: ['grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
-  grade: ['grader', 'output', 'context', 'timeout-ms'],
+  calibrate: ['max-spend-usd', 'grader', 'exclude-dataset', 'seed', 'report', 'concurrency', 'timeout-ms'],
+  grade: ['max-spend-usd', 'grader', 'output', 'context', 'timeout-ms'],
   expand: ['grader', 'output', 'context', 'timeout-ms'],
 };
 const flags: Record<string, readonly string[]> = {
@@ -27,8 +27,8 @@ export const helpText = `Paideia — explicit local native-agent experiments
 grader validate --grader FILE [--timeout-ms N]
 grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N] [--timeout-ms N]
 grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]
-grader calibrate --grader FILE [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N] [--timeout-ms N]
-grader grade --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
+grader calibrate --grader FILE [--max-spend-usd N] [--exclude-dataset FILE]... [--seed S] [--report FILE.md] [--concurrency N] [--timeout-ms N]
+grader grade --grader FILE [--max-spend-usd N] --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
 grader expand --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
@@ -94,6 +94,7 @@ export function parseArguments(argv: readonly string[]): CliArguments {
     for (const required of graderCommand === 'label' && !values.import ? ['grader', 'inputs', 'teachers'] : graderCommand === 'grade' || graderCommand === 'expand' ? ['grader', 'output'] : ['grader']) {
       if (!values[required]) throw new Error(`Required option --${required} is missing`);
     }
+    if (values['max-spend-usd'] && (!values['max-spend-usd'][0]!.trim() || !Number.isFinite(Number(values['max-spend-usd'][0])) || Number(values['max-spend-usd'][0]) < 0)) throw new Error('--max-spend-usd must be a finite nonnegative number');
     return { command: 'grader', graderCommand: graderCommand as CliArguments['graderCommand'], flags: values };
   }
   if (positional.length !== (command === 'train' ? 0 : 1)) throw new Error(`${command} requires ${command === 'train' ? '--train and --test, without positional arguments' : 'exactly one dataset path'}`);

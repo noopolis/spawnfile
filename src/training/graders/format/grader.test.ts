@@ -154,3 +154,15 @@ describe('grader formats', () => {
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 });
+
+it('validates TypeSafe HTTPS, positive prices and bounded concurrency for legacy and named models', () => {
+  const model = { backend: 'typesafe', name: 'jev-1.13.0' };
+  const input = graderInput(); delete input.model;
+  expect(parseGrader({ ...input, model }).model).toMatchObject({ concurrency: 8 });
+  expect(parseGrader({ ...input, models: [{ ...model, id: 'hosted', concurrency: 32 }] }).models![0]).toMatchObject({ concurrency: 32 });
+  for (const patch of [{ concurrency: 0 }, { concurrency: 33 }, { concurrency: 1.5 },
+    { price_per_mtok_usd: 0 }, { endpoint: 'http://remote.example/v1/systemone' }]) {
+    expect(() => parseGrader({ ...input, model: { ...model, ...patch } })).toThrow();
+    expect(() => parseGrader({ ...input, models: [{ ...model, ...patch, id: 'hosted' }] })).toThrow();
+  }
+});

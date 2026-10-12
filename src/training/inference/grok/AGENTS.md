@@ -68,3 +68,6 @@ The plain-string 401 `Unauthorized (401) from http://127.0.0.1:<port>/v1/chat/co
 auth_stale` and a grant refused `auth_stale` are `auth-stale`: routing skips every later
 route on the same credential authority but may still use an authored non-broker fallback.
 
+
+Strip TYPESAFE_API_KEY from the child environment; paid decision credentials
+belong only to their explicitly selected transport, never teacher processes.
