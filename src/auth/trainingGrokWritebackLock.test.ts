@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -12,7 +12,7 @@ const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 
 it("excludes a live holder and reacquires after release", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "grok-lock-")); roots.push(root);
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "grok-lock-"))); roots.push(root);
   const profile = path.join(root, "profile");
   const release = await acquireTrainingGrokWritebackLock(profile);
   try {
@@ -32,7 +32,7 @@ it("excludes a live holder and reacquires after release", async () => {
 });
 
 it("reacquires after SIGKILL without finally or deleting the lock inode", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "grok-lock-crash-")); roots.push(root);
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "grok-lock-crash-"))); roots.push(root);
   const profile = path.join(root, "profile");
   const module = new URL("./trainingGrokWritebackLock.ts", import.meta.url).href;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `

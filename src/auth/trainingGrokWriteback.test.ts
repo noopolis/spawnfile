@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, open, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -10,7 +10,7 @@ afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { rec
 const credential = (day: number) => JSON.stringify({ "https://auth.x.ai::fixture": { key: "synthetic", refresh_token: "synthetic", expires_at: `2030-01-${String(day).padStart(2, "0")}T00:00:00Z` } });
 const digest = (bytes: string) => createHash("sha256").update(bytes).digest("hex");
 const fixture = async (profileDay = 1, candidateDay = 2, override: Record<string, unknown> = {}) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "grok-writeback-")); roots.push(root);
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "grok-writeback-"))); roots.push(root);
   const profile = path.join(root, "profile"), candidate = path.join(root, "candidate"), journal = path.join(root, "journal");
   await writeFile(profile, credential(profileDay), { mode: 0o600 });
   await writeFile(candidate, credential(candidateDay), { mode: 0o600 });
