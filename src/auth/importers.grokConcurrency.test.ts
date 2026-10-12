@@ -20,7 +20,7 @@ const credential = (day: number) => JSON.stringify({ "https://auth.x.ai::fixture
 } });
 const digest = (bytes: string) => createHash("sha256").update(bytes).digest("hex");
 const fixture = async () => {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "grok-import-race-")); roots.push(root);
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "grok-import-race-"))); roots.push(root);
   vi.stubEnv("SPAWNFILE_HOME", path.join(root, "home"));
   const source = path.join(root, "source");
   await fs.mkdir(source);

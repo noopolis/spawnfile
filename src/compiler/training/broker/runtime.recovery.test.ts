@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -27,7 +27,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 // review. Ordinary Spawnfile installs do not carry Daimon's TypeScript source.
 const daimon = process.env.DAIMON_SOURCE_ROOT;
 it.skipIf(!daimon)("restart without refresh permits profile writeback and slot recycling", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "broker-recovery-"));
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), "broker-recovery-")));
   try {
     const home = path.join(root, "realm"), turns = path.join(root, "turns");
     await mkdir(home); await mkdir(turns);
