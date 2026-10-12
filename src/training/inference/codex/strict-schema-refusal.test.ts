@@ -1,98 +1,110 @@
-import { Ajv } from 'ajv';
 import { expect, it, vi } from 'vitest';
-import { validateInferenceResponse, validateInferenceSchema } from '../response-schema.js';
 import { createCodexInference } from './provider.js';
 import { codexStrictSchema, normalizeCodexResponse } from './strict-schema.js';
 
+type Schema = Record<string, unknown>;
 const row = { type: 'object', additionalProperties: false, properties: { x: { type: 'string' } } };
-const ajv = new Ajv({ strict: true, strictRequired: false });
-
-it.each([
-  { name: 'enum omission', schema: { ...row, enum: [{}] }, answer: {} },
-  { name: 'const omission', schema: { ...row, const: {} }, answer: {} },
-  { name: 'negated string bound', schema: { type: 'string', not: { type: 'string', minLength: 1 } }, answer: '' },
-  { name: 'enum array ancestor', schema: { type: 'array', items: row, enum: [[{}]] }, answer: [{}] },
-  { name: 'const object ancestor', schema: { type: 'object', additionalProperties: false,
-    required: ['row'], properties: { row }, const: { row: {} } }, answer: { row: {} } },
-  { name: 'negated reference', schema: { type: 'string', not: { $ref: '#/definitions/nonempty' },
-    definitions: { nonempty: { type: 'string', minLength: 1 } } }, answer: '' },
-  { name: 'enum reference target', schema: { $ref: '#/definitions/row', enum: [{}], definitions: { row } }, answer: {} },
-  { name: 'nested enum', schema: { type: 'array', items: { ...row, enum: [{}] } }, answer: [{}] },
-  { name: 'bounded primitive enum', schema: { type: 'string', minLength: 1, enum: ['yes'] }, answer: 'yes' },
-  { name: 'conditional optional slot', schema: { ...row, if: { required: ['x'] }, then: false }, answer: {} },
-  { name: 'conditional else slot', schema: { ...row, if: { required: ['x'] }, then: false, else: true }, answer: {} },
-  { name: 'conditional predicate bound', schema: { type: 'string', if: { minLength: 1 }, then: false }, answer: '' },
-  { name: 'conditional then rewrite', schema: { type: 'string', if: true, then: { minLength: 1 } }, answer: 'yes' },
-  { name: 'conditional else rewrite', schema: { type: 'string', if: false, else: { minLength: 1 } }, answer: 'yes' },
-  { name: 'nested conditional', schema: { type: 'array', items: { ...row, if: { required: ['x'] }, then: false } }, answer: [{}] },
-  { name: 'referenced conditional', schema: { $ref: '#/definitions/row', definitions: {
-    row: { ...row, if: { required: ['x'] }, then: false },
-  } }, answer: {} },
-  { name: 'conditional predicate reference', schema: { type: 'string', if: { $ref: '#/definitions/nonempty' }, then: false,
-    definitions: { nonempty: { type: 'string', minLength: 1 } } }, answer: '' },
-])('refuses $name before inference despite a valid original answer', async ({ schema, answer }) => {
-  validateInferenceSchema(schema);
-  expect(ajv.compile(schema)(answer)).toBe(true);
-  const original = structuredClone(schema);
-  expect(() => codexStrictSchema(schema)).toThrow('cannot preserve');
-  expect(() => normalizeCodexResponse(JSON.stringify(answer), schema)).toThrow('cannot preserve');
-  const process = vi.fn(() => { throw new Error('must not launch'); });
-  await expect(createCodexInference({ process }).generate({ model: 'chosen', prompt: 'judge', responseSchema: schema }))
-    .rejects.toMatchObject({ kind: 'unsupported', message: expect.stringContaining('cannot preserve') });
-  expect(process).not.toHaveBeenCalled();
-  expect(schema).toEqual(original);
-});
-
-const anchored = {
-  type: 'object', additionalProperties: false, required: ['row'],
-  properties: { row: { $ref: '#row' } }, definitions: { row: { $id: '#row', ...row } },
+// This inventory is intentionally independent of the implementation allowlist.
+const refused: Schema = {
+  $id: '#anchor', $anchor: 'anchor', $dynamicRef: '#anchor', $dynamicAnchor: 'anchor',
+  contains: row, additionalItems: row, prefixItems: [row], patternProperties: { '^x': row },
+  if: row, then: row, else: row, not: row, dependentSchemas: { x: row },
+  unevaluatedProperties: row, unevaluatedItems: row, dependencies: { x: row }, dependentRequired: { x: ['y'] },
+  propertyNames: { type: 'string' }, anyOf: [row], oneOf: [row], allOf: [row],
+  maxProperties: 1, minProperties: 1, minContains: 1, maxContains: 1,
+  exclusiveMinimum: 0, exclusiveMaximum: 1, multipleOf: 2, pattern: '^x', format: 'email',
+  title: 'Row', $comment: 'Row', default: { properties: { child: row } }, examples: [row],
+  readOnly: true, writeOnly: true, deprecated: true, contentSchema: row,
+  contentEncoding: 'base64', contentMediaType: 'application/json', nullable: true, unknownFutureKeyword: row,
 };
+const placements = [
+  { name: 'root', path: '#', wrap: (node: Schema) => node },
+  { name: 'property', path: '#/properties/a~1b~0c', wrap: (node: Schema) => ({
+    ...row, properties: { 'a/b~c': node },
+  }) },
+  { name: 'items', path: '#/items', wrap: (node: Schema) => ({ type: 'array', items: node }) },
+  { name: 'deep items/property', path: '#/properties/rows/items/properties/child/items', wrap: (node: Schema) => ({
+    ...row, properties: { rows: { type: 'array', items: {
+      ...row, properties: { child: { type: 'array', items: node } },
+    } } },
+  }) },
+];
 
-it.each([
-  { name: 'local anchor', schema: anchored },
-  { name: 'identifier reached by pointer', schema: { ...anchored, properties: { row: { $ref: '#/definitions/row' } } } },
-  { name: 'root identifier', schema: { $id: 'https://example.invalid/schema', ...row } },
-  { name: 'URI-encoded pointer', schema: { ...anchored,
-    properties: { row: { $ref: '#/definitions/%72ow' } }, definitions: { row } } },
-])('refuses $name consistently before inference and normalization', async ({ schema }) => {
-  validateInferenceSchema(schema);
+it.each(Object.entries(refused).flatMap(([keyword, value]) => placements.map(placement => ({
+  keyword, ...placement, value,
+}))))('refuses $keyword at $name with the keyword and exact path', async ({ keyword, value, path, wrap }) => {
+  const schema = wrap({ ...row, [keyword]: value });
   const original = structuredClone(schema);
-  const answer = schema === anchored ? { row: {} } : {};
-  if (schema === anchored) expect(ajv.compile(schema)(answer)).toBe(true);
-  expect(() => codexStrictSchema(schema)).toThrow('unscoped local JSON pointer');
-  expect(() => normalizeCodexResponse('{"row":{"x":null}}', schema)).toThrow('unscoped local JSON pointer');
+  const error = { kind: 'unsupported', message: `Codex strict schema refuses ${keyword} at ${path}/${keyword}: keyword is not allowlisted` };
+  expect(() => codexStrictSchema(schema)).toThrow(expect.objectContaining(error));
+  expect(() => normalizeCodexResponse('{}', schema)).toThrow(expect.objectContaining(error));
   const process = vi.fn(() => { throw new Error('must not launch'); });
   await expect(createCodexInference({ process }).generate({ model: 'chosen', prompt: 'judge', responseSchema: schema }))
-    .rejects.toMatchObject({ kind: 'unsupported', message: expect.stringContaining('unscoped local JSON pointer') });
+    .rejects.toMatchObject(error);
   expect(process).not.toHaveBeenCalled();
   expect(schema).toEqual(original);
 });
 
 it.each([
-  { schema: { type: 'string', if: { const: 'yes' }, then: { enum: ['yes'] }, else: { const: 'no' } },
-    encoded: 'yes', expected: 'yes' },
-  { schema: { type: 'string', if: { const: 'yes' }, then: { enum: ['yes'] }, else: { const: 'no' } },
-    encoded: 'no', expected: 'no' },
-  { schema: { ...row, required: ['x'], if: { required: ['x'] }, then: true, else: false },
-    encoded: { x: 'yes' }, expected: { x: 'yes' } },
-  { schema: { type: 'object', additionalProperties: false, properties: {
-    if: { const: { if: true, then: false, else: { minLength: 1 } } }, then: { type: 'string' }, else: { type: 'string' },
-  } }, encoded: { if: { if: true, then: false, else: { minLength: 1 } }, then: null, else: null },
-    expected: { if: { if: true, then: false, else: { minLength: 1 } } } },
-  { schema: { type: 'string', not: { const: 'no' } }, encoded: 'yes', expected: 'yes' },
-  { schema: { ...row, required: ['x'], enum: [{ x: 'yes' }] }, encoded: { x: 'yes' }, expected: { x: 'yes' } },
-  { schema: { ...row, required: ['x'], const: { x: 'yes' } }, encoded: { x: 'yes' }, expected: { x: 'yes' } },
-  { schema: { type: 'object', additionalProperties: false, properties: {
-    $id: { const: { $id: '#literal', $ref: '#literal', not: { minLength: 1 } } },
-  } }, encoded: { $id: { $id: '#literal', $ref: '#literal', not: { minLength: 1 } } },
-  expected: { $id: { $id: '#literal', $ref: '#literal', not: { minLength: 1 } } } },
-  { schema: { type: 'object', additionalProperties: false, required: ['row'],
-    properties: { row: { $ref: '#/definitions/a~1b~0c' } }, definitions: { 'a/b~c': row } },
-  encoded: { row: { x: null } }, expected: { row: {} } },
-])('preserves supported constraints and literal data: %j', ({ schema, encoded, expected }) => {
-  validateInferenceSchema(schema);
-  expect(ajv.compile(codexStrictSchema(schema))(encoded)).toBe(true);
-  const decoded = normalizeCodexResponse(JSON.stringify(encoded), schema);
-  expect(JSON.parse(decoded)).toEqual(expected);
-  validateInferenceResponse(decoded, schema);
+  null, [], true, { const: undefined }, { const: () => 'not JSON' }, { const: new Date() },
+  { const: Number.NaN }, { description: 'x'.repeat(65_537) },
+  { type: 'string', minimum: 0 },
+])('retains generic schema validation before launch: %j', async schema => {
+  const process = vi.fn(() => { throw new Error('must not launch'); });
+  await expect(createCodexInference({ process }).generate({
+    model: 'chosen', prompt: 'judge', responseSchema: schema as unknown as Schema,
+  })).rejects.toMatchObject({
+    kind: 'unsupported',
+    message: 'Response schema must be a synchronous JSON Schema draft-07 object with locally resolvable references (at most 64 KiB)',
+  });
+  expect(process).not.toHaveBeenCalled();
+});
+
+it.each([
+  { schema: { $ref: '#/$defs/target', ...row, $defs: { target: row } }, keyword: '$ref' },
+  { schema: { ...row, $defs: { unused: { contains: row } } }, keyword: 'contains' },
+  { schema: { ...row, default: { $ref: '#/$defs/target', contains: row } }, keyword: 'default' },
+  { schema: { type: 'array', additionalItems: row, items: [true], minItems: 1, maxItems: 1 }, keyword: 'additionalItems' },
+  { schema: { ...row, properties: { x: { type: 'array', contains: row } } }, keyword: 'contains' },
+])('refuses unsupported containers/references before any process: $keyword', async ({ schema, keyword }) => {
+  const process = vi.fn(() => { throw new Error('must not launch'); });
+  await expect(createCodexInference({ process }).generate({ model: 'chosen', prompt: 'judge', responseSchema: schema }))
+    .rejects.toMatchObject({ kind: 'unsupported', message: expect.stringContaining(keyword) });
+  expect(process).not.toHaveBeenCalled();
+});
+
+it.each([
+  { schema: { items: [row] }, keyword: 'items' },
+  { schema: { items: true }, keyword: 'items' },
+  { schema: { properties: { x: false } }, keyword: 'schema' },
+  { schema: { properties: [] }, keyword: 'properties' },
+  { schema: { type: ['string', 'number'] }, keyword: 'type' },
+  { schema: { type: ['null', 'null'] }, keyword: 'type' },
+  { schema: { type: 'unknown' }, keyword: 'type' },
+  { schema: { required: ['x', 'x'] }, keyword: 'required' },
+  { schema: { required: [1] }, keyword: 'required' },
+  { schema: { description: { contains: row } }, keyword: 'description' },
+  { schema: { $schema: 'https://json-schema.org/draft/2020-12/schema' }, keyword: '$schema' },
+  { schema: { enum: [] }, keyword: 'enum' },
+  { schema: { minimum: Infinity }, keyword: 'minimum' },
+  { schema: { maximum: '1' }, keyword: 'maximum' },
+  { schema: { minLength: -1 }, keyword: 'minLength' },
+  { schema: { maxItems: 1.5 }, keyword: 'maxItems' },
+  { schema: { uniqueItems: {} }, keyword: 'uniqueItems' },
+  { schema: { ...row, required: ['missing'] }, keyword: 'required' },
+  { schema: { type: 'object' }, keyword: 'additionalProperties' },
+  { schema: { ...row, additionalProperties: true }, keyword: 'additionalProperties' },
+  { schema: { ...row, additionalProperties: { type: 'string' } }, keyword: 'additionalProperties' },
+])('refuses unsupported keyword values: $keyword', ({ schema, keyword }) => {
+  expect(() => codexStrictSchema(schema)).toThrow(`Codex strict schema refuses ${keyword} at #`);
+});
+
+it.each([
+  { ...row, enum: [{}] }, { ...row, const: {} },
+  { type: 'array', items: row, enum: [[{}]] },
+  { type: 'object', additionalProperties: false, required: ['child'], properties: { child: row }, const: { child: {} } },
+  { type: 'array', items: row, uniqueItems: true },
+])('refuses literal constraints intersecting a translated subtree: %j', schema => {
+  expect(() => codexStrictSchema(schema)).toThrow('cannot preserve literal constraints');
+  expect(() => normalizeCodexResponse('{}', schema)).toThrow('cannot preserve literal constraints');
 });

@@ -4,107 +4,149 @@ import { InferenceFailure } from '../failure.js';
 import { validateInferenceResponse } from '../response-schema.js';
 
 type Schema = Record<string, unknown>;
-const omitted = new Set(['minLength', 'maxLength', 'minimum', 'maximum', 'pattern', 'format']);
-const maps = new Set(['properties', 'definitions', '$defs', 'patternProperties']);
-const singles = new Set(['items', 'additionalProperties', 'not', 'contains', 'propertyNames', 'if', 'then', 'else']);
-const lists = new Set(['anyOf', 'oneOf', 'allOf']);
-const referenceMetadata = new Set([
-  '$ref', '$schema', '$comment', 'definitions', '$defs',
-  'title', 'description', 'default', 'examples', 'readOnly', 'writeOnly',
+// Wire schemas: graders/{labeling/planning,references/protocol,decomposition/transport},
+// inference/decision/teacher and evaluation/semantic/protocol, plus local references.
+const allowedKeywords = new Set([
+  'type', 'properties', 'required', 'additionalProperties', 'items',
+  'enum', 'const', 'description', '$schema', '$ref', 'definitions', '$defs',
+  'minimum', 'maximum', 'minLength', 'maxLength', 'minItems', 'maxItems', 'uniqueItems',
 ]);
+// These authored bounds remain enforced on the completed response by the provider.
+const transportOmissions = new Set(['minimum', 'maximum', 'minLength', 'maxLength', '$schema']);
+const types = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
+
 function object(value: unknown): value is Schema {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-/** Translate schema nodes only: enum/const data and property names are not keywords. */
-export function codexStrictSchema(schema: Schema): Schema {
-  rejectUnsupportedConstraints(schema);
-  return translate(schema, new Set(), '#');
-}
-// Check every schema node, including untranslated tuple tails reachable by references.
-function rejectUnsupportedConstraints(schema: unknown): void {
-  const locations = new Set<string>();
-  const references = new Set<string>();
-  inspectConstraints(schema, '#', locations, references);
-  // Do not follow references into annotations or literal data: those locations
-  // are neither inspected as schemas nor translated. A structural index also
-  // permits recursive references without recursively following reference edges.
-  for (const reference of references) {
-    if (!locations.has(reference)) {
-      throw new InferenceFailure('unsupported', `Codex strict schema requires $ref targets at supported schema locations: ${reference}`);
-    }
-  }
-}
-function inspectConstraints(schema: unknown, pointer: string, locations: Set<string>, references: Set<string>): void {
-  if (typeof schema === 'boolean') locations.add(pointer);
-  if (!object(schema)) return;
-  locations.add(pointer);
-  if (typeof schema['$ref'] === 'string') references.add(schema['$ref']);
-  // Slot identities are structural JSON pointers, not URI anchors or scoped IDs.
-  if (Object.hasOwn(schema, '$id') || typeof schema['$ref'] === 'string' &&
-    (schema['$ref'] !== '#' && !schema['$ref'].startsWith('#/') || schema['$ref'].includes('%'))) {
-    throw new InferenceFailure('unsupported', 'Codex strict schema requires unscoped local JSON pointer references without URI encoding');
-  }
-  if (Object.hasOwn(schema, 'maxProperties')) {
-    throw new InferenceFailure('unsupported', 'Codex strict schema cannot preserve maxProperties with required transport slots');
-  }
-  for (const [key, value] of Object.entries(schema)) {
-    if ((maps.has(key) || key === 'dependencies') && object(value)) {
-      for (const [name, child] of Object.entries(value)) {
-        inspectConstraints(child, `${pointer}/${key}/${escapePointer(name)}`, locations, references);
-      }
-    } else if (singles.has(key) || lists.has(key) || key === 'additionalItems') {
-      if (Array.isArray(value)) {
-        value.forEach((child, index) => inspectConstraints(child, `${pointer}/${key}/${index}`, locations, references));
-      } else inspectConstraints(value, `${pointer}/${key}`, locations, references);
-    }
-  }
-  // Presence predicates see required null slots as present. contains checks items
-  // independently of items, so its slots cannot safely be decoded there either.
-  // Refuse conservatively, including through references.
-  for (const keyword of ['dependencies', 'propertyNames', 'contains']) {
-    if (Object.hasOwn(schema, keyword)) {
-      throw new InferenceFailure('unsupported', `Codex strict schema cannot preserve ${keyword} with required transport slots`);
-    }
-  }
-  // Normalization follows the target only; sibling assertions are an intersection
-  // whose nullable slots cannot safely be decoded independently of that target.
-  if (typeof schema['$ref'] === 'string' && Object.keys(schema).some(key => !referenceMetadata.has(key))) {
-    throw new InferenceFailure('unsupported', 'Codex strict schema cannot preserve $ref sibling constraints');
-  }
 }
 function escapePointer(key: string): string {
   return key.replaceAll('~', '~0').replaceAll('/', '~1');
 }
-function translate(schema: Schema, nullableSlots: Set<string>, pointer: string, enclosingComposition?: string): Schema {
-  const composition = enclosingComposition ?? ['oneOf', 'allOf', 'not', 'enum', 'const', 'if', 'then', 'else'].find(key => Object.hasOwn(schema, key));
-  // Negation, literal equality and conditionals make otherwise widening rewrites unsafe.
-  // These constraints cannot be repaired after inference.
-  // References may target translated nodes outside this subtree, so refuse them too.
-  if (composition !== undefined && typeof schema['$ref'] === 'string') {
-    throw new InferenceFailure('unsupported', `Codex strict schema cannot preserve ${composition} with references`);
+function refuse(keyword: string, pointer: string, reason = 'keyword is not allowlisted'): never {
+  throw new InferenceFailure('unsupported', `Codex strict schema refuses ${keyword} at ${pointer}: ${reason}`);
+}
+
+/** Admit only the authored dialect. Literal data and property names are not schemas. */
+function admit(schema: Schema): Map<string, Schema> {
+  const locations = new Map<string, Schema>();
+  inspect(schema, '#', locations);
+  for (const [pointer, node] of locations) {
+    const seen = new Set<string>();
+    let target = node;
+    while (typeof target['$ref'] === 'string') {
+      const reference = target['$ref'];
+      if (seen.has(reference)) refuse('$ref', `${pointer}/$ref`, 'reference-only cycles are unsupported');
+      seen.add(reference);
+      const resolved = locations.get(reference);
+      if (!resolved) refuse('$ref', `${pointer}/$ref`, 'target must be a supported schema location');
+      target = resolved;
+    }
   }
-  const transform = (value: unknown, location: string): unknown =>
-    object(value) ? translate(value, nullableSlots, location, composition) : value;
-  const result: Schema = {};
-  for (const [key, value] of Object.entries(schema)) {
-    if (omitted.has(key)) continue;
-    if (maps.has(key) && object(value)) {
-      result[key] = Object.fromEntries(Object.entries(value).map(([name, child]) => [name, transform(child, `${pointer}/${key}/${escapePointer(name)}`)]));
-    } else if (lists.has(key) && Array.isArray(value)) result[key] = value.map((child, index) => transform(child, `${pointer}/${key}/${index}`));
-    else if (singles.has(key)) result[key] = Array.isArray(value) ? value.map((child, index) => transform(child, `${pointer}/${key}/${index}`)) : transform(value, `${pointer}/${key}`);
-    else result[key] = structuredClone(value);
+  return locations;
+}
+function inspect(schema: unknown, pointer: string, locations: Map<string, Schema>): asserts schema is Schema {
+  if (!object(schema)) refuse('schema', pointer, 'expected a schema object');
+  locations.set(pointer, schema);
+  // Check keys before their values: no unknown construct can hide an unvisited schema.
+  for (const keyword of Object.keys(schema)) {
+    if (!allowedKeywords.has(keyword)) refuse(keyword, `${pointer}/${escapePointer(keyword)}`);
   }
-  if (schema['type'] === 'object' || object(schema['properties']) ||
-    Array.isArray(schema['type']) && schema['type'].includes('object')) {
+  for (const [keyword, value] of Object.entries(schema)) {
+    const location = `${pointer}/${keyword}`;
+    switch (keyword) {
+      case 'definitions': case '$defs': case 'properties':
+        if (!object(value)) refuse(keyword, location, 'expected a property map');
+        for (const [name, child] of Object.entries(value)) inspect(child, `${location}/${escapePointer(name)}`, locations);
+        break;
+      case 'items':
+        if (!object(value)) refuse(keyword, location, 'expected a single schema object; tuples are unsupported');
+        inspect(value, location, locations);
+        break;
+      case '$ref':
+        if (typeof value !== 'string' || (value !== '#' && !value.startsWith('#/')) ||
+          value.includes('%') || /~(?![01])/u.test(value)) {
+          refuse(keyword, location, 'expected an unscoped local JSON pointer without URI encoding');
+        }
+        if (Object.keys(schema).some(key => !['$ref', '$schema', 'description', 'definitions', '$defs'].includes(key))) {
+          refuse(keyword, location, 'cannot preserve sibling validation constraints');
+        }
+        break;
+      case 'additionalProperties':
+        if (value !== false) refuse(keyword, location, 'free-form objects are unsupported; expected false');
+        break;
+      case 'type': {
+        const valid = (type: unknown) => typeof type === 'string' && types.has(type);
+        if (!valid(value) && !(Array.isArray(value) && value.length === 2 && value.includes('null') &&
+          new Set(value).size === 2 && value.every(valid))) {
+          refuse(keyword, location, 'expected a type or a nullable type pair');
+        }
+        break;
+      }
+      case 'required':
+        if (!Array.isArray(value) || value.some(name => typeof name !== 'string') || new Set(value).size !== value.length) {
+          refuse(keyword, location, 'expected distinct property names');
+        }
+        break;
+      case 'description':
+        if (typeof value !== 'string') refuse(keyword, location, 'expected text');
+        break;
+      case '$schema':
+        if (value !== 'http://json-schema.org/draft-07/schema#') refuse(keyword, location, 'only draft-07 is supported');
+        break;
+      case 'enum':
+        if (!Array.isArray(value) || value.length === 0) refuse(keyword, location, 'expected nonempty literal choices');
+        break;
+      case 'minimum': case 'maximum':
+        if (typeof value !== 'number' || !Number.isFinite(value)) refuse(keyword, location, 'expected a finite number');
+        break;
+      case 'minLength': case 'maxLength': case 'minItems': case 'maxItems':
+        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) refuse(keyword, location, 'expected a nonnegative integer');
+        break;
+      case 'uniqueItems':
+        if (typeof value !== 'boolean') refuse(keyword, location, 'expected a boolean');
+        break;
+    }
+  }
+}
+
+/** Translate admitted schema nodes only; do not forward arbitrary keywords. */
+export function codexStrictSchema(schema: Schema): Schema {
+  admit(schema);
+  return transport(schema, new Set());
+}
+function transport(schema: Schema, nullableSlots: Set<string>): Schema {
+  const references: Schema[] = [];
+  const result = translate(schema, nullableSlots, '#', references);
+  for (const node of references) {
+    // Optional slots wrap their original target in anyOf[0], including ancestors.
+    node['$ref'] = (node['$ref'] as string).split('/').map((part, index, parts) =>
+      nullableSlots.has(parts.slice(0, index + 1).join('/')) ? `${part}/anyOf/0` : part).join('/');
+  }
+  return result;
+}
+function translate(schema: Schema, nullableSlots: Set<string>, pointer: string, references: Schema[], enclosingLiteral?: string): Schema {
+  const literal = enclosingLiteral ?? ['enum', 'const', 'uniqueItems'].find(key => Object.hasOwn(schema, key));
+  if (literal !== undefined && Object.hasOwn(schema, '$ref')) {
+    refuse(literal, pointer, 'cannot preserve literal constraints with references');
+  }
+  const result: Schema = Object.fromEntries(Object.entries(schema).filter(([key]) => !transportOmissions.has(key))
+    .map(([key, value]) => [key, structuredClone(value)]));
+  if (typeof schema['$ref'] === 'string') references.push(result);
+  for (const keyword of ['properties', 'definitions', '$defs']) {
+    if (object(schema[keyword])) {
+      result[keyword] = Object.fromEntries(Object.entries(schema[keyword]).map(([name, child]) =>
+        [name, translate(child as Schema, nullableSlots, `${pointer}/${keyword}/${escapePointer(name)}`, references, literal)]));
+    }
+  }
+  if (object(schema['items'])) result['items'] = translate(schema['items'], nullableSlots, `${pointer}/items`, references, literal);
+  if (schema['type'] === 'object' || object(schema['properties']) || Object.hasOwn(schema, 'required') ||
+    Object.hasOwn(schema, 'additionalProperties') || Array.isArray(schema['type']) && schema['type'].includes('object')) {
     const properties = (result['properties'] ?? {}) as Schema;
     const required = (schema['required'] ?? []) as string[];
     if (required.some(key => !Object.hasOwn(properties, key))) {
-      throw new InferenceFailure('unsupported', 'Codex strict schema requires every required name to be declared in properties');
+      refuse('required', `${pointer}/required`, 'every required name must be declared in properties');
     }
-    if (schema['additionalProperties'] !== false ||
-      object(schema['patternProperties']) && Object.keys(schema['patternProperties']).length > 0) {
-      throw new InferenceFailure('unsupported', 'Codex strict schema cannot represent free-form objects; declare properties and additionalProperties: false');
+    if (schema['additionalProperties'] !== false) {
+      refuse('additionalProperties', `${pointer}/additionalProperties`, 'free-form objects are unsupported; expected false');
     }
     for (const key of Object.keys(properties)) {
       if (!required.includes(key)) {
@@ -116,54 +158,40 @@ function translate(schema: Schema, nullableSlots: Set<string>, pointer: string, 
     result['required'] = Object.keys(properties);
     result['additionalProperties'] = false;
   }
-  if (composition !== undefined && !isDeepStrictEqual(result, schema)) {
-    throw new InferenceFailure('unsupported', `Codex strict schema cannot preserve ${composition} when translation changes its constraints`);
+  // Literal equality and uniqueness must not intersect a changed subtree.
+  for (const keyword of ['enum', 'const', 'uniqueItems']) {
+    if (Object.hasOwn(schema, keyword) && !isDeepStrictEqual(result, schema)) {
+      refuse(keyword, `${pointer}/${keyword}`, 'cannot preserve literal constraints when translation changes their subtree');
+    }
   }
   return result;
 }
 
 /** Remove transport-added null placeholders only; preserve every originally valid null. */
 export function normalizeCodexResponse(text: string, schema: Schema, jsonFence = false): string {
-  rejectUnsupportedConstraints(schema);
-  // Check raw JSON before parsing/reserializing, so duplicate keys and infinities cannot disappear.
+  const locations = admit(schema);
+  // Check raw JSON first so duplicate keys and infinities cannot disappear.
   validateInferenceResponse(text, {}, jsonFence);
   const json = jsonFence ? /^```json\r?\n([\s\S]*?)\r?\n```$/u.exec(text.trim())?.[1] ?? text : text;
   const nullableSlots = new Set<string>();
-  translate(schema, nullableSlots, '#');
+  transport(schema, nullableSlots);
   const ajv = new Ajv({ strict: true, strictRequired: false }).addSchema(schema as AnySchema, 'original');
-  function visit(value: unknown, node: unknown, pointer: string): unknown {
-    if (!object(node)) return value;
+  function visit(value: unknown, node: Schema, pointer: string): unknown {
     if (typeof node['$ref'] === 'string') {
-      const ref = node['$ref'];
-      // Resolve local references through AJV, which also handles escaped JSON pointers.
-      const target = ajv.getSchema(`original${ref}`);
-      return visit(value, target!.schema, ref);
+      const reference = node['$ref'];
+      return visit(value, locations.get(reference)!, reference);
     }
-    for (const keyword of ['anyOf', 'oneOf']) {
-      const branches = node[keyword];
-      if (!Array.isArray(branches)) continue;
-      // A later branch may accept an explicit null that an earlier branch would erase.
-      if (ajv.getSchema(`original${pointer}`)!(value)) return value;
-      const candidates = new Map<string, unknown>();
-      for (const [index, branch] of branches.entries()) {
-        const location = `${pointer}/${keyword}/${index}`;
-        const candidate = visit(structuredClone(value), branch, location);
-        if (ajv.getSchema(`original${pointer}`)!(candidate)) candidates.set(JSON.stringify(candidate), candidate);
-      }
-      if (candidates.size > 1) throw new InferenceFailure('unsupported', 'Codex null placeholders have ambiguous union interpretations');
-      if (candidates.size === 1) return candidates.values().next().value;
-    }
-    if (Array.isArray(value) && node['items'] !== undefined) {
-      return value.map((item, index) => visit(item,
-        Array.isArray(node['items']) ? node['items'][index] : node['items'],
-        `${pointer}/items${Array.isArray(node['items']) ? `/${index}` : ''}`));
+    if (Array.isArray(value) && object(node['items'])) {
+      return value.map(item => visit(item, node['items'] as Schema, `${pointer}/items`));
     }
     if (object(value) && object(node['properties'])) {
       for (const [key, child] of Object.entries(node['properties'])) {
         if (!Object.hasOwn(value, key)) continue;
         const location = `${pointer}/properties/${escapePointer(key)}`;
-        if (value[key] === null && nullableSlots.has(location) && !ajv.getSchema(`original${location}`)!(null)) delete value[key];
-        else value[key] = visit(value[key], child, location);
+        // Encode each pointer segment so percent/hash property names stay literal.
+        const uri = location.split('/').map(encodeURIComponent).join('/').replace('%23', '#');
+        if (value[key] === null && nullableSlots.has(location) && !ajv.getSchema(`original${uri}`)!(null)) delete value[key];
+        else value[key] = visit(value[key], child as Schema, location);
       }
     }
     return value;

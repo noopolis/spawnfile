@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
 import { runProcess, type ProcessResult } from '../../platform/process/index.js';
 import { InferenceFailure, type InferenceFailureEvidence } from '../failure.js';
-import { validateInferenceResponse, validateInferenceSchema } from '../response-schema.js';
+import { validateInferenceResponse, validateInferenceSchema, validateInferenceSchemaData } from '../response-schema.js';
 import { codexStrictSchema, normalizeCodexResponse } from './strict-schema.js';
 import { classifyCodexFailure, codexEvidence, consumeCodexFrame, type CodexFrames } from './protocol.js';
 
@@ -48,9 +48,11 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
     id: 'codex-subscription',
     capabilities: { tools: 'contained', billing: 'subscription', temperature: false, seed: false },
     async generate(request) {
-      validateInferenceSchema(request.responseSchema);
+      if (request.responseSchema !== undefined) validateInferenceSchemaData(request.responseSchema);
       const schema = request.responseSchema === undefined ? undefined : structuredClone(request.responseSchema);
       const transportSchema = schema === undefined ? undefined : codexStrictSchema(schema);
+      // Dialect admission owns keyword/path errors; generic compilation must not mask them.
+      validateInferenceSchema(schema);
       if (!request.prompt.trim() || !request.model.trim() || request.model.startsWith('-') ||
         request.temperature !== undefined || request.seed !== undefined ||
         options.reasoningEffort !== undefined && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(options.reasoningEffort)) {

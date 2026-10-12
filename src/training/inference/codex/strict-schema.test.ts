@@ -1,6 +1,8 @@
+import { Ajv } from 'ajv';
 import { readFile } from 'node:fs/promises';
-import { expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { createCodexInference } from './provider.js';
+import { validateInferenceResponse } from '../response-schema.js';
 import { codexStrictSchema, normalizeCodexResponse } from './strict-schema.js';
 
 // Exact council wire shape; provider tests must not import grader internals.
@@ -37,6 +39,7 @@ function provider(text: string, expectedSchema: Record<string, unknown> = strict
 it('writes the strict council schema without changing the original', async () => {
   const original = structuredClone(schema);
   expect(codexStrictSchema(schema)).toEqual(strict);
+  expect(new Ajv().compile(strict)({ q1: { answer: 'yes', p: null, span: null } })).toBe(true);
   const result = await provider('{"q1":{"answer":"yes","p":null,"span":null}}').generate({ model: 'chosen', prompt: 'judge', responseSchema: schema });
   expect(JSON.parse(result.text)).toEqual({ q1: { answer: 'yes' } });
   expect(result).toMatchObject({ model: 'reported', usage: { inputTokens: 10 } });
@@ -64,103 +67,91 @@ it('normalizes opted-in fences and preserves valid non-null optional values', as
     .toEqual({ q1: { answer: 'yes' } });
   await expect(provider(text).generate({ model: 'chosen', prompt: 'judge', responseSchema: schema })).rejects.toMatchObject({ kind: 'invalid-response' });
 });
-it('translates nested arrays, references, unions and literal keyword names', () => {
-  const input = { type: 'object', additionalProperties: false, properties: {
-    minimum: { type: 'string', minLength: 1, maxLength: 5, pattern: '^a', format: 'email' },
-    rows: { type: 'array', items: { $ref: '#/definitions/row' } },
-    choice: { anyOf: [{ type: 'object', additionalProperties: false, properties: { x: { type: 'number' } } }, { type: 'null' }] },
-  }, definitions: { row: { type: ['object', 'null'], additionalProperties: false, properties: { p: { type: 'number', minimum: 0 } } } } };
-  const result = codexStrictSchema(input);
-  expect(result['properties']).toMatchObject({
-    minimum: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    rows: { anyOf: [{ type: 'array', items: { $ref: '#/definitions/row' } }, { type: 'null' }] },
-  });
-  expect(result['definitions']).toEqual({ row: { type: ['object', 'null'], properties: { p: { anyOf: [{ type: 'number' }, { type: 'null' }] } }, required: ['p'], additionalProperties: false } });
-  expect(codexStrictSchema({ type: 'object', additionalProperties: false })).toEqual({ type: 'object', properties: {}, required: [], additionalProperties: false });
-});
-it('normalizes nested arrays, escaped local references and union branches without deleting required nulls', () => {
-  const nested = { type: 'object', additionalProperties: false, properties: {
-    rows: { type: 'array', items: { $ref: '#/definitions/a~1b' } },
-    choice: { anyOf: [{ type: 'number' }, { type: 'object', additionalProperties: false, properties: { x: { type: 'string' } } }] },
-    requiredNull: { type: 'null' }, free: true,
-  }, required: ['requiredNull'], definitions: { 'a/b': { type: 'object', additionalProperties: false, properties: { p: { type: 'number' } } } } };
-  expect(JSON.parse(normalizeCodexResponse('{"rows":[{"p":null},{}],"choice":{"x":null},"requiredNull":null,"free":3}', nested)))
-    .toEqual({ rows: [{}, {}], choice: {}, requiredNull: null, free: 3 });
-  expect(normalizeCodexResponse('{"choice":false}', nested)).toBe('{"choice":false}');
-  expect(normalizeCodexResponse('```json\n{}\n```', nested, true)).toBe('```json\n{}\n```');
-  expect(codexStrictSchema({ type: 'array', items: [{ type: 'object', additionalProperties: false }], additionalItems: false })['items'])
-    .toEqual([{ type: 'object', properties: {}, required: [], additionalProperties: false }]);
-  expect(normalizeCodexResponse('[{"x":null},2]', { type: 'array', minItems: 2, additionalItems: false, items: [{ type: 'object', additionalProperties: false, properties: { x: { type: 'string' } } }, true] }))
-    .toBe('[{},2]');
-});
 
-it.each([
-  { type: 'object', required: ['x'] },
-  { type: 'object', additionalProperties: false, properties: { y: { type: 'string' } }, required: ['x'] },
-  { type: 'object' },
-  { type: 'object', properties: { x: { type: 'string' } } },
-  { type: 'object', additionalProperties: true },
-  { type: 'object', additionalProperties: { type: 'string' } },
-  { type: 'object', additionalProperties: false, patternProperties: { '^x': { type: 'string' } } },
-  { type: 'array', items: { type: 'object' } },
-  { type: 'object', additionalProperties: false, properties: { x: { $ref: '#/definitions/free' } },
-    definitions: { free: { type: 'object' } } },
-  { anyOf: [{ type: 'null' }, { type: 'object', required: ['x'] }] },
-])('rejects unrepresentable strict schemas before any provider process: %j', async responseSchema => {
-  const process = vi.fn(() => { throw new Error('must not launch'); });
-  const missing = JSON.stringify(responseSchema).includes('required');
-  await expect(createCodexInference({ process }).generate({ model: 'chosen', prompt: 'judge', responseSchema }))
-    .rejects.toMatchObject({ kind: 'unsupported', message: expect.stringContaining(missing ? 'required name' : 'free-form objects') });
-  expect(process).not.toHaveBeenCalled();
-});
-
-it('preserves originally nullable optional data and removes only added placeholders end to end', async () => {
-  const nullable = { type: 'object', additionalProperties: false, properties: {
-    typed: { type: ['string', 'null'] }, choice: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-    enumerated: { enum: ['yes', null] }, constant: { const: null }, free: true,
-    'a/b~c': { $ref: '#/definitions/nullable' },
-    constrained: { type: ['string', 'null'], not: { type: 'null' } },
-    missing: { type: 'string' },
-    rows: { type: 'array', items: { $ref: '#/definitions/row' } },
-  }, definitions: {
-    nullable: { oneOf: [{ type: 'string' }, { type: 'null' }] },
-    row: { type: 'object', additionalProperties: false, properties: {
-      kept: { $ref: '#/definitions/nullable' }, removed: { type: 'number' },
-    } },
+it('normalizes nested arrays and escaped property names while retaining nullable data', async () => {
+  const nullable = { type: 'object', additionalProperties: false, required: ['requiredNull'], properties: {
+    typed: { type: ['string', 'null'], description: 'Nullable answer' },
+    enumerated: { enum: ['yes', null] }, constant: { const: null },
+    'a/b~c': { type: 'string' }, requiredNull: { type: 'null' },
+    rows: { type: 'array', items: { type: ['object', 'null'], additionalProperties: false,
+      properties: { kept: { type: ['number', 'null'] }, removed: { type: 'number' } } } },
   } };
-  const text = JSON.stringify({ typed: null, choice: null, enumerated: null, constant: null,
-    free: null, 'a/b~c': null, constrained: null, missing: null, rows: [{ kept: null, removed: null }] });
-  const expected = { typed: null, choice: null, enumerated: null, constant: null,
-    free: null, 'a/b~c': null, rows: [{ kept: null }] };
+  const text = JSON.stringify({ typed: null, enumerated: null, constant: null, 'a/b~c': null,
+    requiredNull: null, rows: [{ kept: null, removed: null }, null] });
+  const expected = { typed: null, enumerated: null, constant: null, requiredNull: null, rows: [{ kept: null }, null] };
+  expect(new Ajv().compile(codexStrictSchema(nullable))(JSON.parse(text))).toBe(true);
   const result = await provider(text, codexStrictSchema(nullable)).generate({
     model: 'chosen', prompt: 'judge', responseSchema: nullable,
   });
   expect(JSON.parse(result.text)).toEqual(expected);
   expect(normalizeCodexResponse(JSON.stringify(expected), nullable)).toBe(JSON.stringify(expected));
+  expect(normalizeCodexResponse('```json\n{}\n```', nullable, true)).toBe('```json\n{}\n```');
 });
 
-
-it('preserves valid nullable data in a later anyOf branch', () => {
-  const original = { anyOf: [
-    { type: 'object', additionalProperties: false, properties: { x: { type: 'string' } } },
-    { type: 'object', additionalProperties: false, properties: { x: { type: 'null' } } },
-  ] };
-  expect(normalizeCodexResponse('{"x":null}', original)).toBe('{"x":null}');
+it.each([
+  ['a%20b', 'a b'], ['a%2520b', 'a%20b'], ['a%7E1b', 'a/b'], ['a%', 'a#é/~'],
+].flatMap(([nullableName, placeholderName]) => [false, true].map(nested => ({
+  nullableName: nullableName!, placeholderName: placeholderName!, nested,
+}))))('preserves nullable $nullableName beside $placeholderName (nested: $nested)', async ({ nullableName, placeholderName, nested }) => {
+  const row = { type: 'object', additionalProperties: false, properties: {
+    [nullableName]: { type: ['string', 'null'] }, [placeholderName]: { type: 'string' },
+  } };
+  const original = nested ? { type: 'object', additionalProperties: false, properties: {
+    'rows%20/~#é': { type: 'array', items: row },
+  } } : row;
+  const encodedRow = { [nullableName]: null, [placeholderName]: null };
+  const expectedRow = { [nullableName]: null };
+  const text = JSON.stringify(nested ? { 'rows%20/~#é': [encodedRow] } : encodedRow);
+  const expected = nested ? { 'rows%20/~#é': [expectedRow] } : expectedRow;
+  const transport = codexStrictSchema(original);
+  expect(new Ajv().compile(transport)(JSON.parse(text))).toBe(true);
+  const normalized = normalizeCodexResponse(text, original);
+  validateInferenceResponse(normalized, original);
+  expect(JSON.parse(normalized)).toEqual(expected);
+  const result = await provider(text, transport).generate({ model: 'chosen', prompt: 'judge', responseSchema: original });
+  expect(JSON.parse(result.text)).toEqual(expected);
 });
 
-it('refuses ambiguous nullable union normalization instead of erasing legitimate data', async () => {
-  const original = { anyOf: [
-    { type: 'object', additionalProperties: false, properties: { x: { type: 'string' }, y: { type: 'number' } } },
-    { type: 'object', additionalProperties: false, properties: { x: { type: 'null' }, y: { type: 'number' } } },
-  ] };
-  const text = '{"x":null,"y":null}';
-  expect(() => normalizeCodexResponse(text, original)).toThrow('ambiguous union');
-  await expect(provider(text, codexStrictSchema(original)).generate({ model: 'chosen', prompt: 'judge', responseSchema: original }))
-    .rejects.toMatchObject({ kind: 'invalid-response', usage: { inputTokens: 10 } });
-  expect(() => normalizeCodexResponse(text, { oneOf: original.anyOf })).toThrow('cannot preserve oneOf');
+it('does not inspect property names, enum or const data as schema keywords', async () => {
+  const literal = { $ref: '#literal', contains: { if: true }, additionalItems: false, default: { not: {} } };
+  const original = { type: 'object', additionalProperties: false, properties: {
+    $ref: { const: literal }, contains: { enum: [literal] }, additionalItems: { type: 'string' },
+  } };
+  const encoded = { $ref: literal, contains: literal, additionalItems: null };
+  const result = await provider(JSON.stringify(encoded), codexStrictSchema(original)).generate({
+    model: 'chosen', prompt: 'judge', responseSchema: original,
+  });
+  expect(JSON.parse(result.text)).toEqual({ $ref: literal, contains: literal });
 });
 
-it('normalizes equivalent union interpretations once', () => {
-  const branch = { type: 'object', additionalProperties: false, properties: { x: { type: 'string' } } };
-  expect(normalizeCodexResponse('{"x":null}', { anyOf: [branch, branch] })).toBe('{}');
+it('retains unchanged literal constraints and supplies an empty closed object shape', () => {
+  const original = { type: 'object', additionalProperties: false, properties: { x: { type: 'string' } },
+    required: ['x'], enum: [{ x: 'yes' }], const: { x: 'yes' } };
+  expect(codexStrictSchema(original)).toEqual(original);
+  expect(normalizeCodexResponse('{"x":"yes"}', original)).toBe('{"x":"yes"}');
+  expect(codexStrictSchema({ type: 'object', additionalProperties: false }))
+    .toEqual({ type: 'object', additionalProperties: false, properties: {}, required: [] });
+});
+
+// Representative extraction wire shape from graders/decomposition/transport.ts;
+// no grader internals are imported across the inference ownership boundary.
+it('supports the generated draft-07 extraction dialect and bounded semantic arrays', async () => {
+  const original = { $schema: 'http://json-schema.org/draft-07/schema#', type: 'object', additionalProperties: false,
+    required: ['units', 'ids'], properties: {
+      units: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['id'], properties: {
+        id: { type: 'string', minLength: 1 }, paragraph: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      } } },
+      ids: { type: 'array', minItems: 1, maxItems: 8, uniqueItems: true, items: { type: 'string', enum: ['u1', 'u2'] } },
+      reason: { type: 'string', maxLength: 240 },
+    } };
+  const strict = codexStrictSchema(original);
+  expect(strict).not.toHaveProperty('$schema');
+  const result = await provider('{"units":[{"id":"u1","paragraph":null}],"ids":["u1"],"reason":null}', strict)
+    .generate({ model: 'chosen', prompt: 'judge', responseSchema: original });
+  expect(JSON.parse(result.text)).toEqual({ units: [{ id: 'u1' }], ids: ['u1'] });
+  for (const ids of [[], ['u1', 'u1'], Array(9).fill('u1')]) {
+    await expect(provider(JSON.stringify({ units: [], ids }), strict)
+      .generate({ model: 'chosen', prompt: 'judge', responseSchema: original }))
+      .rejects.toMatchObject({ kind: 'invalid-response' });
+  }
 });

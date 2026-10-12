@@ -4,17 +4,28 @@ import { z } from 'zod';
 import { InferenceFailure } from './failure.js';
 
 type ResponseSchema = Readonly<Record<string, unknown>> | undefined;
+const unsupportedSchema = 'Response schema must be a synchronous JSON Schema draft-07 object with locally resolvable references (at most 64 KiB)';
 
-function compile(schema: Exclude<ResponseSchema, undefined>): ValidateFunction {
+/** Check JSON safety and transport size before provider-specific dialect admission. */
+export function validateInferenceSchemaData(schema: Exclude<ResponseSchema, undefined>): AnySchema {
   try {
     if (schema === null || typeof schema !== 'object' || Array.isArray(schema)) throw new Error('Expected an object schema');
     const data = z.json().parse(schema);
     if (Buffer.byteLength(JSON.stringify(data)) > 65_536) throw new Error('Schema exceeds its transport bound');
-    const validate = new Ajv({ strict: true, strictRequired: false, allErrors: false }).compile(data as AnySchema);
+    return data as AnySchema;
+  } catch {
+    throw new InferenceFailure('unsupported', unsupportedSchema);
+  }
+}
+
+function compile(schema: Exclude<ResponseSchema, undefined>): ValidateFunction {
+  const data = validateInferenceSchemaData(schema);
+  try {
+    const validate = new Ajv({ strict: true, strictRequired: false, allErrors: false }).compile(data);
     if ('$async' in validate) throw new Error('Async schemas are unsupported');
     return validate;
   } catch {
-    throw new InferenceFailure('unsupported', 'Response schema must be a synchronous JSON Schema draft-07 object with locally resolvable references (at most 64 KiB)');
+    throw new InferenceFailure('unsupported', unsupportedSchema);
   }
 }
 

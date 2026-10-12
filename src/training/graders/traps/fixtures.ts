@@ -7,7 +7,7 @@ export function fixture(): { templates: CheckTemplates; document: Decomposition;
     id: 'supported', applies_to: 'claim', type: 'choice', instructions: 'Check {unit.text} {unit.fields.actor}',
     criteria: { supported: 'Supported', unsupported: 'Unsupported', redundant: 'Redundant' }, expected: ['supported'],
     state: ['unit', 'unit.cited_rows', 'output.body'], dimension: 'accuracy', severity: 'major',
-    traps: Object.fromEntries(trapKinds.map(kind => [kind, ['format-paraphrase', 'option-permutation'].includes(kind) ? 'unchanged' : kind === 'injected-redundancy' ? 'redundant' : 'unsupported'])),
+    traps: Object.fromEntries(trapKinds.map(kind => [kind, kind === 'injected-redundancy' ? 'redundant' : 'unchanged'])),
   }] });
   const inputs = { output: { headline: 'Work update', body: ['Dr Alice is paid 1,000 dollars [R1].', 'Dr Bob was promoted [R2].'] },
     context: { evidence: '## R1\nDr Alice is paid 1,000 dollars.\n## R2\nDr Bob was promoted.' } };
