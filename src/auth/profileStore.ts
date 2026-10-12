@@ -153,7 +153,9 @@ export const registerImportedAuth = async (
   const current = (await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName));
   const importDirectory = resolveImportedAuthDirectory(profileName, kind);
   await ensurePrivateDirectory(path.dirname(importDirectory));
-  await removeDirectory(importDirectory);
+  // Grok import and writeback share a persistent lock inside this directory.
+  // Removing it would let another writer lock a different inode concurrently.
+  if (kind !== "grok") await removeDirectory(importDirectory);
   await ensurePrivateDirectory(importDirectory);
 
   const nextProfile: AuthProfile = {
