@@ -161,7 +161,7 @@ def test_response_contract_has_one_unambiguous_shape_and_meaningful_native_schem
     calls = []
     replacement = {"AGENTS.md": "Read the evidence, state the supported conclusion, and verify citations before filing."}
     envelope = {"components": replacement, "hypothesis": "Citation verification addresses the observed unsupported attribution.",
-                "expectedImpact": {"grounding": "Fewer unsupported attributions after explicit verification."}}
+                "expectedImpact": [{"criterion": "grounding", "effect": "Fewer unsupported attributions after explicit verification."}]}
     def host(method, params):
         calls.append(params)
         return {"text": json.dumps(envelope if structured else replacement), "model": "fixture", "usage": None}
@@ -186,3 +186,51 @@ def test_response_contract_has_one_unambiguous_shape_and_meaningful_native_schem
     assert resource_schema["required"] == ["AGENTS.md"]
     assert "ready for the agent to execute" in resource_schema["properties"]["AGENTS.md"]["description"]
     assert "full instruction text the agent will actually receive" in system or "instruction text the agent will actually receive" in system
+
+
+@pytest.mark.parametrize("count", [1, 20])
+def test_proposal_parts_converts_impact_array_to_map_without_changing_text(count):
+    from .reflection import proposal_parts
+    entries = [{"criterion": f"criterion-{i}", "effect": "  Predicted café effect\n"} for i in range(count)]
+    body = {"components": {"AGENTS.md": "  Replacement\n"}, "hypothesis": "h" * 2000,
+            "expectedImpact": entries}
+    assert proposal_parts(body, True) == (
+        body["components"], body["hypothesis"], {entry["criterion"]: entry["effect"] for entry in entries})
+    assert body["expectedImpact"] == entries
+
+
+@pytest.mark.parametrize("impact", [
+    None, {}, {"quality": "effect"}, "effect", [],
+    [{"criterion": str(i), "effect": "effect"} for i in range(21)],
+    [None], ["effect"], [[]], [{}], [{"criterion": "quality"}], [{"effect": "effect"}],
+    [{"criterion": "quality", "effect": "effect", "extra": True}],
+    *[[{"criterion": criterion, "effect": "effect"}] for criterion in [None, 1, [], "", " \n"]],
+    *[[{"criterion": "quality", "effect": effect}] for effect in [None, 1, [], "", " \n", "x" * 1001]],
+    [{"criterion": "quality", "effect": "first"}, {"criterion": "quality", "effect": "second"}],
+])
+def test_proposal_parts_rejects_invalid_impact_after_parsing(impact):
+    from .reflection import proposal_parts
+    body = parse_component_response(json.dumps({
+        "components": {"AGENTS.md": "Replacement"}, "hypothesis": "Reason", "expectedImpact": impact}))
+    with pytest.raises(BridgeError) as error:
+        proposal_parts(body, True)
+    assert error.value.code == "invalid_proposal"
+
+
+@pytest.mark.parametrize("hypothesis", [None, 1, "", " \n", "x" * 2001])
+def test_proposal_parts_keeps_hypothesis_guards(hypothesis):
+    from .reflection import proposal_parts
+    with pytest.raises(BridgeError):
+        proposal_parts({"components": {}, "hypothesis": hypothesis,
+                        "expectedImpact": [{"criterion": "quality", "effect": "x" * 1000}]}, True)
+
+
+def test_structured_proposal_records_keep_internal_impact_map():
+    envelope = {"components": {"AGENTS.md": "Verify all citations before filing."},
+                "hypothesis": "Verification reduces errors.",
+                "expectedImpact": [{"criterion": "grounding", "effect": "x" * 1000}]}
+    session = Session(request(proposal={"strategy": "rewrite"}), lambda *_: {
+        "text": json.dumps(envelope), "model": "fixture", "usage": None})
+    with dspy.context(lm=SubscriptionLM(session)):
+        ComponentProposer(session)(*proposal_input())
+    assert session.proposal_records[0]["expectedImpact"] == {"grounding": "x" * 1000}

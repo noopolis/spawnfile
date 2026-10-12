@@ -77,6 +77,7 @@ def realize(session, parent, feedback, hypothesis, rejection):
                "plannedHypothesis": hypothesis, "previousRejection": rejection}
     body = generate(session, payload, proposal_schema(components),
                     "Realize the planned hypothesis as complete replacement components. Return components, "
-                    "hypothesis and expectedImpact keyed by targeted criterion IDs. If repairing a rejection, "
+                    "hypothesis and expectedImpact as 1 to 20 objects with criterion (a targeted criterion ID) and effect. "
+                    "Use each criterion only once. If repairing a rejection, "
                     "revise the hypothesis and replacement to address its reason. Expected impact is a prediction. ")
     return proposal_parts(body, True)

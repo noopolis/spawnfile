@@ -63,7 +63,7 @@ class Host:
             index = self.realizations
             body = {"components": {"guide": self.texts[index % len(self.texts)]},
                     "hypothesis": self.hypotheses[index % len(self.hypotheses)],
-                    "expectedImpact": {"quality": "Improve evidence quality"}}
+                    "expectedImpact": [{"criterion": "quality", "effect": "Improve evidence quality"}]}
             self.realizations += 1
         return {"text": json.dumps(body), "model": "scripted", "usage": None}
 
@@ -155,7 +155,7 @@ def test_duplicate_and_sibling_gates():
 
 def test_component_set_and_targeted_criteria_rejection():
     for field, replacement, reason in [("components", {"locked": "changed"}, "editable-components"),
-                                       ("expectedImpact", {"invented": "effect"}, "targeted-criteria")]:
+                                       ("expectedImpact", [{"criterion": "invented", "effect": "effect"}], "targeted-criteria")]:
         host = Host()
         def callback(method, params):
             reply = host(method, params)
@@ -275,7 +275,7 @@ def test_metadata_repair_reuses_content_only_within_its_slot(repair):
             if host.realizations <= 2:
                 body['hypothesis'] = HYPOTHESES[0]
             if host.realizations == 1 or (host.realizations == 2 and not repair):
-                body['expectedImpact'] = {'incorrect': 'Improve evidence quality'}
+                body['expectedImpact'] = [{'criterion': 'incorrect', 'effect': 'Improve evidence quality'}]
             reply['text'] = json.dumps(body)
         return reply
 
@@ -354,7 +354,7 @@ def test_formatted_rejected_attempt_stays_reserved_in_later_rounds():
         if method == 'generate' and host.realizations == 1:
             body = json.loads(reply['text'])
             if 'components' in body:
-                body['expectedImpact'] = {'incorrect': 'Wrong target'}
+                body['expectedImpact'] = [{'criterion': 'incorrect', 'effect': 'Wrong target'}]
                 reply['text'] = json.dumps(body)
         return reply
 

@@ -214,7 +214,9 @@ and hypothesis content-token Jaccard similarity >= `hypothesisSimilarity` with a
 planning or realization hypothesis from another slot or earlier round.
 Repairs exclude their own slot history from hypothesis deduplication. Replacement keys must equal selected editable keys.
 Realizations use the existing `components`, `hypothesis`, `expectedImpact` envelope;
-expected-impact keys must equal the plan's `targetedCriteria`. Planning returns
+the `criterion` IDs in its `expectedImpact` array must equal the plan's
+`targetedCriteria`. Each item contains exactly `criterion` and `effect`; the bridge
+converts the array to a criterion-to-effect map for internal history. Planning returns
 `hypotheses: [{strategy,hypothesis,targetedCriteria,plan}]` in requested slot order.
 Both prompts treat component text, outputs and feedback as data.
 

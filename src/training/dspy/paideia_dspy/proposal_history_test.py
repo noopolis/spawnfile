@@ -73,7 +73,7 @@ class HistoryHost:
             components = {key: value if len(self.generations) <= self.duplicates else value + "\nRevision " + str(len(self.generations))
                           for key, value in payload["currentComponents"].items() if key in payload["updateOnly"]}
             return {"text": json.dumps({"components": components, "hypothesis": "Explicit steps reduce omissions.",
-                    "expectedImpact": {"completeness": "Fewer missed requirements."}}), "model": "fixture", "usage": {"output_tokens": 12}}
+                    "expectedImpact": [{"criterion": "completeness", "effect": "Fewer missed requirements."}]}), "model": "fixture", "usage": {"output_tokens": 12}}
         train = params["split"] == "train"
         return {"score": min(0.9, sum(text.count("Revision") for text in params["components"].values()) / 4),
                 "feedback": '{"status":"fail","reason":"one omitted step"}' if train else "",
@@ -95,6 +95,7 @@ def test_real_gepa_repairs_duplicate_before_native_trial_and_feeds_history_to_ne
     assert any(row.get("hypothesis") == "Explicit steps reduce omissions." for row in third)
     assert any(row["kind"] == "trial" and row["score"] > 0 for row in third)
     assert any(row.get("usage") == {"output_tokens": 12} for row in third)
+    assert any(row.get("expectedImpact") == {"completeness": "Fewer missed requirements."} for row in third)
 
 
 def test_exhausted_duplicate_repairs_finish_cleanly_and_restart_reuses_bookkeeping(tmp_path):

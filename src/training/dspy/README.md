@@ -85,9 +85,26 @@ training:
 
 Defaults are `refine`, `0`, `2`, `20`, and `65536`. Omitted `proposal` retains the
 legacy exact resource-map response; authored policy requests a structured
-`components`, `hypothesis`, `expectedImpact` envelope. Expected impacts are the
-optimizer's predictions, never measured grades. Rewrite permits reorganizing only
-already-editable text; all locked resource policies still apply.
+`components`, `hypothesis`, `expectedImpact` envelope:
+
+```json
+{
+  "components": {"AGENTS.md": "Complete replacement instructions."},
+  "hypothesis": "Explicit verification addresses unsupported attribution.",
+  "expectedImpact": [
+    {"criterion": "grounding", "effect": "Fewer unsupported attributions."}
+  ]
+}
+```
+
+`expectedImpact` contains 1–20 objects with exactly the required `criterion` and
+`effect` fields. Criterion IDs must be distinct nonblank strings; effects must be
+nonblank strings of at most 1000 characters. The bridge enforces these bounds
+after parsing and converts the array to the internal criterion-to-effect map
+used by proposal history. This closed item schema supports Codex strict mode.
+Expected impacts are the optimizer's predictions, never measured grades. Rewrite
+permits reorganizing only already-editable text; all locked resource policies
+still apply.
 
 Whitespace-equivalent or previously proposed bundles never run a native trial.
 `min_change` measures token-trigram Jaccard distance from the parent, a lexical
