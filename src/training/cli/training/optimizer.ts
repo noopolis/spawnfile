@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { validateTrainingConfiguration } from '../../cases/index.js';
 import { type CandidateManifest } from '../../candidates/index.js';
 import type { TrainingOptimizer } from '../../contracts/training-config.js';
@@ -10,12 +11,15 @@ import type { SpawnfileTrainingContext } from '../spawnfile/index.js';
 export async function resolveTrainingOptimizer(args: CliArguments, integration?: SpawnfileCliIntegration,
   context?: SpawnfileTrainingContext): Promise<CliArguments> {
   if (args.command !== 'train') return args;
+  if (args.training?.comparison) {
+    validateTrainingConfiguration(args.training);
+    return args;
+  }
   const resolved = context === undefined ? undefined : await integration?.trainingOptimizer?.(context);
   let training = args.training;
   const flags = { ...args.flags };
   if (resolved !== undefined) {
     if (!training) throw new Error(`training.optimizer.model ${resolved.model} requires declared training.models`);
-    if (training.comparison) throw new Error('training.optimizer cannot be supplied for comparison');
     const matches = Object.hasOwn(training.models, resolved.model) ? [resolved.model]
       : Object.keys(training.models).filter(name => training!.models[name]!.model === resolved.model);
     if (matches.length !== 1) throw new Error(`training.optimizer.model ${resolved.model} must resolve to exactly one declared named model`);
@@ -29,7 +33,12 @@ export async function resolveTrainingOptimizer(args: CliArguments, integration?:
     if (authored?.budget !== undefined && authored.budget.rounds !== mapped.budget.rounds) {
       throw new Error('training.optimizer.budget.rounds conflicts with the integration optimizer');
     }
-    training = validateTrainingConfiguration({ ...training, optimizer: { ...authored, ...mapped } });
+    if (authored?.boundaries !== undefined && mapped.boundaries !== undefined
+        && !isDeepStrictEqual(authored.boundaries, mapped.boundaries)) {
+      throw new Error('training.optimizer.boundaries conflicts with the integration optimizer');
+    }
+    training = validateTrainingConfiguration({ ...training, optimizer: { ...authored, ...mapped,
+      boundaries: mapped.boundaries === undefined ? authored?.boundaries : mapped.boundaries } });
     const model = training.models[mapped.model]!.model;
     if (flags['optimizer-model'] && flags['optimizer-model'][0] !== model) throw new Error('training.optimizer.model conflicts with --optimizer-model');
     flags['optimizer-model'] = [model];

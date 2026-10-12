@@ -2,6 +2,7 @@
 from collections import Counter
 import re
 import unicodedata
+from .instruction_text import instruction_text
 
 
 _DIRECTIVES = frozenset("""
@@ -25,21 +26,37 @@ def _canonical(text: str) -> str:
     return " ".join(re.findall(r"\w+", _inline(text)))
 
 
+def _prose_units(text: str) -> list[str]:
+    text = unicodedata.normalize("NFKC", _inline(text)).casefold()
+    units = []
+    for clause in re.split(r"(?<=[.!?])\s+|;\s*", text):
+        # Periods and semicolons separate rules. Alternatives stay attached to
+        # their preceding condition; commas in a leading condition bind its
+        # action. A marker inside an independent rule must not absorb neighbors.
+        if re.match(r"\s*(otherwise|else|then)\b", clause) and units:
+            units[-1] += " " + clause
+        elif re.match(r"\s*(if|unless|when|before|after|until|once)\b", clause):
+            units.append(clause)
+        else:
+            units.extend(re.split(r",\s*", clause))
+    return units
+
+
 def instruction_units(text: str) -> list[str]:
-    """Read headings, list items, table rows, sentences and whole fenced blocks.
+    """Read list items, table rows, sentences and whole fenced blocks.
 
     Ordinary soft-wrapped lines form paragraphs; Markdown markers and positions
-    do not become instructions. Fence language labels do not affect their body.
+    do not become instructions. Headings are labels, not scored instructions.
+    Fence language labels do not affect their body.
     """
     units, paragraph, fence = [], [], []
     fence_marker = None
 
     def flush():
-        joined = _inline(" ".join(paragraph))
-        units.extend(re.split(r"(?<=[.!?])\s+", joined))
+        units.extend(_prose_units(" ".join(paragraph)))
         paragraph.clear()
 
-    for line in text.splitlines():
+    for line in instruction_text(text).splitlines():
         stripped = line.strip()
         marker = re.match(r"^(`{3,}|~{3,})", stripped)
         if fence_marker is not None:
@@ -54,17 +71,25 @@ def instruction_units(text: str) -> list[str]:
             fence_marker = marker[1]
         elif not stripped:
             flush()
+        elif re.fullmatch(r"(?:=+|-+)", stripped) and paragraph:
+            paragraph.clear()  # Setext heading labels carry no scored instruction.
         elif re.fullmatch(r"[|:\-\s]+", stripped):
             flush()  # Horizontal rules and table separators contain no rule.
-        elif re.match(r"^(?:#{1,6}\s|[-+*]\s|\d+[.)]\s|\|)", stripped):
+        elif re.match(r"^#{1,6}(?:\s|$)", stripped):
+            flush()  # ATX heading labels carry no scored instruction.
+        elif re.match(r"^(?:[-+*]\s|\d+[.)]\s|\|)", stripped):
             flush()
-            stripped = re.sub(r"^(?:#{1,6}\s+|[-+*]\s+|\d+[.)]\s+)", "", stripped)
-            units.extend(re.split(r"(?<=[.!?])\s+", _inline(stripped)))
+            stripped = re.sub(r"^(?:[-+*]\s+|\d+[.)]\s+)", "", stripped)
+            if re.match(r"^\|", line.strip()):
+                units.extend(_prose_units(stripped))
+            else:
+                paragraph.append(stripped)  # Keep list continuation lines in this unit.
         else:
             paragraph.append(stripped)
     flush()
     units.append("\n".join(fence))
-    return [canonical for unit in units if (canonical := _canonical(unit))]
+    # Repeated instructions cannot create novelty or dilute a real change.
+    return list(dict.fromkeys(canonical for unit in units if (canonical := _canonical(unit))))
 
 
 def _weight(token: str) -> int:
@@ -72,9 +97,15 @@ def _weight(token: str) -> int:
 
 
 def _similarity(left: str, right: str) -> float:
-    a, b = Counter(left.split()), Counter(right.split())
-    intersection = sum(count * _weight(token) for token, count in (a & b).items())
-    union = sum(count * _weight(token) for token, count in (a | b).items())
+    # Adjacent tokens retain directive/action attachment even within one clause.
+    # Boundary tokens also cover single-word instructions.
+    def features(unit):
+        tokens = ["", *unit.split(), ""]
+        return Counter(zip(tokens, tokens[1:]))
+
+    a, b = features(left), features(right)
+    intersection = sum(count * max(map(_weight, pair)) for pair, count in (a & b).items())
+    union = sum(count * max(map(_weight, pair)) for pair, count in (a | b).items())
     return intersection / union if union else 1.0
 
 
@@ -106,7 +137,10 @@ def behavior_change(before: dict[str, str], after: dict[str, str]) -> float:
     right = {key: instruction_units(value) for key, value in after.items()}
     count = max(sum(map(len, left.values())), sum(map(len, right.values())))
     changed = sum(_changed(left.get(key, []), right.get(key, []))
-                  for key in sorted(left.keys() | right.keys()))
+                  for key in sorted(left.keys() | right.keys())
+                  # Equivalent punctuation can change sentence/clause segmentation.
+                  # Compare canonical text first, within its original resource.
+                  if _canonical(instruction_text(before.get(key, ""))) != _canonical(instruction_text(after.get(key, ""))))
     return min(1.0, changed / count) if count else 0.0
 
 

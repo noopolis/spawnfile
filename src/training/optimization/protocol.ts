@@ -112,8 +112,9 @@ export const resultSchema = z.object({
       perCaseScores: z.record(id, z.number().min(0).max(1)).optional(),
     }).strict()).min(1),
     rounds: z.array(populationRoundSchema).optional(), stopReason: id.optional(), editScope: editScopeSchema.optional(),
+    changeEvidence: z.literal('bridge-reported-v2').optional(),
     captures: z.array(captureSchema),
-    generations: z.array(z.object({ model: id, usage: usageSchema, modelBasis }).strict()),
+    generations: z.array(z.object({ model: id, usage: usageSchema, modelBasis, text: z.string().optional() }).strict()),
   }).strict(),
 }).strict();
 export const errorSchema = z.object({ ...common, kind: z.literal('error'),

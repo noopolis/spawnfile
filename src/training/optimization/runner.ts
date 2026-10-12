@@ -6,6 +6,7 @@ import { runProcess, type ProcessResult, type RunningProcess } from '../platform
 import { verifyDspyResult } from './evidence.js';
 import { OptimizationCheckpoint, restoredDspyEvidence } from './checkpoint.js';
 import { DspyHost } from './host.js';
+import { compileBoundaries } from './boundaries.js';
 import { DSPY_SCHEMA, decodeMessage, encodeMessage, startSchema, type DspyResult } from './protocol.js';
 import { DspyOptimizationError, type DspyOptimizationOptions } from './types.js';
 
@@ -30,6 +31,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
     ...(options.checkpoint ? { checkpoint: { directory: options.checkpoint.directory, identity: options.checkpoint.identity,
       ...(options.checkpoint.fork ? { fork: { directory: options.checkpoint.fork.directory, identity: options.checkpoint.fork.identity,
         id: options.checkpoint.fork.id, digest: options.checkpoint.fork.digest } } : {}) } } : {}) });
+  compileBoundaries(start.search?.boundaries ?? [], start.components);
   const controller = new AbortController();
   const signal = options.signal === undefined ? controller.signal : AbortSignal.any([controller.signal, options.signal]);
   let timedOut = false;

@@ -36,3 +36,11 @@ it('rejects a declared cap unable to fund keep plus variants', () => {
     .toThrow('budget.max_proposals');
   expect(validateTrainingConfiguration({ models, optimizer, budget: { max_proposals: 6 } })).toBeDefined();
 });
+
+it.each([
+  { keep: 2 }, { budget: { rounds: 3 } }, { selection: 'pareto' }, { boundaries: ['Keep the output schema.'] },
+  { patience: 2 }, { proposal: { rewrite_share: 0.5 } }, { proposal: { hypothesis_similarity: 0.6 } },
+])('refuses population-only controls that legacy GEPA would ignore: %j', controls => {
+  expect(() => validateTrainingConfiguration({ models, optimizer: { model: 'reflect', ...controls } }))
+    .toThrow('requires optimizer.variants');
+});

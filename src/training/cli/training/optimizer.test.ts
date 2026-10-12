@@ -44,7 +44,6 @@ it('maps integration model keys first, then unique model values, and rejects con
   expect((await resolveTrainingOptimizer(args({ models: both }), integration, f.context)).training?.optimizer?.model).toBe('local-model');
   await expect(resolveTrainingOptimizer(args({ models: { ...models, duplicate: models.reflect! } }), integration, f.context)).rejects.toThrow('local-model');
   await expect(resolveTrainingOptimizer({ command: 'train', flags: {} }, integration, f.context)).rejects.toThrow('training.models');
-  await expect(resolveTrainingOptimizer(args({ models, comparison: { candidate: { name: 'x', replacements: [] } } }), integration, f.context)).rejects.toThrow('comparison');
   resolved = { ...resolved, model: 'missing' };
   await expect(resolveTrainingOptimizer(args(), integration, f.context)).rejects.toThrow('missing');
   resolved = { method: 'gepa', ...population };
@@ -58,3 +57,30 @@ it('maps integration model keys first, then unique model values, and rejects con
   expect(await resolveTrainingOptimizer(help, integration, f.context)).toBe(help);
 });
 
+it('merges integration hard boundaries only when declared values agree', async () => {
+  const context = {} as SpawnfileTrainingContext;
+  const boundaries = ['Keep quoted text verbatim.'];
+  const integration = (value?: string[]) => ({ trainingOptimizer: async () => ({
+    method: 'gepa' as const, ...population, boundaries: value,
+  }) }) as unknown as SpawnfileCliIntegration;
+  for (const [yaml, supplied] of [[undefined, boundaries], [boundaries, undefined], [boundaries, boundaries]] as const) {
+    const result = await resolveTrainingOptimizer(args({ models, optimizer: { ...population, boundaries: yaml } }), integration(supplied), context);
+    expect(result.training?.optimizer?.boundaries).toEqual(boundaries);
+    expect(populationSearch(result.training?.optimizer)?.boundaries).toEqual(boundaries);
+  }
+  await expect(resolveTrainingOptimizer(args({ models, optimizer: { ...population, boundaries } }), integration([]), context)).rejects.toThrow('boundaries conflicts');
+  for (const invalid of [null, 'rule', [''], ['x'.repeat(501)], Array.from({ length: 51 }, () => 'rule')]) {
+    await expect(resolveTrainingOptimizer(args(), integration(invalid as string[]), context)).rejects.toThrow('boundaries');
+  }
+});
+
+
+it('comparison bypasses inherited optimizer resolution but rejects an explicit optimizer', async () => {
+  const comparison = { candidate: { name: 'frozen', replacements: [{ resource: 'AGENTS.md', source: 'variant.md' }] } };
+  const integration = { trainingOptimizer: vi.fn(async () => { throw new Error('Must not resolve inherited optimizer'); }) } as unknown as SpawnfileCliIntegration;
+  const input = args({ models, comparison });
+  expect(await resolveTrainingOptimizer(input, integration, {} as SpawnfileTrainingContext)).toBe(input);
+  await expect(resolveTrainingOptimizer(args({ models, comparison, optimizer: population }), integration,
+    {} as SpawnfileTrainingContext)).rejects.toThrow('comparison does not run an optimizer');
+  expect(integration.trainingOptimizer).not.toHaveBeenCalled();
+});

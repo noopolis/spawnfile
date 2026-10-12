@@ -31,6 +31,8 @@ def context(session, parent, feedback):
     return {
         "currentComponents": parent, "updateOnly": list(parent),
         "boundaries": session.request.search.boundaries,
+        "changePolicy": {"minChange": session.request.search.minChange,
+                         "hypothesisSimilarity": session.request.search.hypothesisSimilarity},
         "editScope": session.request.editScope or {path: "whole-file" for path in parent},
         "trainingFeedback": current_feedback(dataset, policy["history_bytes"]),
         "trajectory": history_view(session, policy),
@@ -62,7 +64,8 @@ def plan(session, parent, feedback, strategies):
                 or any(not isinstance(row[key], str) or not row[key].strip() or len(row[key]) > 2000
                        for key in ["hypothesis", "plan"])
                 or not isinstance(row["targetedCriteria"], list) or not 1 <= len(row["targetedCriteria"]) <= 20
-                or any(not isinstance(key, str) or not key.strip() for key in row["targetedCriteria"])):
+                or any(not isinstance(key, str) or not key.strip() for key in row["targetedCriteria"])
+                or len(set(row["targetedCriteria"])) != len(row["targetedCriteria"])):
             raise BridgeError("invalid_proposal", "planning hypothesis violates its declared slot")
     return rows
 

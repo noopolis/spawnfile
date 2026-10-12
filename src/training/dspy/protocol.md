@@ -186,8 +186,16 @@ released GEPA path, prompts and checkpoint format. The strict block is:
 positive safe integer, with
 `keep <= variants`. Defaults for the remaining fields are `pareto`, `0.5`, `0.08`,
 `0.6`, `rounds` (no early patience stop), and `[]`. Boundaries contain at most 50
-strings of 1..500 characters, passed verbatim to both generation prompts as the
-only non-negotiable constraints. Proposal `max_attempts` still defaults to 2 and
+strings of 1..500 characters. Each string is `preserve ["component"]`,
+`require-text ["component", "literal"]`, or `forbid-text ["component", "literal"]`.
+Arguments are JSON strings; names must identify editable components. Preserve means
+exact equality with the seed; required/forbidden text means case-sensitive substring
+presence/absence. All constraints must pass. Invalid declarations/prose fail with
+`unsupported_boundaries`; invalid seeds fail with `boundary_violation`, before callbacks.
+Violating proposals receive `hard-boundary` rejection before evaluation; bounded repairs
+are allowed. The host independently enforces these constraints before native trials
+and on final candidates. These gates assert text properties, not semantic compliance.
+See docs/population-search.md for the authoring contract. Proposal `max_attempts` still defaults to 2 and
 caps realization attempts per slot; each planning and realization call consumes
 one `maxProposals` unit. The seed's complete validation **and training** must fit
 `maxMetricCalls`; `maxProposals` must be at least `keep + variants`.
@@ -199,20 +207,31 @@ per hypothesis (plus bounded rejection repairs). The global rewrite slot count i
 `ceil(variants * rewriteShare)`. Train feedback is cached by candidate/case; only
 training text enters generations. Validation always evaluates every declared case.
 
-Pre-trial gates reject normalized duplicates (including earlier rejected attempts),
+Pre-trial gates reject normalized duplicates (including earlier rejected attempts
+and zero-distance formatting/reordering copies under the instruction-change metric),
 behavioral change below `minChange`, same-round accepted siblings below that floor,
 and hypothesis content-token Jaccard similarity >= `hypothesisSimilarity` with an
-earlier planning or realization hypothesis. Replacement keys must equal selected editable keys.
+planning or realization hypothesis from another slot or earlier round.
+Repairs exclude their own slot history from hypothesis deduplication. Replacement keys must equal selected editable keys.
 Realizations use the existing `components`, `hypothesis`, `expectedImpact` envelope;
 expected-impact keys must equal the plan's `targetedCriteria`. Planning returns
 `hypotheses: [{strategy,hypothesis,targetedCriteria,plan}]` in requested slot order.
 Both prompts treat component text, outputs and feedback as data.
 
-Instruction change splits headings, lists, rows, sentences and fenced blocks;
-NFKC/case-folding and Markdown/punctuation removal precede resource-local unit
-matching. Identical units match independent of position. Remaining units pair by
-highest weighted token-multiset Jaccard similarity; directive/numeric tokens weigh
-4 versus 1. Unpaired units cost 1; paired units cost 1 minus similarity. Divide by
+Instruction change v2 joins soft-wrapped paragraph/list continuations and treats
+Setext and ATX headings as unscored labels. It splits lists, rows, sentences and
+fenced blocks, strips inline emphasis/link syntax and applies NFKC/case-folding.
+Independent rules split alike at periods, semicolons and commas. Leading
+conditional/workflow clauses (if/unless/when/before/after/until/once) retain their
+comma-delimited actions; otherwise/else/then alternatives attach to the preceding
+rule. Identical whole
+units match independent of position; repetitions count once per component, in
+both the numerator and denominator. Remaining units pair by highest weighted
+adjacent-token multiset Jaccard similarity, including start/end boundaries. Each
+pair weighs 4 if either token is a directive or numeric, otherwise 1. This detects
+directive/action reversals even within a clause. History uses zero distance under
+this same metric regardless of the configured floor. Unpaired units cost 1;
+paired units cost 1 minus similarity. Divide by
 the maximum total unit count and clamp to [0,1]. This is a deterministic heuristic,
 not proof of semantic change. Lexical trigram distance is reported separately.
 
@@ -226,12 +245,23 @@ round 0. Each round records parents, all variant slots and kept indexes; every s
 records strategy, hypothesis, targeted criteria, behavioral/lexical change, status,
 rejection reason, candidate index (or null), and individual realization attempts.
 `stopReason` is `rounds`, `budget` or `patience`. Unfunded slots remain empty.
+Population generations include the exact response `text` (legacy generations
+remain unchanged); the host checks these bytes against its recorded responses.
+`changeEvidence: "bridge-reported-v2"` labels behavioral and lexical values as
+bridge-reported heuristics. The host does not recompute or certify novelty scores,
+threshold compliance, or hypothesis similarity.
 
 Optional `editScope` maps exactly the component keys to `"whole-file"` or a nonempty
 array of declared headings. Population provenance echoes its effective value,
 defaulting every resource to whole-file. The host retains actual edit-policy
 validation and independently verifies full validation captures, per-case scores,
-mean scores, lineage and retention before accepting a selected result.
+mean scores, lineage, retention, seed training, strategy allocation, attempt/status
+consistency and accepted components/hypotheses against ordered realization
+responses before accepting a selected result. It checks stop reasons against round
+count, observed stagnation and remaining budget. For a budget stop before a round
+starts, the unrecorded shuffled parent is unknown to the host: at least one retained
+parent must be unfundable including uncached training. This is feasibility checking,
+not independent replay of Python RNG or certification of novelty gates.
 
 `Evaluator.evaluate_many(requests)` returns results in **request order**. Only the
 sequential session-backed implementation is provided. P6 may supply concurrent
@@ -245,3 +275,6 @@ receipt is safe to replay. A pending/failed callback produces recovery offsets t
 can change earlier budget decisions: population rejects such recovery before any
 callback with `unsupported_checkpoint`. Population checkpoint forks also fail closed.
 Legacy paired GEPA checkpoint behavior and absent-field identity bytes are retained.
+
+Instruction-change parsing excludes HTML comments, closed leading YAML front matter
+and single-line reference definitions before segmentation; fenced content remains scored.

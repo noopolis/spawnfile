@@ -15,8 +15,8 @@ export async function verifyDspyResult(result: DspyResult, host: DspyHost, signa
   const captures = completed.map(({ caseId, split, result: evaluated }) => ({ caseId, split, captureId: evaluated.captureId }));
   // Checkpoint JSON canonicalizes object keys; array order and every value remain authoritative.
   if (!isDeepStrictEqual(captures, provenance.captures)
-      || !isDeepStrictEqual(generations.map(({ model, usage, modelBasis }) => ({ model, usage,
-        ...(modelBasis === undefined ? {} : { modelBasis }) })), provenance.generations)) {
+      || !isDeepStrictEqual(generations.map(({ model, usage, modelBasis, text }) => ({ model, usage,
+        ...(modelBasis === undefined ? {} : { modelBasis }), ...(start.search ? { text } : {}) })), provenance.generations)) {
     throw new Error('DSPy terminal capture or inference provenance does not match host evidence');
   }
   if ((provenance.optimizer === 'paideia.population') !== Boolean(start.search)) {
@@ -52,7 +52,7 @@ export async function verifyDspyResult(result: DspyResult, host: DspyHost, signa
     if (Math.abs(score - candidate.validationScore) > 1e-10) throw new Error('DSPy candidate score contradicts native evaluations');
     if (candidate.validationScore > provenance.candidates[best]!.validationScore) best = index;
   }
-  if (start.search) verifyPopulationEvidence(result, start);
+  if (start.search) verifyPopulationEvidence(result, start, completed);
   if (provenance.selectedCandidateIndex !== best
       || !sameComponents(result.components, provenance.candidates[best]!.components)) {
     throw new Error('DSPy selected components contradict validation selection');

@@ -16,6 +16,7 @@ from .variants import plan
     {"hypotheses": [{"strategy": "rewrite", "hypothesis": "", "targetedCriteria": ["q"], "plan": "how"}]},
     {"hypotheses": [{"strategy": "rewrite", "hypothesis": "why", "targetedCriteria": [], "plan": "how"}]},
     {"hypotheses": [{"strategy": "rewrite", "hypothesis": "why", "targetedCriteria": [4], "plan": "how"}]},
+    {"hypotheses": [{"strategy": "rewrite", "hypothesis": "why", "targetedCriteria": ["q", "q"], "plan": "how"}]},
 ])
 def test_invalid_planning(body):
     session = Session(request(search={"variants": 1, "keep": 1, "rounds": 1}),

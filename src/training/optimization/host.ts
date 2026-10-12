@@ -4,6 +4,7 @@ import { evaluationSchema, inferenceSchema, type DspyEvaluation, type DspyEvalua
   type DspyRequest, type DspyStart } from './protocol.js';
 import type { OptimizationCheckpoint } from './checkpoint.js';
 import type { DspyOptimizationOptions } from './types.js';
+import { assertBoundaries, compileBoundaries } from './boundaries.js';
 
 export interface CompletedEvaluation extends DspyEvaluateParams { result: DspyEvaluation }
 
@@ -51,6 +52,7 @@ export class DspyHost {
     if (Object.keys(components).length !== expected.length || expected.some((key) => !Object.hasOwn(components, key))) {
       throw new Error('DSPy candidate changed the declared editable component set');
     }
+    assertBoundaries(compileBoundaries(this.start.search?.boundaries ?? [], this.start.components), components);
     await this.work(() => this.options.validateComponents(Object.freeze({ ...components }), signal), signal);
   }
 

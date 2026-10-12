@@ -90,6 +90,14 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
       if (policy.variants !== undefined) {
         integer(policy.keep, `${location}.keep`, 1, policy.variants as number);
         if (policy.budget === undefined) fail(`${location}.budget.rounds`, 'required when variants is present');
+      } else {
+        for (const field of ['keep', 'budget', 'selection', 'boundaries', 'patience']) {
+          if (policy[field] !== undefined) fail(`${location}.${field}`, 'requires optimizer.variants');
+        }
+        const proposal = policy.proposal as Record<string, unknown> | undefined;
+        for (const field of ['rewrite_share', 'hypothesis_similarity']) {
+          if (proposal?.[field] !== undefined) fail(`${location}.proposal.${field}`, 'requires optimizer.variants');
+        }
       }
     }
     if (policy.template !== undefined) {

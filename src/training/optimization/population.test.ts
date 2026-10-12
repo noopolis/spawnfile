@@ -15,7 +15,7 @@ function populationOptions() {
   const evaluated: string[] = [], generated: DspyGenerateParams[] = [];
   options.components = { 'AGENTS.md': 'Always gather evidence before answering. Cite the sources.' };
   options.search = { variants: 2, keep: 1, rounds: 2, selection: 'pareto', rewriteShare: 0.5,
-    minChange: 0.08, hypothesisSimilarity: 0.6, patience: 2, boundaries: ['Keep answers factual.'] };
+    minChange: 0.08, hypothesisSimilarity: 0.6, patience: 2, boundaries: [] };
   options.editScope = { 'AGENTS.md': 'whole-file' };
   options.budget = { maxMetricCalls: 30, maxProposals: 12 };
   options.validationCaseIds = ['validation-a', 'validation-b'];
@@ -61,7 +61,7 @@ it('runs the real population bridge with complete host-verified validation and d
   expect(result.provenance.editScope).toEqual(run.options.editScope);
   expect(run.generated).toHaveLength(6);
   expect(run.evaluated).toHaveLength(12);
-  expect(run.generated.every(call => call.messages[1]!.content.includes('Keep answers factual.'))).toBe(true);
+  expect(run.generated.every(call => JSON.parse(call.messages[1]!.content).boundaries.length === 0)).toBe(true);
   expect(await runDspyOptimization(populationOptions().options)).toEqual(result);
 });
 
@@ -120,4 +120,47 @@ it('verifies seeded multi-parent rounds independently of parent visitation order
   expect(result.provenance.candidates).toHaveLength(5);
   expect(run.generated).toHaveLength(7);
   expect(run.evaluated).toHaveLength(13);
+});
+
+it.each([
+  { maxMetricCalls: 30, maxProposals: 5 },
+  { maxMetricCalls: 3, maxProposals: 12 },
+  { maxMetricCalls: 5, maxProposals: 12 },
+  { maxMetricCalls: 8, maxProposals: 12 },
+])('verifies actual budget stops and empty multi-parent slots: %o', async budget => {
+  const run = populationOptions();
+  run.options.search!.keep = 2;
+  run.options.budget = budget;
+  const result = await runDspyOptimization(run.options);
+  expect(result.provenance.stopReason).toBe('budget');
+  expect(result.provenance.evaluations).toBeLessThanOrEqual(budget.maxMetricCalls);
+  expect(result.provenance.proposals).toBeLessThanOrEqual(budget.maxProposals);
+});
+
+
+it('refuses unenforceable hard boundaries before callbacks or bridge execution', async () => {
+  const run = populationOptions();
+  run.options.search!.boundaries = ['Never publish unverified claims.'];
+  run.options.bridge.command = '/nonexistent-bridge-must-not-start';
+  await expect(runDspyOptimization(run.options)).rejects.toThrow('Unsupported hard boundary');
+  expect(run.generated).toHaveLength(0);
+  expect(run.evaluated).toHaveLength(0);
+});
+
+
+it.each([false, true])('enforces declared boundaries through the real bridge (violation=%s)', async violation => {
+  const run = populationOptions();
+  run.options.search!.boundaries = ['forbid-text ["AGENTS.md", "Never invent claims."]'];
+  const generate = run.options.generate;
+  if (!violation) run.options.generate = async (...args) => {
+    const reply = await generate(...args);
+    return { ...reply, text: reply.text.replaceAll('Never invent claims.', 'Always verify claims.') };
+  };
+  const result = await runDspyOptimization(run.options);
+  expect(result.provenance.candidates).toHaveLength(violation ? 1 : 5);
+  expect(run.evaluated).toHaveLength(violation ? 3 : 12);
+  expect(result.provenance.rounds!.slice(1).flatMap(round => round.variants)
+    .every(slot => slot.rejectionReason === (violation ? 'hard-boundary' : null))).toBe(true);
+  expect(run.generated.every(call => JSON.parse(call.messages[1]!.content).boundaries
+    .includes(run.options.search!.boundaries[0]))).toBe(true);
 });

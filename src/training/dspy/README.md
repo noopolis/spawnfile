@@ -123,7 +123,7 @@ training:
     keep: 2
     budget: { rounds: 3 }
     selection: pareto
-    boundaries: ["Keep quoted text verbatim."]
+    boundaries: []
     proposal:
       rewrite_share: 0.5
       min_change: 0.08
@@ -152,3 +152,24 @@ Settled-callback checkpoint resume replays with no extra spend or Python pickle.
 Population recovery with uncertain/failed attempts and checkpoint forks fails
 closed; start a new run for those cases. These tests make no claim of live model
 quality or native-agent improvement.
+
+Population change evidence is explicitly `bridge-reported-v2`: behavioral and
+lexical heuristics are not host-certified. Logical Markdown wrapping/heading
+labels are excluded and repeated units count once per component; independent rules split alike at periods, commas
+and semicolons. Adjacent-token features retain directive/action attachment within
+units, keeping conditional and workflow clauses together. History rejects
+zero-distance copies with the same metric, including when the floor is zero.
+Repairs exclude their own
+slot's hypotheses from deduplication. The host binds accepted components to exact
+recorded realization responses and checks seed training, strategy/attempt records
+and stop feasibility; see protocol.md for the unrecorded-shuffle limitation.
+Integration `trainingOptimizer` may supply `boundaries` under the same 50-string,
+1..500-character limits; dual declarations must match verbatim and in order.
+Declared text constraints are enforced by Python admission and independently by the
+TypeScript host: `preserve ["component"]`, `require-text ["component", "literal"]`,
+`forbid-text ["component", "literal"]`. Arguments are JSON strings. Unknown components,
+unsupported prose and invalid seeds fail before callbacks; violations never reach trials.
+These are exact text guarantees, not runtime semantic guarantees. See
+[population search](../../docs/population-search.md) for examples and limits.
+The change heuristic excludes HTML comments, leading closed YAML front matter and
+single-line reference definitions, while retaining fenced literal content.

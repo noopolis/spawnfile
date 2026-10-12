@@ -110,7 +110,7 @@ def test_duplicate_hypotheses_never_evaluated():
 @pytest.mark.parametrize("share,expected", [(0, ["refine"] * 3), (0.5, ["rewrite", "rewrite", "refine"]), (1, ["rewrite"] * 3)])
 def test_strategy_mix_boundaries_scope_and_train_only_prompts(share, expected):
     host = Host()
-    boundaries = ["Never alter the output schema.", "Keep quoted text verbatim."]
+    boundaries = []
     result = optimize(population_request(search={"variants": 3, "keep": 2, "rounds": 1,
                                                 "rewriteShare": share, "boundaries": boundaries},
                                          editScope={"guide": ["Workflow"]}), host)
@@ -120,6 +120,7 @@ def test_strategy_mix_boundaries_scope_and_train_only_prompts(share, expected):
         if method == "generate":
             payload = json.loads(params["messages"][1]["content"])
             assert payload["boundaries"] == boundaries
+            assert payload["changePolicy"] == {"minChange": 0.08, "hypothesisSimilarity": 0.6}
             assert "validation-secret-case" not in json.dumps(params)
             assert "ONLY non-negotiable constraints" in params["messages"][0]["content"]
             assert "preserv" not in params["messages"][0]["content"].lower()
@@ -224,3 +225,162 @@ def test_duplicate_plans_cannot_evade_dedupe_by_changing_realization_words():
                                          proposal={"max_attempts": 1}), callback)["provenance"]
     assert result["rounds"][1]["variants"][1]["rejectionReason"] == "hypothesis-duplicate"
     assert result["evaluations"] == 3
+
+
+@pytest.mark.parametrize('before,after', [
+    ('- Always verify sources before publishing', '- **Always** verify sources\n  before publishing'),
+    ('Publishing rules\n================\n\nVerify sources.', '# Publishing rules\n\nVerify sources.'),
+])
+def test_logical_formatting_rejected_without_evaluations(before, after):
+    host = Host(texts=[after])
+    result = optimize(population_request(components={'guide': before}, proposal={'max_attempts': 1},
+                                        search={'variants': 1, 'keep': 1, 'rounds': 1}), host)['provenance']
+    row = result['rounds'][1]['variants'][0]
+    assert row['status'] == 'rejected'
+    assert row['rejectionReason'] == 'below-min-change'
+    assert row['behavioralChange'] == 0
+    assert result['evaluations'] == 2
+    assert len([call for call in host.calls if call[0] == 'evaluate']) == 2
+
+
+@pytest.mark.parametrize('after', [
+    'Verify sources; cite evidence.',
+    'Cite evidence; verify sources.',
+    '**Cite evidence**； verify sources.',
+    'Verify sources. Cite evidence. Verify sources. Cite evidence.',
+    '# Rules\nVerify sources.\n## Citations\nCite evidence.',
+    'New rules\n=========\nVerify sources. Cite evidence.',
+])
+def test_punctuation_only_edit_never_launches_candidate_evaluation(after):
+    host = Host(texts=[after])
+    result = optimize(population_request(components={'guide': 'Verify sources. Cite evidence.'},
+        proposal={'max_attempts': 1}, search={'variants': 1, 'keep': 1, 'rounds': 1}), host)['provenance']
+    row = result['rounds'][1]['variants'][0]
+    assert row['rejectionReason'] == 'below-min-change'
+    assert row['behavioralChange'] == 0
+    assert len(result['candidates']) == 1
+    assert result['evaluations'] == 2
+    assert len([call for call in host.calls if call[0] == 'evaluate']) == 2
+
+
+@pytest.mark.parametrize('repair', [True, False])
+def test_metadata_repair_reuses_content_only_within_its_slot(repair):
+    host = Host(texts=[TEXTS[0]], hypotheses=HYPOTHESES)
+
+    def callback(method, params):
+        reply = host(method, params)
+        if method == 'generate' and json.loads(params['messages'][1]['content'])['phase'] == 'realization':
+            body = json.loads(reply['text'])
+            # Keep the same content and hypothesis for the first slot's repair.
+            if host.realizations <= 2:
+                body['hypothesis'] = HYPOTHESES[0]
+            if host.realizations == 1 or (host.realizations == 2 and not repair):
+                body['expectedImpact'] = {'incorrect': 'Improve evidence quality'}
+            reply['text'] = json.dumps(body)
+        return reply
+
+    result = optimize(population_request(proposal={'max_attempts': 2},
+        search={'variants': 2, 'keep': 1, 'rounds': 2}), callback)['provenance']
+    first, second = result['rounds'][1]['variants']
+    assert first['attempts'][0]['rejectionReason'] == 'targeted-criteria'
+    assert first['attempts'][1]['rejectionReason'] == (None if repair else 'targeted-criteria')
+    assert first['status'] == ('accepted' if repair else 'rejected')
+    assert all(attempt['rejectionReason'] == 'duplicate' for attempt in second['attempts'])
+    assert all(attempt['rejectionReason'] == 'duplicate'
+               for row in result['rounds'][2]['variants'] for attempt in row['attempts'])
+    assert len(result['candidates']) == (2 if repair else 1)
+    validation = [params for method, params in host.calls if method == 'evaluate' and params['split'] != 'train']
+    assert len(validation) == (2 if repair else 1)
+
+
+def test_similar_hypothesis_can_repair_min_change_rejection():
+    host = Host(texts=['**Answer** carefully.', TEXTS[0]],
+                hypotheses=[HYPOTHESES[0], HYPOTHESES[0] + ' explicitly'])
+    result = optimize(population_request(search={'variants': 1, 'keep': 1, 'rounds': 1}), host)['provenance']
+    row = result['rounds'][1]['variants'][0]
+    assert row['attempts'][0]['rejectionReason'] == 'below-min-change'
+    assert row['attempts'][1]['status'] == 'accepted'
+    assert row['hypothesis'] == HYPOTHESES[0] + ' explicitly'
+    assert result['evaluations'] == 3
+
+
+@pytest.mark.parametrize('before,after', [
+    ('If evidence is missing, never publish; otherwise proceed.',
+     'If evidence is missing, proceed; otherwise never publish.'),
+    ('Never publish unverified claims and always quote primary sources.',
+     'Always publish unverified claims and never quote primary sources.'),
+])
+def test_directive_reversal_passes_default_floor(before, after):
+    host = Host(texts=[after])
+    result = optimize(population_request(components={'guide': before},
+                                        search={'variants': 1, 'keep': 1, 'rounds': 1}), host)['provenance']
+    row = result['rounds'][1]['variants'][0]
+    assert row['status'] == 'accepted'
+    assert row['behavioralChange'] > 0.08
+    assert result['candidates'][1]['components'] == {'guide': after}
+    assert result['evaluations'] == 3
+    assert len([call for call in host.calls if call[0] == 'evaluate']) == 3
+
+
+@pytest.mark.parametrize('floor', [0, 0.08])
+@pytest.mark.parametrize('seed,proposals', [
+    ('Answer carefully.', [TEXTS[0], '**Answer** carefully.']),
+    ('Verify sources. Cite evidence.', [TEXTS[0], 'Cite evidence; verify sources.']),
+    ('Answer carefully.', [TEXTS[0], TEXTS[1], TEXTS[0].replace('First', '**First**')]),
+])
+def test_formatted_history_is_rejected_after_original_leaves_population(floor, seed, proposals):
+    # Strictly increasing scores make the historical candidate neither parent
+    # nor sibling when its formatted copy returns.
+    scores = {seed: 0.1, TEXTS[0]: 0.5, TEXTS[1]: 0.8}
+    host = Host(texts=proposals, score=lambda components: scores.get(components['guide'], 1.0))
+    result = optimize(population_request(components={'guide': seed}, proposal={'max_attempts': 1},
+        search={'variants': 1, 'keep': 1, 'rounds': len(proposals), 'minChange': floor}), host)['provenance']
+    row = result['rounds'][-1]['variants'][0]
+    assert result['rounds'][-2]['kept'] == [len(proposals) - 1]
+    assert row['behavioralChange'] > 0.08
+    assert row['rejectionReason'] == 'duplicate'
+    assert row['status'] == 'rejected'
+    assert len(result['candidates']) == len(proposals)
+    evaluations = [params for method, params in host.calls if method == 'evaluate']
+    assert result['evaluations'] == len(evaluations) == 2 * len(proposals)
+    assert all(params['components']['guide'] != proposals[-1] for params in evaluations)
+
+
+def test_formatted_rejected_attempt_stays_reserved_in_later_rounds():
+    host = Host(texts=[TEXTS[0], TEXTS[0].replace('First', '**First**')])
+
+    def callback(method, params):
+        reply = host(method, params)
+        if method == 'generate' and host.realizations == 1:
+            body = json.loads(reply['text'])
+            if 'components' in body:
+                body['expectedImpact'] = {'incorrect': 'Wrong target'}
+                reply['text'] = json.dumps(body)
+        return reply
+
+    result = optimize(population_request(proposal={'max_attempts': 1},
+        search={'variants': 1, 'keep': 1, 'rounds': 2}), callback)['provenance']
+    assert result['rounds'][1]['variants'][0]['rejectionReason'] == 'targeted-criteria'
+    assert result['rounds'][2]['variants'][0]['rejectionReason'] == 'duplicate'
+    assert len(result['candidates']) == 1
+    assert result['evaluations'] == len([call for call in host.calls if call[0] == 'evaluate']) == 2
+
+
+def test_evaluator_factory_receives_ordered_batches_and_preserves_result_identity():
+    from .population import optimize_population
+    batches = []
+
+    class Evaluator:
+        def __init__(self, session):
+            self.session = session
+
+        def evaluate_many(self, requests):
+            batches.append(requests)
+            return [self.session.evaluate(row['caseId'], row['components']) for row in requests]
+
+    start = population_request(validationCaseIds=['validation-a', 'validation-b'])
+    expected = optimize(start, Host())
+    assert optimize_population(start, Host(), evaluator_factory=Evaluator) == expected
+    assert len(batches) == 7
+    assert [row['caseId'] for row in batches[0]] == ['validation-a', 'validation-b']
+    assert [row['caseId'] for row in batches[1]] == start.trainCaseIds

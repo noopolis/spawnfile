@@ -4,6 +4,7 @@ import random
 from typing import Protocol
 
 from .behavior_change import behavior_change, hypothesis_similarity
+from .boundaries import boundary_violation, compile_boundaries
 from ..proposal_history import change_ratio, normalized, policy_for, prompt_id
 from ..protocol import BridgeError
 from .selection import select
@@ -31,9 +32,10 @@ class Population:
         self.session, self.evaluator = session, evaluator
         self.request, self.search = session.request, session.request.search
         self.candidates, self.rounds, self.hypotheses = [], [], []
-        self.seen = [normalized(self.request.components)]
+        self.seen = [self.request.components]
         self.train = {}
         self.policy = policy_for(session)
+        self.boundaries = compile_boundaries(self.search.boundaries, self.request.components)
 
     def metric_room(self, count):
         return self.session.evaluations + count <= self.request.budget.maxMetricCalls
@@ -62,16 +64,17 @@ class Population:
     def reject_reason(self, parent, components, hypothesis, siblings, planned=None):
         if set(components) != set(parent) or any(not isinstance(text, str) for text in components.values()):
             return "editable-components", None, None
+        if boundary_violation(self.boundaries, components):
+            return "hard-boundary", None, None
         behavioral, lexical = behavior_change(parent, components), change_ratio(parent, components)
-        value = normalized(components)
-        duplicate = value in self.seen
-        self.seen.append(value)
-        if duplicate:
+        if normalized(components) in [normalized(other) for other in self.seen]:
             return "duplicate", behavioral, lexical
         if behavioral < self.search.minChange:
             return "below-min-change", behavioral, lexical
         if any(behavior_change(other, components) < self.search.minChange for other in siblings):
             return "sibling-similarity", behavioral, lexical
+        if any(behavior_change(other, components) == 0 for other in self.seen):
+            return "duplicate", behavioral, lexical
         if any(hypothesis_similarity(current, previous) >= self.search.hypothesisSimilarity
                for current in ([hypothesis, planned] if planned is not None else [hypothesis])
                for previous in self.hypotheses):
@@ -84,6 +87,8 @@ class Population:
                "hypothesis": planned["hypothesis"], "targetedCriteria": planned["targetedCriteria"],
                "behavioralChange": None, "lexicalChange": None, "status": "empty",
                "rejectionReason": "budget", "candidateIndex": None, "attempts": []}
+        slot_hypotheses = []
+        slot_components = []
         for _ in range(self.policy["max_attempts"]):
             if not self.proposal_room(1) or not self.metric_room(len(self.request.validationCaseIds)):
                 break
@@ -91,9 +96,11 @@ class Population:
                                                      row["rejectionReason"] if row["attempts"] else None)
             reason, behavioral, lexical = self.reject_reason(
                 parent, components, hypothesis, siblings, planned["hypothesis"] if not row["attempts"] else None)
+            if reason != "editable-components":
+                slot_components.append(components)
             if reason is None and set(impact) != set(planned["targetedCriteria"]):
                 reason = "targeted-criteria"
-            self.hypotheses.append(hypothesis)
+            slot_hypotheses.append(hypothesis)
             row.update(hypothesis=hypothesis, behavioralChange=behavioral, lexicalChange=lexical,
                        status="rejected" if reason else "accepted", rejectionReason=reason)
             row["attempts"].append({key: row[key] for key in
@@ -110,7 +117,10 @@ class Population:
                 row["candidateIndex"] = self.validate(components, parent_index)
                 siblings.append(components)
                 break
-        self.hypotheses.append(planned["hypothesis"])
+        # Repairs may reuse this slot's content; every attempted valid bundle
+        # remains reserved against other slots and later rounds, even if rejected.
+        self.seen.extend(slot_components)
+        self.hypotheses.extend([*slot_hypotheses, planned["hypothesis"]])
         return row
 
     def run(self):
@@ -168,15 +178,19 @@ class Population:
             "seed": self.request.seed, "evaluations": self.session.evaluations, "proposals": self.session.proposals,
             "selectedCandidateIndex": winner, "candidates": self.candidates, "rounds": self.rounds,
             "stopReason": reason, "editScope": self.request.editScope or {path: "whole-file" for path in self.request.components},
-            "captures": self.session.captures, "generations": self.session.generations,
+            "changeEvidence": "bridge-reported-v2",
+            "captures": self.session.captures,
+            "generations": [{**generation, "text": response["result"]["text"]}
+                            for generation, response in zip(self.session.generations,
+                                [row for row in self.session.results if row["method"] == "generate"], strict=True)],
         }}
 
 
-def optimize_population(request, host):
+def optimize_population(request, host, evaluator_factory=SequentialEvaluator):
     # Host journal replay reconstructs state; never read/write GEPA pickle here.
     if request.checkpoint and request.checkpoint.fork:
         raise BridgeError("unsupported_checkpoint", "population checkpoint forks are unsupported")
     if request.recovery and (request.recovery.evaluations or request.recovery.proposals):
         raise BridgeError("unsupported_checkpoint", "population cannot replay uncertain or failed callback attempts; use a new run")
     session = Session(request, host)
-    return Population(session, SequentialEvaluator(session)).run()
+    return Population(session, evaluator_factory(session)).run()
