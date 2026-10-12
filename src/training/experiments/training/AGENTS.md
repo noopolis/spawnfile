@@ -63,3 +63,7 @@ becomes a zero the optimizer can learn from instead of an infrastructure error.
 `failed` still means the machine broke and still refuses to produce a number.
 
 Evaluation services preserve injected grader runtimes alongside judges and embeddings.
+
+Population search controls pass unchanged to optimization and participate in the
+training checkpoint identity. Derive component editScope from the frozen baseline,
+not integration claims, so provenance reflects actual whole-file or heading edits.

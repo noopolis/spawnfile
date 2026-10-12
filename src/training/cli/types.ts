@@ -46,6 +46,10 @@ export interface SpawnfileCliIntegration {
   unlockedSetupPaths?: readonly string[];
   /** Narrows explicitly selected editable files to their declared sections. Cannot unlock identity. */
   editPolicies?: Readonly<Record<string, EditPolicy>>;
+  /** Resolved public training-plan optimizer; local configuration only, no execution. */
+  trainingOptimizer?(context: SpawnfileTrainingContext): Promise<{
+    method: 'gepa'; model: string; variants: number; keep: number; budget: { rounds: number };
+  } | undefined>;
   /** Hash of immutable preparation/image/tool/evidence inputs; excludes credentials and generated state. */
   executionIdentity?: (context: CliExecutionIdentityContext) => string | Promise<string>;
   createAdapter(context: SpawnfileTrainingContext, options: { model: string; timeoutMs: number }): SubjectAdapter;

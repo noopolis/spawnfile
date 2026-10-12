@@ -21,11 +21,22 @@ export interface TrainingRoute {
 export interface TrainingProposalPolicy {
   strategy?: 'refine' | 'rewrite';
   min_change?: number;
+  rewrite_share?: number;
+  hypothesis_similarity?: number;
   max_attempts?: number;
   history_entries?: number;
   history_bytes?: number;
 }
-export interface TrainingOptimizer extends TrainingRoute { proposal?: TrainingProposalPolicy }
+export interface TrainingOptimizer extends TrainingRoute {
+  method?: 'gepa';
+  variants?: number;
+  keep?: number;
+  budget?: { rounds: number };
+  selection?: 'pareto' | 'top-k';
+  boundaries?: string[];
+  patience?: number;
+  proposal?: TrainingProposalPolicy;
+}
 export interface TrainingJudge extends TrainingRoute {
   protocol?: 'citations' | 'evidence-ids';
   template?: { language: 'jinja'; text: string };

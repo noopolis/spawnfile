@@ -23,3 +23,9 @@ fail every call closed. The home root must be owned by the training uid with mod
 `close()` on the grant pool on every exit path (completion, failure, SIGINT/SIGTERM),
 so grants are handed back instead of waiting out their ten-minute TTL.
 
+
+Resolve the optional public integration trainingOptimizer receipt against declared
+model keys first, then exactly one model value. Conflicting YAML fields fail before
+execution. Population search defaults are resolved by optimizer.ts; derived caps
+remain within the existing 1000-call ceiling. Dry-run displays each editable
+resource's whole-file or heading scope and the effective search controls.

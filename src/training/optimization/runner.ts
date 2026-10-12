@@ -10,7 +10,7 @@ import { DSPY_SCHEMA, decodeMessage, encodeMessage, startSchema, type DspyResult
 import { DspyOptimizationError, type DspyOptimizationOptions } from './types.js';
 
 const optionKeys = new Set(['id', 'components', 'trainCaseIds', 'validationCaseIds', 'budget', 'seed',
-  'proposal', 'bridge', 'checkpoint', 'onRestore', 'validateComponents', 'evaluate', 'generate', 'signal']);
+  'proposal', 'search', 'editScope', 'bridge', 'checkpoint', 'onRestore', 'validateComponents', 'evaluate', 'generate', 'signal']);
 
 /** The bridge has no credential/provider environment; inference remains in host callbacks. */
 export function dspyEnvironment(home: string): NodeJS.ProcessEnv {
@@ -26,7 +26,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   if (!Number.isFinite(options.bridge.timeoutMs) || options.bridge.timeoutMs <= 0) throw new Error('DSPy timeout must be positive');
   const start = startSchema.parse({ schema: DSPY_SCHEMA, kind: 'optimize', id: options.id,
     components: options.components, trainCaseIds: options.trainCaseIds, validationCaseIds: options.validationCaseIds,
-    budget: options.budget, seed: options.seed, proposal: options.proposal,
+    budget: options.budget, seed: options.seed, proposal: options.proposal, search: options.search, editScope: options.editScope,
     ...(options.checkpoint ? { checkpoint: { directory: options.checkpoint.directory, identity: options.checkpoint.identity,
       ...(options.checkpoint.fork ? { fork: { directory: options.checkpoint.fork.directory, identity: options.checkpoint.fork.identity,
         id: options.checkpoint.fork.id, digest: options.checkpoint.fork.digest } } : {}) } } : {}) });

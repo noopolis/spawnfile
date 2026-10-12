@@ -58,3 +58,12 @@ publishes a new child identity with parent lineage before callbacks. Completed c
 replay exactly, pending calls preserve cumulative attempt counts, and the paired
 GEPA checkpoint restores its sampler/history. Missing child journals can finish
 interrupted fork initialization; missing ordinary resume journals still fail.
+
+Population mode is enabled only by `search`. It uses the same strict callbacks,
+complete validation captures and selected-score verification as legacy GEPA.
+The host additionally verifies per-case vectors, round lineage, declared edit scope
+and Pareto/top-k retention. Search and scope bind checkpoint identity. Population
+reconstructs state from settled host callbacks, with no Python pickle. P6 may replace
+Python's sequential `Evaluator.evaluate_many` while preserving request-order results.
+Defaults: Pareto selection, rewrite share 0.5, behavioral floor 0.08, hypothesis
+similarity 0.6, patience equal to rounds, and no declared boundaries.

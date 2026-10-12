@@ -59,3 +59,23 @@ describe('strict DSPy protocol', () => {
     for (const modelBasis of ['actual', null, 1]) expect(() => inferenceSchema.parse({ ...response, modelBasis })).toThrow();
   });
 });
+
+it('mirrors strict population search defaults, constraints and complete edit scope', () => {
+  const search = { variants: 3, keep: 2, rounds: 4 };
+  const budget = { maxMetricCalls: 20, maxProposals: 20 };
+  const parsed = startSchema.parse(start({ search, budget, editScope: { A: ['Rules'] } }));
+  expect(parsed.search).toEqual({ ...search, selection: 'pareto', rewriteShare: 0.5, minChange: 0.08,
+    hypothesisSimilarity: 0.6, patience: 4, boundaries: [] });
+  expect(startSchema.parse(start({ search: { ...search, patience: 1, selection: 'top-k' }, budget })).search?.patience).toBe(1);
+  expect(startSchema.parse(start({ search: { ...search, rounds: 1001, patience: 1001 }, budget })).search?.rounds).toBe(1001);
+  for (const change of [{ keep: 4 }, { rounds: 0 }, { selection: 'random' }, { rewriteShare: 2 }, { minChange: -1 },
+    { hypothesisSimilarity: 2 }, { boundaries: [''] }, { boundaries: ['x'.repeat(501)] }, { boundaries: Array(51).fill('x') },
+    { patience: 0 }, { undeclared: true }]) {
+    expect(() => startSchema.parse(start({ search: { ...search, ...change }, budget }))).toThrow();
+  }
+  expect(() => startSchema.parse(start({ search, budget: { ...budget, maxProposals: 4 } }))).toThrow('keep + variants');
+  expect(() => startSchema.parse(start({ search, budget: { ...budget, maxMetricCalls: 1 } }))).toThrow('seed');
+  for (const editScope of [{}, { B: 'whole-file' }, { A: [] }]) {
+    expect(() => startSchema.parse(start({ search, budget, editScope }))).toThrow();
+  }
+});

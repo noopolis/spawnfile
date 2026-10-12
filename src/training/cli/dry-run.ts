@@ -1,4 +1,4 @@
-import { configuredCostRoutes, prepareComparison } from './training/index.js';
+import { configuredCostRoutes, prepareComparison, editableResources, populationSearch } from './training/index.js';
 import { resolve } from 'node:path';
 import { parseDocument } from 'yaml';
 import { candidateComponents } from '../candidates/index.js';
@@ -27,7 +27,8 @@ export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies
     subjectModel: native.model, ...(comparison ? { mode: 'comparison' as const } : { optimizerModel: one(args, 'optimizer-model') }),
     ...configuredCostRoutes(args, native.judges, native.citationRepairs),
     maxTrials: native.maxTrials, maxProposals: comparison ? 0 : count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });
-  io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id, ...(comparison ? { comparison: { name: comparison.name, candidateId: comparison.candidate.id, optimizerCalls: 0 } } : {}),
+  io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id, editableResources: editableResources(native.candidate),
+    ...(populationSearch(args.training?.optimizer) ? { search: populationSearch(args.training?.optimizer) } : {}), ...(comparison ? { comparison: { name: comparison.name, candidateId: comparison.candidate.id, optimizerCalls: 0 } } : {}),
     ...('context' in native ? { spawnfile: native.context, readiness: native.readiness } : {}) })}\n`);
   return 0;
 }

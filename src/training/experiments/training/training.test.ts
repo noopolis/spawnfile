@@ -8,6 +8,7 @@ import { openExperimentStore } from '../../storage/index.js';
 import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import { createEvaluationRegistry } from '../../evaluation/index.js';
 import * as optimization from '../../optimization/index.js';
+import { TrainingCheckpoint, trainingDigest } from './checkpoint.js';
 import { trainAgent, type TrainingOptions } from './training.js';
 
 const cleanup: string[] = [];
@@ -118,4 +119,45 @@ it('reports an attempted optimizer failure with unknown usage rather than a fabr
       route: null, usage: null, outcome: 'generation-error' } },
   ]);
   expect(events.some(event => event.type === 'selection.frozen')).toBe(false);
+});
+
+it('forwards population search and derives editable scope from the actual candidate', async () => {
+  const { options } = await fixture();
+  options.search = { variants: 2, keep: 1, rounds: 1, boundaries: ['Keep identifiers.'],
+    selection: 'pareto', rewriteShare: 0.5, minChange: 0.08, hypothesisSimilarity: 0.6, patience: 1 };
+  const run = vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    expect(request.search).toEqual(options.search);
+    expect(request.editScope).toEqual({ 'instructions#file': 'whole-file' });
+    throw new Error('verified forwarding');
+  });
+  await expect(trainAgent(options)).rejects.toThrow('verified forwarding');
+  expect(run).toHaveBeenCalledOnce();
+});
+
+it('binds population search settings into the training checkpoint identity', async () => {
+  const { options } = await fixture();
+  options.search = { variants: 2, keep: 1, rounds: 1, selection: 'pareto', rewriteShare: 0.5,
+    minChange: 0.08, hypothesisSimilarity: 0.6, patience: 1, boundaries: [] };
+  options.checkpoint = { directory: join(options.native.storeRoot!, 'checkpoint'), resume: false, identity: 'frozen' };
+  await TrainingCheckpoint.open(options, [options.train, options.test]);
+  options.checkpoint.resume = true;
+  expect(await TrainingCheckpoint.open(options, [options.train, options.test])).toBeDefined();
+  options.search.minChange = 0.1;
+  await expect(TrainingCheckpoint.open(options, [options.train, options.test])).rejects.toThrow('identity');
+});
+
+it('keeps the pre-population training checkpoint identity when search is absent', async () => {
+  const { options } = await fixture();
+  options.checkpoint = { directory: join(options.native.storeRoot!, 'checkpoint'), resume: false, identity: 'legacy' };
+  const datasets = [options.train, options.test];
+  await TrainingCheckpoint.open(options, datasets);
+  const saved = JSON.parse(await readFile(join(options.checkpoint.directory, 'training.json'), 'utf8'));
+  const legacyIdentity = trainingDigest({
+    execution: options.checkpoint.identity, id: options.id, baseline: options.baseline, datasets,
+    adapter: options.native.adapter.id, model: options.native.model, resources: options.native.resources,
+    optimizer: { provider: options.inference.provider.id, model: options.inference.model },
+    seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, maxRecoveryAttempts: 2,
+    versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
+  });
+  expect(saved.state.identity).toBe(legacyIdentity);
 });

@@ -68,6 +68,7 @@ it('resolves registered fixtures and narrow edits during dry-run without constru
   expect(JSON.parse(f.cli.stdout.shift()!)).toMatchObject({ status: 'valid', records: 2 });
   expect(await main([...f.args, '--dry-run'], f.cli.io, f.dependencies)).toBe(0);
   const plan = JSON.parse(f.cli.stdout.join(''));
+  expect(plan.editableResources).toEqual([{ resource: 'AGENTS.md', scope: { headings: [['Policy', 'Prose']] } }]);
   expect(plan).toMatchObject({ modelCallsMade: 0, readiness: { integration: { id: 'fixture/workspace', version: '1' } } });
   for (const boundary of [f.integration.createAdapter, f.integration.prepareEnvironment, f.dependencies.inference]) expect(boundary).not.toHaveBeenCalled();
   await expect(stat(join(f.cli.root, '.runtime'))).rejects.toMatchObject({ code: 'ENOENT' });
