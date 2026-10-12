@@ -39,8 +39,8 @@ it('routes each question to its selected backend and persists attribution withou
   expect(result.decisions).toEqual([{ instance: 'a', model: 'first', status: 'ok' }, { instance: 'b', model: 'second', status: 'ok' }]);
   expect(result.judgeCalls).toEqual([]);
   expect(createGradeResultSchema(z.never()).parse(result)).toEqual(result);
-  expect(f.backends!.first!.score).toHaveBeenCalledWith([expect.objectContaining({ key: 'a' })], undefined);
-  expect(f.backends!.second!.score).toHaveBeenCalledWith([expect.objectContaining({ key: 'b' })], undefined);
+  expect(f.backends!.first!.score).toHaveBeenCalledWith([expect.objectContaining({ key: 'a' })], undefined, []);
+  expect(f.backends!.second!.score).toHaveBeenCalledWith([expect.objectContaining({ key: 'b' })], undefined, []);
 });
 
 it.each(['first', 'second'])('refuses changed referenced model %s before any scoring', async id => {

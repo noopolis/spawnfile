@@ -21,6 +21,8 @@ keys are integer strings; noul keys are true and false. Trap intent is operator
 configuration under template.traps; no question wording is interpreted as truth.
 Mappings accept a label or { answer, known_answer }; shorthand declares known-answer
 status, while false marks a diagnostic without changing generation or validation.
+Core reference metrics always coerce number/entity substitution, citation swap and
+negation to diagnostic, with a report warning for shorthand or true declarations.
 Run the adjacent Vitest tests, TypeScript and ESLint checks; mutation-check span
 verification. Keep each source/test under 400 lines and coverage above 90%.
 

@@ -34,7 +34,7 @@ export interface CouncilOptions {
   signal?: AbortSignal; previous?: CouncilOutput; onCheckpoint?: (output: CouncilOutput) => void | Promise<void>;
 }
 export interface TrapAssessment {
-  /** Omission preserves the legacy operator-declared known-answer status. */
+  /** Authored status; core always coerces uncertifiable kinds to diagnostic. */
   known_answer?: boolean;
   outputId?: string;
   kind: string; templateId: string; intended: string; actual: string | null;

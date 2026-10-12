@@ -7,12 +7,12 @@ import type { InferenceProvider } from '../../../contracts/execution.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-export async function fixture() {
+export async function fixture(trapKind: 'number-substitution' | 'injected-redundancy' = 'number-substitution') {
   const root = await mkdtemp(join(tmpdir(), 'atomic-cli-')); roots.push(root);
   const templates = { schema: 'paideia.check-templates.v1', templates: [{ id: 'support', applies_to: 'claim', type: 'choice',
     instructions: 'Is {unit.text} supported?', criteria: { supported: 'Supported', unsupported: 'Unsupported' },
     expected: ['supported'], state: ['unit', 'unit.cited_rows'], dimension: 'facts', severity: 'major',
-    traps: { 'number-substitution': 'unsupported', 'option-permutation': 'unchanged' } }],
+    traps: { [trapKind]: 'unsupported', 'option-permutation': 'unchanged' } as Record<string, string> }],
     context: { evidence: { rows: { leading_citations: 'previous', heading: '^## ([A-Z][0-9]+)', cite: '\\[([A-Z][0-9]+)\\]' } } },
     teachers: [{ id: 'codex', provider: 'codex', model: 'test-codex' }, { id: 'claude', provider: 'claude', model: 'test-claude' },
       { id: 'grok', provider: 'grok', model: 'test-grok' }] };
@@ -35,4 +35,14 @@ export async function fixture() {
     traps: { templatesFile, decompositions: join(root, 'decompositions'), out: join(root, 'traps') },
     reference: { templatesFile, decompositions: join(root, 'decompositions'), traps: join(root, 'traps'), teachers: ['codex', 'claude'],
       out: join(root, 'references.json'), now: new Date('2026-10-11T12:00:00Z') } };
+}
+
+
+/** Visible repetition supplies the remaining known-answer defect control. */
+export async function redundancyFixture() {
+  const f = await fixture('injected-redundancy');
+  f.templates.templates[0]!.state.push('neighbors');
+  await writeFile(f.templatesFile, JSON.stringify(f.templates));
+  await writeFile(join(f.root, 'output.json'), JSON.stringify({ body: [`${f.unit.text} [A1]`, 'Next paragraph.'] }));
+  return f;
 }

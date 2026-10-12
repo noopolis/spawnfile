@@ -1,11 +1,11 @@
 import { mkdir, readFile, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stableDigest } from '../../graders/index.js';
-import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
+import type { DecisionBackend, DecisionRequestReceipt, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
 
 export async function cachedScores(directory: string, backend: DecisionBackend, identity: string,
-  requests: readonly DecisionRequest[], concurrency: number, signal?: AbortSignal): Promise<DecisionResult[]> {
+  requests: readonly DecisionRequest[], concurrency: number, signal?: AbortSignal, receipts?: DecisionRequestReceipt[]): Promise<DecisionResult[]> {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error('concurrency must be a positive integer');
   signal?.throwIfAborted();
   const root = join(directory, '.paideia', 'grader-cache');
@@ -29,22 +29,28 @@ export async function cachedScores(directory: string, backend: DecisionBackend, 
     try {
       while (next < requests.length) {
         workSignal.throwIfAborted();
-        const index = next++, request = requests[index]!;
-        const { key: _key, ...content } = request;
-        const digest = stableDigest({ content, identity, prompt: DECISION_PROMPT_VERSION });
-        let result = cache.get(digest);
-        if (!result) {
-          const batch = await backend.score([request], workSignal);
-          workSignal.throwIfAborted();
-          result = batch.find(item => item.key === request.key);
+        // Batch-capable transports own projection grouping and request limits.
+        const indices = backend.capabilities?.batch
+          ? Array.from({ length: requests.length - next }, () => next++) : [next++];
+        const entries = indices.map(index => {
+          const request = requests[index]!;
+          const { key: _key, ...content } = request;
+          const digest = stableDigest({ content, identity, prompt: DECISION_PROMPT_VERSION });
+          return { index, request, digest, cached: cache.get(digest) };
+        });
+        const pending = entries.filter(entry => !entry.cached);
+        const scored = pending.length ? await backend.score(pending.map(entry => entry.request), workSignal, receipts) : [];
+        workSignal.throwIfAborted();
+        for (const { index, request, digest, cached } of entries) {
+          const result = cached ?? scored.find(item => item.key === request.key);
           if (!result) throw new Error(`Backend omitted result ${request.key}`);
-          // Failures are resumable; never turn one transient outage into a permanent cached miss.
-          if (result.status === 'ok') {
+          // Missing/spend-cap answers must be resumable, never a permanent cache hit.
+          if (result.status === 'ok' && !cache.has(digest)) {
             cache.set(digest, result);
             await appendFile(file, `${JSON.stringify({ digest, result })}\n`, { mode: 0o600 });
           }
+          results[index] = { ...result, key: request.key };
         }
-        results[index] = { ...result, key: request.key };
       }
     } catch (error) {
       controller.abort(error);

@@ -26,14 +26,14 @@ it('generates deterministic traps and scores council references with checkpoint 
   expect(result.generated).toBe(2);
   expect(await runTraps(f.traps)).toEqual(result);
   const reference = await runReference(f.reference, f.dependencies);
-  expect(reference).toMatchObject({ gate: 'PASS', outputs: 3, knownAnswer: { total: 1, correct: 1, accuracy: 1 }, consistency: { total: 1, correct: 1 } });
+  expect(reference).toMatchObject({ gate: 'STOP', outputs: 3, knownAnswer: { total: 0, correct: 0, accuracy: null }, diagnostic: { total: 1, correct: 1, accuracy: 1 }, consistency: { total: 1, correct: 1 } });
   const artifact = JSON.parse(await readFile(f.reference.out, 'utf8'));
   expect(artifact).toMatchObject({ schema: 'paideia.references.v1', digest: expect.any(String) });
   expect(Object.values(artifact.outputs)).toHaveLength(3);
-  expect(await readFile(reference.reportFile, 'utf8')).toContain('Council references: PASS');
+  expect(await readFile(reference.reportFile, 'utf8')).toContain('Council references: STOP');
   expect(await readFile(reference.reportFile, 'utf8')).toContain('codex: 100.00% agreement');
   const calls = f.generate.mock.calls.length;
-  expect(await runReference(f.reference, f.dependencies)).toMatchObject({ gate: 'PASS' });
+  expect(await runReference(f.reference, f.dependencies)).toMatchObject({ gate: 'STOP' });
   expect(f.generate).toHaveBeenCalledTimes(calls);
 });
 
@@ -54,8 +54,8 @@ it('reports failing traps/templates and retains missing council answers as failu
     model: request.model, route: 'subscription', usage: null }));
   const result = await runReference(f.reference, f.dependencies);
   expect(result.gate).toBe('STOP');
-  expect(await readFile(result.reportFile, 'utf8')).toContain('Insufficient known-answer samples for kind: number-substitution');
-  expect(await readFile(result.reportFile, 'utf8')).toContain('Insufficient known-answer samples for template: support');
+  expect(await readFile(result.reportFile, 'utf8')).toContain('WARNING: number-substitution: known_answer coerced to diagnostic');
+  expect(await readFile(result.reportFile, 'utf8')).toContain('DIAGNOSTIC accuracy by template');
 });
 
 it('rejects stale and tampered trap artifacts before starting inference', async () => {
@@ -176,7 +176,7 @@ it('does not call or count unaffected duplicate checks in trap variants', async 
   await runReference({ ...f.reference, traps: undefined }, f.dependencies);
   await runTraps({ ...f.traps, references: f.reference.out });
   const result = await runReference(f.reference, f.dependencies);
-  expect(result.gate).toBe('PASS');
+  expect(result.gate).toBe('STOP');
   const artifact = JSON.parse(await readFile(result.file, 'utf8'));
   const outputs = Object.entries(artifact.outputs) as [string, { checks: Record<string, unknown> }][];
   expect(outputs.filter(([key]) => key.includes(':')).map(([, output]) => Object.keys(output.checks)))

@@ -10,7 +10,7 @@ function output(checks: CheckReference[]): CouncilOutput {
   return { outputDigest: 'output', identity: 'identity', digest: 'digest', complete: true,
     checks: Object.fromEntries(checks.map((value, index) => [index, value])), calls: [], skipped: [] };
 }
-const correct: TrapAssessment = { outputId: 'output', kind: 'number-substitution', templateId: 'support', intended: 'no', actual: 'no', baseline: 'yes' };
+const correct: TrapAssessment = { outputId: 'output', kind: 'injected-redundancy', templateId: 'support', intended: 'no', actual: 'no', baseline: 'yes' };
 const control: TrapAssessment = { outputId: 'output', kind: 'option-permutation', templateId: 'support', intended: 'unchanged', actual: 'no', baseline: 'no' };
 const population = { outputIds: ['output'] };
 describe('council quality gate', () => {
@@ -24,7 +24,7 @@ describe('council quality gate', () => {
     expect(referenceQuality([], []).gate).toBe('STOP');
     const quality = referenceQuality([], [correct, { ...correct, actual: null }, { ...correct, templateId: 'other', actual: 'uncertain' }]);
     expect(quality.knownAnswer).toEqual({ total: 3, correct: 1, accuracy: 1 / 3 });
-    expect(quality.insufficientKinds).toEqual(['number-substitution']); expect(quality.insufficientTemplates).toEqual(['other', 'support']);
+    expect(quality.insufficientKinds).toEqual(['injected-redundancy']); expect(quality.insufficientTemplates).toEqual(['other', 'support']);
   });
   it('passes exactly 95% accuracy but stops missing finals even at the 5% instability boundary', () => {
     const traps = [...Array.from({ length: 19 }, () => correct), { ...correct, actual: 'yes' }];
@@ -92,15 +92,16 @@ it('stops constant defect labels even with perfect control consistency', () => {
 });
 it('gates kinds and templates with at least ten traps even when pooled accuracy passes', () => {
   const many = Array.from({ length: 200 }, () => correct);
-  const bad = Array.from({ length: 10 }, () => ({ ...correct, kind: 'entity-substitution', templateId: 'entity', actual: 'yes' }));
+  const bad = Array.from({ length: 10 }, () => ({ ...correct, kind: 'injected-redundancy', templateId: 'entity', actual: 'yes' }));
   const result = referenceQuality([], [...many, ...bad, control], population);
   expect(result.knownAnswer.accuracy).toBeGreaterThan(0.95);
   expect(result.gate).toBe('STOP');
-  expect(result.failures).toContain('known-answer kind entity-substitution accuracy must be >= 0.95');
+  expect(referenceQuality([], [...bad, control], population).failures)
+    .toContain('known-answer kind injected-redundancy accuracy must be >= 0.95');
   expect(result.failures).toContain('known-answer template entity accuracy must be >= 0.95');
   const insufficient = referenceQuality([], [...many, ...bad.slice(1), control], population);
   expect(insufficient.gate).toBe('PASS');
-  expect(insufficient.insufficientKinds).toEqual(['entity-substitution']);
+  expect(insufficient.insufficientKinds).toEqual([]);
   expect(insufficient.insufficientTemplates).toEqual(['entity']);
 });
 it('counts rejected units as missing coverage, excludes unready checks and preserves uncertain copies', () => {
@@ -141,14 +142,14 @@ it('counts a duplicate missing base check once, preserves missing copies and ign
 
 it('excludes diagnostic answers from accuracy, floors and coverage while reporting their accuracy', () => {
   const diagnostic = Array.from({ length: 10 }, () => ({ ...correct, known_answer: false, actual: 'yes', templateId: 'diagnostic' }));
-  const known = { ...correct, kind: 'entity-substitution' };
+  const known = { ...correct, kind: 'injected-redundancy' };
   const quality = referenceQuality([], [known, control, ...diagnostic], population);
   expect(quality).toMatchObject({ gate: 'PASS', knownAnswer: { total: 1, correct: 1 },
     diagnostic: { total: 10, correct: 0, accuracy: 0 }, coverage: { covered: 1 },
-    insufficientKinds: ['entity-substitution'], insufficientTemplates: ['support'], failingKinds: [], failingTemplates: [] });
-  expect(quality.byKind).not.toHaveProperty('number-substitution');
+    insufficientKinds: ['injected-redundancy'], insufficientTemplates: ['support'], failingKinds: [], failingTemplates: [] });
+  expect(quality.byKind['injected-redundancy']!.total).toBe(1);
   expect(quality.byTemplate).not.toHaveProperty('diagnostic');
-  expect(quality.diagnosticByKind['number-substitution']).toEqual({ total: 10, correct: 0, accuracy: 0 });
+  expect(quality.diagnosticByKind['injected-redundancy']).toEqual({ total: 10, correct: 0, accuracy: 0 });
   expect(quality.diagnosticByTemplate.diagnostic).toEqual({ total: 10, correct: 0, accuracy: 0 });
   const onlyDiagnostic = referenceQuality([], [control, { ...correct, known_answer: false }], population);
   expect(onlyDiagnostic).toMatchObject({ gate: 'STOP', knownAnswer: { total: 0, accuracy: null },
@@ -156,7 +157,29 @@ it('excludes diagnostic answers from accuracy, floors and coverage while reporti
   expect(referenceQuality([], [known, control, { ...correct, known_answer: false, outputId: 'other' }],
     { outputIds: ['output', 'other'] }).coverage.uncovered).toEqual(['other']);
   expect(referenceQuality([], [correct, { ...correct, known_answer: false, actual: null }, control], population))
-    .toMatchObject({ gate: 'PASS', byKind: { 'number-substitution': { total: 1 } }, diagnostic: { total: 1, correct: 0 } });
+    .toMatchObject({ gate: 'PASS', byKind: { 'injected-redundancy': { total: 1 } }, diagnostic: { total: 1, correct: 0 } });
   expect(referenceQuality([], [known, { ...control, known_answer: false }], population))
     .toMatchObject({ gate: 'STOP', consistency: { total: 0 }, diagnostic: { total: 1 } });
 });
+
+
+it.each(['citation-swap', 'negation-flip', 'entity-substitution', 'number-substitution'])(
+  'always treats %s as diagnostic, including explicit true and shorthand', kind => {
+    for (const known_answer of [true, undefined, false]) {
+      const diagnostics = Array.from({ length: 10 }, () => ({ ...correct, kind, known_answer,
+        templateId: 'uncertifiable', actual: 'yes' }));
+      const quality = referenceQuality([], [correct, control, ...diagnostics], population);
+      expect(quality).toMatchObject({ gate: 'PASS', knownAnswer: { total: 1, correct: 1 },
+        coverage: { covered: 1 }, failingKinds: [], failingTemplates: [],
+        diagnostic: { total: 10, correct: 0 }, consistency: { total: 1 } });
+      expect(quality.byKind).not.toHaveProperty(kind);
+      expect(quality.byTemplate).not.toHaveProperty('uncertifiable');
+      expect(quality.diagnosticByKind[kind]).toEqual({ total: 10, correct: 0, accuracy: 0 });
+      expect(quality.warnings).toEqual(known_answer === false ? [] : [
+        `${kind}: known_answer coerced to diagnostic; lexical validation cannot prove non-entailment`,
+      ]);
+      const alone = referenceQuality([], [control, ...diagnostics.map(row => ({ ...row, actual: 'no' }))], population);
+      expect(alone).toMatchObject({ gate: 'STOP', knownAnswer: { total: 0, accuracy: null },
+        diagnostic: { total: 10, correct: 10 }, coverage: { covered: 0, uncovered: ['output'] } });
+    }
+  });

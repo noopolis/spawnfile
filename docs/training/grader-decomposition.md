@@ -69,20 +69,21 @@ with a location restriction; they cannot use a hint to bypass validation.
 
 Trap mappings are explicit because arbitrary operator-authored questions cannot
 safely be assigned an intended answer from their wording. Only mapped templates
-participate in each trap. A shorthand label declares a known-answer mapping, as
-before; the explicit form is `{ answer: <label>, known_answer: true|false }`.
-`known_answer: false` declares a **DIAGNOSTIC** mapping. These traps are generated,
-validated and run normally, and their accuracy is reported separately by kind and
-template. They never contribute to known-answer accuracy, group floors, consistency
-gates or output coverage. Status belongs to each template/kind mapping, so two
-templates may classify the same mutation differently.
+participate in each trap. The explicit form is
+`{ answer: <label>, known_answer: true|false }`; shorthand requests known-answer status.
 
-Number substitution's answer depends on quantity semantics that lexical validation
-cannot establish. Declare it diagnostic unless the operator has a semantic
-validator. For example, changing 10 to 11 in “10 dollars or less” or “a sum not
-exceeding 10 dollars” can remain entailed by evidence of exactly 10 dollars.
-The built-in validator does not certify a known answer for these quantities;
-`known_answer: true` is an operator declaration, not a code guarantee.
+**Citation-swap, negation-flip, entity-substitution and number-substitution are
+always DIAGNOSTIC.** Core coerces `known_answer: true` and shorthand mappings for
+these four kinds to diagnostic and emits a warning in JSON and Markdown reports.
+Lexical validation cannot prove their intended non-entailment, and there is no
+operator override. The mutations still run and report diagnostic accuracy by kind
+and template; they never enter known-answer accuracy, group floors, consistency
+gates or known-answer output coverage.
+
+Only visibility-validated **injected-redundancy** remains eligible for known-answer
+defect accuracy and output coverage. **Format-paraphrase** and **option-permutation**
+remain eligible for consistency. Setting `known_answer: false` on any of these
+three also makes it diagnostic. Diagnostic-only outputs remain uncovered and STOP.
 
 Format and option controls compare with the original
 reference; they do not assume the original output is correct.
@@ -221,8 +222,8 @@ answers, both adjudications, distributions, call usage/latency and content ident
 Teacher agreement is also measured against peers with the evaluated teacher
 excluded; it is not an independent claim of correctness.
 
-The gate requires both at least 95% **known-answer accuracy** on operator-declared known-answer, validated defect
-traps and at least 95% **consistency** on format-paraphrase and option-permutation
+The gate requires both at least 95% **known-answer accuracy** on known-answer, visibility-validated
+injected-redundancy traps and at least 95% **consistency** on format-paraphrase and option-permutation
 controls. Controls compare variant answers to the base answer, and never count
 as evidence of independent correctness. Either empty population means STOP.
 Missing and uncertain answers count against their respective denominators.
@@ -253,8 +254,8 @@ variant, and duplicate variant check digests count once in that diagnostic.
 ### Known limits of lexically validated traps
 
 Independent validation proves that the mutation happened and its lexical
-preconditions hold; it cannot prove non-entailment. An operator-declared
-known-answer label can therefore still be wrong:
+preconditions hold; it cannot prove non-entailment. These four kinds are therefore
+always diagnostic, even when an operator declares a known answer:
 
 - **Citation swap:** a replacement row can paraphrase the claim without sharing
   a content word. “The physician resigned” remains supported by “The doctor quit.”
@@ -268,12 +269,10 @@ known-answer label can therefore still be wrong:
   can still support “Dr. Reed is paid ten dollars” after replacing Dr. Vale.
 - **Number substitution:** bounds or comparisons can preserve support despite a
   changed number. Evidence of exactly 10 dollars supports both “a sum not
-  exceeding 10 dollars” and “a sum not exceeding 11 dollars.” Operators should
-  declare number substitution `known_answer: false`.
+  exceeding 10 dollars” and “a sum not exceeding 11 dollars.”
 
-The 95% thresholds absorb a small label-noise rate, so a gate result is a
-statistical signal, not a proof. Operators should keep only trap kinds whose
-failure modes are rare in their corpus and report diagnostic kinds separately.
+The 95% thresholds apply only to eligible controls. Diagnostic results cannot
+certify accuracy or compensate for missing known-answer coverage.
 
 Number/entity, negation, citation, redundancy and formatting mutations alter output
 content; evidence remains untouched. Embedded variant decompositions address the

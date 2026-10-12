@@ -2,18 +2,18 @@ import { writeFile } from 'node:fs/promises';
 import { expect, it } from 'vitest';
 import { parseArguments } from '../../arguments.js';
 import { runGraderCommand } from '../index.js';
-import { fixture } from './fixtures.js';
+import { fixture, redundancyFixture } from './fixtures.js';
 
 it('routes atomic commands without a grader argument and returns gate exit codes', async () => {
-  const f = await fixture(); const lines: string[] = [];
+  const f = await redundancyFixture(); const lines: string[] = [];
   const io = { cwd: f.root, stdout: (text: string) => lines.push(text), stderr: () => undefined };
   const run = (args: string[]) => runGraderCommand(parseArguments(['grader', ...args]), io, f.dependencies);
   expect(await run(['decompose', '--templates', 'templates.yaml', '--inputs', 'inputs.yaml', '--extractors', 'codex,claude', '--out', 'decompositions'])).toBe(0);
   expect(JSON.parse(lines.pop()!)).toMatchObject({ completed: 1 });
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
-    const text: string = (prompt.projection ?? prompt.questions[0].evidence).unit.text;
-    return { text: JSON.stringify({ q1: { answer: text.includes('12') ? 'supported' : 'unsupported' } }),
+    const text: string = (prompt.projection ?? prompt.questions[0].evidence).neighbors.next;
+    return { text: JSON.stringify({ q1: { answer: text.includes('12') ? 'unsupported' : 'supported' } }),
       model: request.model, usage: null, route: 'subscription' };
   });
   expect(await run(['reference', '--templates', 'templates.yaml', '--decompositions', 'decompositions', '--teachers', 'codex,claude', '--out', 'base.json'])).toBe(1);

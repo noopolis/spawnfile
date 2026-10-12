@@ -50,6 +50,7 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
     async generate(request) {
       validateInferenceSchema(request.responseSchema);
       const schema = request.responseSchema === undefined ? undefined : structuredClone(request.responseSchema);
+      const transportSchema = schema === undefined ? undefined : codexStrictSchema(schema);
       if (!request.prompt.trim() || !request.model.trim() || request.model.startsWith('-') ||
         request.temperature !== undefined || request.seed !== undefined ||
         options.reasoningEffort !== undefined && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(options.reasoningEffort)) {
@@ -76,7 +77,7 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         authText = '';
         if (!signedIn) throw new InferenceFailure('authentication', 'Codex requires a saved ChatGPT subscription sign-in');
         const schemaFile = schema === undefined ? undefined : path.join(cwd, 'response-schema.json');
-        if (schemaFile !== undefined) await writeFile(schemaFile, JSON.stringify(codexStrictSchema(schema!)), { mode: 0o600 });
+        if (schemaFile !== undefined) await writeFile(schemaFile, JSON.stringify(transportSchema), { mode: 0o600 });
         const result = await execute({ command, args: codexArguments(request, options.reasoningEffort, schemaFile), cwd, env,
           stdin: request.prompt, timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           requireLineTerminator: true,

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { InferenceFailure } from '../../../inference/index.js';
 import { stableDigest } from '../../../graders/index.js';
-import { fixture } from './fixtures.js';
+import { fixture, redundancyFixture } from './fixtures.js';
 import { runDecompose, runReference, runTraps } from './index.js';
 
 async function load(directory: string, suffix: string) {
@@ -76,7 +76,7 @@ it('binds trap generation to current completed base references and rejects missi
 });
 
 it.each(['placeholder', 'condition', 'null-final'])('stops %s base checks despite perfect traps on another check', async mode => {
-  const f = await fixture();
+  const f = await redundancyFixture();
   const extra = { ...f.templates.templates[0]!, id: 'actor', traps: {} };
   if (mode === 'placeholder') extra.instructions = 'Check {unit.fields.object}';
   const templates = { ...f.templates, templates: [...f.templates.templates,
@@ -85,10 +85,10 @@ it.each(['placeholder', 'condition', 'null-final'])('stops %s base checks despit
   await runDecompose(f.decompose, f.dependencies);
   f.generate.mockImplementation(async request => {
     const prompt = JSON.parse(request.prompt);
-    const answers = prompt.questions.map((question: { key: string; evidence?: { unit: { text: string } } }) => {
-      const text = (prompt.projection ?? question.evidence).unit.text as string;
+    const answers = prompt.questions.map((question: { key: string; evidence?: { neighbors: { next: string } } }) => {
+      const text = (prompt.projection ?? question.evidence).neighbors.next as string;
       return [question.key, { answer: question.key === 'q2'
-        ? request.system!.includes('Adversarially') ? 'uncertain' : 'abstain' : text.includes('12') ? 'supported' : 'unsupported' }];
+        ? request.system!.includes('Adversarially') ? 'uncertain' : 'abstain' : text.includes('12') ? 'unsupported' : 'supported' }];
     });
     return { text: JSON.stringify(Object.fromEntries(answers)), model: request.model, route: 'subscription', usage: null };
   });

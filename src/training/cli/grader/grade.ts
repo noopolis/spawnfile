@@ -5,6 +5,7 @@ import type { GraderDependencies } from './backend.js';
 
 export interface GradeOptions {
   graderFile: string;
+  maxSpendUsd?: number;
   outputFile: string;
   contextFiles?: Readonly<Record<string, string>>;
   signal?: AbortSignal;
@@ -14,7 +15,7 @@ export interface GradeOptions {
 export async function runGrade(options: GradeOptions, dependencies: GraderDependencies = {}) {
   options.signal?.throwIfAborted();
   const output: unknown = JSON.parse(await readFile(options.outputFile, { encoding: 'utf8', signal: options.signal }));
-  const runtime = await buildGradingRuntime(options.graderFile, dependencies, options.signal);
+  const runtime = await buildGradingRuntime(options.graderFile, { ...dependencies, maxSpendUsd: options.maxSpendUsd ?? dependencies.maxSpendUsd }, options.signal);
   const context = await readContexts(runtime.grader, options);
   return gradeOutput({ ...runtime, output, context, signal: options.signal });
 }

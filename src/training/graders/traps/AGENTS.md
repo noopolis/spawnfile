@@ -22,6 +22,8 @@ numbers), while citations remain unchanged. Number traps retain a whole-unit lex
 bound, approximation or comparison vocabulary and range constructions anywhere
 in the entire unit text or any claim field, before construction and independently
 in validation. Qualifiers on other quantities also make the whole unit ineligible. This filter cannot
-certify quantity semantics; number mappings should be diagnostic without an operator
-semantic validator. Entity survival
+certify quantity semantics. Core reference metrics always treat number/entity
+substitution, citation swap and negation as diagnostic, regardless of authored
+known-answer status. Only visibility-validated redundancy is a known-answer defect;
+format and option controls measure consistency. Entity survival
 checks ignore case and normalize whitespace.

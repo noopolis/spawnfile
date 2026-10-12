@@ -39,3 +39,6 @@ sentence citation policy used by expansion and every sentence-question identity.
 
 Signal labelers require name and source, remain inspectable, and never contribute to truth.
 External AI reviews and weak editor verdicts use signal, never human/editor authority.
+
+TypeSafe models require HTTPS endpoints and positive price estimates. Their
+concurrency defaults to eight and accepts only integers 1–32.

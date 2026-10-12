@@ -504,3 +504,81 @@ labelers:
 
 Atomic extraction, planted traps and agent-council references are documented in
 [Atomic checks and agent references](grader-decomposition.md).
+
+## Explicit TypeSafe hosted decisions
+
+Declare the paid route explicitly; it is never a fallback for a local model or
+subscription teacher. Set `TYPESAFE_API_KEY` in the process environment before
+construction. A missing key refuses immediately. No key belongs in grader YAML.
+Endpoints require HTTPS; Claude and Grok teacher children do not inherit the key.
+
+```yaml
+model:
+  backend: typesafe
+  name: jev-1.13.0
+  # endpoint defaults to https://api.typesafe.ai/v1/systemone
+  price_per_mtok_usd: 0.042
+  concurrency: 8  # 1–32 concurrent state groups
+max_spend_usd: 0.50
+```
+
+The same fields work in `models:` with an `id`. Pin a versioned model; moving
+aliases are refused. Every successful response must report that exact version,
+otherwise scoring and identity reuse refuse. The version and endpoint enter
+cache/calibration identity. Hosted identity checks make no paid canary calls.
+
+System One receives `{model, state, questions}` via authenticated POST. `yes-no`
+maps to `noul` (`P(yes)=noul`); choice requires probabilities for every option;
+score uses 2–10 ordered levels and zero-based probability keys. Option labels
+supply descriptions. Put the full question meaning in `ask`: request IDs are not
+model-visible. The existing grader authoring limit remains 16 choice options;
+the transport supports up to 255. Missing/partial distributions remain missing.
+Hosted Jev probabilities have approximately 0.01 resolution; calibration cannot
+resolve distinctions below that provider precision. Complete distributions with
+totals in the inclusive range [0.97, 1.03] are renormalized to one; totals outside
+that range remain missing. Successful results record `providerRounded: true`,
+including distributions whose reported total already equals one.
+
+Identical projections share a request, including uncached calibration instances.
+State groups run in a bounded pool (default eight, maximum 32, configured through
+model `concurrency`). Split batches within a state group remain sequential.
+Batches split at 64 questions or an estimated 48,000 tokens (JSON characters / 3).
+The factory's `maxEstimatedTokens` is configurable up to 64,000; state plus each
+individual question also stays below 32,000 estimated tokens. Oversized instances
+are missing; no truncation. These are estimates, not an exact tokenizer guarantee.
+
+HTTP 401 throws an authentication failure. Other 4xx except 429 mark that request's
+instances missing with a bounded status reason. HTTP 429, 529, other 5xx, network
+errors and attempt timeouts retry with exponential backoff and jitter (three
+attempts by default). Each HTTP attempt has its own 180-second timeout, including
+body reading; caller cancellation still bounds all work and is never retried.
+Exhaustion throws an infrastructure failure. Terminal failure stops queued groups
+and drains started work before returning. The CLI whole-command deadline remains
+independent; select `--timeout-ms` explicitly for longer calibration runs.
+Raw error bodies, headers and native errors never enter diagnostics or receipts.
+Authorization is sent only at the transport boundary and is not captured.
+
+`grader calibrate` and `grader grade` accept `--max-spend-usd N`, overriding
+`max_spend_usd`; zero blocks billable dispatch. A shared command budget covers all
+model candidates. The configured paid price must be positive. Each send reserves
+estimated input cost once across all retry attempts and releases it on every exit.
+Reported usage adds measured spend; unknown usage remains null in receipts and
+does not retain a reservation. Unknown usage prevents claiming a strict spend bound. A request exceeding the remaining estimate budget is not sent;
+its instances are missing with reason `spend cap`, visible in calibration reports
+and grade decisions. Actual usage can exceed estimates across already dispatched
+calls.
+
+`decisionAccounting` records each API attempt and aggregates requests, input/output
+tokens, estimated USD from measured input usage, and nearest-rank p50/p95 latency
+in milliseconds. Output is free under this configured rate card. The default
+input rate is 0.042 USD/million, configurable and not a live pricing claim or an
+invoice. Missing usage makes aggregate tokens/cost unknown; retry latency and
+attempts still count. Scoring and spending identity probes report directly into
+their caller's receipt collector. Concurrent invocations never read each other's
+receipt history. Cached scores add no current request/cost. Mock transport
+and command tests verify this contract; live hosted availability is unverified.
+
+Failed grading or calibration emits a `paideia.grader-failure.v1` JSON result
+with sanitized `decisionAccounting` before exiting nonzero. Receipts include
+completed requests and failed attempts from every candidate already started;
+unknown usage stays unknown, while measured usage remains visible per receipt.

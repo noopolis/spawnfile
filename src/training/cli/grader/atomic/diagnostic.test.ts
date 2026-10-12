@@ -7,7 +7,7 @@ import { fixture } from './fixtures.js';
 it.each([
   ['10 dollars or less', true], ['a sum not exceeding 10 dollars', true],
   ['10 dollars or less', false], ['a sum not exceeding 10 dollars', false],
-] as const)('runs diagnostic quantity %s with known-answer coverage %s', async (quantity, known) => {
+] as const)('runs diagnostic quantity %s with declared known-answer mapping %s', async (quantity, known) => {
   const f = await fixture();
   f.unit.text = `Dr Alice received ${quantity} [A1].`;
   f.unit.fields = { actor: 'Dr Alice', quantity: '10' };
@@ -33,9 +33,11 @@ it.each([
   expect(number.validation).toEqual({ valid: true, reasons: [] });
   expect(number.mutation).toMatchObject({ value_before: '10', value_after: '11' });
   const result = await runReference(f.reference, f.dependencies);
-  expect(result).toMatchObject({ gate: known ? 'PASS' : 'STOP', outputs: known ? 4 : 2,
-    knownAnswer: { total: known ? 1 : 0 }, diagnostic: { total: 1, correct: 0, accuracy: 0 },
-    coverage: { total: 1, covered: known ? 1 : 0 } });
+  expect(result).toMatchObject({ gate: 'STOP', outputs: known ? 4 : 2,
+    knownAnswer: { total: 0 }, diagnostic: { total: known ? 2 : 1, correct: known ? 1 : 0 },
+    coverage: { total: 1, covered: 0 } });
+  expect(result.warnings).toEqual(known ? ['entity-substitution: known_answer coerced to diagnostic; lexical validation cannot prove non-entailment'] : []);
+  if (known) expect(await readFile(result.reportFile, 'utf8')).toContain('WARNING: entity-substitution: known_answer coerced to diagnostic');
   expect(result.byKind).not.toHaveProperty('number-substitution');
   expect(await readFile(result.reportFile, 'utf8')).toContain('DIAGNOSTIC accuracy by kind');
   expect(await readFile(result.reportFile, 'utf8')).toContain('number-substitution: 0/1 (0.00%)');

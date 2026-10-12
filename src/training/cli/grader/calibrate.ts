@@ -1,12 +1,13 @@
+import type { DecisionAccounting, DecisionBackend, DecisionRequestReceipt } from '../../contracts/grading.js';
 import { mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
+import { withDecisionFailureAccounting, summarizeDecisionAccounting, allQuestions, applyPlatt, calibrateQuestions, calibrationMetrics, createCalibrationIdentity,
   decisionModels, graderForModel, selectQuestionModel, stableDigest, evidenceFailures, expectedOptions, inEscalationBand, loadGrader, loadLabels, parseCalibration,
   planEscalation, splitCalibration, teacherAgreement, type CalibrationFile, type CalibrationRecord,
   type CascadeRecord, type BandPlan } from '../../graders/index.js';
 import { validateStoredVotes } from '../../graders/labeling/index.js';
 import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
-import { backendIdentity, graderBackend, type GraderDependencies } from './backend.js';
+import { backendIdentity, graderBackend, withDecisionBudget, type GraderDependencies } from './backend.js';
 import { estimateEscalationCost, type EscalationCostCall } from './cost.js';
 import { cachedScores } from './cache.js';
 import { excludeLabels, readExclusions } from './exclusions.js';
@@ -15,13 +16,20 @@ import { calibrationReport, type QuestionDiagnostics } from './report.js';
 
 export interface CalibrateOptions {
   graderFile: string; excludeDatasets?: string[]; seed?: string; reportFile?: string;
-  concurrency?: number; signal?: AbortSignal;
+  concurrency?: number; signal?: AbortSignal; maxSpendUsd?: number;
 }
 
-export async function runCalibrate(options: CalibrateOptions, dependencies: GraderDependencies = {}): Promise<{
-  calibrationFile: string; reportFile: string; calibration: CalibrationFile; code: 0 | 1;
+export async function runCalibrate(options: CalibrateOptions, dependencies: GraderDependencies = {}) {
+  const backends = new Set<DecisionBackend>();
+  const receipts: DecisionRequestReceipt[] = [];
+  return withDecisionFailureAccounting(backends, receipts, () => calibrate(options, dependencies, backends, receipts));
+}
+
+async function calibrate(options: CalibrateOptions, dependencies: GraderDependencies, backends: Set<DecisionBackend>, receipts: DecisionRequestReceipt[]): Promise<{
+  calibrationFile: string; reportFile: string; calibration: CalibrationFile; code: 0 | 1; decisionAccounting?: DecisionAccounting;
 }> {
   const grader = await loadGrader(options.graderFile);
+  dependencies = withDecisionBudget(grader, { ...dependencies, maxSpendUsd: options.maxSpendUsd ?? dependencies.maxSpendUsd });
   const loaded = await loadLabels(grader.golden, grader);
   validateStoredVotes(grader, loaded.labels, { resolved: true });
   const exclusions = await readExclusions(options.excludeDatasets ?? []);
@@ -37,10 +45,11 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     try {
       options.signal?.throwIfAborted();
       const backend = graderBackend(definition, dependencies);
-      const identity = await backendIdentity(definition, backend, options.signal);
+      backends.add(backend);
+      const identity = await backendIdentity(definition, backend, options.signal, receipts);
       const golden = goldenInstances(definition, labels);
       const results = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),
-        golden.rows.map(row => row.request), options.concurrency ?? 2, options.signal);
+        golden.rows.map(row => row.request), options.concurrency ?? 2, options.signal, receipts);
       indexDecisionResults(golden.rows.map(row => row.request), results);
       const valid = golden.rows.map((row, index) => {
         const raw = rawGood(row, results[index]!);
@@ -188,7 +197,7 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
       const chosen = indices.slice(0, 16);
       const reversed = await cachedScores(dirname(options.graderFile), backend, stableDigest({ model: model.id, identity }),
         chosen.map(index => ({ ...golden.rows[index]!.request, optionLabels: [...golden.rows[index]!.request.optionLabels].reverse() })),
-        options.concurrency ?? 2, options.signal);
+        options.concurrency ?? 2, options.signal, receipts);
       let compared = 0, flips = 0;
       reversed.forEach((result, index) => {
         const original = rawGood(golden.rows[chosen[index]!]!, results[chosen[index]!]!);
@@ -199,7 +208,7 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
     }
   }
   for (const candidate of candidates) {
-    if (await backendIdentity(candidate.definition, candidate.backend, options.signal) !== candidate.identity) {
+    if (await backendIdentity(candidate.definition, candidate.backend, options.signal, receipts) !== candidate.identity) {
       throw new Error(`Backend identity changed during calibration: ${candidate.model.id}`);
     }
   }
@@ -215,9 +224,13 @@ export async function runCalibrate(options: CalibrateOptions, dependencies: Grad
   await writeFile(temporary, `${JSON.stringify(calibration, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, grader.calibration);
   await mkdir(dirname(reportFile), { recursive: true });
+  const decisionAccounting = candidates.some(candidate => candidate.backend.capabilities?.billing === 'api')
+    ? summarizeDecisionAccounting(receipts) : undefined;
+  const missingReasons = candidates.flatMap(candidate => candidate.results.filter(result => result.status === 'missing')
+    .map(result => ({ model: candidate.model.id, key: result.key, reason: result.reason ?? 'missing' })));
   const cost = estimateEscalationCost(costCalls, labels, grader.escalate.to, grader.escalate.max_calls_per_trial);
   await writeFile(reportFile, calibrationReport(calibration, diagnostics, { excluded: loaded.labels.labels.length - labels.labels.length,
-    disputed: golden.disputed, unavailable: golden.unavailable }) + `\nEscalation cost estimate (per represented escalated output; null = unknown):\n\n\`\`\`json\n${JSON.stringify(cost, null, 2)}\n\`\`\`\n`, { mode: 0o600 });
-  return { calibrationFile: grader.calibration, reportFile, calibration,
+    disputed: golden.disputed, unavailable: golden.unavailable }) + `\nEscalation cost estimate (per represented escalated output; null = unknown):\n\n\`\`\`json\n${JSON.stringify({ escalation: cost, decisionAccounting, missingDecisions: missingReasons }, null, 2)}\n\`\`\`\n`, { mode: 0o600 });
+  return { calibrationFile: grader.calibration, reportFile, calibration, decisionAccounting,
     code: Object.values(questions).every(question => question.status === 'calibrated') ? 0 : 1 };
 }

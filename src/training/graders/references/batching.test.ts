@@ -123,11 +123,11 @@ it('drains in-flight teachers after a checkpoint failure and starts no more batc
   for (const provider of Object.values(options.providers)) expect(provider.generate).toHaveBeenCalledTimes(1);
 });
 
-it('pins batch size and the v5 protocol and refuses v4 checkpoint reuse', async () => {
+it('pins batch size and the v6 protocol and refuses v5 checkpoint reuse', async () => {
   const options = setup(1), result = await runCouncil(options);
-  expect(councilPromptVersion).toBe('paideia.council.v5');
+  expect(councilPromptVersion).toBe('paideia.council.v6');
   await expect(runCouncil({ ...options, previous: result, batchSize: 1 })).rejects.toThrow('Stale');
-  const identity = stableDigest({ version: 'paideia.council.v4', output: options.outputDigest,
+  const identity = stableDigest({ version: 'paideia.council.v5', output: options.outputDigest,
     instances: options.instances, teachers: options.teachers, batchSize: 40, adjudicator: 'c', window: defaultGrokWindow,
     windowOpen: false, active: ['c', 'a'], seed: 'paideia.council', timeoutMs: 120_000 });
   const { digest: _digest, ...old } = { ...result, identity };
@@ -138,4 +138,38 @@ it.each([0, -1, 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1])('refuses inval
   const options = setup(1);
   await expect(runCouncil({ ...options, batchSize })).rejects.toThrow('batch size');
   for (const provider of Object.values(options.providers)) expect(provider.generate).not.toHaveBeenCalled();
+});
+
+
+it.each([false, true])('keeps identical batches bound to their check IDs across interrupted resume (disputed=%s)', async disputed => {
+  const options = setup(3); options.batchSize = 1;
+  options.instances = options.instances.map(instance => ({ ...instance,
+    instructions: 'Supported?', projection: { text: 'Same evidence' } }));
+  if (disputed) options.providers.a!.generate = vi.fn(async request => response(request, 'no'));
+  if (disputed) options.providers.c!.generate = vi.fn(async request =>
+    response(request, request.system!.includes('Adversarially') ? 'no' : 'yes'));
+  const controller = new AbortController();
+  let saved: CouncilOutput | undefined;
+  options.onCheckpoint = output => {
+    saved = output;
+    if (output.calls.some(call => call.outcome === 'completed')) controller.abort();
+  };
+  await expect(runCouncil({ ...options, signal: controller.signal })).rejects.toThrow();
+  expect(saved!.calls.some(call => call.outcome === 'completed')).toBe(true);
+  const result = await runCouncil({ ...options, onCheckpoint: undefined, previous: saved });
+  expect(result.calls).toHaveLength(disputed ? 12 : 6);
+  expect(new Set(result.calls.map(call => call.id)).size).toBe(result.calls.length);
+  expect(new Set(result.calls.filter(call => call.teacher === 'c' && call.phase === 'teacher')
+    .map(call => call.prompt_digest)).size).toBe(1);
+  for (const instance of options.instances) {
+    expect(result.checks[instance.id]).toMatchObject({
+      final: disputed ? 'no' : 'yes', status: disputed ? 'adjudicated' : 'agreed',
+      teachers: { c: { answer: 'yes' }, a: { answer: disputed ? 'no' : 'yes' } },
+    });
+  }
+  expect(options.providers.a!.generate).toHaveBeenCalledTimes(3);
+  expect(options.providers.c!.generate).toHaveBeenCalledTimes(disputed ? 9 : 3);
+  expect(await runCouncil({ ...options, onCheckpoint: undefined, previous: result })).toEqual(result);
+  expect(options.providers.a!.generate).toHaveBeenCalledTimes(3);
+  expect(options.providers.c!.generate).toHaveBeenCalledTimes(disputed ? 9 : 3);
 });

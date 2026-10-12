@@ -14,6 +14,8 @@ subscription preflight, environment stripping and cleanup; mutation-check reject
 Structured requests write a private schema file in the disposable workspace and
 pass --output-schema to exec. Translate object properties to required nullable
 slots for the strict CLI dialect and omit unsupported bounds from transport only.
-Remove optional null placeholders, then validate against the original schema
+Reject undeclared required names and free-form objects before any process launch.
+Track nullable transport slots; remove null only when the original property schema
+rejects null (including local references), then validate against the original schema
 (including its bounds). Reject duplicate keys before normalization. Remove the schema
 with the workspace on every exit. Tool containment remains enforced.

@@ -42,11 +42,15 @@ function accuracy(rows: TrapAssessment[]) {
   return { total: rows.length, correct, accuracy: rows.length ? correct / rows.length : null };
 }
 const controlKinds = new Set(['format-paraphrase', 'option-permutation']);
-const defectKinds = new Set(['number-substitution', 'entity-substitution', 'negation-flip', 'citation-swap', 'injected-redundancy']);
+const diagnosticKinds = new Set(['number-substitution', 'entity-substitution', 'negation-flip', 'citation-swap']);
+const defectKinds = new Set(['injected-redundancy']);
 export function referenceQuality(baseOutputs: CouncilOutput[], traps: TrapAssessment[],
   population: { outputIds: string[]; variantOutputs?: CouncilOutput[]; rejectedUnits?: number } = { outputIds: [] }) {
-  const eligible = traps.filter(trap => trap.known_answer !== false);
-  const diagnostic = traps.filter(trap => trap.known_answer === false);
+  const eligible = traps.filter(trap => trap.known_answer !== false && !diagnosticKinds.has(trap.kind));
+  const diagnostic = traps.filter(trap => trap.known_answer === false || diagnosticKinds.has(trap.kind));
+  const warnings = [...new Set(traps.filter(trap => trap.known_answer !== false && diagnosticKinds.has(trap.kind))
+    .map(trap => trap.kind))].sort().map(kind =>
+    `${kind}: known_answer coerced to diagnostic; lexical validation cannot prove non-entailment`);
   const known = eligible.filter(trap => defectKinds.has(trap.kind) && trap.intended !== 'unchanged');
   const controls = eligible.filter(trap => controlKinds.has(trap.kind) && trap.intended === 'unchanged');
   const knownAnswer = accuracy(known), consistency = accuracy(controls);
@@ -72,7 +76,7 @@ export function referenceQuality(baseOutputs: CouncilOutput[], traps: TrapAssess
     ...failingTemplates.map(id => `known-answer template ${id} accuracy must be >= 0.95`));
   const insufficientKinds = Object.entries(byKind).filter(([, score]) => score.total < 10).map(([id]) => id);
   const insufficientTemplates = Object.entries(byTemplate).filter(([, score]) => score.total < 10).map(([id]) => id);
-  return { gate: failures.length ? 'STOP' as const : 'PASS' as const, failures, knownAnswer, consistency, coverage, completeness, byKind, byTemplate,
+  return { gate: failures.length ? 'STOP' as const : 'PASS' as const, failures, warnings, knownAnswer, consistency, coverage, completeness, byKind, byTemplate,
     diagnostic: accuracy(diagnostic), diagnosticByKind: grouped(diagnostic, 'kind'), diagnosticByTemplate: grouped(diagnostic, 'templateId'),
     consistencyByKind: grouped(controls, 'kind'), consistencyByTemplate: grouped(controls, 'templateId'),
     insufficientKinds, insufficientTemplates, failingKinds, failingTemplates, instability, variantAdjudication: adjudicationInstability(population.variantOutputs ?? [], true),

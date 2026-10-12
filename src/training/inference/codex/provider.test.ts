@@ -41,7 +41,7 @@ it('uses an empty workspace, auth-only home, selected controls, final message an
         expect(options.args).toContain('--output-schema');
         expect(options.args[options.args.indexOf('--output-schema') + 1]).toBe(schemaFile);
         expect(await readdir(options.cwd)).toEqual(['response-schema.json']);
-        expect(JSON.parse(await readFile(schemaFile, 'utf8'))).toEqual({ type: 'object', properties: {}, required: [], additionalProperties: false });
+        expect(JSON.parse(await readFile(schemaFile, 'utf8'))).toEqual({ type: 'object', properties: { q: { type: 'string' } }, required: ['q'], additionalProperties: false });
         expect((await stat(schemaFile)).mode & 0o777).toBe(0o600);
       }
       expect(await readdir(options.env['CODEX_HOME']!)).toEqual(['auth.json']);
@@ -50,7 +50,7 @@ it('uses an empty workspace, auth-only home, selected controls, final message an
     })() };
   } });
   expect(provider.capabilities.tools).toBe('contained');
-  expect(await provider.generate({ ...request, system: 'judge', responseSchema: { type: 'object' } })).toMatchObject({
+  expect(await provider.generate({ ...request, system: 'judge', responseSchema: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'], additionalProperties: false } })).toMatchObject({
     text: '{"q":"yes"}', model: 'reported', modelBasis: 'provider-reported', usage: { inputTokens: 10, cachedInputTokens: 5, outputTokens: 2, reasoningTokens: null },
   });
   expect(calls).toHaveLength(2);
@@ -158,7 +158,7 @@ it('rejects invalid controls before launch and schema-invalid answers after comp
   await expect(createCodexInference({ process, reasoningEffort: 'bogus' }).generate(request)).rejects.toMatchObject({ kind: 'unsupported' });
   await expect(createCodexInference({ process }).generate({ ...request, signal: AbortSignal.abort() })).rejects.toMatchObject({ kind: 'cancelled' });
   expect(process).not.toHaveBeenCalled();
-  await expect(createCodexInference({ process: runner() }).generate({ ...request, responseSchema: { type: 'object', required: ['absent'] } })).rejects.toMatchObject({ kind: 'invalid-response', usage: { inputTokens: 10 } });
+  await expect(createCodexInference({ process: runner() }).generate({ ...request, responseSchema: { type: 'object', additionalProperties: false, properties: { absent: { type: 'string' } }, required: ['absent'] } })).rejects.toMatchObject({ kind: 'invalid-response', usage: { inputTokens: 10 } });
 });
 
 it('classifies native process interruption, nonzero exit and launch failure', async () => {

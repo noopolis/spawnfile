@@ -18,7 +18,10 @@ Non-answers have null answers and typed statuses, never authored-label sentinels
 Every instantiated base check counts toward zero-missing completeness, including
 unready checks and null finals; report counts per template and output.
 
-Operator-declared diagnostic trap mappings report accuracy separately; exclude them
+Number/entity substitutions, citation swaps and negation flips are always diagnostic;
+warn when coercing shorthand or explicit known_answer: true. Only visibility-validated
+injected redundancy counts for defect accuracy/coverage; format and option controls
+measure consistency. Operator-declared diagnostic mappings also report separately; exclude them
 from all gates, group floors and known-answer output coverage. The CLI derives status
 from the current templates, never from untrusted trap metadata.
 
@@ -28,7 +31,8 @@ output; drain every independent queue before adjudication. Bound adjudication ba
 too. Serialize immutable checkpoint writes; prompt version and batch size pin reuse.
 Verify batch boundaries, per-question evidence and interrupted concurrent resume.
 
-Council v5 uses positional q1…qN response keys, mapped to check IDs only in code.
+Council v6 uses positional q1…qN response keys, mapped to check IDs only in code.
+Call identity also pins ordered check IDs, including across batches and resume.
 Accept a single JSON fence with the same strict decoding. Failed receipts retain
 typed failure classes and available protected provider diagnostics; reports show
 classes, never raw provider error prose.
