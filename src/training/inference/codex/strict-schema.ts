@@ -8,6 +8,10 @@ const omitted = new Set(['minLength', 'maxLength', 'minimum', 'maximum', 'patter
 const maps = new Set(['properties', 'definitions', '$defs', 'patternProperties']);
 const singles = new Set(['items', 'additionalProperties', 'not', 'contains', 'propertyNames', 'if', 'then', 'else']);
 const lists = new Set(['anyOf', 'oneOf', 'allOf']);
+const referenceMetadata = new Set([
+  '$ref', '$schema', '$comment', 'definitions', '$defs',
+  'title', 'description', 'default', 'examples', 'readOnly', 'writeOnly',
+]);
 function object(value: unknown): value is Schema {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -17,10 +21,25 @@ export function codexStrictSchema(schema: Schema): Schema {
   rejectUnsupportedConstraints(schema);
   return translate(schema, new Set(), '#');
 }
-// Required null placeholders count as properties, even when they decode to absence.
-// Refuse count limits across schema nodes, including constraints reached by references.
+// Check every schema node, including untranslated tuple tails reachable by references.
 function rejectUnsupportedConstraints(schema: unknown): void {
+  const locations = new Set<string>();
+  const references = new Set<string>();
+  inspectConstraints(schema, '#', locations, references);
+  // Do not follow references into annotations or literal data: those locations
+  // are neither inspected as schemas nor translated. A structural index also
+  // permits recursive references without recursively following reference edges.
+  for (const reference of references) {
+    if (!locations.has(reference)) {
+      throw new InferenceFailure('unsupported', `Codex strict schema requires $ref targets at supported schema locations: ${reference}`);
+    }
+  }
+}
+function inspectConstraints(schema: unknown, pointer: string, locations: Set<string>, references: Set<string>): void {
+  if (typeof schema === 'boolean') locations.add(pointer);
   if (!object(schema)) return;
+  locations.add(pointer);
+  if (typeof schema['$ref'] === 'string') references.add(schema['$ref']);
   // Slot identities are structural JSON pointers, not URI anchors or scoped IDs.
   if (Object.hasOwn(schema, '$id') || typeof schema['$ref'] === 'string' &&
     (schema['$ref'] !== '#' && !schema['$ref'].startsWith('#/') || schema['$ref'].includes('%'))) {
@@ -31,18 +50,27 @@ function rejectUnsupportedConstraints(schema: unknown): void {
   }
   for (const [key, value] of Object.entries(schema)) {
     if ((maps.has(key) || key === 'dependencies') && object(value)) {
-      for (const child of Object.values(value)) rejectUnsupportedConstraints(child);
+      for (const [name, child] of Object.entries(value)) {
+        inspectConstraints(child, `${pointer}/${key}/${escapePointer(name)}`, locations, references);
+      }
     } else if (singles.has(key) || lists.has(key) || key === 'additionalItems') {
-      if (Array.isArray(value)) value.forEach(rejectUnsupportedConstraints);
-      else rejectUnsupportedConstraints(value);
+      if (Array.isArray(value)) {
+        value.forEach((child, index) => inspectConstraints(child, `${pointer}/${key}/${index}`, locations, references));
+      } else inspectConstraints(value, `${pointer}/${key}`, locations, references);
     }
   }
-  // Presence predicates see required null slots as present, even when decoding
-  // would remove them. Refuse conservatively, including through references.
-  for (const keyword of ['dependencies', 'propertyNames']) {
+  // Presence predicates see required null slots as present. contains checks items
+  // independently of items, so its slots cannot safely be decoded there either.
+  // Refuse conservatively, including through references.
+  for (const keyword of ['dependencies', 'propertyNames', 'contains']) {
     if (Object.hasOwn(schema, keyword)) {
       throw new InferenceFailure('unsupported', `Codex strict schema cannot preserve ${keyword} with required transport slots`);
     }
+  }
+  // Normalization follows the target only; sibling assertions are an intersection
+  // whose nullable slots cannot safely be decoded independently of that target.
+  if (typeof schema['$ref'] === 'string' && Object.keys(schema).some(key => !referenceMetadata.has(key))) {
+    throw new InferenceFailure('unsupported', 'Codex strict schema cannot preserve $ref sibling constraints');
   }
 }
 function escapePointer(key: string): string {

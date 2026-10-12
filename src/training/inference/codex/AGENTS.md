@@ -21,11 +21,20 @@ Literal data and property names called maxProperties remain supported.
 Conservatively reject dependencies and propertyNames in all schema nodes before
 inference: required null placeholders can violate presence constraints. Literal
 data and properties named dependencies or propertyNames remain supported.
+Conservatively reject contains in all schema nodes, including reference targets:
+its transport placeholders are not decoded by items normalization. Literal data
+and properties named contains remain supported.
 Also reject oneOf/allOf/not/enum/const/if/then/else constraints if translation changes their subtree or sibling
 constraints, or they contain schema references. Unchanged reference-free compositions
 remain supported. Test encoded answers against the translated schema before normalization.
 Reject schema $id and non-pointer or URI-encoded $ref forms before inference;
 normalization tracks only unscoped local JSON pointers (including ~0/~1 escapes).
+Refuse $ref sibling validation constraints across the complete admission traversal,
+including reference-reachable tuple tails: normalization follows only the target.
+Refuse references outside structurally inspected schema locations, including targets
+inside annotations or literal data. Index locations without following reference edges
+so recursive references terminate admission. Definitions and annotation-only siblings
+remain supported; never inspect ordinary annotation data as schemas.
 Track nullable transport slots; remove null only when the original property schema
 rejects null (including local references). Refuse union responses with different valid
 normalized interpretations rather than erase legitimate nullable data. Validate against the original schema
