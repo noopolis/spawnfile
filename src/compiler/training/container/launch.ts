@@ -12,6 +12,7 @@ import { runTrainingDocker, type TrainingDockerProcess } from "./process.js";
 import { repairEnvelopeSchema } from "../repair/contract.js";
 import { hashJson } from "../preparation/files.js";
 import { parseTrainingMappedPreparation } from "../preparation/contract.js";
+import { persistTrainingGrokCredential } from "./grokWriteback.js";
 
 export interface LaunchTrainingContainerOptions {
   image: string; configPath: string; context: TrainingContext; args: readonly string[];
@@ -60,7 +61,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
   }); };
   const name = `spawnfile-training-${randomUUID()}`;
   const labels = { "com.spawnfile.training.owner": name };
-  let privateRoot: string | undefined, containerId: string | undefined, creationAttempted = false;
+  let privateRoot: string | undefined, containerId: string | undefined, creationAttempted = false, startAttempted = false;
   let expectedImage: string | undefined, lastLine = "", closureVerified = false;
   try {
     const endpoint = await execute(["context", "inspect", prepared.config.dockerContext, "--format", "{{json .Endpoints.docker.Host}}"], { timeoutMs: 10_000, signal: controller.signal });
@@ -106,6 +107,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const identity = await call(["inspect", "--format", inspectFormat, containerId]);
     if (identity.code !== 0 || parseDetachedContainerInspect(identity.stdout, containerId, labels, name).imageId !== expectedImage) throw Error("Training container identity mismatch");
     if (controller.signal.aborted) throw Error("Container operation cancelled");
+    startAttempted = true;
     const result = await execute([...prefix, "start", "--attach", containerId], {
       timeoutMs: Math.max(1, deadline - Date.now()), signal: controller.signal,
       stdout: (line) => { if (line.trim()) lastLine = line; options.streams.stdout(line); }, stderr: options.streams.stderr
@@ -133,10 +135,16 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
         if (found.code === 0) {
           const id: unknown = JSON.parse(found.stdout.split("\n")[0]!);
           if (typeof id !== "string" || parseDetachedContainerInspect(found.stdout, id, labels, name).imageId !== expectedImage || (containerId && /^[a-f0-9]{64}$/u.test(containerId) && id !== containerId)) throw Error("Refusing cleanup of unverified training container");
-          const removed = await call(["rm", "--force", id], true);
-          const remaining = await call(["container", "ls", "--all", "--no-trunc", "--filter", `id=${id}`, "--format", "{{.ID}}"], true);
-          if (removed.code !== 0 || remaining.code !== 0 || remaining.stdout.trim()) throw Error("Training container cleanup is unverified");
-          closureVerified = true;
+          try {
+            if (startAttempted && prepared.config.broker && privateRoot) {
+              await persistTrainingGrokCredential(id, prepared.config.broker.bootstrap, privateRoot, call);
+            }
+          } finally {
+            const removed = await call(["rm", "--force", id], true);
+            const remaining = await call(["container", "ls", "--all", "--no-trunc", "--filter", `id=${id}`, "--format", "{{.ID}}"], true);
+            if (removed.code !== 0 || remaining.code !== 0 || remaining.stdout.trim()) throw Error("Training container cleanup is unverified");
+            closureVerified = true;
+          }
         } else {
           const remaining = await call(["container", "ls", "--all", "--filter", `name=^/${name}$`, "--format", "{{.ID}}"], true);
           if (remaining.code !== 0 || remaining.stdout.trim()) throw Error("Training container closure is unknown");
