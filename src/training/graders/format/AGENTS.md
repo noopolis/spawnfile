@@ -20,9 +20,9 @@ Golden labels accept a sidecar path or an inline labels body with implied grader
 Inline references resolve from the grader file without adding paths to digests.
 YAML diagnostics show the first issue with line/column and a remaining issue count.
 
-External label-import manifests admit human/editor declarations only and validate
+External label-import manifests admit human/editor/signal declarations only and validate
 declared context/labelers and unique vote coordinates before any golden write.
-Imported human/editor IDs must not collide with any configured teacher ID.
+Imported human/editor/signal IDs must not collide with any configured teacher ID.
 
 Named models accept 1–4 unique IDs, mutually exclusive with legacy model syntax.
 The public decisionModels/graderForModel seams normalize default routing.
@@ -36,6 +36,9 @@ row structure and paragraph/sentence scope. questionDefinitionDigest pins these
 regexes and extraction version wherever executable question identity is needed.
 rows.leading_citations defaults to keep; previous supplies the shared, versioned
 sentence citation policy used by expansion and every sentence-question identity.
+
+Signal labelers require name and source, remain inspectable, and never contribute to truth.
+External AI reviews and weak editor verdicts use signal, never human/editor authority.
 
 TypeSafe models require HTTPS endpoints and positive price estimates. Their
 concurrency defaults to eight and accepts only integers 1–32.

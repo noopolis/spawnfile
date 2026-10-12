@@ -118,3 +118,14 @@ it('uses editor truth after excluding the escalation teacher, while humans remai
   expect(independentConsensus(row, input.labelers, 'a', ['q']).q)
     .toMatchObject({ answer: 'no', source: 'human' });
 });
+
+
+it('never promotes a signal to independent truth after excluding a teacher', () => {
+  const input = labels();
+  input.labelers.review = { kind: 'signal', name: 'AI review', source: 'external' };
+  const row = input.labels[0]!;
+  row.votes.q = { a: 'yes', review: 'yes' };
+  row.asked = ['a', 'review']; row.askedByInstance = { q: ['a', 'review'] };
+  expect(independentConsensus(row, input.labelers, 'a', ['q']).q)
+    .toMatchObject({ answer: undefined, disputed: true });
+});

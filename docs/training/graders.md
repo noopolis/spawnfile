@@ -483,6 +483,28 @@ truth always removes the evaluated teacher before applying that precedence.
 Forced routing persists `teacherAccuracy` held-out counts, agreement and failures
 in the calibration file and report; runtime checks these bars before inference.
 
+
+## Weak evidence provenance
+
+External AI reviews and editor verdicts used as weak evidence must be imported as
+`kind: signal`, with required `name` and `source`. They remain in the labels file,
+per-vote import receipts, consensus vote receipts and import counts, but never
+participate in truth, precedence, teacher denominators or independent-reference
+construction. A signal-only instance is disputed. Historical `human` and `editor`
+labels remain readable for compatibility; neither is produced by the agent council.
+Do not relabel an AI review as a human annotation.
+
+```yaml
+labelers:
+  external-review:
+    kind: signal
+    name: External agent review
+    source: local-review.json
+```
+
+Atomic extraction, planted traps and agent-council references are documented in
+[Atomic checks and agent references](grader-decomposition.md).
+
 ## Explicit TypeSafe hosted decisions
 
 Declare the paid route explicitly; it is never a fallback for a local model or

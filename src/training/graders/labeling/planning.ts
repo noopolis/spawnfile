@@ -97,6 +97,8 @@ export function validateStoredVotes(grader: Grader, labels: Labels, options: { r
     for (const name of Object.keys(votes)) {
       const labeler = labels.labelers[name];
       const kind = labeler?.kind;
+      // Weak signals are retained for inspection but cannot invalidate truth or calibration.
+      if (kind === 'signal') continue;
       const authoritative = kind === 'human' || kind === 'editor';
       const teacher = teachers.get(name);
       if (teacher && (labeler?.kind !== 'model' || labeler.provider !== teacher.provider || labeler.model !== teacher.model)) {

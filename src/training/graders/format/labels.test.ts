@@ -110,3 +110,12 @@ it('accepts named editor signals with optional source descriptions and rejects i
     expect(() => parseLabels({ ...base, labelers: { ...base.labelers, editor } }, grader)).toThrow('labelers.editor');
   }
 });
+
+
+it('requires named weak signals with provenance sources', () => {
+  const signal = { kind: 'signal', name: 'External AI review', source: 'review.json' };
+  expect(parseLabels({ ...base, labelers: { ...base.labelers, signal } }, grader).labelers.signal).toEqual(signal);
+  for (const invalid of [{ ...signal, name: '' }, { ...signal, source: '' }, { kind: 'signal', name: 'Review' }]) {
+    expect(() => parseLabels({ ...base, labelers: { ...base.labelers, signal: invalid } }, grader)).toThrow('labelers.signal');
+  }
+});

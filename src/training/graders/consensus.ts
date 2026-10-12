@@ -14,7 +14,7 @@ export function askedForInstance(label: Label, key: string): string[] {
   return [...new Set([...asked, ...Object.keys(label.votes[key] ?? {})])];
 }
 
-/** Missing and abstaining teachers stay in the asked denominator. */
+/** Missing/abstaining teachers stay in the denominator. Signals remain in receipts only. */
 export function deriveConsensus(label: Label, labelers: Labels['labelers'], instanceKeys = Object.keys(label.votes)): Record<string, Consensus> {
   return Object.fromEntries(instanceKeys.map(key => {
     const votes = label.votes[key] ?? {};
