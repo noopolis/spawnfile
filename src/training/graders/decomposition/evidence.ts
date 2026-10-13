@@ -2,7 +2,7 @@ import type { AtomicUnit, CheckTemplates, Decomposition, DecompositionInputs } f
 import { parseDecomposition } from './format.js';
 import { dropUnboundFields, type DroppedField } from './metadata.js';
 
-import { locateUnit, bindLocation, type CitationDisagreement } from './location.js';
+import { locateUnit, locateOutputSpan, bindLocation, type CitationDisagreement } from './location.js';
 import { normalizeWhitespace } from './spans.js';
 export { normalizeWhitespace, readPath, textLeaves } from './spans.js';
 export interface EvidenceRow { id: string; text: string; context: string }
@@ -50,10 +50,30 @@ export function validateDecomposition(value: unknown, inputs: DecompositionInput
       const disagreement = bindLocation(unit, located);
       if (disagreement) citationDisagreements.push(disagreement);
     }
+    for (const side of ['left', 'right'] as const) {
+      const span = unit.pair?.[side];
+      if (!span) continue;
+      const located = locateOutputSpan(span, inputs, templates);
+      if (typeof located === 'string') reasons.push(`pair.${side}: ${located}`);
+      else {
+        const endpoint = { ...span, id: `${unit.id}.pair.${side}` };
+        const disagreement = bindLocation(endpoint, located);
+        const { id: _id, ...bound } = endpoint;
+        unit.pair![side] = bound;
+        if (disagreement) citationDisagreements.push(disagreement);
+      }
+    }
     if (templates && !templates.templates.some(template => template.applies_to === unit.kind) && !Object.hasOwn(templates.kinds ?? {}, unit.kind)) reasons.push(`undeclared unit kind ${unit.kind}`);
     if (hasRows && unit.cites?.length) {
       if (rowError) reasons.push(rowError);
       else if (unit.cites.some(id => !rows.some(row => row.id === id))) reasons.push('unknown cited row');
+    }
+    if (hasRows && unit.pair) {
+      for (const side of ['left', 'right'] as const) {
+        if (!unit.pair[side].cites?.length) continue;
+        if (rowError) reasons.push(`pair.${side}: ${rowError}`);
+        else if (unit.pair[side].cites!.some(id => !rows.some(row => row.id === id))) reasons.push(`pair.${side}: unknown cited row`);
+      }
     }
     if (unit.source_span !== undefined && (!normalizeWhitespace(unit.source_span) || !rows.some(row =>
       unit.cites?.includes(row.id) && normalizeWhitespace(row.text).includes(normalizeWhitespace(unit.source_span!))))) {

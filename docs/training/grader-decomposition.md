@@ -50,7 +50,7 @@ The end boundary is exclusive. No API-key fallback is available.
 Criteria are answer-to-description maps. The labels `missing`, `abstain`,
 `uncertain` and `unchanged` are reserved and rejected as criteria keys. Noul uses quoted `"true"` and `"false"`
 keys; score uses quoted integer keys with descriptions. `expected` lists good answers. State reads
-are `unit`, `unit.cited_rows`, `output.<path>`, `context.<name>`, `paragraph`, and
+are `unit`, `unit.cited_rows`, `unit.pair`, `unit.pair.cited_rows`, `output.<path>`, `context.<name>`, `paragraph`, and
 `neighbors`. Paragraph and sentence addresses are zero-based. A template can add
 `when: {field: modality, equals: required}`. Missing state produces a missing
 instance rather than silently removing a check.
@@ -118,7 +118,7 @@ eligibility before dispatching a defect variant.
 
 Extraction and omission-audit prompts share an extraction-only template view with
 checkpoint identity: kind descriptions, per-template `applies_to`, `locations`,
-`when.field` (without comparison values), and context rows/roles. Grading answers,
+`when.field` (without comparison values), whether state declares pair reads, and context rows/roles. Grading answers,
 criteria, traps, dimensions, severities and instructions are excluded. Editing only
 those grading fields reuses extractions; extraction declaration changes invalidate
 them. Instantiation reports are regenerated using the current full templates.
@@ -136,11 +136,12 @@ exactly one match. Zero matches and unresolved ambiguity are rejected.
 The CLI assigns `x1`, `x2`, … to extraction units and `a1`, `a2`, … to audit units
 in response order, retaining each extractor ID as `label`. Audit units matching an
 existing unit's kind, whitespace-normalized text and resolved occurrence (location,
-paragraph, sentence and raw source character offset) are dropped. Identical text
+paragraph, sentence and raw source character offset), including ordered pair
+endpoint texts and independently resolved occurrences when present, are dropped. Identical text
 at a different occurrence is retained; unresolved spans still reach validation. Checkpoint
 `duplicates` records their IDs, labels, matching IDs and reasons, and the command
 summary reports their count. Repeats within the audit response are also dropped.
-Extraction protocol v8 rejects earlier checkpoints; regenerate in a fresh directory.
+Extraction protocol v9 rejects earlier checkpoints; regenerate in a fresh directory.
 The decomposition persists each rejected unit with its text and rejection reasons.
 Both `traps` and `reference` refuse these artifacts unless `--allow-rejections`
 is explicit. With that flag, each rejected unit remains one missing check in the
@@ -177,6 +178,19 @@ When context declares row structure, an uncited unit renders `unit.cited_rows`
 as `[]`: the state is present and the check is ready for the judge to assess
 the absence of cited support. This does not imply a passing answer. Unknown cited
 IDs and absent row declarations still make this state missing.
+
+Optional `pair: {left: {text: ...}, right: {text: ...}}` binds a relation to two
+verbatim output spans. Each endpoint may carry `location`, zero-based `paragraph`
+and `sentence` hints, and `cites`; validation derives its address and citations
+independently. Both endpoints must occur in output, including for obligation units.
+The existing `unit.text` remains the verified frame or left anchor. Ambiguous or
+forged endpoints reject the whole unit; endpoint citation disagreements are reported.
+Templates declaring `unit.pair` or `unit.pair.cited_rows` request pair extraction.
+The latter projects `{left: [...rows], right: [...rows]}` independently from the
+frame's `unit.cited_rows`. A verified uncited endpoint has `[]` when row structure
+is declared; unknown row IDs or absent pair state remain missing. Non-body
+endpoints have no derived row citations. Authentic source snapshots can be
+operator-declared context and read explicitly; pair endpoints cannot quote context.
 
 Instantiation is deterministic. IDs are `<template>@<unit>` and digests include
 the rendered question and projection. Council calls batch ready checks from one
@@ -310,3 +324,14 @@ retain their original receipts and are not counted twice. Summed call wall time 
 provider-call duration, not elapsed command time when output workers overlap.
 External AI reviews and weak editor verdicts use `kind: signal`; no human annotation
 step participates in this pipeline. See [weak evidence provenance](graders.md#weak-evidence-provenance).
+
+### Partial source snapshots
+
+Declare `context.source_snapshots` and read `unit.source_snapshots` or
+`unit.pair.source_snapshots` to grade from partial source captures. Callers validate
+capture provenance and bind each snapshot's `cites` array to evidence row IDs.
+Instantiation derives the unit/endpoint citations, selects only intersecting
+snapshots, and requires coverage of every cited row. No citations or incomplete
+coverage remains a missing check, never a passing check. Other check instances
+can still run. Pair reads combine the two endpoints' source requirements.
+The generic `context.source_snapshots` read retains its unscoped behavior.
