@@ -61,7 +61,8 @@ export const resolveTrainingGrokDenyPaths = (added: readonly string[] | undefine
     if (within(p.workspace, entry) || within(p.workerHome, entry) || within(p.runtimeHome, entry)) {
       fail(`Training Grok deny path ${entry} would hide the subject's own workspace, home, or runtime home`);
     }
-    if ([p.clockFile, DAIMON_GROK_ENGINE_BROKER.worker.taskClock.preloadPath].some(file => within(file, entry))) {
+    if ([p.clockFile, DAIMON_GROK_ENGINE_BROKER.worker.taskClock.preloadPath,
+      "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1", "/usr/lib/aarch64-linux-gnu/faketime/libfaketime.so.1"].some(file => within(file, entry))) {
       fail(`Training Grok deny path ${entry} would hide the subject's task clock`);
     }
     const ancestor = candidates.find((other) => other !== entry && within(entry, other));

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createOrganizationHandoffAuthorityError,
@@ -66,19 +66,25 @@ describe("organization handoff authority budget", () => {
     expect(budget.patient()).toBe(false);
   });
 
-  it("grows and jitters the backoff without ever waiting past the deadline", async () => {
+  it.each([0, 0.525, 0.999999])("grows and jitters backoff within the deadline (random=%s)", async (random) => {
     const time = clock();
     const delays: number[] = [];
     const budget = new OrganizationHandoffAuthorityBudget({
       limitMs: 100, now: time.now, sleep: async (ms) => { delays.push(ms); time.advance(ms); }
     });
-    for (let index = 0; index < 40 && !budget.exhausted(); index += 1) await budget.wait();
-    expect(delays.length).toBeGreaterThan(1);
-    // Jittered, so never assert exact values: assert the envelope instead.
-    for (const delay of delays) expect(delay).toBeGreaterThanOrEqual(0);
-    expect(Math.max(...delays)).toBeLessThanOrEqual(25);
-    expect(delays.slice(-1)[0]).toBeGreaterThan(delays[0] as number);
-    expect(time.now()).toBeLessThanOrEqual(100);
+    const jitter = vi.spyOn(Math, "random").mockReturnValue(random);
+    try {
+      for (let index = 0; index < 40 && !budget.exhausted(); index += 1) await budget.wait();
+      const factor = 0.5 + random * 0.5;
+      expect(delays.slice(0, 6)).toEqual([1, 2, 4, 8, 16, 25].map((base) => base * factor));
+      for (const delay of delays) expect(delay).toBeGreaterThanOrEqual(0);
+      expect(Math.max(...delays)).toBeLessThanOrEqual(25);
+      expect(time.now()).toBe(100);
+      // The deadline can make the final wait smaller than the first.
+      if (random === 0.525) expect(delays.at(-1)).toBeLessThan(delays[0] as number);
+    } finally {
+      jitter.mockRestore();
+    }
   });
 
   it("ships defaults that fit inside one client request", () => {

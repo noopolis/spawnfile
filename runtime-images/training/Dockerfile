@@ -10,6 +10,17 @@ COPY --from=python /usr/lib/*-linux-gnu/libsqlite3.so.0* /opt/python/lib/
 # libraries in the image so Python extensions also load in that clean process.
 RUN echo /opt/python/lib > /etc/ld.so.conf.d/training-python.conf && ldconfig
 
+# Bookworm's distro library, shared by broker shell tools and direct clocked
+# Daimon children. Resolve the multiarch path at build time; never preload the image.
+RUN . /etc/os-release && test "$VERSION_CODENAME" = bookworm \
+ && apt-get update && apt-get install --yes --no-install-recommends libfaketime=0.9.10-2.1 \
+ && library="$(dpkg-query -L libfaketime | sed -n '\|/faketime/libfaketime\.so\.1$|p')" \
+ && test -f "$library" \
+ && install -d -o root -g root -m 0755 /usr/local/lib/daimon \
+ && ln -s "$library" /usr/local/lib/daimon/libfaketime.so.1 \
+ && chown -h root:root /usr/local/lib/daimon/libfaketime.so.1 \
+ && rm -rf /var/lib/apt/lists/*
+
 # The broker-capable container runs on a read-only root, so the fixed Daimon
 # identities are baked here instead of being created by the entrypoint the way
 # the production organization image creates them. It depends on nothing from the

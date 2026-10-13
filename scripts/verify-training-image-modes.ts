@@ -11,7 +11,7 @@ import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promi
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertControlRecipe, assertNewRecipe, deriveControlRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_LISTING_FORMAT } from "./training-image-modes.ts";
+import { assertControlRecipe, assertNewRecipe, deriveControlRecipe, diffModeListings, identicalModes, MODE_LISTING_SCRIPT } from "./training-image-modes.ts";
 
 type ImageModule = typeof import("../src/compiler/training/preparation/image.js");
 type FilesModule = typeof import("../src/compiler/training/preparation/files.js");
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     docker(dockerContext, ["build", ...buildArgs, "--tag", tags.next, await stage("new", plan.dockerfile, true)]);
     docker(dockerContext, ["build", ...buildArgs, "--tag", tags.control, await stage("control", controlRecipe, false)]);
     const listing = (tag: string) => docker(dockerContext, ["run", "--rm", "--platform", build.platform, "--user", "0:0", "--network", "none",
-      "--entrypoint", "find", tag, ...LISTING_ROOTS, "-printf", MODE_LISTING_FORMAT], true);
+      "--entrypoint", "/bin/sh", tag, "-ceu", MODE_LISTING_SCRIPT], true);
     const diff = diffModeListings(listing(tags.next), listing(tags.control));
     if (!identicalModes(diff)) {
       for (const entry of diff.onlyNew.slice(0, 50)) console.error(`only in new: ${entry}`);

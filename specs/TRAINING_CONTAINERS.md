@@ -299,6 +299,43 @@ one Grok credential in the container.
 
 ### Privilege table
 
+The v4 slots select Daimon's manifest-v5 clocked worker configs. The image
+requires Debian Bookworm parents and installs `libfaketime=0.9.10-2.1` before any
+context-dependent layer. Its root-owned architecture-neutral symlink
+`/usr/local/lib/daimon/libfaketime.so.1` points to the distro multiarch library;
+the library, link and ancestors are not worker-writable. The image never sets
+ambient `LD_PRELOAD`. Trial callers supply this same path to direct Daimon
+clocked tool children; the brokered worker's pinned shell policy supplies it
+only to native shell children.
+
+Provisioning creates `/run/daimon-engine-broker/task-clock` as `0:0 0755`,
+each `slot-<n>` directory as `2100:2100 0755`, and its `faketime` file as `2100:2100 0644`, initially `+0\n`. The broker
+publishes the turn's signed offset atomically before launch, or `+0` for an
+unclocked turn. Every registration has its own clock directory; leased slots may overlap.
+The pinned `daimon-strict` profile inherits read-only directory mounts for
+`/run` and `/usr`; the entire clock directory and resolved distro library stay
+visible, with no file-only bind and no deny mask over them. The three control,
+backend and launcher sockets are individually denied. Root creates broker-owned
+`0600` Unix socket nodes before the shared deny-path assertions. They remain
+through Daimon's startup attestation, which precedes backend listen; each
+listener replaces its own node and readiness requires a changed socket identity.
+Bubblewrap materializes deny targets as the worker UID, and Daimon's backend
+refuses a regular file where its socket belongs.
+
+Slot preflight checks the actual installed config digest, clock owners/modes,
+library identity, worker readability and denied writes. Its unchanged
+`grok-slot-preflight.v2` receipt binds projection v3, including
+`workerConfigVariant: "clocked"`, `workerConfigSha256` and `taskClock`.
+Paideia must request that same variant when recomputing the projection and use
+control protocol v4; an old projection or protocol is refused. Shared startup
+reclaims the clock subtree before clearing the broker root and recreates `+0`.
+
+Before release, a Linux slot must prove a nonzero offset (including fractional
+seconds) under the actual Grok sandbox, denied clock writes/unlinks/replacement,
+fresh reads after broker rename, and reset to real time with `+0`. Verify the
+broker/native environment and monotonic deadlines remain real. These checks
+need Docker/Linux and do not follow from rendering or mode tests alone.
+
 | Process | uid | Capability bounding set | Where it comes from |
 | --- | --- | --- | --- |
 | container | 0 | `CHOWN,SETUID,SETGID,SETPCAP,KILL,DAC_READ_SEARCH` | `docker create` (`no-new-privileges`, read-only root, pids 2048) |

@@ -78,12 +78,12 @@ describe("four independent training slots", () => {
     expect(JSON.parse(serviceLine.slice("const service = ".length, -1)).maxRunRequests).toBe(17);
     expect(JSON.parse(serviceLine.slice("const service = ".length, -1)).runRequestStore).toBe(TRAINING_RUN_REQUEST_STORE);
     const start = script.indexOf("node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'");
-    const end = script.indexOf("\nSPAWNFILE_DAIMON_BROKER_PROVISION");
     for (const socket of TRAINING_BROKER_SOCKET_PATHS) {
-      expect(script.indexOf(`touch '${socket}'`)).toBeGreaterThanOrEqual(0);
-      expect(script.indexOf(`touch '${socket}'`)).toBeLessThan(start);
-      expect(script.indexOf(`rm '${socket}'`)).toBeGreaterThan(end);
+      expect(script).toContain(JSON.stringify(socket));
+      expect(script).not.toContain(`touch '${socket}'`);
+      expect(script).not.toContain(`rm '${socket}'`);
     }
+    expect(script).toContain('unsafe broker socket placeholder');
     for (const p of trainingSlotDescriptors()) {
       expect(script.indexOf(`mkdir -p '${p.clockDirectory}'`)).toBeGreaterThanOrEqual(0);
       expect(script.indexOf(`mkdir -p '${p.clockDirectory}'`)).toBeLessThan(start);

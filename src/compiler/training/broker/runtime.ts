@@ -10,6 +10,7 @@ import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRend
 import type { TrainingBrokerDeclaration } from "./declaration.js";
 import { MOUNT_AWARE_CLEAR_HELPER } from "../../containerDaimonBrokerRender.js";
 import { probeTrainingSiblingClock } from "./clockProbe.js";
+import { renderTrainingTaskClockAssertions } from "./taskClock.js";
 import { renderTrainingSlotProvisioning } from "./provisioning.js";
 import { buildTrainingSlotReceipt, readGrokExecutableSha256, resolveTrainingCanaries } from "./receipt.js";
 import type { TrainingSlotRuntime } from "./supervisor.js";
@@ -69,12 +70,15 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
       });
       if (result.stdout.trim()) log(`provisioning: ${result.stdout.trim().slice(-2048)}`);
     },
-    canaries: async () => resolveTrainingCanaries({
+    canaries: async () => {
+      await run(shell, ["--noprofile", "--norc", "-ceu", renderTrainingTaskClockAssertions(options.registration).join("\n")]);
+      return resolveTrainingCanaries({
       denyPaths: options.registration.denyPaths, probe, log, hostBindPaths: TRAINING_HOST_BIND_DENY_PATHS,
       sealedPaths: TRAINING_SEALED_DENY_PATHS,
       mountinfo: await readFile(`${options.procRoot ?? "/proc"}/self/mountinfo`, "utf8"),
       unenforcedBindPolicy: options.declaration.unenforcedBindPolicy
-    }),
+      });
+    },
     nextGeneration: async () => {
       const previous = await readFile(p.generationFile, "utf8").catch(() => "");
       const parsed = Number.parseInt((JSON.parse(previous || "{}") as { generation?: unknown }).generation as string ?? "0", 10);

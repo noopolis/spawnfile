@@ -1,4 +1,5 @@
 import path from "node:path";
+import { renderTrainingTaskClockReset } from "./taskClock.js";
 
 import { DAIMON_GROK_SECCOMP_PROFILE_SHA256 } from "../../../shared/daimonGrokSeccompProfile.js";
 import { DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
@@ -119,14 +120,13 @@ export const renderTrainingBrokerProvisioning = (input: DaimonGrokRegistration |
   const directories = [...new Map(registrations.flatMap(r => trainingSlotDirectories(r.slot)).map(d => [d.path, d])).values()];
   return [
     ...renderTrainingIdentities(registrations.length),
+    ...renderTrainingTaskClockReset(),
     ...renderDirectories(directories, [...registrations.map(r => r.usageLedgerPath), TRAINING_INFERENCE_LEDGER]),
     ...renderDaimonGrokHostPreflight(),
     ...renderDaimonBrokerProvisioningProgram(registrations, [], {
       version: "v3", maxRunRequests, runRequestStore: TRAINING_RUN_REQUEST_STORE,
       turnStore: TRAINING_TURN_STORE_ROOT, inferenceLedgerPath: TRAINING_INFERENCE_LEDGER
     }, "clear", TRAINING_OPTIONAL_DENY_DIRECTORIES, TRAINING_BROKER_TMPDIR, [
-      // Placeholders exist for deny placement only; service startup must see absent socket paths.
-      ...TRAINING_BROKER_SOCKET_PATHS.map(socket => `touch ${quote(socket)}; chmod 000 ${quote(socket)}`),
       `mkdir -p ${quote(DAIMON_GROK_ENGINE_BROKER.worker.taskClock.rootDirectoryPath)}; chmod 0755 ${quote(DAIMON_GROK_ENGINE_BROKER.worker.taskClock.rootDirectoryPath)}`,
       ...registrations.flatMap(r => {
         const p = trainingSlotPaths(r.slot);
@@ -137,7 +137,6 @@ export const renderTrainingBrokerProvisioning = (input: DaimonGrokRegistration |
         ];
       })
     ]),
-    ...TRAINING_BROKER_SOCKET_PATHS.map(socket => `rm ${quote(socket)}`),
     `chmod 0550 /etc/daimon-engine-broker; chown 0:${DAIMON_BROKER_UID} /etc/daimon-engine-broker`,
     ...registrations.flatMap(r => [...renderSlotAssertions(r), ...renderTrainingSealedInputsAssertions(r.uid, r.privateTmp)])
   ];

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   createPublishedDaimonCapabilityReceipt,
@@ -23,6 +25,15 @@ test("checked-in publish inputs pin a full Daimon commit, both architectures, an
   assert.equal(`${inputs.registry}/${inputs.image}`, "docker.io/noopolis/spawnfile-runtime-daimon");
   assert.equal(resolvePublishedTag(inputs), `${inputs.daimon.package_version}-${inputs.daimon.commit.slice(0, 7)}`);
   assert.notEqual(resolvePublishedTag(inputs), "latest");
+});
+
+test("Daimon Dockerfile manifest literals accept the vendored contract", () => {
+  const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
+  const validators = [...dockerfile.matchAll(/node -e '([^'\n]+)' \$\{RUNTIME_ROOT\}\/contract-manifest\.json/gu)];
+  assert.equal(validators.length, 1, "expected the Dockerfile's manifest validator");
+  const manifestPath = fileURLToPath(new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url));
+  // Run the actual image-build guard: its version and every other literal must match the vendored bytes.
+  execFileSync(process.execPath, ["--input-type=commonjs", "-e", validators[0]![1]!, manifestPath], { timeout: 5_000 });
 });
 
 test("publish inputs reject floating or credential-bearing pins", () => {

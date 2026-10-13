@@ -59,9 +59,12 @@ it("stages COPY content with the modes the former chmod 0555 train/train-broker 
   expect(await modes(candidate)).toEqual(expected);
   // Documented expectation: directories 0755, readable files 0644, executables 0755, train/train-broker 0555.
   expect(expected).toMatchObject({ bridge: "755", "bridge/pkg": "755", "bridge/requirements.lock": "644", "bridge/pkg/run.sh": "755",
-    "integration/entry.ts": "444", "integration/bin/partial": "555", "train-broker": "555", train: "555", sticky: "2755", "sticky/file": "4755" });
+    "integration/entry.ts": "444", "integration/bin/partial": "555", "train-broker": "555", train: "555" });
   expect((await lstat(path.join(candidate, "bridge/pkg/tool.py"))).mtime).toEqual(TRAINING_CONTEXT_MTIME);
   expect(readableClosure(0o600, false)).toBe(0o644);
+  // The OS may clear special bits during chmod; the real chmod comparison above owns that parity.
+  expect(readableClosure(0o2700, true)).toBe(0o2755);
+  expect(readableClosure(0o4700, false)).toBe(0o4755);
 });
 
 it("hands Docker a normalized context and never runs a layer after the distribution copies", async () => {
@@ -99,6 +102,7 @@ it("hands Docker a normalized context and never runs a layer after the distribut
     "spawnfile/package.json", "spawnfile/runtimes.yaml", "train", "train-broker"]);
   expect(instructions.filter(line => line.startsWith("COPY --from"))).toHaveLength(2);
   expect(dockerfile.match(/ln -s \S+ \S+/gu)).toEqual([
+    'ln -s "$library" /usr/local/lib/daimon/libfaketime.so.1',
     "ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon node_modules/@noopolis/daimon",
     "ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude",
     "ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia",

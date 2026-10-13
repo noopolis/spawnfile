@@ -70,6 +70,13 @@ samples). The manifest also pins Grok CLI 1.0.34 (URL + sha256 per
 architecture), which the runtime image, the local builder, and generated
 organization images all verify.
 
+Manifest v5 carries a separate clocked config matrix, slot-routed control protocol v4
+and projection v3. Training explicitly selects `clocked`; the default production
+matrix is byte-identical. Re-vendoring changes the whole-manifest authority:
+the old published pin must fail compilation until publication and re-pinning,
+even for an unclocked organization. Never weaken the image or schedule/attention
+receipt gates to bridge that release gap.
+
 `wakeMoments.ts` mirrors the optional data-only wake recording capability;
 `contractManifest.ts` requires it and `agents[].recording` together. Its presence
 in the receipt-bound manifest, never a version guess, permits recording.

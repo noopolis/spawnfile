@@ -5,7 +5,9 @@ import { assertControlRecipe, assertNewRecipe, CONTROL_CLOSURE, deriveControlRec
 
 const row = (entry: string, mode = "755", type = "d", target = "") => `${entry}\t${mode}\troot\troot\t${type}\t${target}`;
 const base = [row("/opt/training"), row("/opt/training/paideia/bridges/dspy/.venv"), row("/opt/training/bin/grok", "555", "f"),
-  row("/opt/training/bin/claude", "777", "l", "/opt/training/claude/node_modules/.bin/claude")];
+  row("/opt/training/bin/claude", "777", "l", "/opt/training/claude/node_modules/.bin/claude"),
+  row("/usr/local/lib/daimon"), row("/usr/local/lib/daimon/libfaketime.so.1", "777", "l", "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1"),
+  row("/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1", "644", "f")];
 
 test("identical listings in any order compare equal", () => {
   assert.equal(identicalModes(diffModeListings(base.join("\n"), [...base].reverse().join("\n") + "\n")), true);
@@ -23,7 +25,7 @@ test("mode, owner, type and link target drift are each reported", () => {
 });
 
 test("entries present on only one side are reported", () => {
-  const diff = diffModeListings([...base, row("/opt/training/extra", "644", "f")].join("\n"), base.slice(0, 3).join("\n"));
+  const diff = diffModeListings([...base, row("/opt/training/extra", "644", "f")].join("\n"), base.filter((_entry, index) => index !== 3).join("\n"));
   assert.deepEqual(diff.onlyNew, ["/opt/training/bin/claude", "/opt/training/extra"]);
   assert.deepEqual(diff.onlyControl, []);
 });
@@ -62,4 +64,28 @@ test("derives a control recipe that reapplies the whole-tree closure this recipe
   assert.ok(control.indexOf("\nRUN chmod 0555 ") > control.lastIndexOf("\nCOPY "));
   assert.ok(control.lastIndexOf(CONTROL_CLOSURE) > control.lastIndexOf("\nCOPY "));
   assert.throws(() => deriveControlRecipe(control), /no change-only a\+rX closure/u);
+});
+
+test("requires a real, root-owned, non-writable distro clock library on either architecture", () => {
+  const listing = base.join("\n");
+  for (const arch of ["x86_64", "aarch64"]) {
+    const selected = listing.replaceAll("x86_64", arch);
+    assert.equal(identicalModes(diffModeListings(selected, selected)), true);
+  }
+  assert.throws(() => diffModeListings(base.slice(0, -1).join("\n"), listing), /missing task clock library/u);
+  assert.throws(() => diffModeListings(listing.replace("\t644\troot", "\t666\troot"), listing), /unsafe.*task clock library/u);
+  assert.throws(() => diffModeListings(listing.replace("\t777\troot\troot\tl\t/usr/lib", "\t777\tworker\troot\tl\t/usr/lib"), listing), /unsafe task clock symlink/u);
+});
+
+test("installs the pinned Bookworm clock library and fixed symlink before context-dependent layers", async () => {
+  const recipe = await readFile(new URL("../runtime-images/training/Dockerfile", import.meta.url), "utf8");
+  assert.match(recipe, /test "\$VERSION_CODENAME" = bookworm/u);
+  assert.match(recipe, /apt-get install --yes --no-install-recommends libfaketime=0\.9\.10-2\.1/u);
+  assert.match(recipe, /dpkg-query -L libfaketime/u);
+  assert.match(recipe, /test -f "\$library"/u);
+  assert.match(recipe, /install -d -o root -g root -m 0755 \/usr\/local\/lib\/daimon/u);
+  assert.match(recipe, /ln -s "\$library" \/usr\/local\/lib\/daimon\/libfaketime\.so\.1/u);
+  assert.match(recipe, /chown -h root:root \/usr\/local\/lib\/daimon\/libfaketime\.so\.1/u);
+  assert.ok(recipe.indexOf("libfaketime=0.9.10-2.1") < recipe.indexOf("COPY claude/"));
+  assert.doesNotMatch(recipe, /^ENV (?:LD_PRELOAD|FAKETIME)/mu);
 });

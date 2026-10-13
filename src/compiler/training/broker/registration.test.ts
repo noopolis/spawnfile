@@ -53,7 +53,8 @@ describe("training Grok slot registration", () => {
   });
 
   it("refuses masks over its clock or preload library", () => {
-    for (const denied of [trainingSlotPaths(0).clockDirectory, "/run/daimon-engine-broker/task-clock", "/usr/local/lib/daimon"]) {
+    for (const denied of [trainingSlotPaths(0).clockDirectory, "/run/daimon-engine-broker/task-clock", "/usr/local/lib/daimon",
+      "/usr/lib/x86_64-linux-gnu/faketime", "/usr/lib/aarch64-linux-gnu/faketime"]) {
       expect(() => resolveTrainingGrokDenyPaths([denied])).toThrow(/task clock/);
     }
   });
