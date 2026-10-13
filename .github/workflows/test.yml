@@ -9,6 +9,30 @@ permissions:
   contents: read
 
 jobs:
+  commit-message:
+    name: Commit messages and author allowlist
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out pull request head with full history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Check every pull request commit before install
+        run: node .github/scripts/ci/commit-message.mts --range "origin/$GITHUB_BASE_REF..HEAD"
+      - name: Test commit policy
+        run: |
+          mkdir -p .tmp-commit-check
+          TMPDIR="$PWD/.tmp-commit-check" node --test .github/scripts/ci/commit-message.test.mts
+
   root:
     name: compiler + runtime tests
     timeout-minutes: 30
