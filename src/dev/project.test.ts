@@ -39,7 +39,7 @@ const createTempDirectory = async (prefix: string): Promise<string> => {
 
 const createFakeMoltnetCli = async (): Promise<string> => {
   const directory = await createTempDirectory("spawnfile-dev-moltnet-");
-  const cliPath = path.join(directory, "moltnet");
+  const cliPath = path.join(directory, "moltnet.cjs");
   await writeUtf8File(
     cliPath,
     [

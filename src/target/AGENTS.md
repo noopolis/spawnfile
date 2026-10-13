@@ -100,6 +100,8 @@
   zero blocks, and no trailing data or malformed extensions.
 - `index.ts` is the public barrel for this boundary.
 - Tests prove hostile input rejection and exact public serialization.
+- Private target selection and command execution accept configured executable paths
+  up to 1,024 UTF-8 bytes, matching the CLI configuration limit.
 
 Keep this public boundary independent of Docker, CLI, runtime, organization, world, and
 simulation behavior. Public values are bounded identifiers, canonical digests,

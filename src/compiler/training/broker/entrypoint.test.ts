@@ -7,13 +7,14 @@ import { trainingBrokerMounts, trainingBrokerTmpfsTargets } from "../container/s
 import { assertNotDesktopGrokAuth, trainingChildArgv, TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV, TRAINING_GROK_GRANT_HOME_ROOT_ENV } from "./entrypoint.js";
 import { parseTrainingBrokerDeclaration } from "./declaration.js";
 import { brokerProcessPlan } from "./processes.js";
-import { TRAINING_REALM_MOUNT, TRAINING_SLOT_ROOT } from "./paths.js";
+import { TRAINING_REALM_MOUNT, trainingSlotPaths, trainingEvaluatorPaths, trainingWipeTargets, trainingClearTargets } from "./paths.js";
 
 const declaration = (overrides: Record<string, unknown> = {}) => parseTrainingBrokerDeclaration({
-  version: "spawnfile.training-broker.v1", engine: "grok", agentId: "agent:author", model: "grok-4.6",
+  version: "spawnfile.training-broker.v2", engine: "grok", agentId: "agent:author", model: "grok-4.6",
   reasoningEffort: "low", architecture: "arm64", limits: { maxRequests: 32, maxTokens: 300_000, timeoutMs: 240_000 },
   bootstrap: "/var/lib/spawnfile/daimon/grok-bootstrap-auth", organizationUid: 2000, seccompProfileSha256: "f".repeat(64), ...overrides
 });
+
 
 describe("training broker declaration", () => {
   it("defaults to refusing a deny path on a filesystem that ignores unix ownership", () => {
@@ -76,3 +77,5 @@ describe("training container privilege model", () => {
     expect(TRAINING_GROK_GRANT_HOME_ROOT_ENV).toBe("PAIDEIA_GROK_GRANT_HOME_ROOT");
   });
 });
+
+const { root: TRAINING_SLOT_ROOT } = trainingSlotPaths(0);

@@ -61,7 +61,7 @@
     "test:product-state-volume": "node --experimental-strip-types scripts/product-state-volume-integration.test.ts",
     "test:boundaries": "vitest run --coverage.enabled=false src/ownership/rootOwnershipBoundary.test.ts src/deployment/providerRuntimeBoundary.test.ts src/ownership/mnemePublicImportBoundary.test.ts src/target/containerBundleArchive.test.ts",
     "test:causal-conformance": "tsx src/ledger/causalConformanceCli.ts",
-    "typecheck": "tsc --project tsconfig.json --noEmit && tsc --project scripts/tsconfig.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit && tsc --project scripts/tsconfig.json && tsc --project .github/scripts/ci/tsconfig.json",
     "test:e2e:distribution-image": "tsx src/e2e/cli.ts distribution-image",
     "test:e2e:distribution-roundtrip": "tsx src/e2e/cli.ts distribution-roundtrip",
     "test:e2e:daimon-org": "tsx src/e2e/cli.ts daimon-org",

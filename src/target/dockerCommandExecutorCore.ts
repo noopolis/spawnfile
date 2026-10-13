@@ -76,7 +76,7 @@ const validate: (
   args: unknown,
   options: unknown
 ) => asserts options is DockerCommandCoreOptions = (file, args, options) => {
-  if (typeof file !== "string" || file.length < 1 || file.length > 128 || file.includes("\0")
+  if (typeof file !== "string" || file.length < 1 || Buffer.byteLength(file, "utf8") > 1_024 || file.includes("\0")
     || Buffer.from(file, "utf8").toString("utf8") !== file
     || !Array.isArray(args) || nodeTypes.isProxy(args)
     || Object.getPrototypeOf(args) !== Array.prototype || args.length > 1_024

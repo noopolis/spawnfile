@@ -13,6 +13,25 @@ const endpoint = "ssh://deploy@example.com";
 const executor = (stdout = JSON.stringify(endpoint)): DockerTargetExecFile => async () => ({ stderr: "", stdout });
 
 describe("selectTarget", () => {
+  it("accepts configured executable paths up to 1024 UTF-8 bytes and rejects invalid commands before execution", async () => {
+    const calls: string[] = [];
+    const execFile: DockerTargetExecFile = async (file) => {
+      calls.push(file);
+      return { stderr: "", stdout: JSON.stringify(endpoint) };
+    };
+    const dockerCommand = `/${"é".repeat(511)}x`;
+    expect(Buffer.byteLength(dockerCommand, "utf8")).toBe(1_024);
+    await expect(selectTarget({ context, dockerCommand, execFile })).resolves.toMatchObject({
+      fingerprint: createEndpointFingerprint(endpoint)
+    });
+    for (const invalid of ["", `${dockerCommand}x`, `/${"é".repeat(512)}`, "docker\0private"]) {
+      await expect(selectTarget({ context, dockerCommand: invalid, execFile })).rejects.toMatchObject({
+        code: "runtime_error", message: "Target selection failed"
+      });
+    }
+    expect(calls).toEqual([dockerCommand]);
+  });
+
   it("inspects exactly one named context and returns a strict secret-free receipt", async () => {
     const calls: Array<[string, string[], { signal?: AbortSignal; timeout: number }]> = [];
     const receipt = await selectTarget({

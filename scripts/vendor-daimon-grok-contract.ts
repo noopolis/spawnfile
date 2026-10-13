@@ -25,7 +25,7 @@ export const PROFILE_SAMPLE_DENY_PATHS: readonly (readonly string[])[] = [
 
 type DaimonModules = {
   contractManifestArtifacts: () => { digest: Buffer; manifest: Buffer };
-  renderGrokBrokerWorkerConfig: (policy: { model: string; reasoningEffort: string }, variant?: "unclocked" | "clocked") => string;
+  renderGrokBrokerWorkerConfig: (policy: { model: string; reasoningEffort: string }, variant?: "unclocked" | "clocked", slot?: number) => string;
   renderGrokWorkerSandboxProfile: (denyPaths: readonly string[]) => string;
 };
 
@@ -46,8 +46,8 @@ const loadDaimon = async (daimonDirectory: string): Promise<DaimonModules> => {
 export const renderVendoredWorkerModule = (daimon: Pick<DaimonModules, "renderGrokBrokerWorkerConfig" | "renderGrokWorkerSandboxProfile">): string => {
   const configs = Object.fromEntries(models.map((model) => [model, Object.fromEntries(efforts.map((reasoningEffort) =>
     [reasoningEffort, daimon.renderGrokBrokerWorkerConfig({ model, reasoningEffort })]))]));
-  const clockedConfigs = Object.fromEntries(models.map((model) => [model, Object.fromEntries(efforts.map((reasoningEffort) =>
-    [reasoningEffort, daimon.renderGrokBrokerWorkerConfig({ model, reasoningEffort }, "clocked")]))]));
+  const clocked = Object.fromEntries(models.map((model) => [model, Object.fromEntries(efforts.map((reasoningEffort) =>
+    [reasoningEffort, daimon.renderGrokBrokerWorkerConfig({ model, reasoningEffort }, "clocked", 0)]))]));
   const samples = PROFILE_SAMPLE_DENY_PATHS.map((denyPaths) => ({ bytes: daimon.renderGrokWorkerSandboxProfile(denyPaths), denyPaths }));
   return [
     "/* v8 ignore file -- generated data module */",
@@ -56,8 +56,7 @@ export const renderVendoredWorkerModule = (daimon: Pick<DaimonModules, "renderGr
     "/** Daimon `renderGrokBrokerWorkerConfig({ model, reasoningEffort })` bytes, verified against the manifest pins on use. */",
     `export const DAIMON_GROK_WORKER_CONFIG_BYTES = ${JSON.stringify(configs, null, 2)} as const;`,
     "",
-    "/** Daimon's additional clocked variant; production keeps the default bytes above. */",
-    `export const DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES = ${JSON.stringify(clockedConfigs, null, 2)} as const;`,
+    `export const DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES = ${JSON.stringify(clocked, null, 2)} as const;`,
     "",
     "/** Daimon `renderGrokWorkerSandboxProfile(denyPaths)` samples; the Spawnfile mirror must reproduce them byte for byte. */",
     `export const DAIMON_GROK_WORKER_PROFILE_SAMPLES = ${JSON.stringify(samples, null, 2)} as const;`,

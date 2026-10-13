@@ -715,7 +715,7 @@ Each process MUST have exactly one offset owner. These pure helpers replace
 | `harnessTaskClockEnvironment` | Top-level agent harness (Daimon), with an unshifted process clock | Only `NOOPOLIS_TASK_CLOCK`: compact JSON `{"version":"noopolis.task-clock.v1","origin":"<ISO Z>","anchorEpochMs":<int>}` |
 | `processClockEnvironment` | Child/tool process under libfaketime | Only `FAKETIME`: signed relative seconds `(originEpochMs - anchorEpochMs) / 1000`, and `FAKETIME_DONT_FAKE_MONOTONIC=1` |
 | `clockAwareEnvironment` | Clock-aware child (such as Mneme) without libfaketime | Only `MNEME_CLOCK_ORIGIN`: normalized origin, and `MNEME_CLOCK_ANCHOR_MS`: decimal anchor milliseconds |
-| Daimon broker `start_turn.processClock` | Brokered Grok in a clocked training slot | Signed relative seconds over control protocol v3; the broker atomically publishes the offset to `/run/daimon-engine-broker/task-clock/faketime` before launch. The pinned clocked shell policy supplies `LD_PRELOAD=/usr/local/lib/daimon/libfaketime.so.1`, `FAKETIME_TIMESTAMP_FILE`, `FAKETIME_DONT_FAKE_MONOTONIC=1` and `LC_ALL=C`. |
+| Daimon broker `start_turn.processClock` | Brokered Grok in a clocked training slot | Signed relative seconds over control protocol v4; the broker atomically publishes the offset to `/run/daimon-engine-broker/task-clock/slot-<n>/faketime` before launch. The pinned clocked shell policy supplies `LD_PRELOAD=/usr/local/lib/daimon/libfaketime.so.1`, `FAKETIME_TIMESTAMP_FILE`, `FAKETIME_DONT_FAKE_MONOTONIC=1` and `LC_ALL=C`. |
 
 Daimon consumes the top-level contract and derives each child's environment itself.
 Trial preparation supplies the installed libfaketime path through `LD_PRELOAD` for
@@ -729,7 +729,8 @@ harness MUST NOT itself run under libfaketime or receive the Mneme offset variab
 The training image installs the fixed preload path above for both direct Daimon
 tool children and brokered Grok shells. Brokered training uses the manifest's
 separate `clockedConfigSha256` matrix, never modified production bytes. A clocked
-training container MUST have exactly one registration; turns cannot overlap.
+training container MUST isolate each registration's clock directory; turns in
+different leased slots may overlap.
 An unclocked turn in that slot resets the file to `+0` before launch. The clock
 directory is broker-owned and readable through the worker's read-only `/run`
 directory mount; a file-only bind would retain a stale inode after publication.

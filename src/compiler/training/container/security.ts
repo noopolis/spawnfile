@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   DAIMON_DOCKER_RUNTIME_SECURITY_ARGS,
   materializeDaimonGrokSeccompProfile
@@ -10,30 +11,41 @@ import {
   TRAINING_GRANT_HOME_ROOT,
   TRAINING_INFERENCE_DIRECTORY,
   TRAINING_PAIDEIA_ROOT,
-  TRAINING_SLOT_ROOT,
+  trainingSlotDescriptors,
+  TRAINING_TURN_STORE_ROOT,
+  TRAINING_RUN_REQUEST_STORE,
   TRAINING_SUPERVISOR_DIRECTORY,
   TRAINING_WORKER_ROOT
 } from "../broker/paths.js";
 
 export const TRAINING_BROKER_ENTRYPOINT = "/opt/training/bin/train-broker";
 
+/** Same output directory is the same resumable run; different outputs never share a counter. */
+export const trainingRunRequestMount = (outputSource: string, args: readonly string[]): string => {
+  const index = args.indexOf("--out"), output = args[index + 1];
+  if (index < 0 || !output || args.lastIndexOf("--out") !== index) throw Error("Brokered training requires one --out directory");
+  const identity = createHash("sha256").update(JSON.stringify([outputSource, output])).digest("hex");
+  return `type=volume,src=spawnfile-training-budget-${identity},dst=${TRAINING_RUN_REQUEST_STORE}`;
+};
+
 /**
- * Writable state of a broker-capable training container, all on tmpfs.
+ * Disposable state of a broker-capable training container, all on tmpfs.
  *
  * The image root stays read-only and nothing here is a host bind, so a trial's
  * worker home, workspace, turn store, wake-acceptance store and ledgers are
  * on a filesystem that enforces unix ownership — which is what lets the slot
  * supervisor's worker-uid canaries mean anything (P0 §5: a host bind under
  * Docker Desktop or Colima silently ignores `chown`). The Grok realm is the
- * one durable mount, and it is a named volume, not a bind.
+ * credential mount. The run request counter has its own persistent named volume.
  */
-export const trainingBrokerTmpfsTargets = (): readonly { path: string; size: string; mode: string }[] => [
+export const trainingBrokerTmpfsTargets = (slots = 4): readonly { path: string; size: string; mode: string }[] => [
   { path: "/tmp", size: "1g", mode: "1777" },
   { path: "/var/tmp", size: "256m", mode: "1777" },
   { path: "/work", size: "4g", mode: "0755" },
   { path: "/home/training", size: "1g", mode: "0755" },
   { path: TRAINING_PAIDEIA_ROOT, size: "64m", mode: "0755" },
-  { path: TRAINING_SLOT_ROOT, size: "4g", mode: "0755" },
+  ...trainingSlotDescriptors(slots).map(p => ({ path: p.root, size: "4g", mode: "0711" })),
+  { path: TRAINING_TURN_STORE_ROOT, size: "256m", mode: "0700" },
   { path: TRAINING_GRANT_HOME_ROOT, size: "64m", mode: "0755" },
   { path: TRAINING_INFERENCE_DIRECTORY, size: "64m", mode: "0755" },
   { path: TRAINING_SUPERVISOR_DIRECTORY, size: "16m", mode: "0755" },

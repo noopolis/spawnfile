@@ -72,7 +72,8 @@ const isDockerContextEndpoint = (endpoint: string): boolean =>
 
 const selectTargetOptions = (input: SelectTargetOptions): Required<Pick<ResolveDockerDeploymentTargetOptions, "dockerCommand" | "execFile" | "timeoutMs">>
   & Pick<ResolveDockerDeploymentTargetOptions, "signal"> => {
-  if (input.dockerCommand !== undefined && (typeof input.dockerCommand !== "string" || input.dockerCommand.length === 0 || input.dockerCommand.length > 128)) {
+  if (input.dockerCommand !== undefined && (typeof input.dockerCommand !== "string" || input.dockerCommand.length === 0
+    || input.dockerCommand.includes("\0") || Buffer.byteLength(input.dockerCommand, "utf8") > 1_024)) {
     return selectionFailure("validation_error");
   }
   if (input.timeoutMs !== undefined && (typeof input.timeoutMs !== "number" || !Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 120_000)) {

@@ -25,8 +25,19 @@ describe("training task clock preflight", () => {
       ["test -x", clock.directoryPath], ["test ! -w", clock.directoryPath], ["test -r", clock.preloadPath]]) {
       expect(probe).toContain(`${verb} '"'"'${target}'"'"'`);
     }
-    expect(() => renderTrainingTaskClockAssertions({ ...slot, workerConfigVariant: "unclocked" })).toThrow(/pinned clocked/u);
+    expect(() => renderTrainingTaskClockAssertions({ ...slot, configVariant: "unclocked" })).toThrow(/pinned clocked/u);
     expect(() => renderTrainingTaskClockAssertions({ ...slot, configSha256: "a".repeat(64) })).toThrow(/pinned clocked/u);
+  });
+
+  it("checks a nonzero slot's specialized config and clock without touching siblings", () => {
+    const selected = resolveTrainingGrokRegistration({ agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low", slot: 3, slots: 4 });
+    const script = renderTrainingTaskClockAssertions(selected).join("\n");
+    execFileSync("/bin/bash", ["-n"], { input: script });
+    expect(script).toContain("/task-clock/slot-3/faketime");
+    expect(script).toContain("--reuid 2203 --regid 2203");
+    expect(script).toContain(selected.configSha256);
+    expect(script).not.toContain("/task-clock/slot-0");
+    expect(() => renderTrainingTaskClockAssertions({ ...selected, configSha256: slot.configSha256 })).toThrow(/pinned clocked/u);
   });
 
   it("rejects a wrong-type, writable, or worker-owned distro library or ancestor", () => {

@@ -6,6 +6,25 @@ validates declarations, mounts explicit inputs, forwards output and supervises
 container termination. No Docker socket enters the container. Dry-run remains a
 host-only estimate and does not use Docker or model authentication.
 
+Brokered training uses `spawnfile.training-container.v4` with `slots` from 1 to 8
+(default 4). Paideia optimization defaults to the provisioned descriptor count; an
+explicit smaller `--concurrency` is allowed. The launcher does not inject this flag,
+so authored comparisons retain serial execution. Every lease has separate worker identity, workspace, homes,
+state, ledgers and a 100-port block. The integration must use its leased paths and
+ports when preparing its Moltnet instance and native launch.
+
+`broker.maxRunRequests` defaults to 1000 and caps all upstream Grok attempts across
+subjects, judges and optimizer grants, including credential retries. The broker
+persists reservations before forwarding. Its counter lives on the named volume
+`spawnfile-training-budget-<sha256>` derived from the canonical host output mount
+and mapped `--out` directory. Container cleanup retains this volume so `--resume`
+cannot reset the cap; each new run uses a fresh output directory. Changing the cap
+for an existing journal is refused. Remove the budget volume only when retiring
+that run and its checkpoints. Slot state remains tmpfs and credentials stay on their
+separate realm volume. The launcher sets `PAIDEIA_MODEL_REQUEST_CAP=broker`;
+Paideia rejects non-broker inference routes (including fallbacks and legacy
+defaults) and native graders in capped runs before constructing their providers.
+
 ## Launch contract
 
 The advanced v1 path requires both `--training-image` (a digest reference or immutable
@@ -280,7 +299,7 @@ one Grok credential in the container.
 
 ### Privilege table
 
-The v3 slot always selects Daimon's manifest-v4 clocked worker config. The image
+The v4 slots select Daimon's manifest-v5 clocked worker configs. The image
 requires Debian Bookworm parents and installs `libfaketime=0.9.10-2.1` before any
 context-dependent layer. Its root-owned architecture-neutral symlink
 `/usr/local/lib/daimon/libfaketime.so.1` points to the distro multiarch library;
@@ -289,10 +308,10 @@ ambient `LD_PRELOAD`. Trial callers supply this same path to direct Daimon
 clocked tool children; the brokered worker's pinned shell policy supplies it
 only to native shell children.
 
-Provisioning creates `/run/daimon-engine-broker/task-clock` as `2100:2100 0755`
-and its `faketime` file as `2100:2100 0644`, initially `+0\n`. The broker
+Provisioning creates `/run/daimon-engine-broker/task-clock` as `0:0 0755`,
+each `slot-<n>` directory as `2100:2100 0755`, and its `faketime` file as `2100:2100 0644`, initially `+0\n`. The broker
 publishes the turn's signed offset atomically before launch, or `+0` for an
-unclocked turn. Exactly one registration may use a clock-enabled container.
+unclocked turn. Every registration has its own clock directory; leased slots may overlap.
 The pinned `daimon-strict` profile inherits read-only directory mounts for
 `/run` and `/usr`; the entire clock directory and resolved distro library stay
 visible, with no file-only bind and no deny mask over them. The three control,
@@ -305,10 +324,10 @@ refuses a regular file where its socket belongs.
 
 Slot preflight checks the actual installed config digest, clock owners/modes,
 library identity, worker readability and denied writes. Its unchanged
-`grok-slot-preflight.v2` receipt binds projection v2, including
+`grok-slot-preflight.v2` receipt binds projection v3, including
 `workerConfigVariant: "clocked"`, `workerConfigSha256` and `taskClock`.
 Paideia must request that same variant when recomputing the projection and use
-control protocol v3; an old projection or protocol is refused. Each recycle
+control protocol v4; an old projection or protocol is refused. Shared startup
 reclaims the clock subtree before clearing the broker root and recreates `+0`.
 
 Before release, a Linux slot must prove a nonzero offset (including fractional

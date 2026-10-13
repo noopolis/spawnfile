@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { listCommittedTree, listIndex, readStableSnapshot, readStatus, readStatusAgainstHead, resolveGitLocation, streamBlobs } from "./workspaceBundleGit.js";
 
@@ -23,7 +23,7 @@ describe("workspace bundle git queries", () => {
     await git(repo, "add", ".");
     await git(repo, "commit", "-qm", "init");
   });
-  afterEach(async () => { await rm(repo, { force: true, recursive: true }); });
+  afterEach(async () => { vi.unstubAllEnvs(); await rm(repo, { force: true, recursive: true }); });
 
   it("lists the committed tree, index, untracked files and status relative to a subdirectory", async () => {
     const tools = path.join(repo, "tools");
@@ -34,7 +34,11 @@ describe("workspace bundle git queries", () => {
     await writeFile(path.join(tools, "new.txt"), "new");
     await writeFile(path.join(tools, "a.txt"), "changed");
     expect(await readStatus(tools)).toEqual([{ index: " ", path: "tools/a.txt", worktree: "M" }, { index: "?", path: "tools/new.txt", worktree: "?" }]);
-    await expect(resolveGitLocation(os.tmpdir())).rejects.toThrow(/git query failed/u);
+    const nonRepository = path.join(repo, "non-repository");
+    await mkdir(nonRepository);
+    // TMPDIR can be inside the checkout; stop Git before it discovers a parent repository.
+    vi.stubEnv("GIT_CEILING_DIRECTORIES", await realpath(repo));
+    await expect(resolveGitLocation(nonRepository)).rejects.toThrow(/git query failed/u);
   });
 
   it("streams blob contents in order, including empty and multi-chunk blobs", async () => {
