@@ -9,6 +9,7 @@ import { runValidate } from './validate.js';
 import { runCalibrate } from './calibrate.js';
 import { runExpand, runGrade } from './grade.js';
 import type { GraderDependencies } from './backend.js';
+import { runAtomicCommand } from './atomic/index.js';
 
 export { runLabel, createGraderTeacher } from './label.js';
 export { runCalibrate } from './calibrate.js';
@@ -29,6 +30,7 @@ export async function runGraderCommand(args: CliArguments, io: CliIO, dependenci
 }
 
 async function executeGraderCommand(args: CliArguments, io: CliIO, dependencies: GraderDependencies, signal?: AbortSignal): Promise<number> {
+  if (['decompose', 'traps', 'reference'].includes(args.graderCommand ?? '')) return runAtomicCommand(args, io, dependencies, signal);
   const maxSpendUsd = args.flags['max-spend-usd'] ? Number(one(args, 'max-spend-usd')) : undefined;
   const graderFile = resolve(io.cwd, one(args, 'grader'));
   if (args.graderCommand === 'validate') {

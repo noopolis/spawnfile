@@ -17,3 +17,6 @@ External vote merges reuse ready projection groups and pin question/evidence
 identities. Content-address or ancestry conflicts cannot be bypassed by relabel.
 Before calibration, configured teacher votes must match model kind, provider, model
 and teacher-policy provenance. Human/editor IDs cannot impersonate teachers.
+
+Weak signals retain import provenance but do not participate in consensus or freshness
+gates for truth; importing still validates current questions and evidence projections.

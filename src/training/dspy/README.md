@@ -85,9 +85,26 @@ training:
 
 Defaults are `refine`, `0`, `2`, `20`, and `65536`. Omitted `proposal` retains the
 legacy exact resource-map response; authored policy requests a structured
-`components`, `hypothesis`, `expectedImpact` envelope. Expected impacts are the
-optimizer's predictions, never measured grades. Rewrite permits reorganizing only
-already-editable text; all locked resource policies still apply.
+`components`, `hypothesis`, `expectedImpact` envelope:
+
+```json
+{
+  "components": {"AGENTS.md": "Complete replacement instructions."},
+  "hypothesis": "Explicit verification addresses unsupported attribution.",
+  "expectedImpact": [
+    {"criterion": "grounding", "effect": "Fewer unsupported attributions."}
+  ]
+}
+```
+
+`expectedImpact` contains 1–20 objects with exactly the required `criterion` and
+`effect` fields. Criterion IDs must be distinct nonblank strings; effects must be
+nonblank strings of at most 1000 characters. The bridge enforces these bounds
+after parsing and converts the array to the internal criterion-to-effect map
+used by proposal history. This closed item schema supports Codex strict mode.
+Expected impacts are the optimizer's predictions, never measured grades. Rewrite
+permits reorganizing only already-editable text; all locked resource policies
+still apply.
 
 Whitespace-equivalent or previously proposed bundles never run a native trial.
 `min_change` measures token-trigram Jaccard distance from the parent, a lexical
@@ -108,3 +125,70 @@ storage. If mandatory summaries alone cannot fit, oldest rows are omitted with a
 explicit count. These limits describe partial context; they never claim all text
 was shown. Final upstream state is paired with proposal bookkeeping on completion;
 exact resume restores rejected proposals and does not repeat completed work.
+
+## Authored population search
+
+With `optimizer.variants` present, Paideia runs the explicit population algorithm
+beside GEPA. Declare `keep` and `budget.rounds` too (`1 <= keep <= variants`):
+
+```yaml
+training:
+  optimizer:
+    method: gepa
+    model: reflection
+    variants: 4
+    keep: 2
+    budget: { rounds: 3 }
+    selection: pareto
+    boundaries: []
+    proposal:
+      rewrite_share: 0.5
+      min_change: 0.08
+      hypothesis_similarity: 0.6
+      max_attempts: 2
+```
+
+Defaults: method `gepa`, selection `pareto`, rewrite share `0.5`, behavioral floor
+`0.08`, hypothesis similarity threshold `0.6`, patience equal to rounds (off),
+boundaries `[]`, realization attempts `2`. Existing history limits remain 20
+entries and 65536 bytes. Omitted total proposal cap derives as
+`rounds * (keep + variants) * max_attempts`; it must fit the existing 1000 ceiling,
+and an explicit cap must be at least `keep + variants`. Planning calls count.
+The unchanged legacy proposal defaults apply when variants is absent.
+
+Each round plans distinct hypotheses using train-only feedback, realizes complete
+component replacements, rejects duplicates/insufficient behavioral change before
+trials, evaluates complete validation, and retains a bounded Pareto or top-k pool.
+Provenance includes both change measures, rejected attempts, per-case scores,
+rounds, stop reason and effective whole-file/heading scope. See
+[the protocol](protocol.md#optional-population-search) for exact wire shapes,
+behavioral scoring and the ordered Evaluator seam. Population training feedback
+and validation use at most `concurrency` active callbacks (default 1), returning
+results in request order even when callbacks complete out of order.
+
+Deterministic simulated tests cover search and actual-process host verification.
+Settled-callback checkpoint resume replays with no extra spend or Python pickle.
+Population recovery with uncertain/failed attempts and checkpoint forks fails
+closed; start a new run for those cases. These tests make no claim of live model
+quality or native-agent improvement.
+
+Population change evidence is explicitly `bridge-reported-v2`: behavioral and
+lexical heuristics are not host-certified. Logical Markdown wrapping/heading
+labels are excluded and repeated units count once per component; independent rules split alike at periods, commas
+and semicolons. Adjacent-token features retain directive/action attachment within
+units, keeping conditional and workflow clauses together. History rejects
+zero-distance copies with the same metric, including when the floor is zero.
+Repairs exclude their own
+slot's hypotheses from deduplication. The host binds accepted components to exact
+recorded realization responses and checks seed training, strategy/attempt records
+and stop feasibility; see protocol.md for the unrecorded-shuffle limitation.
+Integration `trainingOptimizer` may supply `boundaries` under the same 50-string,
+1..500-character limits; dual declarations must match verbatim and in order.
+Declared text constraints are enforced by Python admission and independently by the
+TypeScript host: `preserve ["component"]`, `require-text ["component", "literal"]`,
+`forbid-text ["component", "literal"]`. Arguments are JSON strings. Unknown components,
+unsupported prose and invalid seeds fail before callbacks; violations never reach trials.
+These are exact text guarantees, not runtime semantic guarantees. See
+[population search](../../docs/population-search.md) for examples and limits.
+The change heuristic excludes HTML comments, leading closed YAML front matter and
+single-line reference definitions, while retaining fenced literal content.

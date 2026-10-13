@@ -253,6 +253,8 @@ export interface InferenceRequest {
   system?: string;
   /** Optional JSON Schema; supported providers constrain and validate the completed text. */
   responseSchema?: Readonly<Record<string, unknown>>;
+  /** Codex/Claude extraction compatibility: permit one surrounding json fence before schema validation. */
+  responseJsonFence?: boolean;
   /** Trusted evaluator-only sink; never serialize into prompts, results or checkpoints. */
   observeFailure?: (observation: { attempt: Readonly<InferenceAttempt>; fallbackOf?: string; diagnostic: InferenceDiagnostic }) => void | Promise<void>;
   model: string;

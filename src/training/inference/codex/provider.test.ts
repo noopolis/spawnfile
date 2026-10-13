@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile, chmod, stat, readdir, readlink } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, chmod, stat, readdir, readlink, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -35,23 +35,32 @@ it('uses an empty workspace, auth-only home, selected controls, final message an
     calls.push(options);
     const plumbing = runner([])( { ...options, onLine: () => undefined });
     return { ...plumbing, completion: (async () => {
-      expect(await readdir(options.cwd)).toEqual([]);
+      const schemaFile = path.join(options.cwd, 'response-schema.json');
+      if (options.args.includes('status')) expect(await readdir(options.cwd)).toEqual([]);
+      else {
+        expect(options.args).toContain('--output-schema');
+        expect(options.args[options.args.indexOf('--output-schema') + 1]).toBe(schemaFile);
+        expect(await readdir(options.cwd)).toEqual(['response-schema.json']);
+        expect(JSON.parse(await readFile(schemaFile, 'utf8'))).toEqual({ type: 'object', properties: { q: { type: 'string' } }, required: ['q'], additionalProperties: false });
+        expect((await stat(schemaFile)).mode & 0o777).toBe(0o600);
+      }
       expect(await readdir(options.env['CODEX_HOME']!)).toEqual(['auth.json']);
       expect(await readlink(path.join(options.env['CODEX_HOME']!, 'auth.json'))).toBe('/selected-auth/auth.json');
       return runner()(options).completion;
     })() };
   } });
   expect(provider.capabilities.tools).toBe('contained');
-  expect(await provider.generate({ ...request, system: 'judge', responseSchema: { type: 'object' } })).toMatchObject({
+  expect(await provider.generate({ ...request, system: 'judge', responseSchema: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'], additionalProperties: false } })).toMatchObject({
     text: '{"q":"yes"}', model: 'reported', modelBasis: 'provider-reported', usage: { inputTokens: 10, cachedInputTokens: 5, outputTokens: 2, reasoningTokens: null },
   });
   expect(calls).toHaveLength(2);
-  expect(calls[1]!.args).toEqual(codexArguments({ ...request, system: 'judge' }, 'high'));
+  expect(calls[1]!.args).toEqual(codexArguments({ ...request, system: 'judge' }, 'high', path.join(calls[1]!.cwd, 'response-schema.json')));
   for (const flag of ['--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '--ignore-rules', '--json', 'read-only', 'memories',
     'approval_policy="never"', 'web_search="disabled"', 'mcp_servers={}', 'model_provider="openai"', 'forced_login_method="chatgpt"', 'model_reasoning_effort="high"']) {
     expect(calls[1]!.args).toContain(flag);
   }
   expect(calls[1]!.args.join(' ')).not.toMatch(/network_access|network.*true/);
+  expect(codexArguments(request)).not.toContain('--output-schema');
   expect(calls[1]!.stdin).toBe('question');
   await expect(stat(calls[0]!.cwd)).rejects.toThrow();
   await expect(stat(calls[0]!.env['HOME']!)).rejects.toThrow();
@@ -149,7 +158,7 @@ it('rejects invalid controls before launch and schema-invalid answers after comp
   await expect(createCodexInference({ process, reasoningEffort: 'bogus' }).generate(request)).rejects.toMatchObject({ kind: 'unsupported' });
   await expect(createCodexInference({ process }).generate({ ...request, signal: AbortSignal.abort() })).rejects.toMatchObject({ kind: 'cancelled' });
   expect(process).not.toHaveBeenCalled();
-  await expect(createCodexInference({ process: runner() }).generate({ ...request, responseSchema: { type: 'object', required: ['absent'] } })).rejects.toMatchObject({ kind: 'invalid-response', usage: { inputTokens: 10 } });
+  await expect(createCodexInference({ process: runner() }).generate({ ...request, responseSchema: { type: 'object', additionalProperties: false, properties: { absent: { type: 'string' } }, required: ['absent'] } })).rejects.toMatchObject({ kind: 'invalid-response', usage: { inputTokens: 10 } });
 });
 
 it('classifies native process interruption, nonzero exit and launch failure', async () => {

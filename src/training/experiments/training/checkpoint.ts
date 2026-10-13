@@ -37,7 +37,7 @@ export class TrainingCheckpoint {
       adapter: options.native.adapter.id, model: options.native.model, resources: options.native.resources,
       optimizer: { provider: options.inference.provider.id, model: options.inference.model },
       concurrency: options.concurrency, slots: options.slots, slotsFile: options.slotsFile,
-      seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
+      seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, search: options.search, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
     });
     return this.load(options, identity);
   }

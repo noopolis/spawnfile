@@ -16,7 +16,7 @@ test = ["pytest==8.4.2", "pytest-cov==7.0.0", "coverage==7.16.0"]
 paideia-dspy = "paideia_dspy.main:cli"
 
 [tool.setuptools.packages.find]
-include = ["paideia_dspy"]
+include = ["paideia_dspy*"]
 
 [tool.pytest.ini_options]
 testpaths = ["paideia_dspy"]

@@ -8,6 +8,7 @@ import { openExperimentStore } from '../../storage/index.js';
 import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import { createEvaluationRegistry } from '../../evaluation/index.js';
 import * as optimization from '../../optimization/index.js';
+import { TrainingCheckpoint, trainingDigest } from './checkpoint.js';
 import { trainAgent, type TrainingOptions } from './training.js';
 
 const cleanup: string[] = [];
@@ -132,7 +133,12 @@ it('overlaps four stored trials, holds a fifth through closure and collection, a
   });
   const started: number[] = [], prepared = new Map<string, number>();
   const closed = new Set<number>();
-  const phases: string[] = [];
+  let fourthStarted!: () => void, fifthStarted!: () => void;
+  let enteredClose!: () => void, enteredCollect!: () => void;
+  const fourth = new Promise<void>(resolve => { fourthStarted = resolve; });
+  const fifth = new Promise<void>(resolve => { fifthStarted = resolve; });
+  const atClose = new Promise<void>(resolve => { enteredClose = resolve; });
+  const atCollect = new Promise<void>(resolve => { enteredCollect = resolve; });
   let releaseClose!: () => void, releaseCollect!: () => void;
   const closing = new Promise<void>(resolve => { releaseClose = resolve; });
   const collecting = new Promise<void>(resolve => { releaseCollect = resolve; });
@@ -141,7 +147,7 @@ it('overlaps four stored trials, holds a fifth through closure and collection, a
     const ordinal = prepared.size;
     prepared.set(context.id, ordinal);
     return { collect: async () => {
-      if (ordinal === 2 && closed.has(ordinal)) { phases.push('collecting'); await collecting; }
+      if (ordinal === 2 && closed.has(ordinal)) { enteredCollect(); await collecting; }
       return {};
     } };
   };
@@ -152,10 +158,12 @@ it('overlaps four stored trials, holds a fifth through closure and collection, a
     const native = await start(input);
     return { run: async (turn, signal) => {
       started.push(ordinal);
+      if (started.length === 4) fourthStarted();
+      if (started.length === 5) fifthStarted();
       await gates[ordinal]?.promise;
       return native.run(turn, signal);
     }, stop: async reason => {
-      if (ordinal === 2) { phases.push('closing'); await closing; }
+      if (ordinal === 2) { enteredClose(); await closing; }
       closed.add(ordinal);
       return native.stop(reason);
     } };
@@ -164,15 +172,17 @@ it('overlaps four stored trials, holds a fifth through closure and collection, a
     expect(request.concurrency).toBe(4);
     const calls = Array.from({ length: 5 }, (_, index) => request.evaluate({ caseId: 'Alpha', split: 'train',
       components: { ...request.components } }, new AbortController().signal, `parallel-${index}`));
-    await vi.waitFor(() => expect(started).toHaveLength(4));
+    await fourth;
+    expect(started).toHaveLength(4);
     gates[2]!.resolve();
-    await vi.waitFor(() => expect(phases).toContain('closing'));
+    await atClose;
     expect(started).toHaveLength(4);
     releaseClose();
-    await vi.waitFor(() => expect(phases).toContain('collecting'));
+    await atCollect;
     expect(started).toHaveLength(4);
     releaseCollect();
-    await vi.waitFor(() => expect(started).toHaveLength(5));
+    await fifth;
+    expect(started).toHaveLength(5);
     gates[4]!.resolve(); gates[3]!.resolve(); gates[1]!.resolve(); gates[0]!.resolve();
     const results = await Promise.all(calls);
     expect(new Set(results.map(result => result.captureId)).size).toBe(5);
@@ -190,4 +200,45 @@ it('overlaps four stored trials, holds a fifth through closure and collection, a
 it('refuses an unenforceable run-wide request cap instead of silently ignoring it', async () => {
   const { options } = await fixture();
   await expect(trainAgent({ ...options, maxRunRequests: 48 } as TrainingOptions)).rejects.toThrow('maxRunRequests cannot be enforced');
+});
+
+it('forwards population search and derives editable scope from the actual candidate', async () => {
+  const { options } = await fixture();
+  options.search = { variants: 2, keep: 1, rounds: 1, boundaries: ['Keep identifiers.'],
+    selection: 'pareto', rewriteShare: 0.5, minChange: 0.08, hypothesisSimilarity: 0.6, patience: 1 };
+  const run = vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    expect(request.search).toEqual(options.search);
+    expect(request.editScope).toEqual({ 'instructions#file': 'whole-file' });
+    throw new Error('verified forwarding');
+  });
+  await expect(trainAgent(options)).rejects.toThrow('verified forwarding');
+  expect(run).toHaveBeenCalledOnce();
+});
+
+it('binds population search settings into the training checkpoint identity', async () => {
+  const { options } = await fixture();
+  options.search = { variants: 2, keep: 1, rounds: 1, selection: 'pareto', rewriteShare: 0.5,
+    minChange: 0.08, hypothesisSimilarity: 0.6, patience: 1, boundaries: [] };
+  options.checkpoint = { directory: join(options.native.storeRoot!, 'checkpoint'), resume: false, identity: 'frozen' };
+  await TrainingCheckpoint.open(options, [options.train, options.test]);
+  options.checkpoint.resume = true;
+  expect(await TrainingCheckpoint.open(options, [options.train, options.test])).toBeDefined();
+  options.search.minChange = 0.1;
+  await expect(TrainingCheckpoint.open(options, [options.train, options.test])).rejects.toThrow('identity');
+});
+
+it('keeps the pre-population training checkpoint identity when search is absent', async () => {
+  const { options } = await fixture();
+  options.checkpoint = { directory: join(options.native.storeRoot!, 'checkpoint'), resume: false, identity: 'legacy' };
+  const datasets = [options.train, options.test];
+  await TrainingCheckpoint.open(options, datasets);
+  const saved = JSON.parse(await readFile(join(options.checkpoint.directory, 'training.json'), 'utf8'));
+  const legacyIdentity = trainingDigest({
+    execution: options.checkpoint.identity, id: options.id, baseline: options.baseline, datasets,
+    adapter: options.native.adapter.id, model: options.native.model, resources: options.native.resources,
+    optimizer: { provider: options.inference.provider.id, model: options.inference.model },
+    seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, maxRecoveryAttempts: 2,
+    versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
+  });
+  expect(saved.state.identity).toBe(legacyIdentity);
 });

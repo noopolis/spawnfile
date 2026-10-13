@@ -9,3 +9,5 @@ change files. Paths are rooted in ESLint's explicit cwd, including fixture tests
 - Imports cross public indexes; contracts are explicit shared public type files.
 - Negative tests use ESLint itself and real temporary file/symlink structures.
 - Check 90% per-file coverage with npx vitest run tooling --coverage.
+- Only root `.tmp/` is excluded for generated test/tool caches; nested `.tmp/`
+  and other hidden implementation folders remain checked.

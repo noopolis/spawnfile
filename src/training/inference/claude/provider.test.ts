@@ -4,6 +4,14 @@ import { claudeArguments, createClaudeInference } from './provider.js';
 
 const auth = '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}';
 const result = { type: 'result', subtype: 'success', result: 'real output' };
+it('keeps native structured_output authoritative under extraction framing opt-in', async () => {
+  const provider = createClaudeInference({ process: runner([
+    JSON.stringify({ type: 'system', subtype: 'init', tools: ['StructuredOutput'], mcp_servers: [] }),
+    JSON.stringify({ type: 'result', subtype: 'success', result: '```json\n{"units":[]}\n```', structured_output: { wrong: [] } }),
+  ]) });
+  await expect(provider.generate({ model: 'm', prompt: 'p', responseJsonFence: true,
+    responseSchema: { type: 'object', required: ['units'] } })).rejects.toMatchObject({ kind: 'invalid-response' });
+});
 function runner(lines: string[], patch: Partial<Awaited<RunningProcess['completion']>> = {}) {
   return (options: ProcessOptions): RunningProcess => ({
     write: async () => undefined, endInput: () => undefined,

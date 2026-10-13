@@ -225,6 +225,12 @@ process closure and are not resume state; uncertain closure preserves them and
 fails the optimization.
 
 
+## Round-based population search
+
+Declare `optimizer.variants`, `keep` and `budget.rounds` to enable population search.
+See [population authoring](population-search.md) for exact defaults, boundary
+constraints, budget accounting and the resolved integration optimizer seam.
+
 ## Proposal memory and diversity
 
 ```yaml
@@ -246,7 +252,7 @@ validation text and sealed test data stay excluded. Full originals remain durabl
 while explicit excerpts and omission counts bound the reflection context.
 
 Whitespace-equivalent and previously proposed bundles are rejected before native
-trials. `min_change` (default `0`, range `0–1`) adds a token-trigram lexical-distance
+trials. In legacy mode, `min_change` (default `0`, range `0–1`) adds a token-trigram lexical-distance
 guard; it does not measure semantic quality. Repair attempts (default `2`, range
 `1–5`) consume the existing total `max_proposals` budget. Exhaustion stops cleanly
 with the measured best candidate; provider failures remain failures.

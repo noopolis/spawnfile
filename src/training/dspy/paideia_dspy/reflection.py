@@ -125,7 +125,8 @@ class ComponentProposer:
                     "Inside components, map exactly the updateOnly resource paths to their complete replacement instructions. "
                     "The replacement is the instruction text the agent will actually receive for that resource. "
                     "State an evidence-specific hypothesis connecting observed failures to the proposed changes; "
-                    "map actual criterion IDs to anticipated effects in expectedImpact, not claimed measurements. "
+                    "list 1 to 20 expectedImpact objects with criterion (an actual criterion ID) and effect "
+                    "(its anticipated effect, not a claimed measurement); use each criterion only once. "
                 )
             else:
                 system += (
@@ -167,10 +168,13 @@ def proposal_schema(components):
         "components": components,
         "hypothesis": {"type": "string", "minLength": 1, "maxLength": 2000,
                        "description": "Explain which observed training failures this change targets and why the new instructions should improve them."},
-        "expectedImpact": {"type": "object", "minProperties": 1, "maxProperties": 20,
-                           "description": "Map criterion IDs from the supplied training feedback to specific predicted effects of these changes, not measured outcomes.",
-                           "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 1000,
-                                                    "description": "Explain the predicted effect on this criterion and the proposed instruction change responsible."}},
+        "expectedImpact": {"type": "array", "minItems": 1, "maxItems": 20,
+                           "description": "List criterion IDs from the supplied training feedback with specific predicted effects, not measured outcomes; use each criterion once.",
+                           "items": {"type": "object", "properties": {
+                               "criterion": {"type": "string", "minLength": 1},
+                               "effect": {"type": "string", "minLength": 1, "maxLength": 1000,
+                                          "description": "Explain the predicted effect on this criterion and the proposed instruction change responsible."},
+                           }, "required": ["criterion", "effect"], "additionalProperties": False}},
     }, "required": ["components", "hypothesis", "expectedImpact"], "additionalProperties": False}
 
 
@@ -183,8 +187,13 @@ def proposal_parts(body, structured):
             or not isinstance(body["components"], dict)
             or not isinstance(body["hypothesis"], str) or not body["hypothesis"].strip()
             or len(body["hypothesis"]) > 2000
-            or not isinstance(body["expectedImpact"], dict) or not 1 <= len(body["expectedImpact"]) <= 20
-            or any(not isinstance(value, str) or not value.strip() or len(value) > 1000
-                   for value in body["expectedImpact"].values())):
+            or not isinstance(body["expectedImpact"], list) or not 1 <= len(body["expectedImpact"]) <= 20
+            or any(not isinstance(item, dict) or set(item) != {"criterion", "effect"}
+                   or not isinstance(item["criterion"], str) or not item["criterion"].strip()
+                   or not isinstance(item["effect"], str) or not item["effect"].strip()
+                   or len(item["effect"]) > 1000 for item in body["expectedImpact"])):
         raise BridgeError("invalid_proposal", "reflection must declare its hypothesis and expected criterion impact")
-    return body["components"], body["hypothesis"], body["expectedImpact"]
+    impact = {item["criterion"]: item["effect"] for item in body["expectedImpact"]}
+    if len(impact) != len(body["expectedImpact"]):
+        raise BridgeError("invalid_proposal", "reflection expected impact must use distinct criterion IDs")
+    return body["components"], body["hypothesis"], impact

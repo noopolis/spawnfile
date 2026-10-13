@@ -1,10 +1,11 @@
-import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/execution.js';
 import { runProcess, type ProcessResult } from '../../platform/process/index.js';
 import { InferenceFailure, type InferenceFailureEvidence } from '../failure.js';
-import { validateInferenceResponse, validateInferenceSchema } from '../response-schema.js';
+import { validateInferenceResponse, validateInferenceSchema, validateInferenceSchemaData } from '../response-schema.js';
+import { codexStrictSchema, normalizeCodexResponse } from './strict-schema.js';
 import { classifyCodexFailure, codexEvidence, consumeCodexFrame, type CodexFrames } from './protocol.js';
 
 export interface CodexInferenceOptions {
@@ -24,12 +25,13 @@ export function codexEnvironment(home: string): NodeJS.ProcessEnv {
   return env;
 }
 
-export function codexArguments(request: InferenceRequest, effort?: string): string[] {
+export function codexArguments(request: InferenceRequest, effort?: string, schemaFile?: string): string[] {
   return ['exec', '--skip-git-repo-check', '--ephemeral', '--sandbox', 'read-only', '--json',
     '--ignore-user-config', '--ignore-rules', '--disable', 'memories',
     '-c', 'approval_policy="never"', '-c', 'web_search="disabled"', '-c', 'mcp_servers={}',
     '-c', 'project_doc_max_bytes=0', '-c', 'model_provider="openai"',
     '-c', 'forced_login_method="chatgpt"', '--model', request.model,
+    ...(schemaFile === undefined ? [] : ['--output-schema', schemaFile]),
     ...(effort === undefined ? [] : ['-c', `model_reasoning_effort=${JSON.stringify(effort)}`]),
     ...(request.system === undefined ? [] : ['-c', `developer_instructions=${JSON.stringify(request.system)}`]), '-'];
 }
@@ -46,8 +48,11 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
     id: 'codex-subscription',
     capabilities: { tools: 'contained', billing: 'subscription', temperature: false, seed: false },
     async generate(request) {
-      validateInferenceSchema(request.responseSchema);
+      if (request.responseSchema !== undefined) validateInferenceSchemaData(request.responseSchema);
       const schema = request.responseSchema === undefined ? undefined : structuredClone(request.responseSchema);
+      const transportSchema = schema === undefined ? undefined : codexStrictSchema(schema);
+      // Dialect admission owns keyword/path errors; generic compilation must not mask them.
+      validateInferenceSchema(schema);
       if (!request.prompt.trim() || !request.model.trim() || request.model.startsWith('-') ||
         request.temperature !== undefined || request.seed !== undefined ||
         options.reasoningEffort !== undefined && !['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(options.reasoningEffort)) {
@@ -73,7 +78,9 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         const signedIn = auth.exitCode === 0 && /^Logged in using ChatGPT\s*$/u.test(`${authText}${auth.stderr}`.trim());
         authText = '';
         if (!signedIn) throw new InferenceFailure('authentication', 'Codex requires a saved ChatGPT subscription sign-in');
-        const result = await execute({ command, args: codexArguments(request, options.reasoningEffort), cwd, env,
+        const schemaFile = schema === undefined ? undefined : path.join(cwd, 'response-schema.json');
+        if (schemaFile !== undefined) await writeFile(schemaFile, JSON.stringify(transportSchema), { mode: 0o600 });
+        const result = await execute({ command, args: codexArguments(request, options.reasoningEffort, schemaFile), cwd, env,
           stdin: request.prompt, timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal,
           requireLineTerminator: true,
           onLine: line => {
@@ -84,7 +91,10 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         interrupted(result, request.signal, codexEvidence(frames));
         if (result.exitCode !== 0) throw new InferenceFailure(classifyCodexFailure(result.stderr), 'Codex generation failed', codexEvidence(frames));
         if (!frames.completed) throw new InferenceFailure('protocol', 'Codex omitted a completed final answer', codexEvidence(frames));
-        try { validateInferenceResponse(frames.text, schema); }
+        try {
+          if (schema !== undefined) frames.text = normalizeCodexResponse(frames.text, schema, request.responseJsonFence);
+          validateInferenceResponse(frames.text, schema, request.responseJsonFence);
+        }
         catch { throw new InferenceFailure('invalid-response', 'Codex answer violated the requested schema', codexEvidence(frames)); }
         return { text: frames.text, model: frames.model ?? request.model,
           modelBasis: frames.model === undefined ? 'requested-assumption' : 'provider-reported',

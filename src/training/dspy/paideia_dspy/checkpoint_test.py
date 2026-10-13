@@ -110,3 +110,15 @@ def test_resume_after_prior_proposal_keeps_exact_serialized_history_request(tmp_
     assert result["provenance"]["evaluations"] == 7
     assert len(host.subject.calls) == 9
     assert host.entries[7][1]["messages"][1]["content"] == generation
+
+
+def test_legacy_checkpoint_identity_excludes_absent_population_fields(tmp_path):
+    import hashlib
+
+    original = request(checkpoint={"directory": str(tmp_path), "identity": "legacy"})
+    checkpoint = Checkpoint(Session(original, SimulatedHost()))
+    legacy_request = original.model_dump(exclude={"checkpoint", "recovery", "search", "editScope"})
+    payload = {"request": legacy_request, "execution": "legacy", "versions": ["dspy3.3.1", "gepa0.1.4"]}
+    expected = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"),
+                                         ensure_ascii=True).encode()).hexdigest()
+    assert checkpoint.identity == expected

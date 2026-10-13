@@ -69,3 +69,6 @@ Pass a lease to preparation and subject start; retain it through closure, collec
 and stored-report publication. Unconfirmed closure or unsettled host work quarantines
 that slot. Progress and checkpoint mutations serialize independently of subject work.
 Slot descriptors and effective concurrency bind checkpoint identity.
+Population search controls pass unchanged to optimization and participate in the
+training checkpoint identity. Derive component editScope from the frozen baseline,
+not integration claims, so provenance reflects actual whole-file or heading edits.
