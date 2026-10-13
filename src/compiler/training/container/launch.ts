@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS } from "../../../shared/index.js";
+import { parseTrainingBrokerDeclaration } from "../broker/declaration.js";
+import { trainingSlotsDocument, TRAINING_SLOTS_FILE } from "../broker/paths.js";
 import { assertNotDesktopGrokAuth } from "../broker/entrypoint.js";
-import { TRAINING_BROKER_ENTRYPOINT, trainingBrokerMounts, trainingBrokerSecurityArgs, trainingBrokerTmpfsTargets } from "./security.js";
+import { TRAINING_BROKER_ENTRYPOINT, trainingBrokerMounts, trainingBrokerSecurityArgs, trainingBrokerTmpfsTargets, trainingRunRequestMount } from "./security.js";
 import { parseDetachedContainerInspect } from "../../runProjectDocker.js";
 import type { TrainingContext } from "../contract.js";
 import { trainingImageSchema } from "./contract.js";
@@ -32,7 +34,11 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
   if (Buffer.byteLength(configBytes) > 1024 * 1024) throw Error("Training launch config exceeds 1 MiB");
   const prepared = await prepareTrainingContainer(JSON.parse(configBytes), options.context, options.args);
   // D2: the training Grok login is a dedicated one. Refuse the developer's desktop leaf before Docker ever sees it.
-  if (prepared.config.broker) assertNotDesktopGrokAuth(prepared.config.broker.bootstrap);
+  if (prepared.config.broker) {
+    assertNotDesktopGrokAuth(prepared.config.broker.bootstrap);
+    const declaration = parseTrainingBrokerDeclaration(JSON.parse(await readFile(prepared.config.broker.declaration, "utf8")));
+    if (declaration.slots !== prepared.config.slots) throw Error("Training launch and broker declaration slots differ");
+  }
   if (options.preparationPath) {
     if (await realpath(options.preparationPath) !== options.preparationPath) throw Error("Preparation receipt path must be canonical");
     parseTrainingMappedPreparation(JSON.parse(await readFile(options.preparationPath, "utf8")));
@@ -80,11 +86,17 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
       ...options.repairPath ? [`type=bind,src=${options.repairPath},dst=/run/paideia/repair.json,readonly`] : [],
       ...prepared.config.auth.map((entry) => `type=bind,src=${entry.source},dst=/run/paideia-auth/${entry.provider},readonly`)];
     const broker = prepared.config.broker;
+    if (broker) {
+      mounts.push(trainingRunRequestMount(prepared.config.output.source, prepared.args));
+      const slotsFile = path.join(privateRoot, "slots.json");
+      await writeFile(slotsFile, `${JSON.stringify(trainingSlotsDocument(prepared.config.slots))}\n`, { mode: 0o444, flag: "wx" });
+      mounts.push(`type=bind,src=${slotsFile},dst=${TRAINING_SLOTS_FILE},readonly`);
+    }
     // A brokered Grok slot runs the launcher, the broker and the model's own worker uid inside this container, so it
     // starts as root with the production Daimon capability set instead of the host user with no capabilities at all.
     const privilege = broker
       ? [...await trainingBrokerSecurityArgs(privateRoot), "--pids-limit", "2048",
-        ...trainingBrokerTmpfsTargets().flatMap((entry) => ["--tmpfs", `${entry.path}:rw,nosuid,nodev,size=${entry.size},mode=${entry.mode}`])]
+        ...trainingBrokerTmpfsTargets(prepared.config.slots).flatMap((entry) => ["--tmpfs", `${entry.path}:rw,nosuid,nodev,size=${entry.size},mode=${entry.mode}`])]
       : ["--user", `${uid}:${gid}`, "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         ...DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS, "--pids-limit", "512",
         "--tmpfs", `/tmp:rw,nosuid,nodev,size=1g,uid=${uid},gid=${gid},mode=1777`, "--tmpfs", `/work:rw,nosuid,nodev,size=4g,uid=${uid},gid=${gid},mode=700`,
@@ -92,6 +104,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const args = ["create", "--name", name, "--label", `com.spawnfile.training.owner=${name}`,
       "--init", "--read-only", ...privilege,
       "--env", "HOME=/home/training", "--workdir", "/work", "--entrypoint", broker ? TRAINING_BROKER_ENTRYPOINT : "/opt/training/bin/train",
+      ...(broker ? ["--env", "PAIDEIA_MODEL_REQUEST_CAP=broker"] : []),
       ...[...mounts, ...(broker ? trainingBrokerMounts(broker) : [])].flatMap((mount) => ["--mount", mount]),
       ...(prepared.viewerPort === undefined ? [] : ["--publish", `127.0.0.1:${prepared.viewerPort}:${prepared.viewerPort}`]), expectedImage,
       "train", "--spawnfile-context", "/run/paideia/context.json", ...prepared.args];

@@ -43,7 +43,7 @@ const expiry = (bytes: Buffer): number => {
 
 /** A settled journal proves rotation; native expiry orders credentials across independent realms. */
 export const writeBackTrainingGrokCredential = async (profile: string, candidate: string, journalFile: string): Promise<boolean> => {
-  const release = await acquireTrainingGrokWritebackLock(profile).catch(() => { throw failure(); });
+  const release = await acquireTrainingGrokWritebackLock(profile, 30_000).catch(() => { throw failure(); });
   const temporary = path.join(path.dirname(profile), `.grok-writeback-${randomUUID()}`);
   let current: Buffer | undefined, renewed: Buffer | undefined, journalBytes: Buffer | undefined;
   try {

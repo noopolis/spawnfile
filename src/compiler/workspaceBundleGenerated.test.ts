@@ -29,7 +29,7 @@ const agentSpawnfile = (generated: string[]): string => [
 ].join("\n");
 
 const hostRecipe = [
-  "command: [node, tools/bake.js, \"${output}\"]", "cwd: ../site",
+  "command: [node, tools/bake.cjs, \"${output}\"]", "cwd: ../site",
   "inputs:", "  - root: ../site", "    exclude: [runs.log]", "tools:", "  - [cat, ../toolchain.txt]"
 ];
 
@@ -42,7 +42,7 @@ describe("generated bundles", () => {
     await mkdir(path.join(root, "site/tools"), { recursive: true });
     await mkdir(path.join(root, "org"), { recursive: true });
     await writeFile(path.join(root, ".gitignore"), "cache/\nout-*/\nsite/runs.log\n");
-    await writeFile(path.join(root, "site/tools/bake.js"), GENERATOR);
+    await writeFile(path.join(root, "site/tools/bake.cjs"), GENERATOR);
     await writeFile(path.join(root, "site/source/a.txt"), "alpha");
     await writeFile(path.join(root, "toolchain.txt"), "baker 1.0\n");
     await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile(hostRecipe));
@@ -82,11 +82,11 @@ describe("generated bundles", () => {
 
   it("runs in a pinned image on the target platform with the output mounted", async () => {
     await writeFile(path.join(root, "org/Spawnfile"), agentSpawnfile([
-      "command: [node, tools/bake.js, \"${output}\"]", "cwd: ../site", `image: "${IMAGE}"`, "inputs:", "  - root: ../site", "    exclude: [runs.log]", "tools:", "  - [node, --version]"
+      "command: [node, tools/bake.cjs, \"${output}\"]", "cwd: ../site", `image: "${IMAGE}"`, "inputs:", "  - root: ../site", "    exclude: [runs.log]", "tools:", "  - [node, --version]"
     ]));
     const result = await compile("out-image");
     expect(await extract("out-image", result.report.workspace_bundles![0]!.sha256, "baked/a.txt.out")).toBe("ALPHA");
-    const step = (await docker.invocations()).find((args) => args.includes("tools/bake.js"))!;
+    const step = (await docker.invocations()).find((args) => args.includes("tools/bake.cjs"))!;
     expect(step).toEqual(expect.arrayContaining(["--platform", "linux/amd64", "--workdir", "/spawnfile/work", IMAGE, "/spawnfile/output"]));
     expect(step.some((value) => value.endsWith(":/spawnfile/output"))).toBe(true);
   }, 60_000);
@@ -107,7 +107,7 @@ describe("generated bundles", () => {
   it("pins a generated bundle by recipe without running its tools", async () => {
     const { pinWorkspaceBundle } = await import("./workspaceBundleResolve.js");
     const resource = {
-      build: { generated: { command: ["node", "tools/bake.js", "${output}"], cwd: "../site", inputs: [{ root: "../site" }], tools: [["sh", "-c", "touch tool-ran"]] } },
+      build: { generated: { command: ["node", "tools/bake.cjs", "${output}"], cwd: "../site", inputs: [{ root: "../site" }], tools: [["sh", "-c", "touch tool-ran"]] } },
       id: "assets", kind: "bundle" as const, mode: "readonly" as const, mount: "./assets", sharing: "per_agent" as const,
       scope: { kind: "agent" as const, key: path.join(root, "org/Spawnfile"), name: "analyst" }
     };
@@ -132,7 +132,7 @@ describe("generated bundles", () => {
     expect(Date.now() - started).toBeLessThan(15_000);
     await write(["command: [sh, -c, \"rmdir $SPAWNFILE_BUNDLE_OUTPUT && ln -s /etc $SPAWNFILE_BUNDLE_OUTPUT\"]", "inputs:", "  - root: ../site"]);
     await expect(compile("out-root-link")).rejects.toThrow(/replaced by something other than a directory/u);
-    await write(["command: [node, tools/bake.js, \"${output}\"]", "cwd: ../site", `image: "${IMAGE}"`, "inputs:", "  - root: ../org"]);
+    await write(["command: [node, tools/bake.cjs, \"${output}\"]", "cwd: ../site", `image: "${IMAGE}"`, "inputs:", "  - root: ../org"]);
     await expect(compile("out-outside")).rejects.toThrow(/must live inside cwd/u);
     await write(["command: [sh, -c, \"exit 5\"]", "cwd: ../site", `image: "${IMAGE}"`, "inputs:", "  - root: ../site"]);
     await expect(compile("out-image-fail")).rejects.toThrow(/exited 5/u);

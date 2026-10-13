@@ -41,7 +41,7 @@ const createFakeMoltnetCli = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-cli-"));
   temporaryDirectories.push(directory);
 
-  const cliPath = path.join(directory, "moltnet");
+  const cliPath = path.join(directory, "moltnet.cjs");
   await writeUtf8File(
     cliPath,
     [

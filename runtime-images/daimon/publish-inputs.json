@@ -19,12 +19,15 @@
     "version": "0.142.3"
   },
   "daimon": {
-    "commit": "834955934e102349335362c37524261625e38dbb",
+    "commit": "0b3bc7cb2d5b92d4eaf222066c3817191190be7e",
     "package_version": "0.2.0",
     "source": "https://github.com/noopolis/daimon-harness.git"
   },
   "image": "noopolis/spawnfile-runtime-daimon",
-  "platforms": ["amd64", "arm64"],
+  "platforms": [
+    "amd64",
+    "arm64"
+  ],
   "registry": "docker.io",
   "version": "spawnfile.daimon-runtime-publish-inputs.v1"
 }

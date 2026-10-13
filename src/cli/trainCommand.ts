@@ -4,7 +4,7 @@ import { SpawnfileError } from "../shared/index.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
 
 const forwarded = ["train", "test", "editable", "resource", "judge", "judge-citation-repairs", "validation-group", "optimizer-model",
-  "bridge-command", "out", "max-trials", "max-proposals", "seed", "timeout-ms", "view", "cost-config"] as const;
+  "bridge-command", "out", "max-trials", "max-proposals", "seed", "timeout-ms", "view", "cost-config", "concurrency"] as const;
 const repeated = new Set(["editable", "resource", "judge", "judge-citation-repairs", "validation-group"]);
 const key = (name: string): string => name.replace(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
 

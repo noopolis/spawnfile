@@ -208,6 +208,20 @@ describe("spawnfile train --plan", () => {
 });
 
 describe("spawnfile train", () => {
+  it.each([[], ["--concurrency", "2"], ["--concurrency=2"]])("forwards explicit concurrency to the launcher without imposing a default: %j", async (...flags) => {
+    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+    const stderr: string[] = [];
+    expect(await runCli(["train", await project(), ...base, ...container, ...flags], {
+      handlers: { delegatePaideiaTraining: delegate },
+      streams: { stdout() {}, stderr: (value) => stderr.push(value) }
+    })).toBe(0);
+    expect(stderr).toEqual([]);
+    expect(delegate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      args: [...base, ...(flags.length ? ["--concurrency", "2"] : [])],
+      trainingConfig: "/training.json", dryRun: false
+    }));
+  });
+
   it("resolves the real canonical project and forwards only explicit Paideia options", async () => {
     const root = await project(), stdout: string[] = [], stderr: string[] = [];
     const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);

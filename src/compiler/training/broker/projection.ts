@@ -6,7 +6,7 @@ import {
 } from "../../../runtime/daimon/contractManifest.js";
 import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRender.js";
 import type { TrainingBrokerDeclaration } from "./declaration.js";
-import { TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_WORKSPACE, TRAINING_WORKER_HOME } from "./paths.js";
+import { trainingSlotPaths } from "./paths.js";
 
 /**
  * The slice of Daimon's public `@noopolis/daimon/runtime` export the slot
@@ -49,19 +49,19 @@ export const loadDaimonProjectionModule = async (load: () => Promise<unknown> = 
  * of peers reach `resolveOrganizationGrokBrokerProjection`, so this minimal
  * config and Paideia's fuller one compute the same projection digest. A peer
  * agent would change Daimon's protected set and the digest with it, which is
- * exactly why training runs one slot.
+ * why each slot resolves its own one-agent projection with explicit sibling deny paths.
  */
 export const trainingOrganizationRuntimeConfig = (declaration: {
   agentId: string; model: DaimonGrokBrokerModel; reasoningEffort: DaimonGrokBrokerReasoningEffort;
-}): Record<string, unknown> => ({
+}, slot = 0): Record<string, unknown> => ({
   version: "noopolis.daimon.organization-runtime.v1",
-  host: { bindHost: "127.0.0.1", port: 19_700, controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN" },
+  host: { bindHost: "127.0.0.1", port: trainingSlotPaths(slot).ports.workerControl, controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN" },
   agents: [{
     id: declaration.agentId,
     name: declaration.agentId,
     instructions: "training subject",
-    workspacePath: TRAINING_SLOT_WORKSPACE,
-    runtimeHomePath: TRAINING_SLOT_RUNTIME_HOME,
+    workspacePath: trainingSlotPaths(slot).workspace,
+    runtimeHomePath: trainingSlotPaths(slot).runtimeHome,
     engine: { kind: "grok", model: declaration.model, reasoningEffort: declaration.reasoningEffort }
   }]
 });
@@ -80,21 +80,25 @@ export const resolveTrainingGrokProjection = async (
   daimon: DaimonProjectionModule
 ): Promise<TrainingGrokProjection> => {
   const projection = daimon.resolveOrganizationGrokBrokerProjection(
-    trainingOrganizationRuntimeConfig(declaration), declaration.agentId, {
+    trainingOrganizationRuntimeConfig(declaration, registration.slot), declaration.agentId, {
       slot: registration.slot,
+      workerConfigVariant: "clocked",
       workerUid: registration.uid,
-      workerHomePath: TRAINING_WORKER_HOME,
+      workerHomePath: registration.home,
       architecture: declaration.architecture,
       usageLedgerPath: registration.usageLedgerPath,
       limits: declaration.limits,
       // The mask that protects the wake-acceptance store is the slot state root it lives in: the store's
       // own parent is `2000:2000 0700`, so bubblewrap could not materialize a deny target inside it as
       // the worker uid. Every party that recomputes this projection must pass the same value.
-      acceptanceStorePath: TRAINING_SLOT_STATE_ROOT,
+      acceptanceStorePath: trainingSlotPaths(registration.slot).state,
       denyPaths: registration.denyPaths,
       seccompProfileSha256: declaration.seccompProfileSha256,
       profileSha256: registration.profileSha256
     }) as unknown as Record<string, unknown>;
+  if (projection.workerConfigVariant !== "clocked" || projection.workerConfigSha256 !== registration.configSha256) {
+    throw new SpawnfileError("runtime_error", "Daimon's clocked worker config differs from the provisioned registration");
+  }
   const denied = [...(projection.denyPaths as string[])];
   if (denied.length !== registration.denyPaths.length || denied.some((entry, index) => entry !== registration.denyPaths[index])) {
     throw new SpawnfileError("runtime_error", "Daimon's Grok broker projection deny list differs from the provisioned sandbox profile");
