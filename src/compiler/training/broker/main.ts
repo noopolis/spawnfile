@@ -3,7 +3,7 @@ import { runTrainingBrokerEntrypoint } from "./entrypoint.js";
 
 /**
  * The broker-capable training image's root entrypoint process. The image ships
- * it; the host supplies only the read-only `spawnfile.training-broker.v1`
+ * it; the host supplies only the read-only `spawnfile.training-broker.v2`
  * declaration and never a script, so no host executable enters the container.
  */
 const main = async (): Promise<void> => {

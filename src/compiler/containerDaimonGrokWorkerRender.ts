@@ -93,6 +93,8 @@ export interface DaimonGrokRegistration {
   agentId: string;
   config: string;
   configSha256: string;
+  /** Selects trusted config bytes; production retains the unclocked default. */
+  configVariant?: "unclocked" | "clocked";
   denyPaths: string[];
   /** Deny entries the main entrypoint materializes after root provisioning (workspace resource backings); absent is allowed there, a symlink never. */
   deferredDenyPaths: string[];
@@ -311,6 +313,10 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
 };
 
 export interface DaimonGrokServiceConfigOptions {
+  /** Repeated agent IDs use v3 slot policies; production retains v2 by default. */
+  version?: "v3";
+  maxRunRequests?: number;
+  runRequestStore?: string;
   /**
    * Where the broker keeps its durable turn registry. Production keeps it on
    * the realm volume beside the credential; training overrides it to per-slot
@@ -345,9 +351,11 @@ export const renderDaimonGrokServiceConfig = (
   registrations: readonly DaimonGrokRegistration[],
   options: DaimonGrokServiceConfigOptions = {}
 ) => ({
-  version: DAIMON_GROK_ENGINE_BROKER.serviceConfigVersions[1],
+  version: DAIMON_GROK_ENGINE_BROKER.serviceConfigVersions[options.version === "v3" ? 2 : 1],
   credentialHome: DAIMON_GROK_ENGINE_BROKER.credentialHomePath,
   turnStore: resolveDaimonGrokTurnStore(options.turnStore),
+  ...(options.maxRunRequests === undefined ? {} : { maxRunRequests: options.maxRunRequests }),
+  ...(options.runRequestStore === undefined ? {} : { runRequestStore: assertCanonicalRegisteredPath("run request store", options.runRequestStore) }),
   ...(options.inferenceLedgerPath === undefined ? {} : { inferenceLedgerPath: resolveDaimonGrokInferenceLedger(options.inferenceLedgerPath, registrations) }),
   registrations: registrations.map((entry) => ({
     agentId: entry.agentId,
@@ -357,8 +365,13 @@ export const renderDaimonGrokServiceConfig = (
     profilePath: entry.profilePath,
     eventsPath: entry.eventsPath,
     profileSha256: entry.profileSha256,
-    usageLedgerPath: entry.usageLedgerPath,
+    ...(options.version === "v3" ? {} : { usageLedgerPath: entry.usageLedgerPath,
+    limits: { ...(entry.limits ?? DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults) },
+    model: { id: entry.model, reasoningEffort: entry.reasoningEffort } })
+  })),
+  ...(options.version === "v3" ? { slotPolicies: registrations.map(entry => ({
+    slot: entry.slot, usageLedgerPath: entry.usageLedgerPath,
     limits: { ...(entry.limits ?? DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults) },
     model: { id: entry.model, reasoningEffort: entry.reasoningEffort }
-  }))
+  })) } : {})
 });

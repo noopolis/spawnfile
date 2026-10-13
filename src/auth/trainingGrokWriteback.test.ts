@@ -89,3 +89,29 @@ it.each(["invalid", ["invalid"], Array(901).fill("a".repeat(64))])("refuses malf
   await expect(f.run()).rejects.toThrow(/writeback failed/u);
   expect(await readFile(f.profile, "utf8")).toBe(credential(1));
 });
+
+it("excludes concurrent realm writebacks and retains the newest expiry regardless of completion order", async () => {
+  const f = await fixture(), newest = path.join(f.root, "newest"), journal = path.join(f.root, "newest-journal");
+  await writeFile(newest, credential(3), { mode: 0o600 });
+  await writeFile(journal, JSON.stringify({ version: "noopolis.daimon.broker-credential-journal.v1", state: "promoted",
+    generation: 1, sourceDigest: digest(credential(1)), promotedDigest: digest(credential(3)) }), { mode: 0o600 });
+  const writeNewest = () => writeBackTrainingGrokCredential(f.profile, newest, journal);
+  const results = await Promise.allSettled([f.run(), writeNewest()]);
+  expect(results.every(result => result.status === "fulfilled")).toBe(true);
+  expect(await readFile(f.profile, "utf8")).toBe(credential(3));
+});
+
+it("never rolls a same-expiry lineage back when an older slot/run snapshot finishes last", async () => {
+  const f = await fixture(1, 1), intermediate = credential(1).replaceAll("synthetic", "synthetic-intermediate");
+  const newest = credential(1).replaceAll("synthetic", "synthetic-newest");
+  await writeFile(f.candidate, newest);
+  await writeFile(f.journal, JSON.stringify({ version: "noopolis.daimon.broker-credential-journal.v1", state: "promoted",
+    generation: 2, sourceDigest: digest(intermediate), promotedDigest: digest(newest),
+    ancestorDigests: [digest(credential(1)), digest(intermediate)] }));
+  expect(await f.run()).toBe(true);
+  await writeFile(f.candidate, intermediate);
+  await writeFile(f.journal, JSON.stringify({ version: "noopolis.daimon.broker-credential-journal.v1", state: "promoted",
+    generation: 1, sourceDigest: digest(credential(1)), promotedDigest: digest(intermediate) }));
+  expect(await f.run()).toBe(false);
+  expect(await readFile(f.profile, "utf8")).toBe(newest);
+});

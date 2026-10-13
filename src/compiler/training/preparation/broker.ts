@@ -14,8 +14,8 @@ export interface PreparedTrainingBroker {
 }
 
 /**
- * Lowers `spawnfile.training-container.v3`'s broker block into the read-only
- * `spawnfile.training-broker.v1` declaration the container's own root
+ * Lowers `spawnfile.training-container.v4`'s broker block into the read-only
+ * `spawnfile.training-broker.v2` declaration the container's own root
  * entrypoint reads, plus the launch bindings that carry the realm volume and
  * bootstrap leaf.
  *
@@ -27,7 +27,8 @@ export const prepareTrainingBroker = async (
   broker: NonNullable<TrainingPreparationConfig["broker"]>,
   root: string,
   staging: string,
-  write: boolean
+  write: boolean,
+  slots = 4
 ): Promise<PreparedTrainingBroker> => {
   const bootstrap = path.resolve(root, broker.bootstrap);
   assertNotDesktopGrokAuth(bootstrap);
@@ -35,7 +36,9 @@ export const prepareTrainingBroker = async (
   if (!info?.isFile() || info.isSymbolicLink()) throw Error("The training Grok bootstrap must be an existing regular credential leaf");
   if ((info.mode & 0o077) !== 0) throw Error("The training Grok bootstrap must not be group- or world-accessible");
   const declaration = parseTrainingBrokerDeclaration({
-    version: "spawnfile.training-broker.v1",
+    version: "spawnfile.training-broker.v2",
+    slots,
+    maxRunRequests: broker.maxRunRequests,
     engine: broker.engine,
     agentId: broker.agentId,
     model: broker.model,

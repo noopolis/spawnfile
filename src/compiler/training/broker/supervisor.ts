@@ -5,7 +5,7 @@ import path from "node:path";
 import { SpawnfileError } from "../../../shared/index.js";
 import { DAIMON_ORGANIZATION_UID } from "./paths.js";
 
-export const TRAINING_SUPERVISOR_PROTOCOL = "spawnfile.training-slot-supervisor.v1" as const;
+export const TRAINING_SUPERVISOR_PROTOCOL = "spawnfile.training-slot-supervisor.v2" as const;
 export const TRAINING_SUPERVISOR_MAX_REQUEST_BYTES = 4_096;
 const NONCE = /^[a-f0-9]{64}$/u;
 
@@ -17,14 +17,12 @@ const NONCE = /^[a-f0-9]{64}$/u;
  * of bug a live check finds far too late.
  */
 export interface TrainingSlotRuntime {
-  /** Waits for no active turn and a settled credential journal; throws a named error on an unrecoverable realm. */
-  drain(signal: AbortSignal): Promise<void>;
-  stop(): Promise<void>;
-  /** Removes worker home, slot workspace, wake-acceptance, turn store, per-slot ledger and Grok session state. */
+  /** Broker refuses active turns and live workers, then resets only this slot clock/turn store. */
+  reset(signal: AbortSignal): Promise<void>;
+  /** Clears this slot while preserving the worker-home/tmp identities attested by sibling turns. */
   wipe(): Promise<void>;
-  /** Replays the audited root provisioning: registrations, service.json, worker home, temp, spill, ledgers. */
+  /** Reuses the audited worker provisioning; shared broker files are untouched. */
   provision(): Promise<void>;
-  start(): Promise<void>;
   /** Worker-uid denial canaries over every deny path; throws when one is still reachable. */
   canaries(): Promise<{ path: string; method: "sandboxed-read"; result: "denied" }[]>;
   /** Writes the slot preflight receipt v2 atomically, readable by the organization uid. */
@@ -50,8 +48,6 @@ export interface TrainingSlotRuntime {
  * publishes, from the same canaries.
  */
 export const startTrainingSlot = async (runtime: TrainingSlotRuntime, nonce: string): Promise<{ generation: number; receipt: string; canaries: number }> => {
-  await runtime.provision();
-  await runtime.start();
   const canaries = await runtime.canaries();
   const generation = await runtime.nextGeneration();
   const receipt = await runtime.publishReceipt({ generation, nonce, canaries });
@@ -60,7 +56,7 @@ export const startTrainingSlot = async (runtime: TrainingSlotRuntime, nonce: str
 };
 
 export interface TrainingSlotSupervisorOptions {
-  runtime: TrainingSlotRuntime;
+  runtimes: readonly TrainingSlotRuntime[];
   /** Only this uid may recycle. Paideia, DSPy and the judges all run as it; every worker uid is refused. */
   organizationUid?: number;
   drainTimeoutMs?: number;
@@ -68,48 +64,48 @@ export interface TrainingSlotSupervisorOptions {
 }
 
 export interface TrainingRecycleResult {
-  ok: true; verb: "recycle"; generation: number; nonce: string; receipt: string; durationMs: number;
+  ok: true; verb: "recycle"; slot: number; generation: number; nonce: string; receipt: string; durationMs: number;
 }
 
 /**
  * The single-verb root slot supervisor.
  *
- * One verb, one argument, no path or command ever supplied by the caller: the
+ * One verb, slot and nonce, no path or command ever supplied by the caller: the
  * whole point of D4 is that recycling replays the container's own audited
  * provisioning rather than exposing a root file-system API to the evaluator.
- * Recycles are serialized — a second caller waits rather than interleaving a
+ * Recycles of the same slot are serialized — a second caller waits rather than interleaving a
  * wipe with a provision.
  */
 export const createTrainingSlotSupervisor = (options: TrainingSlotSupervisorOptions) => {
   const organizationUid = options.organizationUid ?? DAIMON_ORGANIZATION_UID;
   const drainTimeoutMs = options.drainTimeoutMs ?? 120_000;
   const now = options.now ?? Date.now;
-  let queue: Promise<unknown> = Promise.resolve();
-  const recycle = async (nonce: string, peerUid: number): Promise<TrainingRecycleResult> => {
+  const queues = new Map<number, Promise<unknown>>();
+  const recycle = async (slot: number, nonce: string, peerUid: number): Promise<TrainingRecycleResult> => {
     if (peerUid !== organizationUid) throw new SpawnfileError("validation_error", `Grok slot recycle refused for uid ${peerUid}`);
     if (!NONCE.test(nonce)) throw new SpawnfileError("validation_error", "Grok slot recycle requires a 32-byte hex nonce");
+    if (!Number.isInteger(slot) || slot < 0 || slot >= options.runtimes.length) throw new SpawnfileError("validation_error", "Grok slot recycle requires a declared slot index");
+    const runtime = options.runtimes[slot]!;
     const started = now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), drainTimeoutMs);
     try {
-      await options.runtime.drain(controller.signal);
+      await runtime.reset(controller.signal);
     } finally { clearTimeout(timer); }
-    await options.runtime.stop();
-    await options.runtime.wipe();
-    await options.runtime.provision();
-    await options.runtime.start();
-    const canaries = await options.runtime.canaries();
-    const generation = await options.runtime.nextGeneration();
-    const receipt = await options.runtime.publishReceipt({ generation, nonce, canaries });
+    await runtime.wipe();
+    await runtime.provision();
+    const canaries = await runtime.canaries();
+    const generation = await runtime.nextGeneration();
+    const receipt = await runtime.publishReceipt({ generation, nonce, canaries });
     const durationMs = now() - started;
-    options.runtime.log(`recycle generation=${generation} canaries=${canaries.length} durationMs=${durationMs}`);
-    return { ok: true, verb: "recycle", generation, nonce, receipt, durationMs };
+    runtime.log(`recycle generation=${generation} canaries=${canaries.length} durationMs=${durationMs}`);
+    return { ok: true, verb: "recycle", slot, generation, nonce, receipt, durationMs };
   };
   return {
     /** Serialized: a recycle already in flight completes before the next one starts. */
-    recycle: (nonce: string, peerUid: number): Promise<TrainingRecycleResult> => {
-      const next = queue.then(() => recycle(nonce, peerUid));
-      queue = next.catch(() => undefined);
+    recycle: (slot: number, nonce: string, peerUid: number): Promise<TrainingRecycleResult> => {
+      const next = (queues.get(slot) ?? Promise.resolve()).then(() => recycle(slot, nonce, peerUid));
+      queues.set(slot, next.catch(() => undefined));
       return next;
     }
   };
@@ -165,12 +161,12 @@ export const serveTrainingSlotSupervisor = (supervisor: TrainingSlotSupervisor, 
       const newline = buffer.indexOf("\n");
       if (newline < 0) return;
       const line = buffer.slice(0, newline);
-      let request: { v?: unknown; verb?: unknown; nonce?: unknown };
+      let request: { v?: unknown; verb?: unknown; nonce?: unknown; slot?: unknown };
       try { request = JSON.parse(line) as typeof request; } catch { answer(failure("request is not JSON")); return; }
-      if (request.v !== TRAINING_SUPERVISOR_PROTOCOL || request.verb !== "recycle" || typeof request.nonce !== "string"
-        || Object.keys(request).length !== 3) { answer(failure("unsupported request")); return; }
+      if (!request || typeof request !== "object" || Array.isArray(request) || request.v !== TRAINING_SUPERVISOR_PROTOCOL || request.verb !== "recycle" || typeof request.nonce !== "string"
+        || typeof request.slot !== "number" || Object.keys(request).length !== 4) { answer(failure("unsupported request")); return; }
       if (peerUid === undefined) { answer(failure("peer identity is unavailable")); return; }
-      supervisor.recycle(request.nonce, peerUid)
+      supervisor.recycle(request.slot, request.nonce, peerUid)
         .then((result) => answer(`${JSON.stringify({ v: TRAINING_SUPERVISOR_PROTOCOL, ...result })}\n`))
         .catch((error: unknown) => {
           const message = error instanceof Error ? error.message : "recycle failed";

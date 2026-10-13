@@ -22,7 +22,7 @@ const completed = 'console.log(JSON.stringify({status:"completed",index:"/isolat
 async function command(body: string): Promise<string> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-paideia-child-"));
   directories.push(directory);
-  const executable = path.join(directory, "paideia");
+  const executable = path.join(directory, "paideia.cjs");
   // Generated process fixture, not an alternate maintained implementation.
   await writeFile(executable, `#!${process.execPath}\n${body}\n`);
   await chmod(executable, 0o700);
@@ -184,3 +184,12 @@ async function descendantTrial(inherited: boolean, cancel: boolean): Promise<voi
   expect(pids).toBeDefined();
   for (const pid of Object.values(pids!)) expect(() => process.kill(pid, 0)).toThrow(/ESRCH/u);
 }
+
+it("routes v4 image declarations through preparation validation before launching anything", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-v4-"));
+  directories.push(directory);
+  const file = path.join(directory, "launch.json");
+  await writeFile(file, JSON.stringify({ version: "spawnfile.training-container.v4", image: {}, slots: 0 }));
+  const run = await invoke('throw Error("must never launch");', { trainingConfig: file, dryRun: false });
+  await expect(run.result).rejects.toThrow(/slots/);
+});

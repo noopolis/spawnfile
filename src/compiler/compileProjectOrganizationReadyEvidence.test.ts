@@ -29,7 +29,7 @@ afterEach(async () => {
 const createFakeMoltnetCli = async (): Promise<string> => {
   const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-evidence-moltnet-"));
   directories.push(root);
-  const cliPath = path.join(root, "moltnet");
+  const cliPath = path.join(root, "moltnet.cjs");
   await writeFile(cliPath, [
     "#!/usr/bin/env node",
     "const fs = require('node:fs');",

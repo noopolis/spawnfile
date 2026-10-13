@@ -60,10 +60,12 @@ it("keeps the same lock inode across re-import and excludes writeback and other 
   const old = await fs.open(f.profile, "r");
   const rename = fs.rename;
   let intercepted = false;
+  let writeback: Promise<boolean> | undefined;
   vi.spyOn(fs, "rename").mockImplementationOnce(async (from, to) => {
     expect(to).toBe(f.profile);
     intercepted = true;
-    await expect(f.run()).rejects.toThrow("Training Grok credential writeback failed");
+    // Do not await the queued writer while this import still owns its lock.
+    writeback = f.run();
     await expect(importGrokAuth("training", f.source)).rejects.toThrow(/lock unavailable; retry/u);
     expect(await fs.readFile(f.profile, "utf8")).toBe(credential(1));
     await rename(from, to);
@@ -71,6 +73,7 @@ it("keeps the same lock inode across re-import and excludes writeback and other 
   try {
     await importGrokAuth("training", f.source);
     expect(intercepted).toBe(true);
+    expect(await writeback).toBe(false);
     const after = await fs.stat(lock, { bigint: true });
     expect([after.dev, after.ino]).toEqual([before.dev, before.ino]);
     expect(await old.readFile("utf8")).toBe(credential(1));

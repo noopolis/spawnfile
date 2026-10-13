@@ -13,14 +13,14 @@ The recipe is opt-in during incubation; no published runtime is implied.
 ## Layer order and modes
 
 Layers run from least to most frequently changing: Python parent copies, the
-baked `2000`/`2100`/`2200` Daimon identities (context-independent, so first),
+baked `2000`/`2100`/`2200..2207` Daimon identities (context-independent, so first),
 locked Claude/Paideia/Spawnfile/compiler dependencies, the lock-keyed DSPy venv,
 one layout RUN, bridge source plus its editable install, then the entrypoints and
 distributions. Nothing RUNs after the late COPY layers, so a changed distribution
 rebuilds its own COPY layer, every later COPY layer and the label, but no RUN
 layer (no npm, pip or recursive chmod work).
 
-The image copies no Grok binary: `spawnfile.training-container.v3` runs the
+The image copies no Grok binary: `spawnfile.training-container.v4` runs the
 native parent's pinned `/usr/local/bin/grok` through the broker, and a second
 copy could only ever be an unattested build. The fixed uid/gid identities are
 baked because that container's root filesystem is read-only, so its entrypoint

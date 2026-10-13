@@ -8,3 +8,4 @@ node_modules
 .moltnet
 .worktree-bootstrap.json
 .local-daimon-runtime-identity.json
+.tmp/

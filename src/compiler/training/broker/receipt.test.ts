@@ -136,7 +136,7 @@ describe("training slot canaries", () => {
   });
 
   it("resolves the longest matching mount point", () => {
-    expect(resolveBackingFilesystem("/run/training/slot/usage/usage.jsonl", mountinfoFor("virtiofs"))).toBe("tmpfs");
+    expect(resolveBackingFilesystem("/run/training/slots/0/usage/usage.jsonl", mountinfoFor("virtiofs"))).toBe("tmpfs");
     expect(resolveBackingFilesystem(`${TRAINING_RUN_ROOT}/runs`, mountinfoFor("virtiofs"))).toBe("virtiofs");
     // The sealed root is the datasets' parent on the image root, never a mount of its own.
     expect(resolveBackingFilesystem(TRAINING_SEALED_INPUTS_ROOT, mountinfoFor("virtiofs"))).toBe("overlay");
