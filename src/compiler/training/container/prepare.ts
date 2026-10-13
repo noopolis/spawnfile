@@ -62,5 +62,17 @@ export const prepareTrainingContainer = async (raw: unknown, context: TrainingCo
       mappedArgs[index] = String(port);
     }
   }
+  if (config.broker) {
+    const flags = mappedArgs.filter(arg => arg === "--concurrency" || arg.startsWith("--concurrency="));
+    if (flags.length > 1) throw Error("Training accepts one --concurrency value");
+    const flag = flags[0];
+    if (flag !== undefined) {
+      const value = flag === "--concurrency" ? mappedArgs[mappedArgs.indexOf(flag) + 1] : flag.slice("--concurrency=".length);
+      if (!value || !/^[1-8]$/u.test(value) || Number(value) > config.slots) {
+        throw Error("Training concurrency must fit the provisioned slots");
+      }
+      if (flag !== "--concurrency") mappedArgs.splice(mappedArgs.indexOf(flag), 1, "--concurrency", value);
+    }
+  }
   return { config, context: mapped, args: mappedArgs, ...(viewerPort === undefined ? {} : { viewerPort }) };
 };

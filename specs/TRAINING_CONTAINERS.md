@@ -6,6 +6,25 @@ validates declarations, mounts explicit inputs, forwards output and supervises
 container termination. No Docker socket enters the container. Dry-run remains a
 host-only estimate and does not use Docker or model authentication.
 
+Brokered training uses `spawnfile.training-container.v4` with `slots` from 1 to 8
+(default 4). Paideia optimization defaults to the provisioned descriptor count; an
+explicit smaller `--concurrency` is allowed. The launcher does not inject this flag,
+so authored comparisons retain serial execution. Every lease has separate worker identity, workspace, homes,
+state, ledgers and a 100-port block. The integration must use its leased paths and
+ports when preparing its Moltnet instance and native launch.
+
+`broker.maxRunRequests` defaults to 1000 and caps all upstream Grok attempts across
+subjects, judges and optimizer grants, including credential retries. The broker
+persists reservations before forwarding. Its counter lives on the named volume
+`spawnfile-training-budget-<sha256>` derived from the canonical host output mount
+and mapped `--out` directory. Container cleanup retains this volume so `--resume`
+cannot reset the cap; each new run uses a fresh output directory. Changing the cap
+for an existing journal is refused. Remove the budget volume only when retiring
+that run and its checkpoints. Slot state remains tmpfs and credentials stay on their
+separate realm volume. The launcher sets `PAIDEIA_MODEL_REQUEST_CAP=broker`;
+Paideia rejects non-broker inference routes (including fallbacks and legacy
+defaults) and native graders in capped runs before constructing their providers.
+
 ## Launch contract
 
 The advanced v1 path requires both `--training-image` (a digest reference or immutable

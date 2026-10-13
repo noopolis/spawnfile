@@ -19,9 +19,17 @@ it.each(["openclaw", "picoclaw", "pi"])("rejects recording for %s with the exact
     message: expect.stringMatching(new RegExp(`agent:writer.*runtime ${runtime}`, "u")) });
 });
 
-it("rejects recording against the actual pinned image and requires a release and re-pin", async () => {
+it("compiles recording against the actual pinned image", async () => {
   const root = await trainingProject({ Spawnfile: agent("daimon") });
-  await expect(compileProject(root)).rejects.toMatchObject({ code: "validation_error", message: expect.stringContaining(
+  const result = await compileProject(root);
+  expect(result.report.recording?.recording_mount_ids).toEqual(["daimon-recording-writer"]);
+});
+
+it("rejects recording against an explicitly incapable manifest and requires a release and re-pin", async () => {
+  const root = await trainingProject({ Spawnfile: agent("daimon") });
+  const manifest = { ...capableDaimonManifest() };
+  delete manifest.wakeMoments;
+  await expect(compileProject(root, { daimonContractManifest: manifest })).rejects.toMatchObject({ code: "validation_error", message: expect.stringContaining(
     "pinned Daimon runtime image does not declare the wakeMoments capability; a Daimon release with it and a runtimes.yaml / contract-manifest re-pin are required"
   ) });
 });

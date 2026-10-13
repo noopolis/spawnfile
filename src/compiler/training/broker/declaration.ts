@@ -12,7 +12,7 @@ const canonical = z.string().min(2).max(4_096).refine((value) =>
   "canonical absolute path");
 
 /**
- * `spawnfile.training-broker.v1`: the only thing the host tells the
+ * `spawnfile.training-broker.v2`: the only thing the host tells the
  * broker-capable training container about its slot. It is data, never code —
  * the image's own Spawnfile distribution renders the provisioning from it with
  * the same renderers production uses, so no host-written executable is ever
@@ -23,7 +23,9 @@ const canonical = z.string().min(2).max(4_096).refine((value) =>
  * the named realm volume.
  */
 export const trainingBrokerDeclarationSchema = z.strictObject({
-  version: z.literal("spawnfile.training-broker.v1"),
+  version: z.literal("spawnfile.training-broker.v2"),
+  maxRunRequests: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(1000),
+  slots: z.number().int().min(1).max(8).default(4),
   engine: z.literal("grok"),
   agentId: z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
   model: z.enum(DAIMON_GROK_BROKER_MODELS),

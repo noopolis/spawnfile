@@ -34,8 +34,8 @@ export interface PreparedTraining {
 /** Reads only until the explicit dry-run boundary; preparation never executes project code. */
 export async function prepareTraining(options: PrepareTrainingOptions): Promise<PreparedTraining | { digest: string; dryRun: true }> {
   const config = trainingPreparationSchema.parse(await readBoundedJson(options.configPath));
-  // A v2 declaration still lowers to the unchanged v1 launch config; only v3 carries a broker slot into Docker.
-  const launchVersion = config.version === "spawnfile.training-container.v3" ? config.version : "spawnfile.training-container.v1";
+  // A v2 declaration still lowers to the unchanged v1 launch config; v4 carries the broker slots into Docker.
+  const launchVersion = config.version === "spawnfile.training-container.v4" ? config.version : "spawnfile.training-container.v1";
   const root = path.dirname(path.resolve(options.configPath));
   const auth = config.auth.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
@@ -65,7 +65,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   if (repair && hashJson(config.integration) !== hashJson(repair.witness.manifest.config.integration)) throw Error("Repair integration settings binding changed");
   const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
     canonical: options.context.project.sourceDigest, ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
-  if (config.broker) await prepareTrainingBroker(config.broker, root, path.dirname(path.resolve(options.configPath)), false);
+  if (config.broker) await prepareTrainingBroker(config.broker, root, path.dirname(path.resolve(options.configPath)), false, config.slots);
   if (options.dryRun) return { digest, dryRun: true };
   options.signal?.throwIfAborted();
   for (const entry of auth) if (await exactPath(entry.source) !== entry.source || !(await lstat(entry.source)).isFile()) throw Error("Training auth must be a canonical regular leaf");
@@ -107,8 +107,8 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
         if (inspected.code !== 0) throw Error("Training image is unavailable"); image = inspected.stdout.trim();
       }
       const mapped = mappedReceipt(digest, image, config);
-      const preparedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, true) : undefined;
-      const launch = trainingContainerConfigSchema.parse({ version: launchVersion, dockerContext: config.dockerContext,
+      const preparedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, true, config.slots) : undefined;
+      const launch = trainingContainerConfigSchema.parse({ version: launchVersion, slots: config.slots, dockerContext: config.dockerContext,
         inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth,
         ...(preparedBroker ? { broker: preparedBroker.launch } : {}) });
       await writeFile(configPath, JSON.stringify(launch), { flag: "wx", mode: 0o600 });
@@ -120,8 +120,8 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
         ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
     } catch (error) { if (owned) await rm(staging, { recursive: true, force: true }); throw error; }
   }
-  const expectedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, false) : undefined;
-  const expectedLaunch = trainingContainerConfigSchema.parse({ version: launchVersion, dockerContext: config.dockerContext,
+  const expectedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, false, config.slots) : undefined;
+  const expectedLaunch = trainingContainerConfigSchema.parse({ version: launchVersion, slots: config.slots, dockerContext: config.dockerContext,
     inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth,
     ...(expectedBroker ? { broker: expectedBroker.launch } : {}) });
   if (hashJson(await readBoundedJson(configPath)) !== hashJson(expectedLaunch) ||

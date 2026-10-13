@@ -23,7 +23,7 @@ export async function preparationFixture() {
   await put("paideia/dist/src/cli/main.js"); await put("bridge/pyproject.toml"); await put("bridge/requirements.lock");
   await put("bridge/paideia_dspy/__init__.py"); await put("integration/entry.ts"); await put("bootstrap/start.ts"); await put("grok", "native-binary");
   const config: TrainingPreparationConfig = {
-    version: "spawnfile.training-container.v2", dockerContext: "local",
+    version: "spawnfile.training-container.v2", slots: 4, dockerContext: "local",
     image: { build: { recipe: "daimon-dspy.v1", nativeImage: image, pythonImage: image, platform: "linux/arm64",
       paideia: "paideia", bridge: "bridge", claude: "claude",
       integration: { source: "integration", entry: "entry.ts" }, bootstrap: "bootstrap" } },

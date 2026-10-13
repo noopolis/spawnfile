@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   assertPinnedGrokCli,
@@ -376,4 +378,22 @@ test("the runtime image derives broker and Grok pins from the attested Daimon ma
   assert.doesNotMatch(dockerfile, /broker_sha=[a-f0-9]{64}/u);
   assert.match(dockerfile, /grokCliArtifacts\?\.\[process\.argv\[2\]\]/u);
   assert.match(dockerfile, /m\.grokCliVersion!==process\.argv\[3\]/u);
+});
+
+test("Dockerfile contract validation accepts the vendored manifest and labels each check", () => {
+  const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
+  const code = /node -e '([^']*const raw=fs.readFileSync[^']*)'/u.exec(dockerfile)?.[1];
+  assert.ok(code, "missing contract validator");
+  const manifest = new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url);
+  const root = mkdtempSync(path.join(os.tmpdir(), "daimon-contract-check-"));
+  try {
+    const run = (file: string): number | null => spawnSync(process.execPath, ["-e", code, file]).status;
+    assert.equal(run(fileURLToPath(manifest)), 0, "Dockerfile rejects the pinned contract");
+    for (const [before, after] of [['"version":"noopolis.daimon.runtime-contract-manifest.v5"', '"version":"noopolis.daimon.runtime-contract-manifest.v3"'], ['"terminalReceiptHorizon":2048', '"terminalReceiptHorizon":0']]) {
+      writeFileSync(path.join(root, "invalid.json"), readFileSync(manifest, "utf8").replace(before!, after!));
+      assert.equal(run(path.join(root, "invalid.json")), 1, `invalid contract must fail: ${after}`);
+    }
+    const lines = dockerfile.slice(dockerfile.indexOf("FROM daimon_${DAIMON_DEPENDENCY_MODE} AS build")).split("\n");
+    for (const [i, line] of lines.entries()) if (/^  && (test |\{ test |node -e |broker_sha=|case )/u.test(line)) assert.match(lines[i - 1] ?? "", /echo "Verifying: /u, line);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

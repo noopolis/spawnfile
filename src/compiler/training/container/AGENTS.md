@@ -2,6 +2,7 @@
 
 - One immutable image runs the whole experiment; the host only prepares declared mounts and supervises Docker.
 - `contract.ts` validates explicit launch configuration. `prepare.ts` maps canonical context and CLI paths into declared mounts.
+- Brokered launches leave concurrency absent so comparisons stay serial; optimization defaults to the descriptor count. Explicit lower concurrency is allowed; oversubscription fails before Docker. Set `PAIDEIA_MODEL_REQUEST_CAP=broker` so uncapped inference routes fail closed.
 - `process.ts` owns bounded Docker subprocess transport. `launch.ts` owns exact container identity, streaming, receipt verification and cleanup.
 - `grokWriteback.ts` exports the stopped, ownership-verified broker's credential and journal privately before removal; auth owns expiry/lineage checks and atomic profile replacement. Failure and cancellation take the same path. The container never writes a host auth mount.
 - Never mount a Docker socket, host home, arbitrary environment, or host executable. Auth bindings are explicit read-only leaf files.

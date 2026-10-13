@@ -1,7 +1,11 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import os from "node:os";
+import { promisify } from "node:util";
+import { renderTrainingBrokerProvisioning } from "./provisioning.js";
+import { startBrokerProcesses, stopBrokerProcesses } from "./processes.js";
+import { resetTrainingBrokerSlotAsOrganization } from "./reset.js";
 import path from "node:path";
 
 import { SpawnfileError } from "../../../shared/index.js";
@@ -12,6 +16,7 @@ import { resolveTrainingGrokRegistration } from "./registration.js";
 import { createTrainingSlotRuntime } from "./runtime.js";
 import { createTrainingSlotSupervisor, serveTrainingSlotSupervisor, startTrainingSlot } from "./supervisor.js";
 import {
+  trainingSlotDescriptors, assertTrainingSlotsDocument, TRAINING_SLOTS_FILE,
   DAIMON_ORGANIZATION_UID,
   TRAINING_BOOTSTRAP_MOUNT,
   TRAINING_BROKER_DECLARATION_FILE,
@@ -77,23 +82,29 @@ export const runTrainingBrokerEntrypoint = async (options: TrainingEntrypointOpt
   if (process.getuid?.() !== 0) throw new SpawnfileError("runtime_error", "The broker-capable training container must start as root");
   const declaration = parseTrainingBrokerDeclaration(JSON.parse(await readFile(options.declarationPath ?? TRAINING_BROKER_DECLARATION_FILE, "utf8")));
   await assertBootstrap(declaration);
-  const registration = resolveTrainingGrokRegistration(declaration);
+  const descriptors = trainingSlotDescriptors(declaration.slots);
+  const document = JSON.parse(await readFile(TRAINING_SLOTS_FILE, "utf8"));
+  assertTrainingSlotsDocument(document, declaration.slots);
+  const registrations = descriptors.map(p => resolveTrainingGrokRegistration({ ...declaration, slot: p.slot }));
   const daimon = await (options.loadDaimon ?? loadDaimonProjectionModule)();
-  // Daimon's projection is I/O-free, so the digest the receipt will bind is known before anything is provisioned.
-  const { projectionSha256 } = await resolveTrainingGrokProjection(declaration, registration, daimon);
-  const runtime = createTrainingSlotRuntime({ declaration, registration, projectionSha256 });
-  // Provision, start, canary and publish the slot preflight receipt before `train` exists at all: the
-  // first trial must not be the one trial that runs on no worker-uid denial evidence, and a refusal
-  // here costs nothing while the same refusal after the first wake costs that trial's spend.
-  const preflight = await startTrainingSlot(runtime, randomBytes(32).toString("hex"));
-  const supervisor = createTrainingSlotSupervisor({ runtime, organizationUid: declaration.organizationUid });
-  const server = serveTrainingSlotSupervisor(supervisor, TRAINING_SUPERVISOR_SOCKET, log, declaration.organizationUid);
-  log(`slot ${registration.slot} provisioned for ${registration.agentId} (${registration.model}/${registration.reasoningEffort}), projection ${projectionSha256}, `
-    + `generation ${preflight.generation} with ${preflight.canaries} denied canaries at ${preflight.receipt}`);
-  const status = await runTrainingChild(options.argv, declaration, log);
-  server.close();
-  await runtime.stop();
-  return status;
+  const reset = resetTrainingBrokerSlotAsOrganization;
+  const runtimes = await Promise.all(registrations.map(async registration => {
+    const { projectionSha256 } = await resolveTrainingGrokProjection(declaration, registration, daimon);
+    return createTrainingSlotRuntime({ declaration, registration, projectionSha256, reset });
+  }));
+  await promisify(execFile)("/bin/bash", ["--noprofile", "--norc", "-ceu", renderTrainingBrokerProvisioning(registrations, declaration.maxRunRequests).join("\n")], { maxBuffer: 8 * 1024 * 1024 });
+  const children = await startBrokerProcesses({ log });
+  let server: ReturnType<typeof serveTrainingSlotSupervisor> | undefined;
+  try {
+    for (const runtime of runtimes) await startTrainingSlot(runtime, randomBytes(32).toString("hex"));
+    const supervisor = createTrainingSlotSupervisor({ runtimes, organizationUid: declaration.organizationUid });
+    server = serveTrainingSlotSupervisor(supervisor, TRAINING_SUPERVISOR_SOCKET, log, declaration.organizationUid);
+    log(`provisioned ${registrations.length} training slots with one broker process set`);
+    return await runTrainingChild(options.argv, declaration, log);
+  } finally {
+    server?.close();
+    await stopBrokerProcesses(children, log);
+  }
 };
 
 /**
@@ -121,6 +132,7 @@ const runTrainingChild = (argv: readonly string[], declaration: TrainingBrokerDe
         ...process.env,
         [TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV]: DAIMON_GROK_ENGINE_BROKER.controlSocketPath,
         [TRAINING_GROK_GRANT_HOME_ROOT_ENV]: TRAINING_GRANT_HOME_ROOT,
+        PAIDEIA_TRAINING_SLOTS_FILE: TRAINING_SLOTS_FILE,
         HOME: "/home/training"
       }
     });

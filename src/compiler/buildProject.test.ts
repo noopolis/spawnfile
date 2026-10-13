@@ -66,7 +66,7 @@ printf '%s\\n' ${safeArchitecture}
 const createFakeMoltnetCli = async (): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-fake-moltnet-cli-"));
   temporaryDirectories.push(directory);
-  const commandPath = path.join(directory, "moltnet");
+  const commandPath = path.join(directory, "moltnet.cjs");
   await writeUtf8File(
     commandPath,
     [

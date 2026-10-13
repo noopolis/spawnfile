@@ -5,27 +5,12 @@ import { trainingBrokerTmpfsTargets } from "../container/security.js";
 import { brokerProcessPlan } from "./processes.js";
 import { renderTrainingBrokerProvisioning, trainingSlotDirectories } from "./provisioning.js";
 import { resolveTrainingGrokDenyPaths, resolveTrainingGrokRegistration } from "./registration.js";
-import {
-  TRAINING_ADDED_DENY_PATHS,
-  TRAINING_BROKER_TMPDIR,
-  TRAINING_SLOT_RUNTIME_HOME,
-  TRAINING_WORKER_HOME,
-  TRAINING_SLOT_WORKSPACE,
-  TRAINING_CALLER_PROTECTED_PATHS,
-  TRAINING_EVALUATOR_ROOTS,
-  TRAINING_GRANT_HOME_ROOT,
-  TRAINING_INFERENCE_DIRECTORY,
-  TRAINING_INFERENCE_LEDGER,
-  TRAINING_REALM_MOUNT,
-  TRAINING_SLOT_ACCEPTANCE_STORE,
-  TRAINING_SLOT_STATE_ROOT,
-  TRAINING_SLOT_TURN_STORE,
-  TRAINING_SLOT_USAGE_DIRECTORY,
-  TRAINING_SLOT_USAGE_LEDGER
-} from "./paths.js";
+import { TRAINING_BROKER_TMPDIR, TRAINING_CALLER_PROTECTED_PATHS, TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY, TRAINING_INFERENCE_LEDGER, TRAINING_REALM_MOUNT, trainingSlotPaths, trainingEvaluatorPaths, trainingWipeTargets, trainingClearTargets } from "./paths.js";
 
 const slot = () => resolveTrainingGrokRegistration({ agentId: "agent:author", model: "grok-4.6", reasoningEffort: "low" });
 
+const TRAINING_ADDED_DENY_PATHS = trainingEvaluatorPaths(0, 1).map(p => p.path).sort();
+const TRAINING_EVALUATOR_ROOTS = trainingEvaluatorPaths(0, 1).filter((p, i, rows) => rows.findIndex(q => q.role === p.role) === i);
 describe("training Grok slot registration", () => {
   it("denies every evaluator root, the caller's whole /run/paideia, the control root and the judge grant home", () => {
     const denied = slot().denyPaths;
@@ -35,8 +20,8 @@ describe("training Grok slot registration", () => {
       expect(denied.some((entry) => covered === entry || covered.startsWith(`${entry}/`)), covered).toBe(true);
     }
     for (const entry of [...TRAINING_EVALUATOR_ROOTS.map((role) => role.path),
-      "/run/daimon-engine-broker", "/etc/daimon-engine-broker", TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY,
-      TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_TURN_STORE, TRAINING_REALM_MOUNT]) {
+      "/run/daimon-engine-broker/control.sock", "/etc/daimon-engine-broker", TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY,
+      TRAINING_SLOT_STATE_ROOT, "/run/training/turns", TRAINING_REALM_MOUNT]) {
       expect(denied, entry).toContain(entry);
     }
     expect(denied).toEqual([...denied].sort());
@@ -67,9 +52,15 @@ describe("training Grok slot registration", () => {
     expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/var/tmp"])).toThrow(/base profile grant/u);
   });
 
+  it("refuses masks over its clock or preload library", () => {
+    for (const denied of [trainingSlotPaths(0).clockDirectory, "/run/daimon-engine-broker/task-clock", "/usr/local/lib/daimon"]) {
+      expect(() => resolveTrainingGrokDenyPaths([denied])).toThrow(/task clock/);
+    }
+  });
+
   it("refuses nested masks and a mask over the subject's own workspace", () => {
     expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/training/output/runs"])).toThrow(/masks cannot nest/u);
-    expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/training/slot/runtime-home"])).toThrow(/own workspace, home, or runtime home/u);
+    expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/training/slots/0/runtime-home"])).toThrow(/own workspace, home, or runtime home/u);
   });
 
   it("points the registration at the per-slot ledger, never the container ledger", () => {
@@ -156,3 +147,5 @@ describe("training wipe targets and the broker temp", () => {
     expect(script).toContain("spawnfile_holds_mount");
   });
 });
+
+const { workspace: TRAINING_SLOT_WORKSPACE, runtimeHome: TRAINING_SLOT_RUNTIME_HOME, state: TRAINING_SLOT_STATE_ROOT, acceptanceStore: TRAINING_SLOT_ACCEPTANCE_STORE, turns: TRAINING_SLOT_TURN_STORE, usageDirectory: TRAINING_SLOT_USAGE_DIRECTORY, usageLedger: TRAINING_SLOT_USAGE_LEDGER, workerHome: TRAINING_WORKER_HOME } = trainingSlotPaths(0);
