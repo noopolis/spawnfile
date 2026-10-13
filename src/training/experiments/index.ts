@@ -10,3 +10,5 @@ export { rescoreStoredTrial, type RescoreOptions, type RescoreReport } from './r
 export * from './costs/index.js';
 
 export { compareCandidates, type ComparisonOptions, type ComparisonReport } from "./comparison/index.js";
+
+export { loadTrialSlots, trialConcurrency, SlotPool, type SlotLease, type TrialSlot } from './concurrency/index.js';

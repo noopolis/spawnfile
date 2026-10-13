@@ -3,7 +3,7 @@ import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 import type { InferenceProvider } from '../../contracts/index.js';
 import type { TrainingModel, TrainingRoute } from '../../contracts/training-config.js';
-import { createClaudeInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
+import { assertModelRequestAdmission, createClaudeInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
 import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from '../../adapters/daimon-native/index.js';
 import { createJudgeCache } from '../../evaluation/index.js';
 import { judgeVersions } from './configuration.js';
@@ -16,6 +16,15 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   const config = args.training;
   const executionIdentity = dependencies.spawnfile?.inferenceExecutionIdentity;
   trainingInferencePolicies(config, executionIdentity);
+  // Validate every reachable route before constructing even the first provider.
+  const admit = (policy: TrainingRoute | undefined, purpose: string) => {
+    if (!policy) return assertModelRequestAdmission('claude-subscription', `${purpose} legacy default`);
+    for (const name of [policy.model, ...(policy.fallbacks ?? [])]) {
+      assertModelRequestAdmission(config!.models[name]!.provider, `${purpose} model ${name}`);
+    }
+  };
+  for (const name of Object.keys(judges)) admit(config?.judges?.[name], `judge ${name}`);
+  if (!config?.comparison) admit(config?.optimizer, 'optimizer');
   const legacy = () => dependencies.inference?.(timeoutMs) ?? createClaudeInference({ timeoutMs });
   const providers = new Map<string, InferenceProvider>();
   let grants: GrokGrantPool | undefined;

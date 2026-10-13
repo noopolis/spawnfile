@@ -133,7 +133,7 @@ it('feeds an actual stored trial’s file output and trusted collected article d
     expect(`${trained.output}${trained.feedback}`).not.toContain('EVALUATOR SECRET');
     const validation = await request.evaluate({ caseId: 'validation', split: 'validation', components: request.components }, signal);
     expect(validation.output).toBe(''); expect(validation.feedback).toBe('');
-    return { schema: 'paideia.dspy.v1', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
         evaluations: 2, proposals: 0, selectedCandidateIndex: 0,
         candidates: [{ components: request.components, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],

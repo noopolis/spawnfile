@@ -69,7 +69,7 @@ it('runs fixed partitions, freezes selection, then compares fresh sealed baselin
     const improved = await request.evaluate({ caseId: 'Beta', split: 'validation', components }, signal);
     expect(improved.score).toBe(1); expect(improved.feedback).toBe('');
     expect((await request.generate({ purpose: 'reflection', messages: [{ role: 'system', content: 'Optimize declared instructions.' }, { role: 'user', content: 'reflect' }], options: {} }, signal)).text).toBe('reflection');
-    return { schema: 'paideia.dspy.v1', kind: 'result', id: request.id, components,
+    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 3, proposals: 1,
         selectedCandidateIndex: 1, candidates: [
           { components: { ...request.components }, parents: [null], validationScore: 0, discoveryEvaluations: 0 },
@@ -119,6 +119,87 @@ it('reports an attempted optimizer failure with unknown usage rather than a fabr
       route: null, usage: null, outcome: 'generation-error' } },
   ]);
   expect(events.some(event => event.type === 'selection.frozen')).toBe(false);
+});
+
+it('overlaps four stored trials, holds a fifth through closure and collection, and checkpoints every completion', async () => {
+  const { options } = await fixture();
+  options.slots = Array.from({ length: 4 }, (_, index) => ({ index, workerUid: 2200 + index,
+    roots: { workspace: `/isolated/${index}` }, ports: { base: 20000 + index * 100, count: 100 } }));
+  options.checkpoint = { directory: join(options.bridge.cwd, 'checkpoint'), identity: 'parallel', resume: false };
+  const gates = Array.from({ length: 5 }, () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>(done => { resolve = done; });
+    return { promise, resolve };
+  });
+  const started: number[] = [], prepared = new Map<string, number>();
+  const closed = new Set<number>();
+  let fourthStarted!: () => void, fifthStarted!: () => void;
+  let enteredClose!: () => void, enteredCollect!: () => void;
+  const fourth = new Promise<void>(resolve => { fourthStarted = resolve; });
+  const fifth = new Promise<void>(resolve => { fifthStarted = resolve; });
+  const atClose = new Promise<void>(resolve => { enteredClose = resolve; });
+  const atCollect = new Promise<void>(resolve => { enteredCollect = resolve; });
+  let releaseClose!: () => void, releaseCollect!: () => void;
+  const closing = new Promise<void>(resolve => { releaseClose = resolve; });
+  const collecting = new Promise<void>(resolve => { releaseCollect = resolve; });
+  options.native.prepareEnvironment = async (_paths, _signal, context) => {
+    expect(context.slot).toEqual(options.slots!.find(slot => slot.index === context.slot?.index));
+    const ordinal = prepared.size;
+    prepared.set(context.id, ordinal);
+    return { collect: async () => {
+      if (ordinal === 2 && closed.has(ordinal)) { enteredCollect(); await collecting; }
+      return {};
+    } };
+  };
+  const start = options.native.adapter.start;
+  options.native.adapter = { ...options.native.adapter, start: async input => {
+    const ordinal = prepared.get(input.trialId)!;
+    expect(input.slot).toBeDefined();
+    const native = await start(input);
+    return { run: async (turn, signal) => {
+      started.push(ordinal);
+      if (started.length === 4) fourthStarted();
+      if (started.length === 5) fifthStarted();
+      await gates[ordinal]?.promise;
+      return native.run(turn, signal);
+    }, stop: async reason => {
+      if (ordinal === 2) { enteredClose(); await closing; }
+      closed.add(ordinal);
+      return native.stop(reason);
+    } };
+  } };
+  vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    expect(request.concurrency).toBe(4);
+    const calls = Array.from({ length: 5 }, (_, index) => request.evaluate({ caseId: 'Alpha', split: 'train',
+      components: { ...request.components } }, new AbortController().signal, `parallel-${index}`));
+    await fourth;
+    expect(started).toHaveLength(4);
+    gates[2]!.resolve();
+    await atClose;
+    expect(started).toHaveLength(4);
+    releaseClose();
+    await atCollect;
+    expect(started).toHaveLength(4);
+    releaseCollect();
+    await fifth;
+    expect(started).toHaveLength(5);
+    gates[4]!.resolve(); gates[3]!.resolve(); gates[1]!.resolve(); gates[0]!.resolve();
+    const results = await Promise.all(calls);
+    expect(new Set(results.map(result => result.captureId)).size).toBe(5);
+    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: { ...request.components },
+      provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
+        evaluations: 5, proposals: 0, selectedCandidateIndex: 0, candidates: [], captures: [], generations: [] } };
+  });
+  const report = await trainAgent(options);
+  expect(report.trials).toHaveLength(6);
+  const saved = JSON.parse(await readFile(join(options.checkpoint.directory, 'training.json'), 'utf8'));
+  expect(Object.values(saved.state.entries)).toHaveLength(6);
+  expect(new Set(Object.values(saved.state.entries).map(entry => (entry as { id: string }).id)).size).toBe(6);
+});
+
+it('refuses an unenforceable run-wide request cap instead of silently ignoring it', async () => {
+  const { options } = await fixture();
+  await expect(trainAgent({ ...options, maxRunRequests: 48 } as TrainingOptions)).rejects.toThrow('maxRunRequests cannot be enforced');
 });
 
 it('forwards population search and derives editable scope from the actual candidate', async () => {

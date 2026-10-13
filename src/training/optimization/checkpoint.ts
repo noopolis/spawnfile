@@ -1,3 +1,4 @@
+import { MutationQueue } from '../platform/mutations/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, open, link, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -24,6 +25,7 @@ function generationResult(inference: InferenceResult) {
 
 /** Protected host journal. Completed callbacks replay; incomplete callbacks consume a new attempt. */
 export class OptimizationCheckpoint {
+  private readonly mutations = new MutationQueue();
   private history: CallbackEntry[] = [];
   get entries(): readonly CallbackEntry[] { return structuredClone(this.history); }
   private constructor(private readonly path: string, private readonly identity: string,
@@ -70,6 +72,9 @@ export class OptimizationCheckpoint {
   }
 
   async begin(request: DspyRequest, budget: DspyStart['budget']): Promise<CallbackEntry> {
+    return this.mutations.run(() => this.beginMutation(request, budget));
+  }
+  private async beginMutation(request: DspyRequest, budget: DspyStart['budget']): Promise<CallbackEntry> {
     requestSchema.parse(request);
     let entry = this.history.find(item => item.request.id === request.id);
     if (entry && canonical(entry.request) !== canonical(request)) throw new Error('Resumed optimizer callback diverged from its checkpoint');
@@ -86,6 +91,9 @@ export class OptimizationCheckpoint {
   }
 
   async complete(entry: CallbackEntry, result: unknown, inference?: InferenceResult) {
+    return this.mutations.run(() => this.completeMutation(entry, result, inference));
+  }
+  private async completeMutation(entry: CallbackEntry, result: unknown, inference?: InferenceResult) {
     const index = this.history.findIndex(item => item.request.id === entry.request.id);
     const original = this.history[index];
     if (!original || original.result !== undefined || canonical(original) !== canonical(entry)) throw new Error('Callback completion is not a pending journal entry');
@@ -97,6 +105,9 @@ export class OptimizationCheckpoint {
   }
 
   async failed(entry: CallbackEntry, attempts: NonNullable<InferenceResult['attempts']>) {
+    return this.mutations.run(() => this.failedMutation(entry, attempts));
+  }
+  private async failedMutation(entry: CallbackEntry, attempts: NonNullable<InferenceResult['attempts']>) {
     const index = this.history.findIndex(item => item.request.id === entry.request.id);
     const original = this.history[index];
     if (!original || original.result !== undefined || canonical(original) !== canonical(entry)) throw new Error('Failed callback is not a pending journal entry');
@@ -145,11 +156,11 @@ export function restoredDspyEvidence(checkpoint: OptimizationCheckpoint): DspyRe
 
 /** Accounting-only restore; validates identity and never starts Python or inference. */
 export async function readDspyCheckpointEvidence(options: Pick<DspyOptimizationOptions,
-  'id' | 'components' | 'trainCaseIds' | 'validationCaseIds' | 'budget' | 'seed' | 'proposal' | 'search' | 'editScope'> & {
+  'id' | 'components' | 'trainCaseIds' | 'validationCaseIds' | 'budget' | 'seed' | 'proposal' | 'concurrency' | 'search' | 'editScope'> & {
     checkpoint: NonNullable<DspyOptimizationOptions['checkpoint']>;
   }): Promise<DspyRestoredEvidence> {
   const start = startSchema.parse({ schema: DSPY_SCHEMA, kind: 'optimize', id: options.id,
     components: options.components, trainCaseIds: options.trainCaseIds, validationCaseIds: options.validationCaseIds,
-    budget: options.budget, seed: options.seed, proposal: options.proposal, search: options.search, editScope: options.editScope });
+    concurrency: options.concurrency, budget: options.budget, seed: options.seed, proposal: options.proposal, search: options.search, editScope: options.editScope });
   return restoredDspyEvidence(await OptimizationCheckpoint.open(start, { ...options.checkpoint, resume: true }));
 }

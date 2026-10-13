@@ -4,6 +4,7 @@ import type { DspyEvaluation, DspyEvaluateParams, DspyGenerateParams, DspyStart 
 
 export interface DspyOptimizationOptions {
   id: string;
+  concurrency?: number;
   components: Readonly<Record<string, string>>;
   trainCaseIds: readonly string[];
   validationCaseIds: readonly string[];

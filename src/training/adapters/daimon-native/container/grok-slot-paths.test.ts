@@ -49,7 +49,7 @@ async function slotFixture(workerConfigVariant: 'unclocked' | 'clocked' = 'unclo
     limits: { maxTokens: 8_000_000, wakeTokenCeiling: 1_000_000 },
     overrides: { schedule: { before: { kind: 'every', interval_ms: 60_000 }, after: { kind: 'disabled' }, reason: 'Isolated single trial' },
       selection: { before: ['agent:writer', 'agent:editor'], after: ['agent:writer'], reason: 'Selected subject only' } },
-    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v2', workerConfigVariant, projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
+    broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v3', workerConfigVariant, projectionSha256: '0'.repeat(64), slot: 0, workerUid: 2200,
       workerHomePath: join(root, 'var/lib/daimon-workers/2200'), architecture: 'arm64', usageLedgerPath: join(paths.usage, 'usage.jsonl'),
       profileSha256: 'c'.repeat(64),
       // The provisioner's verbatim deny list: a superset of the evaluator roots (the canary subset).
@@ -204,5 +204,17 @@ test('each Grok trial owns a fresh directory inside the shared slot control root
     // Trial N's artifacts survive the recycle, which only wipes Daimon's store; trial N+1 must not reuse them.
     await expect(loadNativeLaunch(f.input, true)).rejects.toThrow('already holds fresh trial data');
     await expect(loadNativeLaunch({ ...f.input, trialId: 'slot-trial-2' }, true)).resolves.toBeDefined();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+test('the native loader rejects a receipt from a different lease before starting a child', async () => {
+  const f = await slotFixture();
+  try {
+    const slot = { index: f.launch.broker.slot, workerUid: f.launch.broker.workerUid,
+      roots: { workspace: f.paths.workspace, runtimeHome: f.paths.runtimeHome, workerHome: f.launch.broker.workerHomePath,
+        usageLedger: f.launch.broker.usageLedgerPath, preflightReceipt: f.launch.broker.slotPreflightReceipt,
+        controlRoot: f.paths.state }, ports: { base: f.launch.host.port, count: 1 } };
+    expect(await loadNativeLaunch({ ...f.input, slot }, true)).toMatchObject({ broker: f.launch.broker });
+    await expect(loadNativeLaunch({ ...f.input, slot: { ...slot, index: slot.index + 1 } }, true)).rejects.toThrow('leased slot identity');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

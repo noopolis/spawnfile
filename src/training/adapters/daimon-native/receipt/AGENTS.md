@@ -14,8 +14,10 @@ launch.v1 stays Codex-only and still parses. launch.v2 selects `codex` (at most 
 ingress credential) or `grok` (no credentials, broker slot inputs, five required
 evaluator roots, exactly one projection — the slot runtime home). `grok.ts` mirrors Daimon's projection/slot receipt shapes and
 canonical digest for re-binding without Daimon; Daimon remains the resolver and verifier.
-Projection v2 requires an explicit worker config variant, its independent
-model/effort digest pin and exact clock metadata for the clocked variant.
+Projection v3 requires an explicit worker config variant, its independent
+slot/model/effort digest pin and exact per-slot clock metadata for the clocked variant.
+`grok-clocked-pins.ts` records all eight slots from Daimon's public config renderer;
+the optional-peer parity test exercises every slot/model/effort combination.
 A Grok launch with taskClock requires the clocked variant before any subject starts.
 
 Both versions accept optional `delivery: direct | transport` (absence remains

@@ -162,7 +162,9 @@ trials, evaluates complete validation, and retains a bounded Pareto or top-k poo
 Provenance includes both change measures, rejected attempts, per-case scores,
 rounds, stop reason and effective whole-file/heading scope. See
 [the protocol](protocol.md#optional-population-search) for exact wire shapes,
-behavioral scoring and the ordered Evaluator seam reserved for P6.
+behavioral scoring and the ordered Evaluator seam. Population training feedback
+and validation use at most `concurrency` active callbacks (default 1), returning
+results in request order even when callbacks complete out of order.
 
 Deterministic simulated tests cover search and actual-process host verification.
 Settled-callback checkpoint resume replays with no extra spend or Python pickle.

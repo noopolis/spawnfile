@@ -11,7 +11,7 @@ import { DSPY_SCHEMA, decodeMessage, encodeMessage, startSchema, type DspyResult
 import { DspyOptimizationError, type DspyOptimizationOptions } from './types.js';
 
 const optionKeys = new Set(['id', 'components', 'trainCaseIds', 'validationCaseIds', 'budget', 'seed',
-  'proposal', 'search', 'editScope', 'bridge', 'checkpoint', 'onRestore', 'validateComponents', 'evaluate', 'generate', 'signal']);
+  'concurrency', 'proposal', 'search', 'editScope', 'bridge', 'checkpoint', 'onRestore', 'validateComponents', 'evaluate', 'generate', 'signal']);
 
 /** The bridge has no credential/provider environment; inference remains in host callbacks. */
 export function dspyEnvironment(home: string): NodeJS.ProcessEnv {
@@ -27,7 +27,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   if (!Number.isFinite(options.bridge.timeoutMs) || options.bridge.timeoutMs <= 0) throw new Error('DSPy timeout must be positive');
   const start = startSchema.parse({ schema: DSPY_SCHEMA, kind: 'optimize', id: options.id,
     components: options.components, trainCaseIds: options.trainCaseIds, validationCaseIds: options.validationCaseIds,
-    budget: options.budget, seed: options.seed, proposal: options.proposal, search: options.search, editScope: options.editScope,
+    concurrency: options.concurrency, budget: options.budget, seed: options.seed, proposal: options.proposal, search: options.search, editScope: options.editScope,
     ...(options.checkpoint ? { checkpoint: { directory: options.checkpoint.directory, identity: options.checkpoint.identity,
       ...(options.checkpoint.fork ? { fork: { directory: options.checkpoint.fork.directory, identity: options.checkpoint.fork.identity,
         id: options.checkpoint.fork.id, digest: options.checkpoint.fork.digest } } : {}) } } : {}) });
@@ -59,7 +59,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
     signal.throwIfAborted();
     running = runProcess({ command: options.bridge.command, args: options.bridge.args ?? [],
       cwd: options.bridge.cwd, env: dspyEnvironment(home), stdin: startLine,
-      keepStdinOpen: true, requireLineTerminator: true,
+      callbackConcurrency: start.concurrency, keepStdinOpen: true, requireLineTerminator: true,
       closureDrainMs: options.bridge.closureDrainMs, maxBytes: options.bridge.maxBytes ?? 64 * 1024 * 1024,
       timeoutMs: options.bridge.timeoutMs, signal,
       onLine: async (line, callbackSignal) => {
@@ -84,6 +84,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
     });
     processResult = await running.completion;
     closure = await running.stop('DSPy bridge process completed');
+    if (!await host.drain(options.bridge.closureDrainMs ?? 2_000)) throw new Error('DSPy host callbacks did not drain');
     if (closure.quiescence !== 'confirmed') throw new Error('DSPy process closure is unconfirmed');
     if (protocolFailure !== undefined) throw protocolFailure;
     if (processResult.error !== undefined || processResult.cancelled || processResult.exitCode !== 0) {
@@ -101,6 +102,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
     controller.abort();
     closure = await running?.stop('DSPy optimization interrupted');
     if (running !== undefined) processResult = await running.completion;
+    await host.drain(options.bridge.closureDrainMs ?? 2_000);
     throw new DspyOptimizationError(timedOut ? 'timeout' : cancelled ? 'cancelled' : 'optimization_failed',
       error instanceof Error ? error.message : String(error), {
         evaluations: host.evaluations, proposals: host.proposals,
@@ -108,7 +110,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
       });
   } finally {
     clearTimeout(timer);
-    if (home && (running === undefined || closure?.quiescence === 'confirmed')) {
+    if (home && host.pending === 0 && (running === undefined || closure?.quiescence === 'confirmed')) {
       await rm(home, { recursive: true, force: true, maxRetries: 2, retryDelay: 25 });
     }
   }

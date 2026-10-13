@@ -1,6 +1,8 @@
-"""Serial JSONL callbacks; stdout is reserved for the protocol."""
+"""Multiplexed JSONL callbacks; stdout is reserved for the protocol."""
 
 import json
+import hashlib
+from concurrent.futures import Future
 import threading
 from typing import BinaryIO, TextIO
 
@@ -53,22 +55,75 @@ class JsonlHost:
     def __init__(self, reader: BinaryIO, writer: TextIO):
         self.reader, self.writer = reader, writer
         self._lock = threading.Lock()
-        self._sequence = 0
+        self._condition = threading.Condition(self._lock)
+        self._pending = {}
+        self._occurrences = {}
+        self._failure = None
+        self._reader = None
+
+    def checkpoint(self):
+        with self._lock:
+            if self._pending:
+                raise BridgeError("checkpoint_busy", "callbacks must settle before checkpointing")
+            return dict(self._occurrences)
+
+    def restore(self, occurrences):
+        with self._lock:
+            self._occurrences = dict(occurrences)
+
+    def _fail(self, error):
+        with self._lock:
+            self._failure = error
+            for waiter in self._pending.values():
+                waiter.set_exception(error)
+            self._pending.clear()
+
+    def _read(self):
+        try:
+            while True:
+                with self._condition:
+                    self._condition.wait_for(lambda: bool(self._pending))
+                try:
+                    response = HostResponse.model_validate(read_message(self.reader))
+                except ValidationError as error:
+                    raise BridgeError("invalid_response", "host response violates the protocol") from error
+                with self._lock:
+                    waiter = self._pending.pop(response.id, None)
+                    if waiter is None:
+                        raise BridgeError("invalid_response", "host response does not match a pending callback")
+                    if response.error is not None:
+                        error = BridgeError(response.error.code, response.error.message)
+                        waiter.set_exception(error)
+                        raise error
+                    waiter.set_result(response.result)
+        except Exception as error:
+            self._fail(error)
 
     def __call__(self, method: str, params: dict):
+        # Content + occurrence identity is independent of worker scheduling and
+        # completion order, including replay after the last paired checkpoint.
+        key = hashlib.sha256(json.dumps([method, params], sort_keys=True,
+                                       separators=(",", ":")).encode()).hexdigest()
+        waiter = Future()
         with self._lock:
-            self._sequence += 1
-            call_id = f"call-{self._sequence}"
-            write_message(self.writer, {
-                "schema": SCHEMA, "kind": "request", "id": call_id,
-                "method": method, "params": params,
-            })
+            if self._failure is not None:
+                raise self._failure
+            ordinal = self._occurrences.get(key, 0) + 1
+            self._occurrences[key] = ordinal
+            call_id = f"{key}:{ordinal}"
+            self._pending[call_id] = waiter
+            self._condition.notify()
             try:
-                response = HostResponse.model_validate(read_message(self.reader))
-            except ValidationError as error:
-                raise BridgeError("invalid_response", "host response violates the protocol") from error
-            if response.id != call_id:
-                raise BridgeError("invalid_response", "host response does not match the pending callback")
-            if response.error is not None:
-                raise BridgeError(response.error.code, response.error.message)
-            return response.result
+                write_message(self.writer, {
+                    "schema": SCHEMA, "kind": "request", "id": call_id,
+                    "method": method, "params": params,
+                })
+            except Exception as error:
+                self._failure = error
+                for pending in self._pending.values():
+                    pending.set_exception(error)
+                self._pending.clear()
+            if self._reader is None and self._failure is None:
+                self._reader = threading.Thread(target=self._read, daemon=True)
+                self._reader.start()
+        return waiter.result()

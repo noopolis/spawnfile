@@ -39,6 +39,9 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   process.env.DAIMON_TURN_REQUESTS_LEDGER_PATH = requestsFile;
   process.env.DAIMON_WAKE_FUSE_DIRECTORY = artifacts;
   process.env.DAIMON_WAKE_FUSE_EPOCH = options.trialId;
+  // This owned worker has one verified launch; never inherit another slot's routing.
+  if (grok) process.env.DAIMON_ENGINE_BROKER_SLOT = String(grok.broker.slot);
+  else delete process.env.DAIMON_ENGINE_BROKER_SLOT;
   // Derived, never a second number: a trial must be able to execute every
   // continuation its own delivery gate will admit. One hard-coded wake here
   // accepted a continuation the runtime then refused to run at all.

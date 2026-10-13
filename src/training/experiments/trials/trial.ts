@@ -73,7 +73,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       adapter: adapter.id, capabilities: adapter.capabilities, model: options.model, timeoutMs: options.timeoutMs });
     prepared = await control.owned(options.prepare(paths, control.signal));
     if (control.signal.aborted) throw new Error(control.reason);
-    const session = await control.owned(adapter.start({ trialId: options.id, workspacePath: paths.workspace,
+    const session = await control.owned(adapter.start({ trialId: options.id, slot: options.slot, workspacePath: paths.workspace,
       runtimeHomePath: paths.runtimeHome, instructions: prepared.instructions, tools: prepared.tools, model: options.model,
       protectedPaths: [resolve(options.root), paths.control, paths.runtimeHome, ...Object.values(options.resources ?? {}), ...(options.protectedPaths ?? [])],
       signal: control.signal,

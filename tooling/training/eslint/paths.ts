@@ -3,7 +3,7 @@ import path from 'node:path';
 
 export const implementationRoots = new Set(['src', 'viewer', 'tooling']);
 export const generatedDirectories = new Set(['node_modules', 'dist', '.astro', '.venv', 'coverage', '.runtime', '.paideia']);
-export const generatedFilePatterns = [...generatedDirectories].map((name) => `**/${name}/**`);
+export const generatedFilePatterns = [...generatedDirectories].map((name) => `**/${name}/**`).concat('.tmp/**');
 
 export function canonicalPath(filename: string): string {
   const absolute = path.resolve(filename);

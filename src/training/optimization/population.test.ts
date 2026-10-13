@@ -65,6 +65,43 @@ it('runs the real population bridge with complete host-verified validation and d
   expect(await runDspyOptimization(populationOptions().options)).toEqual(result);
 });
 
+it('overlaps four real-process population callbacks and binds scores after reverse completion', async () => {
+  const run = populationOptions();
+  run.options.concurrency = 4;
+  run.options.trainCaseIds = ['t0', 't1', 't2', 't3'];
+  run.options.validationCaseIds = ['v0', 'v1', 'v2', 'v3'];
+  const evaluate = run.options.evaluate;
+  const completed: string[] = [];
+  const pending = new Map<number, () => void>();
+  let active = 0, peak = 0;
+  run.options.evaluate = async (request, signal, callbackId) => {
+    const reply = await evaluate(request, signal, callbackId);
+    active++;
+    peak = Math.max(peak, active);
+    expect(active).toBeLessThanOrEqual(4);
+    const index = Number(request.caseId[1]);
+    await new Promise<void>(resolve => {
+      pending.set(index, resolve);
+      if (pending.size === 4) pending.get(3)!();
+    });
+    active--;
+    completed.push(request.caseId);
+    if (index > 0) pending.get(index - 1)!();
+    else pending.clear();
+    return { ...reply, score: reply.score / 2 + index / 8 };
+  };
+  const result = await runDspyOptimization(run.options);
+  expect(peak).toBe(4);
+  expect(active).toBe(0);
+  expect(pending.size).toBe(0);
+  expect(run.evaluated).toHaveLength(28);
+  expect(completed.slice(0, 4)).toEqual(['v3', 'v2', 'v1', 'v0']);
+  expect(completed.slice(4, 8)).toEqual(['t3', 't2', 't1', 't0']);
+  expect(result.provenance.candidates[0]?.perCaseScores).toEqual({ v0: 0, v1: 0.125, v2: 0.25, v3: 0.375 });
+  expect(result.provenance.candidates[4]?.perCaseScores).toEqual({ v0: 0.5, v1: 0.625, v2: 0.75, v3: 0.875 });
+  expect(result.provenance.selectedCandidateIndex).toBe(4);
+});
+
 it('reconstructs mid-round population state from settled callbacks without extra spend or Python pickle', async () => {
   const expected = await runDspyOptimization(populationOptions().options);
   const run = populationOptions();

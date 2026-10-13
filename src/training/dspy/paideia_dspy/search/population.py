@@ -1,6 +1,7 @@
 """Deterministic round search reconstructed from ordered host callback responses."""
 import math
 import random
+from concurrent.futures import ThreadPoolExecutor
 from typing import Protocol
 
 from .behavior_change import behavior_change, hypothesis_similarity
@@ -13,7 +14,7 @@ from .variants import plan, realize
 
 
 class Evaluator(Protocol):
-    """P6 may supply concurrency; return results in request order, never completion order."""
+    """Return results in request order, never completion order."""
 
     def evaluate_many(self, requests: list[dict]) -> list:
         ...
@@ -25,6 +26,19 @@ class SequentialEvaluator:
 
     def evaluate_many(self, requests):
         return [self.session.evaluate(row["caseId"], row["components"]) for row in requests]
+
+
+class ConcurrentEvaluator:
+    def __init__(self, session):
+        self.session = session
+
+    def _evaluate(self, row):
+        return self.session.evaluate(row["caseId"], row["components"])
+
+    def evaluate_many(self, requests):
+        # map retains input order even when host callbacks finish out of order.
+        with ThreadPoolExecutor(max_workers=self.session.request.concurrency) as executor:
+            return list(executor.map(self._evaluate, requests))
 
 
 class Population:
@@ -186,7 +200,7 @@ class Population:
         }}
 
 
-def optimize_population(request, host, evaluator_factory=SequentialEvaluator):
+def optimize_population(request, host, evaluator_factory=ConcurrentEvaluator):
     # Host journal replay reconstructs state; never read/write GEPA pickle here.
     if request.checkpoint and request.checkpoint.fork:
         raise BridgeError("unsupported_checkpoint", "population checkpoint forks are unsupported")

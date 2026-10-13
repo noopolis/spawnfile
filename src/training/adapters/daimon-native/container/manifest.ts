@@ -1,3 +1,4 @@
+import { assertLeasedLaunch } from './slot.js';
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { basename, dirname, join, posix, resolve } from 'node:path';
 import type { SubjectStart } from '../../../contracts/execution.js';
@@ -33,6 +34,7 @@ export async function loadNativeLaunch(input: SubjectStart, child = false): Prom
   // launch, and every check below still pins that resolved root (for Grok, to the digest-bound slot home).
   const receiptFile = join(runtime, 'native-launch.json');
   const launch = parseNativeLaunch(JSON.parse(await readPrivateFile(receiptFile, 65536)));
+  if (input.slot) assertLeasedLaunch(launch, input.slot);
   if (launch.agent.engine === 'grok' && !child) throw new Error(grokContainerUnsupported);
   const workspace = await realpath(input.workspacePath);
   if (input.model !== launch.agent.model) throw new Error('Subject model differs from the prepared native model');

@@ -71,7 +71,7 @@ describe('stored native report projection', () => {
   it('links GEPA lineage to recorded validation captures and keeps instance IDs unique for repeated native candidates', async () => {
     const candidate = await baseline();
     const trials = [reportFixture('baseline-trial'), reportFixture('proposal-trial')];
-    const optimizer: DspyResult = { schema: 'paideia.dspy.v1', kind: 'result', id: 'opt', components: { editable: 'SECRET' },
+    const optimizer: DspyResult = { schema: 'paideia.dspy.v2', kind: 'result', id: 'opt', components: { editable: 'SECRET' },
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 2, proposals: 1,
         selectedCandidateIndex: 1, candidates: [
           { components: { editable: 'SECRET' }, parents: [null], validationScore: 0.7, discoveryEvaluations: 0 },

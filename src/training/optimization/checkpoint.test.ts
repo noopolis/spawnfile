@@ -17,8 +17,9 @@ it('restores actual GEPA state after interruption without repeating settled subj
   options.checkpoint = { directory: root, identity: 'frozen-environment', resume: false };
   const evaluate = options.evaluate;
   let fail = true;
+  let interruptedId: string | undefined;
   options.evaluate = async (request, signal, callbackId) => {
-    if (callbackId === 'call-4' && fail) { fail = false; throw new Error('controlled interruption'); }
+    if (evaluations.length === 2 && fail) { interruptedId = callbackId; fail = false; throw new Error('controlled interruption'); }
     return evaluate(request, signal);
   };
   await expect(runDspyOptimization(options)).rejects.toThrow('controlled interruption');
@@ -34,7 +35,7 @@ it('restores actual GEPA state after interruption without repeating settled subj
   expect(generations).toHaveLength(2);
   expect(new Set(result.provenance.captures.map(capture => capture.captureId)).size).toBe(7);
   const journal = JSON.parse(await readFile(join(root, 'host.json'), 'utf8'));
-  expect(journal.entries.find((entry: { request: { id: string } }) => entry.request.id === 'call-4').attempts).toBe(2);
+  expect(journal.entries.find((entry: { request: { id: string } }) => entry.request.id === interruptedId).attempts).toBe(2);
   await expect(runDspyOptimization({ ...options, checkpoint: { ...options.checkpoint, identity: 'changed-environment' } })).rejects.toThrow('identity');
 });
 
@@ -102,11 +103,11 @@ it('restores classified failed inference usage and stops GEPA cleanly at the cum
   expect(report.provenance).toMatchObject({ proposals: 1, evaluations: 4, selectedCandidateIndex: 1 });
   expect(generations).toHaveLength(1);
   expect(restored).toMatchObject({ failedAttempts: [attempt], reservations: expect.arrayContaining([
-    { id: 'call-3', method: 'generate', attempts: 1, settledAttempts: 1, completed: false } ]) });
+    { id: expect.stringMatching(/^[a-f0-9]{64}:1$/), method: 'generate', attempts: 1, settledAttempts: 1, completed: false } ]) });
   expect(JSON.stringify(restored)).not.toContain('currentComponents');
   const again = await runDspyOptimization(options);
   expect(again).toEqual(report);
   expect(generations).toHaveLength(1);
   expect(restored).toMatchObject({ reservations: expect.arrayContaining([
-    { id: 'call-3', method: 'generate', attempts: 2, settledAttempts: 2, completed: true } ]) });
+    { id: expect.stringMatching(/^[a-f0-9]{64}:1$/), method: 'generate', attempts: 2, settledAttempts: 2, completed: true } ]) });
 });

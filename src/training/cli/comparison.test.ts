@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { cliFixture, datasetText, fixtureAdapter } from './fixture.js';
@@ -10,6 +10,7 @@ import { snapshotCandidate, deriveAuthoredCandidate } from '../candidates/index.
 import { openExperimentStore } from '../storage/index.js';
 
 const roots: string[] = [];
+afterEach(() => vi.unstubAllEnvs());
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
   const f = await cliFixture(); roots.push(f.root);
@@ -72,6 +73,14 @@ it('runs authored YAML through the real CLI, records paired arms, streams and re
   expect(f.stderr.join('')).toContain('Command checkpoint inputs changed');
   expect(f.observedInstructions).toHaveLength(6);
 }, 30000);
+
+it('completes a capped mechanical comparison serially without optimizer controls or providers', async () => {
+  const f = await fixture();
+  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
+  expect(await main(f.argv, f.io, f.dependencies), f.stderr.join('')).toBe(0);
+  expect(f.observedInstructions).toEqual(['BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n']);
+  expect((await report(f.root)).provenance).toEqual({ mode: 'authored-comparison', optimizerCalls: 0 });
+});
 
 it('resumes interruption after a settled trial without repeating it', async () => {
   const f = await fixture(); const abort = new AbortController();

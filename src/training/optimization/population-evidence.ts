@@ -11,8 +11,10 @@ export function verifyPopulationEvidence(result: DspyResult, start: DspyStart, c
   }
   if (provenance.changeEvidence !== 'bridge-reported-v2') throw new Error('Population change evidence must be labelled bridge-reported');
   const seedTrain = completed.slice(start.validationCaseIds.length, start.validationCaseIds.length + start.trainCaseIds.length);
-  if (seedTrain.length !== start.trainCaseIds.length || seedTrain.some((row, index) => row.split !== 'train'
-      || row.caseId !== start.trainCaseIds[index] || !sameComponents(row.components, start.components))) {
+  const seedTrainIds = new Set(seedTrain.map(row => row.caseId));
+  if (seedTrain.length !== start.trainCaseIds.length || seedTrainIds.size !== start.trainCaseIds.length
+      || start.trainCaseIds.some(id => !seedTrainIds.has(id))
+      || seedTrain.some(row => row.split !== 'train' || !sameComponents(row.components, start.components))) {
     throw new Error('Population round 0 requires complete seed train evaluation');
   }
   const expectedScope = start.editScope ?? Object.fromEntries(Object.keys(start.components).map(key => [key, 'whole-file']));

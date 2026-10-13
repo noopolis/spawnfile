@@ -34,3 +34,8 @@ is shorter than a legitimate turn, and a worker that is still working must not b
 cut off. The caller's deadline, on the request and on the surrounding exec, is the
 only bound. The token path travels with the request instead of being fixed in the
 script, which is what lets a test run the emitted script against a real server.
+
+With a leased SubjectStart, verify the project-written launch receipt's broker
+slot/uid, workspace/home/control/ledger/preflight paths and control port against
+that descriptor before launching or copying the receipt. Never rewrite digest-bound
+projection inputs to make a mismatched receipt pass.

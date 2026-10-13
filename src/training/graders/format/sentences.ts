@@ -24,4 +24,3 @@ export function moveLeadingCitations(sentences: string[], patterns: string[]): s
   }
   return result;
 }
-

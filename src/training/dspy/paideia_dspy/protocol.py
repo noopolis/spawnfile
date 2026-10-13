@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SCHEMA = "paideia.dspy.v1"
+SCHEMA = "paideia.dspy.v2"
 MAX_LINE_BYTES = 4 * 1024 * 1024
 TextId = Annotated[str, Field(min_length=1, max_length=4096)]
 ComponentText = Annotated[str, Field(max_length=1024 * 1024)]
@@ -72,13 +72,14 @@ class Search(StrictModel):
 
 
 class OptimizeRequest(StrictModel):
-    schema_version: Literal["paideia.dspy.v1"] = Field(alias="schema")
+    schema_version: Literal["paideia.dspy.v2"] = Field(alias="schema")
     kind: Literal["optimize"]
     id: TextId
     components: Annotated[dict[TextId, ComponentText], Field(min_length=1, max_length=64)]
     trainCaseIds: Annotated[list[TextId], Field(min_length=1, max_length=10000)]
     validationCaseIds: Annotated[list[TextId], Field(min_length=1, max_length=10000)]
     budget: Budget
+    concurrency: Annotated[int, Field(ge=1, le=8)] = 1
     proposal: ProposalPolicy | None = None
     search: Search | None = None
     editScope: dict[TextId, Literal["whole-file"] | Annotated[list[TextId], Field(min_length=1)]] | None = None
@@ -125,7 +126,7 @@ class HostError(StrictModel):
 
 
 class HostResponse(StrictModel):
-    schema_version: Literal["paideia.dspy.v1"] = Field(alias="schema")
+    schema_version: Literal["paideia.dspy.v2"] = Field(alias="schema")
     kind: Literal["response"]
     id: TextId
     result: dict | None = None

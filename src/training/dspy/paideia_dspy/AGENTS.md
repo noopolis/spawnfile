@@ -38,8 +38,13 @@ released DSPy GEPA integration. Inherit the bridge guide.
   Child resume requires the same lineage; importing never resets callback IDs,
   completed outcomes, sampler state or attempt budgets.
 
+Protocol v2 uses one locked whole-line writer and one response reader dispatching
+by callback ID. Session locks protect reservations/bookkeeping, never host calls.
+Replay IDs use request content plus occurrence counts, saved explicitly with the
+paired checkpoint, rather than deriving a sequence from completed-result count.
 - `search/` owns opt-in population rounds, behavioral novelty and bounded retention.
   Omitted search dispatches to the unchanged released GEPA invocation. The search
   package reconstructs state by settled host-journal replay, without pickle; failed
   or uncertain recovery offsets and population forks fail closed before callbacks.
-  `Evaluator.evaluate_many` preserves request order; only sequential execution ships.
+  `Evaluator.evaluate_many` preserves request order and bounds active evaluations
+  by request.concurrency for both training feedback and validation.

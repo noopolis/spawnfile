@@ -13,6 +13,7 @@ import type { CheckNode, InferenceProvider } from '../contracts/index.js';
 import type { DecisionBackend } from '../contracts/grading.js';
 
 const roots: string[] = [];
+afterEach(() => vi.unstubAllEnvs());
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 const rubricDataset = (file: string) => `schema: paideia.dataset.v1\nid: rubric\nrecords:\n  - id: item\n    input: {prompt: reply}\n    checks:\n      - id: checked\n        eval: llm-rubric\n        input: output.text\n        judge: quality\n        minimum: 0.5\n        rubric: {file: ${JSON.stringify(file)}}\n`;
 
@@ -95,6 +96,18 @@ it('constructs frozen grader routes before native subjects and makes no inferenc
   const plain = new CliDatasets({}, f.root); plain.load('data.yaml', false);
   expect(await plain.buildGraders()).toEqual({});
   expect(f.dependencies.grader.backend).toHaveBeenCalledTimes(1);
+});
+
+it('rejects native grader routes in capped runs before constructing a backend, teacher or subject', async () => {
+  const f = await graderFixture();
+  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
+  const args = parseArguments(['evaluate', 'reports.yaml', ...f.nativeArgs]);
+  const inputs = await prepareCliInputs(args, f.io, f.dependencies);
+  inputs.datasets.load('reports.yaml', false);
+  await expect(prepareNative(args, f.io, f.dependencies, 1000, inputs)).rejects.toThrow(/unsupported native-grader/);
+  expect(f.dependencies.grader.backend).not.toHaveBeenCalled();
+  expect(f.dependencies.grader.provider).not.toHaveBeenCalled();
+  expect(f.dependencies.adapter).not.toHaveBeenCalled();
 });
 
 it('rejects grader and calibration edits after resolution before constructing a subject', async () => {

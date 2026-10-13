@@ -1,4 +1,4 @@
-# DSPy host protocol v1
+# DSPy host protocol v2
 
 Run `paideia-dspy` from the bridge virtual environment. One process handles one
 optimization. Send one finite UTF-8 JSON object per line, terminated by LF, maximum
@@ -15,8 +15,20 @@ with the host. The host must check every callback candidate before running it.
 ## Start: host → bridge
 
 ```json
-{"schema":"paideia.dspy.v1","kind":"optimize","id":"experiment-1","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"},"trainCaseIds":["train-1"],"validationCaseIds":["validation-1"],"budget":{"maxMetricCalls":10,"maxProposals":2},"seed":7}
+{"schema":"paideia.dspy.v2","kind":"optimize","id":"experiment-1","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"},"trainCaseIds":["train-1"],"validationCaseIds":["validation-1"],"budget":{"maxMetricCalls":10,"maxProposals":2},"seed":7}
 ```
+
+`concurrency` is an optional integer from 1 through 8 (wire default 1). Training
+resolves the run setting to 4 with provisioned slots, or legacy 1 without slots.
+GEPA uses this value as `num_threads`. The host bounds concurrent delivery and
+preserves ordered observation handling within each trial. Writes are atomic JSONL
+lines; errors/disconnect fail every waiter. Cancellation drains cooperative work;
+unsettled work is reported incomplete and its resources are retained.
+
+Callback IDs emitted by the bridge are SHA-256 over canonical `[method, params]`
+plus a per-request occurrence ordinal. The paired checkpoint saves those ordinals,
+so replay does not depend on completion order. This replaces v1 sequential IDs;
+v1 optimizer checkpoints require their original bridge.
 
 Components are a nonempty map of resource IDs to complete text (maximum 64).
 Resource IDs are opaque to Python; TypeScript owns native path mapping. Train and
@@ -38,11 +50,11 @@ proposals means baseline-only selection, not demonstrated optimization.
 ## Trial: bridge → host
 
 ```json
-{"schema":"paideia.dspy.v1","kind":"request","id":"call-1","method":"evaluate","params":{"caseId":"train-1","split":"train","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"}}}
+{"schema":"paideia.dspy.v2","kind":"request","id":"call-1","method":"evaluate","params":{"caseId":"train-1","split":"train","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"}}}
 ```
 
 ```json
-{"schema":"paideia.dspy.v1","kind":"response","id":"call-1","result":{"score":0.5,"feedback":"The filing lacked evidence.","output":"Observed native output","captureId":"capture-1"}}
+{"schema":"paideia.dspy.v2","kind":"response","id":"call-1","result":{"score":0.5,"feedback":"The filing lacked evidence.","output":"Observed native output","captureId":"capture-1"}}
 ```
 
 All four result fields are required. `score` is a finite number in [0,1]; the host
@@ -58,11 +70,11 @@ native trial; they do not establish per-file causal attribution or observed load
 ## Reflection: bridge → host
 
 ```json
-{"schema":"paideia.dspy.v1","kind":"request","id":"call-2","method":"generate","params":{"purpose":"reflection","messages":[{"role":"system","content":"..."},{"role":"user","content":"..."}],"options":{}}}
+{"schema":"paideia.dspy.v2","kind":"request","id":"call-2","method":"generate","params":{"purpose":"reflection","messages":[{"role":"system","content":"..."},{"role":"user","content":"..."}],"options":{}}}
 ```
 
 ```json
-{"schema":"paideia.dspy.v1","kind":"response","id":"call-2","result":{"text":"{\"AGENTS.md\":\"Revised instructions\\n\",\"skills/report/SKILL.md\":\"# Revised skill\\n\"}","model":"observed-subscription-model","usage":null}}
+{"schema":"paideia.dspy.v2","kind":"response","id":"call-2","result":{"text":"{\"AGENTS.md\":\"Revised instructions\\n\",\"skills/report/SKILL.md\":\"# Revised skill\\n\"}","model":"observed-subscription-model","usage":null}}
 ```
 
 The host uses its explicitly selected subscription inference adapter and the exact
@@ -88,11 +100,11 @@ selected resource IDs. A malformed response aborts; it is not silently retried.
 ## Errors and process completion
 
 ```json
-{"schema":"paideia.dspy.v1","kind":"response","id":"call-2","error":{"code":"quota_exhausted","message":"Subscription quota exhausted"}}
+{"schema":"paideia.dspy.v2","kind":"response","id":"call-2","error":{"code":"quota_exhausted","message":"Subscription quota exhausted"}}
 ```
 
-Exactly one `result` or `error` is allowed, with the pending callback ID. Only one
-callback is outstanding at once. EOF, malformed replies and host errors are latched;
+Exactly one `result` or `error` is allowed, with the pending callback ID. One
+reader dispatches replies by ID; up to `concurrency` callbacks may be outstanding. EOF, malformed replies and host errors are latched;
 DSPy's internal score/proposal error handling cannot convert them into success.
 
 The bridge terminates with exit 0 and a `kind:"result"` envelope containing the
@@ -149,7 +161,7 @@ committed state; it does not require the parent directory to remain online. Furt
 forks retain previous lineage. Forks are explicit authorization to use trusted local
 pickle state, not a format for importing untrusted agent artifacts.
 
-Callbacks retain their original `call-N` sequence. A paired Python checkpoint can
+Callbacks retain their content-derived IDs and persisted occurrence ordinals. A paired Python checkpoint can
 lag the host journal: the host must replay matching completed calls byte-for-byte
 and fulfill only the pending work. Historical successful outcomes are not rescored
 by this import. The host owns any separately authorized measurement repair and must
@@ -265,10 +277,10 @@ starts, the unrecorded shuffled parent is unknown to the host: at least one reta
 parent must be unfundable including uncached training. This is feasibility checking,
 not independent replay of Python RNG or certification of novelty gates.
 
-`Evaluator.evaluate_many(requests)` returns results in **request order**. Only the
-sequential session-backed implementation is provided. P6 may supply concurrent
-trial execution behind this interface; completion timing must not affect IDs or
-selection. No concurrent trial slots are implemented by this packet.
+`Evaluator.evaluate_many(requests)` returns results in **request order**. The
+session-backed thread pool bounds active training and validation callbacks by
+`concurrency` (default 1). Completion timing does not change case-score binding
+or candidate selection; the host owns leased native trial slots.
 
 Population state is reconstructed from the request, seed and ordered callback
 responses. The protected TypeScript journal replays settled callbacks without new

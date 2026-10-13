@@ -100,3 +100,16 @@ test('generated dependencies and build output share the lint ignore policy; hidd
     expect.objectContaining({ messageId: 'guide', message: expect.stringContaining('viewer/.internal') }),
   ]);
 });
+
+test('worktree-local temporary caches are ignored by ESLint while maintained source is checked', async () => {
+  const fixture = await lintFixture();
+  expect(await fixture.lint('not valid JavaScript', '.tmp/jiti/generated.mjs')).toEqual([
+    expect.objectContaining({ severity: 1, message: expect.stringContaining('ignored') }),
+  ]);
+  expect(await fixture.lint('not valid JavaScript', 'src/example/broken.ts')).toEqual([
+    expect.objectContaining({ fatal: true, severity: 2 }),
+  ]);
+  expect(await fixture.lint('not valid JavaScript', 'src/.tmp/broken.ts')).toEqual([
+    expect.objectContaining({ fatal: true, severity: 2 }),
+  ]);
+});

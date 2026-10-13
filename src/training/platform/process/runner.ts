@@ -13,6 +13,8 @@ export interface ProcessOptions {
   onLine: (line: string, signal: AbortSignal) => void | Promise<void>;
   maxBytes?: number;
   keepStdinOpen?: boolean;
+  /** Opt-in multiplexing; native observation streams remain ordered by default. */
+  callbackConcurrency?: number;
   closureDrainMs?: number;
   requireLineTerminator?: boolean;
 }
@@ -37,6 +39,8 @@ export function runProcess(options: ProcessOptions): RunningProcess {
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error('Process timeout must be positive');
   }
+  const concurrency = options.callbackConcurrency ?? 1;
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8) throw new Error('Callback concurrency must be 1..8');
   const group = process.platform !== 'win32';
   const child = spawn(options.command, options.args, {
     cwd: options.cwd, env: options.env, detached: group, stdio: ['pipe', 'pipe', 'pipe'],
@@ -51,7 +55,8 @@ export function runProcess(options: ProcessOptions): RunningProcess {
   let stderr = '';
   let pending = '';
   let bytes = 0;
-  let chain = Promise.resolve();
+  const queue: string[] = [];
+  const callbacks = new Set<Promise<void>>();
   const callbackController = new AbortController();
   const exists = (): boolean => {
     if (pid === undefined) return false;
@@ -98,20 +103,38 @@ export function runProcess(options: ProcessOptions): RunningProcess {
     void stop('observation or output failure');
   };
   const enqueue = (line: string): void => {
-    chain = chain.then(async () => {
-      if (failure === undefined && line.trim().length > 0) await deliver(line);
-    }).catch(rejectProtocol);
+    if (line.trim().length > 0) queue.push(line);
+    dispatch();
+  };
+  const dispatch = (): void => {
+    if (failure !== undefined || callbackController.signal.aborted) { queue.length = 0; return; }
+    while (queue.length > 0 && callbacks.size < concurrency) {
+      const line = queue.shift()!;
+      const callback = Promise.resolve().then(() => {
+        if (failure === undefined && !callbackController.signal.aborted) return deliver(line);
+      }).catch(rejectProtocol).finally(() => { callbacks.delete(callback); dispatch(); });
+      callbacks.add(callback);
+    }
+  };
+  const drainCallbacks = async (): Promise<void> => {
+    // Finishing callbacks may start queued work; a snapshot alone misses it.
+    while (callbacks.size > 0) await Promise.all([...callbacks]);
   };
   const deliver = async (line: string): Promise<void> => {
+    const callback = new AbortController();
+    const abort = () => callback.abort(callbackController.signal.reason);
+    callbackController.signal.addEventListener('abort', abort, { once: true });
+    if (callbackController.signal.aborted) abort();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let cancel!: () => void;
     const interrupted = new Promise<never>((_resolve, reject) => {
       cancel = () => { timer = setTimeout(() => reject(new Error('Observation callback did not settle after cancellation')), 100); };
-      callbackController.signal.addEventListener('abort', cancel, { once: true });
-      if (callbackController.signal.aborted) cancel();
+      callback.signal.addEventListener('abort', cancel, { once: true });
+      if (callback.signal.aborted) cancel();
     });
-    try { await Promise.race([Promise.resolve(options.onLine(line, callbackController.signal)), interrupted]); }
-    finally { clearTimeout(timer); callbackController.signal.removeEventListener('abort', cancel); }
+    try { await Promise.race([Promise.resolve(options.onLine(line, callback.signal)), interrupted]); }
+    finally { clearTimeout(timer); callback.signal.removeEventListener('abort', cancel);
+      callbackController.signal.removeEventListener('abort', abort); }
   };
   child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk: string) => {
@@ -146,7 +169,7 @@ export function runProcess(options: ProcessOptions): RunningProcess {
       } else enqueue(pending);
       const drain = setTimeout(() => callbackController.abort(new Error('Native process closed')),
         options.closureDrainMs ?? 2_000);
-      void chain.then(async () => {
+      void drainCallbacks().then(async () => {
         clearTimeout(drain);
         callbackController.abort(new Error('Native process closed'));
         if (stopping !== undefined) await stopping;

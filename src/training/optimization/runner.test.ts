@@ -175,3 +175,24 @@ it('retains host fallback receipts while keeping the actual DSPy wire protocol u
   expect(result.provenance.generations).toHaveLength(2);
   expect(result.provenance.generations.every(generation => JSON.stringify(generation.attempts) === JSON.stringify(attempts))).toBe(true);
 });
+
+it('real Python transport overlaps four callbacks and accepts out-of-order validation receipts', async () => {
+  const { options } = simulatedOptions();
+  options.concurrency = 4;
+  options.validationCaseIds = ['v0', 'v1', 'v2', 'v3'];
+  options.budget = { maxMetricCalls: 4, maxProposals: 1 };
+  const waiting = new Map<string, () => void>();
+  options.evaluate = async request => {
+    await new Promise<void>(resolve => waiting.set(request.caseId, resolve));
+    return { score: 0, feedback: '', output: '', captureId: `capture-${request.caseId}` };
+  };
+  const optimization = runDspyOptimization(options);
+  await vi.waitFor(() => expect(waiting.size).toBe(4), { timeout: 5000 });
+  for (const id of ['v3', 'v1', 'v2', 'v0']) {
+    waiting.get(id)!();
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  const result = await optimization;
+  expect(result.provenance.evaluations).toBe(4);
+  expect(result.provenance.captures.map(row => row.captureId).sort()).toEqual(['capture-v0', 'capture-v1', 'capture-v2', 'capture-v3']);
+});

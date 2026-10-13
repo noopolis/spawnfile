@@ -1,11 +1,11 @@
 # Population search
 
 Owns deterministic round planning, realization gates, instruction-unit change,
-sequential evaluation and population selection beside the legacy GEPA path.
+bounded concurrent evaluation and population selection beside the legacy GEPA path.
 
 - `population.optimize_population` is the optimizer dispatch seam. `Evaluator`
-  accepts ordered requests and returns results in the same order; P6 may provide
-  concurrency behind it. No native runtime, inference provider or paid API here.
+  accepts ordered requests and returns results in the same order, with at most
+  request.concurrency active callbacks. No native runtime, inference provider or paid API here.
 - Only training observations enter planning/realization. Validation scores select;
   never expose validation text or case IDs in generation prompts.
 - Reconstruct state from host-journal callback replay; no Python-side pickle.

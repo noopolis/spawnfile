@@ -7,7 +7,7 @@
       "at": "2026-10-11T09:00:00.000Z"
     },
     "terminal": {
-      "version": "noopolis.daimon.engine-broker.v3",
+      "version": "noopolis.daimon.engine-broker.v4",
       "kind": "failed",
       "requestId": "request-1",
       "turnId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -137,7 +137,7 @@
       "at": "2026-10-11T09:00:00.000Z"
     },
     "terminal": {
-      "version": "noopolis.daimon.engine-broker.v3",
+      "version": "noopolis.daimon.engine-broker.v4",
       "kind": "completed",
       "requestId": "request-2",
       "turnId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -188,7 +188,7 @@
       "at": "2026-10-11T09:00:00.000Z"
     },
     "terminal": {
-      "version": "noopolis.daimon.engine-broker.v3",
+      "version": "noopolis.daimon.engine-broker.v4",
       "kind": "failed",
       "requestId": "request-3",
       "turnId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",

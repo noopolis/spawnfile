@@ -2,7 +2,7 @@ import { parseDocument } from 'yaml';
 import { z } from 'zod';
 import type { InferenceAttempt } from '../contracts/execution.js';
 
-export const DSPY_SCHEMA = 'paideia.dspy.v1';
+export const DSPY_SCHEMA = 'paideia.dspy.v2';
 export const DSPY_FRAME_BYTES = 4 * 1024 * 1024;
 const id = z.string().min(1).max(4096);
 const count = z.number().int().nonnegative();
@@ -34,6 +34,7 @@ export const startSchema = z.object({
   checkpoint: z.object({ directory: id, identity: id, fork: z.object({ directory: id, identity: id, id,
     digest: z.string().regex(/^sha256:[a-f0-9]{64}$/) }).strict().optional() }).strict().optional(),
   proposal: proposalPolicySchema.optional(), search: searchSchema.optional(), editScope: editScopeSchema.optional(),
+  concurrency: z.number().int().min(1).max(8).default(1),
   budget: budgetSchema, seed: z.number().int().min(0).max(2 ** 32 - 1).default(0),
 }).strict().superRefine((value, context) => {
   const train = new Set(value.trainCaseIds), validation = new Set(value.validationCaseIds);

@@ -10,3 +10,8 @@ scoped process-group cancellation. It never interprets vendor JSON or chooses au
 - Exercise actual process failure, timeout, callback failure and cancellation in local tests.
 - Duplex clients opt into open stdin and strict line terminators. Timeout/stop
   abort callbacks; natural close allows a bounded drain before aborting unfinished work.
+
+`callbackConcurrency` opts duplex clients into 1..8 callback lanes. The default
+remains one ordered lane for native observations. Pending lines take the next free
+lane, so a slow callback cannot block unused capacity. Each callback has its own abort
+signal; shutdown waits for all lanes, reporting noncooperative callbacks as errors.

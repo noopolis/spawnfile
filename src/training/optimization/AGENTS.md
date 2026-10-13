@@ -59,6 +59,11 @@ replay exactly, pending calls preserve cumulative attempt counts, and the paired
 GEPA checkpoint restores its sampler/history. Missing child journals can finish
 interrupted fork initialization; missing ordinary resume journals still fail.
 
+Protocol v2 multiplexes up to the configured concurrency. Callback IDs are reserved
+before asynchronous work; native attempt capacity is reserved before validation.
+Journal mutations serialize complete read/change/publish transactions. Capture
+provenance compares identities independent of completion order. Drain callbacks on
+shutdown; incomplete host work retains its owned home and never claims settled work.
 Population mode is enabled only by `search`. It uses the same strict callbacks,
 complete validation captures and selected-score verification as legacy GEPA.
 The host additionally verifies per-case vectors, round lineage, declared edit scope
@@ -67,8 +72,8 @@ feasibility. Accepted components bind to host-recorded generation response text.
 Behavioral/lexical heuristics are explicitly bridge-reported-v2, not independently
 verified novelty evidence; do not imply host certification. Pre-round budget
 feasibility does not replay the unrecorded Python parent shuffle. Search and scope bind checkpoint identity. Population
-reconstructs state from settled host callbacks, with no Python pickle. P6 may replace
-Python's sequential `Evaluator.evaluate_many` while preserving request-order results.
+reconstructs state from settled host callbacks, with no Python pickle. Python's
+`Evaluator.evaluate_many` bounds active callbacks by concurrency and preserves request-order results.
 Defaults: Pareto selection, rewrite share 0.5, behavioral floor 0.08, hypothesis
 similarity 0.6, patience equal to rounds, and no declared boundaries.
 

@@ -7,6 +7,7 @@ import { runTrial } from './trial.js';
 
 /** Evaluator-owned preparation data; never implicitly delivered to the subject. */
 export interface NativePreparationContext {
+  slot?: TrialOptions['slot'];
   id: string;
   phase: TrialOptions['phase'];
   record: TrialOptions['record'];
@@ -50,7 +51,7 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
     prepare: async (paths, signal) => {
       const receipts = await materializeCandidate(options.candidate, paths.workspace);
       const environment = await options.prepareEnvironment?.(paths, signal, structuredClone({
-        id: options.id, phase: options.phase, record: options.record,
+        id: options.id, phase: options.phase, record: options.record, slot: options.slot,
         candidate: options.candidate, resources: { ...options.resources },
       }));
       await options.store.appendEvent(options.id, { id: randomUUID(), payload: { type: 'candidate.installed', receipts } }, 'evaluator');

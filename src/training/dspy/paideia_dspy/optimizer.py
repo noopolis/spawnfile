@@ -33,7 +33,7 @@ def optimize(request: OptimizeRequest, host):
         component_selector="all",
         candidate_selection_strategy="current_best",
         use_merge=False,
-        num_threads=1,
+        num_threads=request.concurrency,
         track_stats=True,
         log_dir=str(checkpoint.work) if checkpoint else None,
         seed=request.seed,

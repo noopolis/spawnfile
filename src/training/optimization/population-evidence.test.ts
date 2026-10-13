@@ -96,6 +96,34 @@ function syncHost(f: Fixture) {
   f.result.provenance.generations = f.host.generations.map(({ model, usage, text }) => ({ model, usage, text }));
 }
 
+function concurrentSeedFixture() {
+  const f = fixture();
+  f.start.concurrency = 2;
+  f.start.trainCaseIds.push('other-train');
+  const original = f.host.completed[2]!;
+  f.host.completed.splice(2, 0, { ...original, caseId: 'other-train', result: { ...original.result, captureId: 'other-seed-train' } });
+  for (const candidate of f.result.provenance.candidates.slice(1)) candidate.discoveryEvaluations++;
+  syncHost(f);
+  return f;
+}
+
+it('accepts complete seed training when concurrent callbacks finish in reverse case order', async () => {
+  const f = concurrentSeedFixture();
+  await expect(verifyDspyResult(f.result, f.host, new AbortController().signal)).resolves.toBeUndefined();
+});
+
+it.each<[string, (f: Fixture) => void]>([
+  ['duplicate case', f => { f.host.completed[2]!.caseId = 'train'; }],
+  ['unknown case', f => { f.host.completed[2]!.caseId = 'unknown'; }],
+  ['wrong split', f => { f.host.completed[2]!.split = 'validation'; }],
+  ['wrong candidate', f => { f.host.completed[2]!.components = { A: 'other' }; }],
+  ['missing case', f => { f.host.completed.splice(2, 1); }],
+])('rejects incomplete concurrent seed training: %s', (_name, mutate) => {
+  const f = concurrentSeedFixture();
+  mutate(f);
+  expect(() => verifyPopulationEvidence(f.result, f.start, f.host.completed)).toThrow('seed train');
+});
+
 function changeResponse(f: Fixture, index: number, update: (body: Record<string, unknown>) => void) {
   const generation = f.host.generations[index]!;
   const body = JSON.parse(generation.text) as Record<string, unknown>;

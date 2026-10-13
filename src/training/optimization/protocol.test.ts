@@ -7,12 +7,22 @@ function start(patch: Record<string, unknown> = {}): unknown {
 }
 
 describe('strict DSPy protocol', () => {
-  it('preserves exact strings and supplies only the GEPA seed default', () => {
-    expect(startSchema.parse(start()).seed).toBe(0);
+  it('preserves exact strings and supplies the GEPA seed and serial concurrency defaults', () => {
+    expect(startSchema.parse(start())).toMatchObject({ seed: 0, concurrency: 1 });
     const wire = encodeMessage({ schema: DSPY_SCHEMA, kind: 'request', id: 'call', method: 'evaluate',
       params: { caseId: 'train', split: 'train', components: { A: '\n  text 漢字\n' } } });
     expect(wire.split('\n')).toHaveLength(2);
     expect(decodeMessage(wire.trimEnd())).toMatchObject({ params: { components: { A: '\n  text 漢字\n' } } });
+  });
+
+  it('accepts bounded callback concurrency together with population search', () => {
+    for (const concurrency of [1, 4, 8]) {
+      expect(startSchema.parse(start({ concurrency })).concurrency).toBe(concurrency);
+    }
+    const search = { variants: 2, keep: 1, rounds: 1 };
+    const parsed = startSchema.parse(start({ concurrency: 4, search, budget: { maxMetricCalls: 5, maxProposals: 3 } }));
+    expect(parsed.concurrency).toBe(4);
+    expect(parsed.search).toMatchObject(search);
   });
 
   it.each([
@@ -20,11 +30,12 @@ describe('strict DSPy protocol', () => {
     { trainCaseIds: ['train', 'train'] }, { validationCaseIds: ['val', 'val'] },
     { validationCaseIds: ['train'] }, { testCaseIds: ['sealed'] },
     { validationCaseIds: ['v1', 'v2'], budget: { maxMetricCalls: 1, maxProposals: 1 } },
+    { concurrency: 0 }, { concurrency: 9 }, { concurrency: 1.5 }, { concurrency: '4' },
     { seed: -1 }, { budget: { maxMetricCalls: true, maxProposals: 1 } },
   ])('rejects invalid start: %j', (patch) => { expect(() => startSchema.parse(start(patch))).toThrow(); });
 
   it('rejects duplicate keys before JSON.parse can hide their conflicting values', () => {
-    const line = '{"schema":"paideia.dspy.v1","kind":"error","id":"x","id":"y","error":{"code":"bad","message":"x"}}';
+    const line = '{"schema":"paideia.dspy.v2","kind":"error","id":"x","id":"y","error":{"code":"bad","message":"x"}}';
     expect(() => decodeMessage(line)).toThrow('duplicate');
     expect(() => decodeMessage(line.replace('"id":"y"', '"\\u0069d":"y"'))).toThrow('duplicate');
   });

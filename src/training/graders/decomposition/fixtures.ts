@@ -14,4 +14,3 @@ export function fixture(): { templates: CheckTemplates; document: Decomposition;
     context: {}, units: [{ id: 'c1', kind: 'claim', text: inputs.output.body[0], paragraph: 0, sentence: 0, cites: ['R1'], fields: { actor: 'Alice' } }], extractors: [receipt] });
   return { templates, document, inputs };
 }
-
