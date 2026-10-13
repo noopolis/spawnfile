@@ -178,7 +178,9 @@ export const renderDaimonBrokerProvisioningProgram = (
    * pass a path outside it: a `tmp/` inside a cleared root is a mount point in
    * the training launch, and clearing a mount point fails `EBUSY`.
    */
-  brokerTmpdir: string = DAIMON_BROKER_TMPDIR
+  brokerTmpdir: string = DAIMON_BROKER_TMPDIR,
+  /** Root-owned training deny targets, created after root reset and before worker attestation. */
+  beforeWorkerProvisioning: readonly string[] = []
 ): string[] => {
   const program = [
     "const crypto = require('node:crypto'); const fs = require('node:fs');",
@@ -217,6 +219,7 @@ export const renderDaimonBrokerProvisioningProgram = (
       : [...MOUNT_AWARE_CLEAR_HELPER, "for broker_root in /etc/daimon-engine-broker /run/daimon-engine-broker; do spawnfile_clear_tree \"$broker_root\"; done"]),
     `install -d -o root -g ${DAIMON_BROKER_UID} -m 0731 /run/daimon-engine-broker`,
     `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${brokerTmpdir}`,
+    ...beforeWorkerProvisioning,
     "node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'",
     program,
     "SPAWNFILE_DAIMON_BROKER_PROVISION"

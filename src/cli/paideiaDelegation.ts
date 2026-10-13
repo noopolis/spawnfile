@@ -137,8 +137,8 @@ export const delegatePaideiaTraining = async (options: DelegatePaideiaTrainingOp
   if (options.repairWitness && !options.repairMeasurements) throw failure("--repair-witness requires --repair-measurements");
   if (options.trainingConfig) {
     const config = await readBoundedJson(options.trainingConfig) as { version?: unknown; image?: unknown };
-    // v2 and v3 are both declarative preparations; a v3 *launch* config (already lowered, with `inputs`) goes straight to Docker.
-    if (config.version === "spawnfile.training-container.v2" || (config.version === "spawnfile.training-container.v3" && config.image !== undefined)) {
+    // Image declarations go through preparation; lowered launch configurations go straight to Docker.
+    if (config.version === "spawnfile.training-container.v2" || (["spawnfile.training-container.v3", "spawnfile.training-container.v4"].includes(String(config.version)) && config.image !== undefined)) {
       if (options.trainingImage) throw failure("V2 owns its image declaration; --training-image is only for v1");
       const prepared = await prepareTraining({ configPath: options.trainingConfig, context: options.context, args: options.args,
         repairMeasurements: options.repairMeasurements, repairWitness: options.repairWitness,

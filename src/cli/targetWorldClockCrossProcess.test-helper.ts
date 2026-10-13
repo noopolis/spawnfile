@@ -96,7 +96,7 @@ export const createBuiltWorldClockState = async (): Promise<BuiltWorldClockState
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "spawnfile-built-world-clock-")));
   const home = path.join(root, "home"); const callsPath = path.join(root, "docker-calls.ndjson");
   const modePath = path.join(root, "mode"); const scenariosPath = path.join(root, "scenarios.json");
-  const fakeDocker = path.join(root, "docker-clock"); const requestPath = path.join(root, "request.json");
+  const fakeDocker = path.join(root, "docker-clock.cjs"); const requestPath = path.join(root, "request.json");
   const { binding, marker, request, spec } = fixture();
   const store = await initializeWorldServiceAuthorityStore(path.join(home, "target", "world-authority"));
   await store.bindService(binding);

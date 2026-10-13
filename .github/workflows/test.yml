@@ -37,6 +37,9 @@ jobs:
     name: compiler + runtime tests
     timeout-minutes: 30
     runs-on: ubuntu-latest
+    env:
+      TMPDIR: ${{ github.workspace }}/.tmp
+      DAIMON_SOURCE_ROOT: ${{ github.workspace }}/.tmp/daimon-source
     steps:
       - name: Check out Spawnfile
         uses: actions/checkout@v4
@@ -49,7 +52,25 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: mkdir -p "$TMPDIR" && npm ci
+
+      - name: Resolve exact Daimon recovery fixture revision
+        id: daimon-fixture
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs';
+          import { parse } from 'yaml';
+          const ref = parse(readFileSync('runtimes.yaml', 'utf8')).runtimes.daimon.ref;
+          if (!/^[a-f0-9]{40}$/.test(ref)) throw Error('Daimon recovery requires a full commit pin');
+          console.log(`ref=${ref}`);
+          NODE
+
+      - name: Check out pinned Daimon recovery fixture
+        uses: actions/checkout@v4
+        with:
+          repository: noopolis/daimon-harness
+          ref: ${{ steps.daimon-fixture.outputs.ref }}
+          path: .tmp/daimon-source
 
       - name: Audit runtime dependencies
         run: npm audit --omit=dev --audit-level=high

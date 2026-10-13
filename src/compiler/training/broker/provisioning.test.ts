@@ -10,7 +10,7 @@ import { trainingContainerConfigSchema } from "../container/contract.js";
 import { renderTrainingBrokerProvisioning, renderTrainingSealedInputsAssertions } from "./provisioning.js";
 import { resolveTrainingGrokRegistration } from "./registration.js";
 import { pinnedProfileAllowsNamespaceRoutes, trainingNamespaceDenialMechanism } from "./seccompRoutes.js";
-import { TRAINING_SEALED_INPUTS_IDENTITY, TRAINING_SEALED_INPUTS_ROOT, TRAINING_WORKER_UID } from "./paths.js";
+import { TRAINING_SEALED_INPUTS_IDENTITY, TRAINING_SEALED_INPUTS_ROOT, trainingSlotPaths, trainingEvaluatorPaths, trainingWipeTargets, trainingClearTargets } from "./paths.js";
 
 const run = promisify(execFile);
 const registration = () => resolveTrainingGrokRegistration({ agentId: "agent:author", model: "grok-4.6", reasoningEffort: "low" });
@@ -46,6 +46,7 @@ const runVerdict = async (verdict: string, namespaceAvailable = true): Promise<{
   }).then((result) => ({ code: 0, ...result })).catch((error: { code?: number; stdout?: string; stderr?: string }) =>
     ({ code: error.code ?? 1, stdout: error.stdout ?? "", stderr: error.stderr ?? "" }));
 };
+
 
 describe("the sealed inputs seal", () => {
   it("asserts the image-baked identity of the datasets' ancestor rather than trying to set it", () => {
@@ -189,3 +190,5 @@ describe("where the seal probes are allowed to work", () => {
     expect(script).toContain("unshare --user --map-root-user --mount true");
   });
 });
+
+const { workerUid: TRAINING_WORKER_UID } = trainingSlotPaths(0);

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { removeDirectory } from "../../filesystem/index.js";
+import { resolveRuntimeInstallSelection } from "../install.js";
 import {
   assertDaimonRuntimeHome,
   DAIMON_CONTRACT_MANIFEST_DIGEST_FILE,
@@ -87,6 +88,16 @@ afterEach(async () => {
 });
 
 describe("Daimon contract manifest", () => {
+  it("pairs the default runtime image with the actual vendored contract bytes", async () => {
+    const selection = await resolveRuntimeInstallSelection("daimon");
+    const vendored = await readVerifiedDaimonContractManifest(path.dirname(fileURLToPath(import.meta.url)));
+    expect(selection).toMatchObject({
+      kind: "container_image",
+      contractManifestSha256: vendored.digest
+    });
+    expect(vendored.digest).toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
+  });
+
   it("supports wake recording only when its exact section and consumed field appear together", () => {
     expect(daimonSupportsWakeMoments(parseDaimonContractManifest(manifest()))).toBe(false);
     const capable = { ...manifest(), wakeMoments: DAIMON_WAKE_MOMENTS,
@@ -184,7 +195,7 @@ describe("Daimon contract manifest", () => {
     const vendoredRoot = path.dirname(fileURLToPath(import.meta.url));
     const vendored = await readVerifiedDaimonContractManifest(vendoredRoot);
     expect(vendored.digest).toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
-    expect(daimonSupportsWakeMoments(vendored.manifest)).toBe(false);
+    expect(daimonSupportsWakeMoments(vendored.manifest)).toBe(true);
     const bytes = await readFile(path.join(vendoredRoot, DAIMON_CONTRACT_MANIFEST_FILE), "utf8");
     const raw = JSON.parse(bytes) as { consumedConfigFields: string[] };
     expect(raw.consumedConfigFields).toContain("agents[].memory");

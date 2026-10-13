@@ -4,12 +4,7 @@ import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManif
 import { trainingBrokerMounts, trainingBrokerTmpfsTargets } from "../container/security.js";
 import { renderTrainingBrokerProvisioning, trainingSlotDirectories } from "./provisioning.js";
 import { resolveTrainingGrokRegistration } from "./registration.js";
-import {
-  TRAINING_BROKER_TMPDIR,
-  TRAINING_CLEAR_TARGETS,
-  TRAINING_SLOT_RUNTIME_HOME,
-  TRAINING_WIPE_TARGETS
-} from "./paths.js";
+import { TRAINING_BROKER_TMPDIR, trainingSlotPaths, trainingEvaluatorPaths, trainingWipeTargets, trainingClearTargets } from "./paths.js";
 
 /** Every path the v3 launch mounts: its tmpfs set plus the realm volume and the two read-only binds. */
 const launchMounts = (): string[] => [
@@ -20,6 +15,8 @@ const launchMounts = (): string[] => [
 
 const at_or_below = (candidate: string, root: string): boolean => candidate === root || candidate.startsWith(`${root}/`);
 
+const TRAINING_WIPE_TARGETS = trainingWipeTargets(0);
+const TRAINING_CLEAR_TARGETS = trainingClearTargets(0);
 describe("training wipe targets versus the launch's own mounts", () => {
   /**
    * The P8 regression, as an invariant rather than an incident. A mount point
@@ -94,3 +91,5 @@ describe("the traversable slot runtime home", () => {
       .toEqual({ owner: "organization", group: "worker", mode: 0o710 });
   });
 });
+
+const { runtimeHome: TRAINING_SLOT_RUNTIME_HOME } = trainingSlotPaths(0);

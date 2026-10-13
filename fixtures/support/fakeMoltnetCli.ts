@@ -22,7 +22,7 @@ export const createFakeMoltnetCli = async (
   const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-fake-moltnet-cli-"));
   register?.(directory);
 
-  const cliPath = path.join(directory, "moltnet");
+  const cliPath = path.join(directory, "moltnet.cjs");
   await writeUtf8File(
     cliPath,
     [

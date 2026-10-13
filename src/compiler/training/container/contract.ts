@@ -10,26 +10,28 @@ const brokerLaunchSchema = z.object({
   realmVolume: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u),
   /** Host leaf of the dedicated training Grok login. Never the desktop `~/.grok/auth.json`. */
   bootstrap: hostPath,
-  /** `spawnfile.training-broker.v1`, written beside the launch config and bound read-only into the container. */
+  /** `spawnfile.training-broker.v2`, written beside the launch config and bound read-only into the container. */
   declaration: hostPath
 }).strict();
 
 export const trainingContainerConfigSchema = z.object({
-  version: z.enum(["spawnfile.training-container.v1", "spawnfile.training-container.v3"]),
+  version: z.enum(["spawnfile.training-container.v1", "spawnfile.training-container.v3", "spawnfile.training-container.v4"]),
+  slots: z.number().int().min(1).max(8).default(4),
   dockerContext: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u),
   inputs: z.array(z.object({ source: hostPath, destination: inputPath }).strict()).min(1).max(64),
   output: z.object({ source: hostPath, destination: z.literal("/run/training/output") }).strict(),
   auth: z.array(z.object({ source: hostPath, provider: z.enum(["codex", "claude"]) }).strict()).max(2),
-  /** Present only on `spawnfile.training-container.v3`: the brokered Grok slot this container runs as root. */
+  /** Present only on `spawnfile.training-container.v4`: the brokered Grok slot this container runs as root. */
   broker: brokerLaunchSchema.optional()
 }).strict().superRefine((value, context) => {
+  if (value.version === "spawnfile.training-container.v3") context.addIssue({ code: "custom", message: "Training-container v3 is unsupported; migrate to v4 with slots: 1" });
   const destinations = value.inputs.map((entry) => entry.destination);
   if (destinations.some((entry, index) => destinations.some((other, otherIndex) => otherIndex !== index && (entry === other || entry.startsWith(`${other}/`))))) {
     context.addIssue({ code: "custom", message: "Input destinations must not overlap" });
   }
   if (new Set(value.auth.map((entry) => entry.provider)).size !== value.auth.length) context.addIssue({ code: "custom", message: "Duplicate auth provider" });
-  if ((value.version === "spawnfile.training-container.v3") !== (value.broker !== undefined)) {
-    context.addIssue({ code: "custom", message: "Only spawnfile.training-container.v3 declares a broker slot, and it always does" });
+  if ((value.version === "spawnfile.training-container.v4") !== (value.broker !== undefined)) {
+    context.addIssue({ code: "custom", message: "Only spawnfile.training-container.v4 declares broker slots; migrate v3 by setting version to v4 and slots to 1" });
   }
 });
 export type TrainingContainerConfig = z.infer<typeof trainingContainerConfigSchema>;

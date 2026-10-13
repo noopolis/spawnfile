@@ -32,6 +32,7 @@ const bounds = DAIMON_GROK_ENGINE_BROKER.turnLimits.bounds;
  * No Grok binary and no Grok auth staging enter the image.
  */
 export const trainingBrokerSchema = z.object({
+  maxRunRequests: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(1000),
   engine: z.literal("grok"),
   agentId: z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
   model: z.enum(DAIMON_GROK_BROKER_MODELS),
@@ -50,7 +51,8 @@ export const trainingBrokerSchema = z.object({
 }).strict();
 
 export const trainingPreparationSchema = z.object({
-  version: z.enum(["spawnfile.training-container.v2", "spawnfile.training-container.v3"]),
+  version: z.enum(["spawnfile.training-container.v2", "spawnfile.training-container.v3", "spawnfile.training-container.v4"]),
+  slots: z.number().int().min(1).max(8).default(4),
   dockerContext: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u),
   image: z.union([z.object({ ref: trainingImageSchema }).strict(), z.object({ build: trainingBuildSchema }).strict()]),
   integration: z.object({ settings: reference }).strict(),
@@ -65,8 +67,9 @@ export const trainingPreparationSchema = z.object({
   auth: z.array(z.object({ source: local, provider: z.enum(["codex", "claude"]) }).strict()).max(2),
   broker: trainingBrokerSchema.optional()
 }).strict().superRefine((value, context) => {
-  if ((value.version === "spawnfile.training-container.v3") !== (value.broker !== undefined)) {
-    context.addIssue({ code: "custom", message: "Only spawnfile.training-container.v3 declares a broker slot, and it always does" });
+  if (value.version === "spawnfile.training-container.v3") context.addIssue({ code: "custom", message: "Training-container v3 is unsupported; migrate to v4 with slots: 1" });
+  if ((value.version === "spawnfile.training-container.v4") !== (value.broker !== undefined)) {
+    context.addIssue({ code: "custom", message: "Only spawnfile.training-container.v4 declares broker slots; migrate v3 by setting version to v4 and slots to 1" });
   }
   if (value.broker && "build" in value.image && value.image.build.grok) {
     context.addIssue({ code: "custom", message: "A v3 training image never copies a Grok binary; judges use the native parent's pinned /usr/local/bin/grok" });

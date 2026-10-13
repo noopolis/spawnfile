@@ -16,7 +16,7 @@ import { DAIMON_WORKER_ROOT } from "../../containerDaimonGrokWorkerRender.js";
 /**
  * Every container path the broker-capable training container fixes.
  *
- * They are fixed rather than derived because three parties must agree on them
+ * They are deterministic because three parties must agree on them
  * without talking to each other: the root entrypoint that provisions them, the
  * root slot supervisor that wipes and re-provisions them on recycle, and
  * Paideia's native adapter, which writes them into `paideia.daimon-native.launch.v2`
@@ -24,7 +24,7 @@ import { DAIMON_WORKER_ROOT } from "../../containerDaimonGrokWorkerRender.js";
  * resolves a path, so each one must also be canonical and never a symlink; the
  * provisioning program asserts that before a slot is used.
  *
- * Everything under `/run/training/slot` is per-trial state on tmpfs — never the
+ * Everything under `/run/training/slots/<i>` is per-trial state on tmpfs — never the
  * Grok realm volume (R2). The realm volume holds only `auth.json` and the
  * broker credential journal, so a recycle can wipe the slot without touching
  * the one durable rotating credential.
@@ -33,21 +33,8 @@ export const TRAINING_RUN_ROOT = "/run/training/output";
 export const TRAINING_SEALED_INPUTS_ROOT = "/run/training/inputs";
 export const TRAINING_PAIDEIA_ROOT = "/run/paideia";
 export const TRAINING_CONTEXT_FILE = `${TRAINING_PAIDEIA_ROOT}/context.json`;
-/** Host-written, read-only `spawnfile.training-broker.v1` declaration the root entrypoint reads. */
+/** Host-written, read-only `spawnfile.training-broker.v2` declaration the root entrypoint reads. */
 export const TRAINING_BROKER_DECLARATION_FILE = `${TRAINING_PAIDEIA_ROOT}/training-broker.json`;
-
-export const TRAINING_SLOT_ROOT = "/run/training/slot";
-export const TRAINING_SLOT_WORKSPACE = `${TRAINING_SLOT_ROOT}/workspace`;
-export const TRAINING_SLOT_RUNTIME_HOME = `${TRAINING_SLOT_ROOT}/runtime-home`;
-export const TRAINING_SLOT_STATE_ROOT = `${TRAINING_SLOT_ROOT}/state`;
-export const TRAINING_SLOT_ACCEPTANCE_STORE = `${TRAINING_SLOT_STATE_ROOT}/wake-acceptance`;
-/** Per-slot turn store. On tmpfs on purpose: a replayed turn from trial N must never satisfy trial N+1 (R2). */
-export const TRAINING_SLOT_TURN_STORE = `${TRAINING_SLOT_ROOT}/turns`;
-export const TRAINING_SLOT_USAGE_DIRECTORY = `${TRAINING_SLOT_ROOT}/usage`;
-export const TRAINING_SLOT_USAGE_LEDGER = `${TRAINING_SLOT_USAGE_DIRECTORY}/usage.jsonl`;
-export const TRAINING_SLOT_PREFLIGHT_RECEIPT = `${TRAINING_SLOT_ROOT}/preflight.json`;
-/** Supervisor-owned monotonic generation counter; survives a recycle, never a container restart. */
-export const TRAINING_SLOT_GENERATION_FILE = `${TRAINING_SLOT_ROOT}/generation.json`;
 
 export const TRAINING_INFERENCE_DIRECTORY = "/run/training/inference";
 export const TRAINING_INFERENCE_LEDGER = `${TRAINING_INFERENCE_DIRECTORY}/inference.jsonl`;
@@ -73,10 +60,6 @@ export const TRAINING_SUPERVISOR_SOCKET = `${TRAINING_SUPERVISOR_DIRECTORY}/cont
 export const TRAINING_SUPERVISOR_LOG = `${TRAINING_SUPERVISOR_DIRECTORY}/supervisor.log`;
 
 export const TRAINING_WORKER_ROOT = DAIMON_WORKER_ROOT;
-export const TRAINING_SLOT_INDEX = 0;
-export const TRAINING_WORKER_UID = DAIMON_FIRST_WORKER_UID + TRAINING_SLOT_INDEX;
-export const TRAINING_WORKER_HOME = path.posix.join(TRAINING_WORKER_ROOT, String(TRAINING_WORKER_UID));
-
 /**
  * Paideia's own fixed container paths (`containerPaths` in its native launch
  * schema). They are *not* individual deny entries: Grok 1.0.34 materializes
@@ -111,68 +94,101 @@ export const TRAINING_CALLER_PROTECTED_PATHS = [
  * tagged `context` — the caller-state role — since there is no other way to
  * carry a path through that contract.
  */
-export const TRAINING_EVALUATOR_PATHS: readonly { role: "run-root" | "context" | "sealed-inputs" | "judge-home" | "slot-ledger"; path: string }[] = [
-  { role: "run-root", path: TRAINING_RUN_ROOT },
-  { role: "sealed-inputs", path: TRAINING_SEALED_INPUTS_ROOT },
-  { role: "judge-home", path: TRAINING_GRANT_HOME_ROOT },
-  { role: "slot-ledger", path: TRAINING_SLOT_USAGE_DIRECTORY },
-  { role: "context", path: TRAINING_PAIDEIA_ROOT },
-  { role: "context", path: TRAINING_BROKER_TMPDIR },
-  { role: "context", path: TRAINING_INFERENCE_DIRECTORY },
-  { role: "context", path: TRAINING_SLOT_TURN_STORE },
-  { role: "context", path: TRAINING_SUPERVISOR_DIRECTORY },
-  { role: "context", path: path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath) },
-  { role: "context", path: path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath) },
-  { role: "context", path: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath },
-  { role: "context", path: DAIMON_WAKE_FUSE_DIRECTORY }
-];
+export const TRAINING_SLOTS_FILE = `${TRAINING_PAIDEIA_ROOT}/slots.json`;
+export const TRAINING_SLOTS_VERSION = "spawnfile.training-slots.v1" as const;
+export const TRAINING_DEFAULT_SLOTS = 4;
+export const TRAINING_MAX_SLOTS = 8;
+/** 100 ports per slot: offsets 0=Moltnet, 1=worker control, 2=bridge; 3..99 reserved. */
+export const TRAINING_PORT_BASE = 20_000;
+export const TRAINING_PORT_STRIDE = 100;
+export const TRAINING_BROKER_SOCKET_PATHS = [
+  DAIMON_GROK_ENGINE_BROKER.controlSocketPath, DAIMON_GROK_ENGINE_BROKER.backendSocketPath,
+  DAIMON_GROK_ENGINE_BROKER.launcherSocketPath
+] as const;
+export const TRAINING_TURN_STORE_ROOT = "/run/training/turns";
+/** Persistent, broker-only run counter; never part of a slot recycle. */
+export const TRAINING_RUN_REQUEST_STORE = "/run/training/request-budget";
 
-/**
- * One entry per evaluator role, in declaration order: the launch receipt requires all five roles,
- * and several `context` paths share that role, so the first of each role is the role's root.
- */
-export const TRAINING_EVALUATOR_ROOTS = TRAINING_EVALUATOR_PATHS
-  .filter((entry, index) => TRAINING_EVALUATOR_PATHS.findIndex((first) => first.role === entry.role) === index);
+export const assertTrainingSlotCount = (slots: number): number => {
+  if (!Number.isInteger(slots) || slots < 1 || slots > TRAINING_MAX_SLOTS) throw Error("Training slots must be an integer from 1 to 8");
+  return slots;
+};
+export const trainingSlotPaths = (slot: number) => {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= TRAINING_MAX_SLOTS) throw Error("Training slot index must be an integer from 0 to 7");
+  const root = `/run/training/slots/${slot}`;
+  const workerUid = DAIMON_FIRST_WORKER_UID + slot;
+  const workerHome = `${TRAINING_WORKER_ROOT}/${workerUid}`;
+  const portBase = TRAINING_PORT_BASE + slot * TRAINING_PORT_STRIDE;
+  const clockDirectory = `/run/daimon-engine-broker/task-clock/slot-${slot}`;
+  return {
+    slot, workerUid, root, workerHome, workspace: `${root}/workspace`, runtimeHome: `${root}/runtime-home`,
+    state: `${root}/state`, acceptanceStore: `${root}/state/wake-acceptance`,
+    turns: `${TRAINING_TURN_STORE_ROOT}/slot-${slot}`, usageDirectory: `${root}/usage`, usageLedger: `${root}/usage/usage.jsonl`,
+    preflightReceipt: `${root}/preflight.json`, generationFile: `${root}/generation.json`,
+    sealedInputsAttestation: `${root}/sealed-inputs.json`, privateTmp: `${workerHome}/tmp`,
+    clockDirectory, clockFile: `${clockDirectory}/faketime`,
+    ports: { base: portBase, stride: TRAINING_PORT_STRIDE, moltnet: portBase, workerControl: portBase + 1, bridge: portBase + 2 }
+  };
+};
+export type TrainingSlotPaths = ReturnType<typeof trainingSlotPaths>;
+export type TrainingEvaluatorPath = { role: "run-root" | "context" | "sealed-inputs" | "judge-home" | "slot-ledger"; path: string };
 
-/**
- * What `paideia.daimon-native.launch.v2`'s `controlRoot` must be.
- *
- * Paideia's worker passes it to Daimon as `acceptanceStorePath`, and Daimon adds
- * it to the projection's deny list, so it has to be the same path this
- * container masks as its slot state root. Its own default
- * (`/run/paideia/control`) would both change the digest and nest inside the
- * `/run/paideia` mask, which Grok refuses — Daimon renders a nested mask
- * without complaining, so the failure would only appear at the first turn.
- */
-export const TRAINING_CALLER_CONTROL_ROOT = TRAINING_SLOT_STATE_ROOT;
+/** The complete additional projection deny set. Sibling roots and homes never nest with own masks. */
+export const trainingEvaluatorPaths = (slot: number, slots: number): TrainingEvaluatorPath[] => {
+  assertTrainingSlotCount(slots);
+  if (slot >= slots) throw Error("Training slot is outside the declared pool");
+  const own = trainingSlotPaths(slot);
+  return [
+    { role: "run-root", path: TRAINING_RUN_ROOT },
+    { role: "sealed-inputs", path: TRAINING_SEALED_INPUTS_ROOT },
+    { role: "judge-home", path: TRAINING_GRANT_HOME_ROOT },
+    { role: "slot-ledger", path: own.usageDirectory },
+    ...[TRAINING_PAIDEIA_ROOT, TRAINING_BROKER_TMPDIR, TRAINING_INFERENCE_DIRECTORY,
+      TRAINING_TURN_STORE_ROOT, TRAINING_RUN_REQUEST_STORE, TRAINING_SUPERVISOR_DIRECTORY,
+      ...TRAINING_BROKER_SOCKET_PATHS,
+      path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath),
+      DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath, DAIMON_WAKE_FUSE_DIRECTORY,
+      ...Array.from({ length: slots }, (_, i) => trainingSlotPaths(i)).filter(p => p.slot !== slot)
+        .flatMap(p => [p.root, p.workerHome, p.clockDirectory])
+    ].map(path => ({ role: "context" as const, path }))
+  ];
+};
+export const trainingSlotDescriptors = (slots = TRAINING_DEFAULT_SLOTS) =>
+  Array.from({ length: assertTrainingSlotCount(slots) }, (_, slot) => ({
+    ...trainingSlotPaths(slot), evaluatorPaths: trainingEvaluatorPaths(slot, slots),
+    containerPaths: TRAINING_CALLER_PROTECTED_PATHS.map(path => ({ path })),
+    controlRoot: trainingSlotPaths(slot).state
+  }));
+export type TrainingSlotDescriptor = ReturnType<typeof trainingSlotDescriptors>[number];
+export interface TrainingSlotsDocument {
+  schema: typeof TRAINING_SLOTS_VERSION;
+  slots: { index: number; workerUid: number; roots: Record<string, string>; ports: { base: number; count: number } }[];
+}
+export const trainingSlotsDocument = (slots = TRAINING_DEFAULT_SLOTS): TrainingSlotsDocument => ({
+  schema: TRAINING_SLOTS_VERSION,
+  slots: trainingSlotDescriptors(slots).map(p => ({
+    index: p.slot, workerUid: p.workerUid,
+    // Paideia owns a runtime-neutral lease pool: its strict descriptor carries opaque named paths.
+    roots: {
+      ...Object.fromEntries(Object.entries(p).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
+      home: p.runtimeHome, control: p.state, context: TRAINING_PAIDEIA_ROOT,
+      ...Object.fromEntries(p.evaluatorPaths.map((entry, index) => [`evaluator:${entry.role}:${index}`, entry.path])),
+      ...Object.fromEntries(p.containerPaths.map((entry, index) => [`container:${index}`, entry.path]))
+    },
+    ports: { base: p.ports.base, count: p.ports.stride }
+  }))
+});
 
-/**
- * Everything this container provisions that the one training worker must not
- * read, beyond Daimon's own protected set (realm, bootstrap, acceptance store).
- * Each entry sits strictly below a Grok 1.0.34 base-profile grant — Grok
- * refuses a profile whose deny entry equals or contains `/run`, `/var`, `/etc`
- * or `/tmp` — and no entry covers another, because masks cannot nest.
- */
-/**
- * The added deny set is exactly the launch's `evaluatorPaths`, so Spawnfile and
- * Paideia hand Daimon's resolver the same list. `TRAINING_SLOT_STATE_ROOT` is
- * deliberately absent: Daimon adds it itself, from the control root above.
- */
-export const TRAINING_ADDED_DENY_PATHS: readonly string[] =
-  [...new Set(TRAINING_EVALUATOR_PATHS.map((entry) => entry.path))].sort();
+/** Both sides derive the descriptor bytes; a stale or edited bind must never certify a different pool. */
+export const assertTrainingSlotsDocument = (value: unknown, slots: number): void => {
+  if (JSON.stringify(value) !== JSON.stringify(trainingSlotsDocument(slots))) throw Error("Training slots manifest differs from the broker declaration");
+};
 
-/** Paths the provisioning program creates root-owned `0700` when absent, so every deny entry always has a target inode. */
+/** Shared deny targets exist before worker attestation; no per-slot subtree is touched here. */
 export const TRAINING_OPTIONAL_DENY_DIRECTORIES: readonly string[] = [
-  TRAINING_BROKER_TMPDIR,
-  TRAINING_INFERENCE_DIRECTORY,
-  TRAINING_SLOT_STATE_ROOT,
-  TRAINING_SLOT_TURN_STORE,
-  TRAINING_SUPERVISOR_DIRECTORY,
-  TRAINING_GRANT_HOME_ROOT,
-  // Denied and unused here — training meters per slot — but the mask still needs an inode. The launch
-  // mounts each as tmpfs, so this only creates them when a caller ran the entrypoint without them.
-  DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
-  DAIMON_WAKE_FUSE_DIRECTORY
+  TRAINING_BROKER_TMPDIR, TRAINING_INFERENCE_DIRECTORY, TRAINING_TURN_STORE_ROOT,
+  TRAINING_SUPERVISOR_DIRECTORY, TRAINING_GRANT_HOME_ROOT,
+  DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath, DAIMON_WAKE_FUSE_DIRECTORY
 ];
 
 /**
@@ -233,7 +249,7 @@ export const TRAINING_HOST_BIND_DENY_PATHS: readonly string[] = [TRAINING_RUN_RO
 export const TRAINING_SEALED_DENY_PATHS: readonly string[] = [TRAINING_SEALED_INPUTS_ROOT];
 
 /** Spawnfile-owned per-route seal attestation, written by provisioning beside the slot preflight receipt. */
-export const TRAINING_SEALED_INPUTS_ATTESTATION = `${TRAINING_SLOT_ROOT}/sealed-inputs.json`;
+
 
 /** The image-baked identity of the sealed inputs root, asserted before every slot and never writable at runtime. */
 export const TRAINING_SEALED_INPUTS_IDENTITY = { uid: 0, gid: DAIMON_ORGANIZATION_UID, mode: "750" } as const;
@@ -249,22 +265,15 @@ export const TRAINING_SEALED_INPUTS_IDENTITY = { uid: 0, gid: DAIMON_ORGANIZATIO
  * anyway, so an undeclared one degrades to "left in place and reported" rather
  * than a failed provision.
  */
-export const TRAINING_WIPE_TARGETS: readonly string[] = [
-  TRAINING_WORKER_HOME,
-  TRAINING_SLOT_RUNTIME_HOME,
-  TRAINING_SLOT_TURN_STORE,
-  TRAINING_SLOT_ACCEPTANCE_STORE,
-  DAIMON_GROK_ENGINE_BROKER.serviceConfigPath,
-  DAIMON_GROK_ENGINE_BROKER.registrationPath
-];
-
-/** Emptied but kept: their paths are registered with Daimon and must stay canonical across a recycle. */
-export const TRAINING_CLEAR_TARGETS: readonly string[] = [
-  TRAINING_SLOT_WORKSPACE,
-  TRAINING_SLOT_USAGE_DIRECTORY,
-  path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.controlSocketPath),
-  path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath)
-];
+export const trainingWipeTargets = (slot: number): readonly string[] => {
+  const p = trainingSlotPaths(slot);
+  return [p.runtimeHome, p.state, p.preflightReceipt, p.sealedInputsAttestation];
+};
+/** Broker-owned turns and clocks are reset through its control seam, never by filesystem deletion. */
+export const trainingClearTargets = (slot: number): readonly string[] => {
+  const p = trainingSlotPaths(slot);
+  return [p.workspace, p.usageDirectory];
+};
 
 export const TRAINING_REALM_MOUNT = DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath;
 export const TRAINING_BOOTSTRAP_MOUNT = DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath;
