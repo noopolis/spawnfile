@@ -24,9 +24,9 @@ describe("public Daimon host fixture", () => {
     temporaryDirectories.push(outputDirectory);
     await compileProject(fixture, { outputDirectory });
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
-    expect(dockerfile).toContain("COPY --from=noopolis/spawnfile-runtime-daimon@sha256:d4389f1cb99a8d2bf13134737ae058c0e48019d465bd35fbb250d7cde138b836 ");
-    expect(dockerfile).toContain('amd64) expected="sha256:9db4f4d5b62c505a445429da9ae8cf8bce21590bd1b67f449d17e427934a5421"');
-    expect(dockerfile).toContain('arm64) expected="sha256:8536fc5543378a8617a99bbdbddd0b6e909a6c0d4ed5f9bb5805d501a17ca90c"');
+    expect(dockerfile).toContain("COPY --from=noopolis/spawnfile-runtime-daimon@sha256:3cbe3ac2ba2eac7e392c52957054197f5d5a5a673c88075fcd022fead703d3b3 ");
+    expect(dockerfile).toContain('amd64) expected="sha256:a65852daef32f0b383d472fdf12c51366308b937e3acf95a4b2006662749ce87"');
+    expect(dockerfile).toContain('arm64) expected="sha256:e5391f678c3013c53d4951f460170d17c0c1b9597994f96bd5f236faa78ab058"');
   });
 
   it("compiles against an explicit local identity without changing production registry pins", async () => {
@@ -60,7 +60,7 @@ describe("public Daimon host fixture", () => {
       `COPY --from=${LOCAL_DAIMON_IMAGE_REPOSITORY}@${digest("c")} `
     );
     expect(dockerfile).toContain(digest("a"));
-    expect(dockerfile).not.toContain("sha256:d4389f1cb99a8d2bf13134737ae058c0e48019d465bd35fbb250d7cde138b836");
+    expect(dockerfile).not.toContain("sha256:3cbe3ac2ba2eac7e392c52957054197f5d5a5a673c88075fcd022fead703d3b3");
     await expect((await import("node:fs/promises")).readFile(path.join(outputDirectory, "spawnfile-report.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({
       container: { local_daimon_runtime: { registry_authority: "127.0.0.1:54321", image_reference: `${LOCAL_DAIMON_IMAGE_REPOSITORY}@${digest("c")}` } }
     });
