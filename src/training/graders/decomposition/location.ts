@@ -1,5 +1,5 @@
 import { moveLeadingCitations } from '../format/index.js';
-import type { AtomicUnit, CheckTemplates, DecompositionInputs } from './format.js';
+import type { AtomicSpan, AtomicUnit, CheckTemplates, DecompositionInputs } from './format.js';
 import { normalizeWhitespace, readPath, textLeaves } from './spans.js';
 
 interface LocatedSpan { location: string; paragraph?: number; sentence?: number; offset: number; cites: string[] }
@@ -9,15 +9,25 @@ export interface CitationDisagreement { id: string; supplied: string[]; derived:
 function width(text: string): number { return text.replace(/\s/gu, '').length; }
 
 export function locateUnit(unit: AtomicUnit, inputs: DecompositionInputs, templates?: CheckTemplates): LocatedSpan | string {
-  const structures = Object.values(templates?.context ?? {}).flatMap(context => context.rows ? [context.rows] : []);
-  const patterns = structures.length ? structures.map(rows => rows.cite) : ['\\[([A-Za-z0-9_-]+)\\]'];
-  const previous = structures.filter(rows => rows.leading_citations === 'previous').map(rows => rows.cite);
   const sources = textLeaves(inputs.output);
   if (unit.kind === 'obligation') {
     for (const [name, value] of Object.entries(inputs.context)) {
       if (name === 'assignment' || templates?.context[name]?.role === 'assignment') sources.push(...textLeaves(value, ['context', name]));
     }
   }
+  return locateSpan(unit, sources, inputs, templates);
+}
+
+/** Relational endpoints must be observable output spans, including for obligations. */
+export function locateOutputSpan(span: AtomicSpan, inputs: DecompositionInputs, templates?: CheckTemplates): LocatedSpan | string {
+  return locateSpan(span, textLeaves(inputs.output), inputs, templates);
+}
+
+function locateSpan(unit: AtomicSpan, sources: ReturnType<typeof textLeaves>, inputs: DecompositionInputs,
+  templates?: CheckTemplates): LocatedSpan | string {
+  const structures = Object.values(templates?.context ?? {}).flatMap(context => context.rows ? [context.rows] : []);
+  const patterns = structures.length ? structures.map(rows => rows.cite) : ['\\[([A-Za-z0-9_-]+)\\]'];
+  const previous = structures.filter(rows => rows.leading_citations === 'previous').map(rows => rows.cite);
   const matches: LocatedSpan[] = [];
   const needle = normalizeWhitespace(unit.text);
   const pattern = needle.split(' ').map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
@@ -54,7 +64,7 @@ export function locateUnit(unit: AtomicUnit, inputs: DecompositionInputs, templa
   return hinted.length === 1 ? hinted[0]! : 'ambiguous source span';
 }
 
-export function bindLocation(unit: AtomicUnit, located: LocatedSpan): CitationDisagreement | undefined {
+export function bindLocation(unit: AtomicSpan & { id: string }, located: LocatedSpan): CitationDisagreement | undefined {
   const supplied = unit.cites;
   delete unit.paragraph;
   delete unit.sentence;

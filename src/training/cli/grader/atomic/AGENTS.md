@@ -27,7 +27,9 @@ instantiation report with declared location exclusions.
 
 Assign unit IDs by response order (x1… extraction, a1… audit); retain extractor IDs
 as labels. Drop audit repeats only when kind, normalized text and resolved occurrence
-(location, paragraph, sentence and source character offset) match. Keep distinct
+(location, paragraph, sentence and source character offset) match. Ordered pair
+endpoint text and resolved occurrences also enter that identity. Pair extraction
+requirements derive only from declared pair reads and enter checkpoint identity. Keep distinct
 occurrences and unresolved spans for validation; record duplicate identities in
 checkpoints and counts in command summaries. Protocol
 changes invalidate earlier extraction checkpoints.

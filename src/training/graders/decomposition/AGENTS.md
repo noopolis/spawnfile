@@ -15,6 +15,9 @@ Location-scoped templates report exclusions through instantiateChecksReport. Sou
 Drop and report fields absent from unit text; missing applicability fields create
 missing checks. Extraction accepts strict JSON, optionally one surrounding json
 fence, and exports the strict provider response schema.
+Optional ordered pair endpoints are strict verbatim spans verified independently
+against output only, even for obligations. Derive each endpoint address and cites;
+unit.pair.cited_rows isolates left/right rows and absent declared pair state is missing.
 Assignment obligations read contexts explicitly marked role: assignment (the name
 assignment also works). Template criteria are answer-to-description maps; score
 keys are integer strings; noul keys are true and false. Trap intent is operator
@@ -28,3 +31,8 @@ Run the adjacent Vitest tests, TypeScript and ESLint checks; mutation-check span
 verification. Keep each source/test under 400 lines and coverage above 90%.
 
 Criteria cannot use reserved missing, abstain, uncertain or unchanged labels.
+
+unit.source_snapshots and unit.pair.source_snapshots select caller-validated
+context.source_snapshots by their cites row-ID arrays. Every derived cited row
+must be covered; empty citation sets, absent sources and incomplete pair coverage
+remain missing. Unrelated sources never enter these scoped projections.

@@ -5,11 +5,17 @@ export const trapKinds = ['injected-redundancy', 'format-paraphrase', 'option-pe
 export type TrapKind = typeof trapKinds[number];
 const id = identifier.refine(value => !value.includes('@'), '@ is reserved for check IDs');
 const reference = z.strictObject({ from: z.string().min(1), sha256: z.string().regex(/^[a-f0-9]{64}$/) });
-export const unitSchema = z.strictObject({
-  id, label: z.string().optional(), kind: identifier, text: z.string().refine(value => value.trim().length > 0, 'text must not be blank'),
+const spanShape = {
+  text: z.string().refine(value => value.trim().length > 0, 'text must not be blank'),
   paragraph: z.number().int().nonnegative().optional(), sentence: z.number().int().nonnegative().optional(),
   location: z.string().min(1).optional(),
   cites: z.array(identifier).optional(),
+};
+export const spanSchema = z.strictObject(spanShape);
+export type AtomicSpan = z.infer<typeof spanSchema>;
+export const unitSchema = z.strictObject({
+  id, label: z.string().optional(), kind: identifier, ...spanShape,
+  pair: z.strictObject({ left: spanSchema, right: spanSchema }).optional(),
   fields: z.strictObject(Object.fromEntries(['actor', 'action', 'object', 'time', 'modality', 'quantity']
     .map(key => [key, z.string().optional()])) as Record<'actor' | 'action' | 'object' | 'time' | 'modality' | 'quantity', z.ZodOptional<z.ZodString>>).optional(),
   source_span: z.string().optional(),
@@ -26,7 +32,7 @@ export const decompositionSchema = z.strictObject({
 export type AtomicUnit = z.infer<typeof unitSchema>;
 export type Decomposition = z.infer<typeof decompositionSchema>;
 export interface DecompositionInputs { output: unknown; context: Record<string, unknown> }
-const read = z.string().regex(/^(unit(?:\.cited_rows)?|paragraph|neighbors|output\.[\w.-]+|context\.[\w-]+)$/);
+const read = z.string().regex(/^(unit(?:\.pair)?(?:\.(?:cited_rows|source_snapshots))?|paragraph|neighbors|output\.[\w.-]+|context\.[\w-]+)$/);
 const answer = z.union([z.string(), z.number().int(), z.boolean()]).transform(String);
 const templateSchema = z.strictObject({
   id, applies_to: identifier, type: z.enum(['noul', 'choice', 'score']), instructions: z.string().min(1),
@@ -78,6 +84,7 @@ export function parseCheckTemplates(value: unknown): CheckTemplates {
       if (control ? label !== 'unchanged' : !options.includes(label)) throw new Error(`${template.id}: invalid trap answer for ${kind}`);
     }
     for (const state of template.state) {
+      if (state.endsWith('.source_snapshots') && state.startsWith('unit.') && !Object.hasOwn(result.context, 'source_snapshots')) throw new Error(`${template.id}: undeclared context source_snapshots`);
       if (state.startsWith('context.') && !Object.hasOwn(result.context, state.slice(8))) throw new Error(`${template.id}: undeclared context ${state}`);
     }
   }

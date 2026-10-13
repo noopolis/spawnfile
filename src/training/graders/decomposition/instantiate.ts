@@ -1,5 +1,5 @@
 import { stableDigest } from '../format/index.js';
-import type { AtomicUnit, CheckTemplate, CheckTemplates, Decomposition, DecompositionInputs } from './format.js';
+import type { AtomicSpan, AtomicUnit, CheckTemplate, CheckTemplates, Decomposition, DecompositionInputs } from './format.js';
 import { evidenceRows, readPath, validateDecomposition } from './evidence.js';
 
 export interface CheckInstance {
@@ -9,12 +9,15 @@ export interface CheckInstance {
 }
 function resolve(state: string, unit: AtomicUnit, inputs: DecompositionInputs, templates: CheckTemplates): unknown {
   if (state === 'unit') return unit;
-  if (state === 'unit.cited_rows') {
-    if (!Object.values(templates.context).some(item => item.rows)) return undefined;
-    if (!unit.cites?.length) return [];
-    const rows = evidenceRows(templates, inputs);
-    if (unit.cites.some(id => !rows.some(row => row.id === id))) return undefined;
-    return rows.filter(row => unit.cites!.includes(row.id));
+  if (state === 'unit.pair') return unit.pair;
+  if (state === 'unit.source_snapshots') return sourceSnapshots([unit], inputs, templates);
+  if (state === 'unit.pair.source_snapshots') return unit.pair
+    ? sourceSnapshots([unit.pair.left, unit.pair.right], inputs, templates) : undefined;
+  if (state === 'unit.cited_rows') return citedRows(unit, inputs, templates);
+  if (state === 'unit.pair.cited_rows') {
+    if (!unit.pair) return undefined;
+    const left = citedRows(unit.pair.left, inputs, templates), right = citedRows(unit.pair.right, inputs, templates);
+    return left === undefined || right === undefined ? undefined : { left, right };
   }
   if (state.startsWith('output.')) return readPath(inputs.output, state.slice(7).split('.'));
   if (state.startsWith('context.')) return inputs.context[state.slice(8)];
@@ -22,6 +25,28 @@ function resolve(state: string, unit: AtomicUnit, inputs: DecompositionInputs, t
   if (!Array.isArray(body) || unit.paragraph === undefined || typeof body[unit.paragraph] !== 'string') return undefined;
   if (state === 'paragraph') return body[unit.paragraph];
   return { previous: body[unit.paragraph - 1] ?? null, next: body[unit.paragraph + 1] ?? null };
+}
+function citedRows(span: AtomicSpan, inputs: DecompositionInputs, templates: CheckTemplates) {
+  if (!Object.values(templates.context).some(item => item.rows)) return undefined;
+  if (!span.cites?.length) return [];
+  const rows = evidenceRows(templates, inputs);
+  if (span.cites.some(id => !rows.some(row => row.id === id))) return undefined;
+  return rows.filter(row => span.cites!.includes(row.id));
+}
+/** Caller-validated snapshots declare the evidence row IDs they cover; never infer coverage from presence alone. */
+function sourceSnapshots(spans: AtomicSpan[], inputs: DecompositionInputs, templates: CheckTemplates) {
+  const reads = spans.map(span => citedRows(span, inputs, templates));
+  if (reads.some(rows => rows === undefined)) return undefined;
+  const ids = [...new Set(reads.flatMap(rows => rows!.map(row => row.id)))];
+  const snapshots = inputs.context.source_snapshots;
+  if (!ids.length || !Array.isArray(snapshots)) return undefined;
+  const selected = snapshots.filter((snapshot: unknown) => {
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    const cites = (snapshot as { cites?: unknown }).cites;
+    return Array.isArray(cites) && cites.some(id => ids.includes(id));
+  }) as { cites: unknown[] }[];
+  if (ids.some(id => !selected.some(snapshot => snapshot.cites.includes(id)))) return undefined;
+  return selected;
 }
 /** Placeholders have the same declared-read boundary as the projection. */
 function placeholder(path: string, projection: Record<string, unknown>): unknown {
@@ -37,7 +62,9 @@ export function instantiateChecksReport(templates: CheckTemplates, document: Dec
   const validation = validateDecomposition(document, inputs, templates);
   const rejected = new Map(validation.rejected.map(item => [item.id, item.reasons]));
   const sanitized = new Map([...validation.decomposition.units, ...(validation.decomposition.audit?.missed ?? [])].map(unit => [unit.id, unit]));
-  const units = [...document.units, ...(document.audit?.missed ?? [])].map(unit => sanitized.get(unit.id) ?? unit);
+  const rejectedPairs = new Map(validation.rejected.map(item => [item.id, item.unit.pair]));
+  const units = [...document.units, ...(document.audit?.missed ?? [])].map(unit => sanitized.get(unit.id)
+    ?? (unit.pair ? { ...unit, pair: rejectedPairs.get(unit.id) ?? unit.pair } : unit));
   const skipped: InstantiationReport['skipped'] = [];
   const checks = templates.templates.flatMap(template => units.filter(unit => unit.kind === template.applies_to).flatMap(unit => {
     if (!rejected.has(unit.id) && template.locations && !template.locations.includes(unit.location!)) {

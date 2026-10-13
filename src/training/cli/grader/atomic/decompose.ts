@@ -4,7 +4,7 @@ import { InferenceFailure } from '../../../inference/index.js';
 import type { InferenceDiagnostic, InferenceFailureKind } from '../../../contracts/execution.js';
 import type { InferenceProvider, Usage, InferenceAttempt } from '../../../contracts/execution.js';
 import { stableDigest } from '../../../graders/index.js';
-import { parseDecomposition, validateDecomposition, instantiateChecksReport, extractionResponseSchema, parseExtractionResponse, normalizeWhitespace, locateUnit } from '../../../graders/decomposition/index.js';
+import { parseDecomposition, validateDecomposition, instantiateChecksReport, extractionResponseSchema, parseExtractionResponse, normalizeWhitespace, locateUnit, locateOutputSpan } from '../../../graders/decomposition/index.js';
 import type { AtomicUnit, CheckTemplates, Decomposition } from '../../../graders/decomposition/index.js';
 import type { GraderDependencies } from '../backend.js';
 import { createGraderTeacher } from '../label-call.js';
@@ -43,6 +43,7 @@ function extractionView(config: CheckTemplates) {
     templates: config.templates.map(template => ({
       applies_to: template.applies_to, locations: template.locations,
       when: template.when ? { field: template.when.field } : undefined,
+      pair: template.state.some(state => state === 'unit.pair' || state.startsWith('unit.pair.')) || undefined,
     })),
     context: Object.fromEntries(Object.entries(config.context).map(([name, declaration]) =>
       [name, { rows: declaration.rows, role: declaration.role }])),
@@ -59,6 +60,7 @@ async function extract(input: AtomicInput, config: ReturnType<typeof extractionV
   const prompt = JSON.stringify({ task: previous ? 'Independently audit omissions. Return only missed units; do not repeat existing units.' : 'Extract all atomic units for the declared kinds.',
     kinds, kind_descriptions: config.kinds ?? {}, templates: config.templates, context_definitions: config.context,
     requirements: 'Return {"units":[{"id":"unique-id","kind":"declared-kind","text":"verbatim span","paragraph":0,"sentence":0,"cites":["row-id"],"fields":{"actor":"value","action":"value","object":"value","time":"value","modality":"value","quantity":"value"},"source_span":"verbatim span"}]}. Optional fields may be omitted. source_span (optional) = a verbatim quote from ONE of the unit\'s cited evidence rows that supports the unit; omit it if none. Location, paragraph and sentence are hints only; validation derives addresses and body citations from the output. Text must occur in output, or assignment context for obligation units. Preserve qualifiers. Do not invent spans or row ids.',
+    pair_requirements: 'For templates declaring pair:true, include pair:{left:{text:"verbatim output span",location:"body",paragraph:0,sentence:0,cites:["row-id"]},right:{text:"verbatim output span",location:"body",paragraph:0,sentence:0,cites:["row-id"]}}. Both endpoints must independently occur in OUTPUT, even for obligations. Preserve endpoint order. unit.text remains the verbatim frame or left anchor. Endpoint addresses and citations are independently derived; hints cannot manufacture evidence. Omit optional endpoint hints when unknown. Extract each distinct relation sharing an anchor separately.',
     output: input.output, context: input.context, ...(previous ? { existing_units: previous.units } : {}) });
   signal?.throwIfAborted();
   const cached = checkpoint.receipts.find(receipt => receipt.phase === phase && ['received', 'completed'].includes(receipt.outcome) && receipt.response_text !== undefined);
@@ -118,7 +120,7 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
   let completed = 0, resumed = 0, rejected = 0, dropped = 0, duplicates = 0;
   for (const input of inputs) {
     options.signal?.throwIfAborted();
-    const identity = stableDigest({ refs: input.refs, templates: extraction, teachers, protocol: 'paideia.extraction.v8' });
+    const identity = stableDigest({ refs: input.refs, templates: extraction, teachers, protocol: 'paideia.extraction.v9' });
     const basename = stableDigest(input.id);
     const checkpointFile = join(options.out, `${basename}.checkpoint.json`);
     const decompositionFile = join(options.out, `${basename}.decomposition.json`);
@@ -151,8 +153,16 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
       const key = (unit: AtomicUnit) => {
         const located = locateUnit(unit, input, templates);
         if (typeof located === 'string') return undefined;
+        const pair = [];
+        for (const side of ['left', 'right'] as const) {
+          const endpoint = unit.pair?.[side];
+          if (!endpoint) continue;
+          const address = locateOutputSpan(endpoint, input, templates);
+          if (typeof address === 'string') return undefined;
+          pair.push([normalizeWhitespace(endpoint.text), address.location, address.paragraph, address.sentence, address.offset]);
+        }
         return JSON.stringify([unit.kind, normalizeWhitespace(unit.text), located.location,
-          located.paragraph, located.sentence, located.offset]);
+          located.paragraph, located.sentence, located.offset, pair]);
       };
       const seen = new Map(checkpoint.decomposition!.units.map(unit => [key(unit), unit.id]));
       const missed = result.units.filter(unit => {
