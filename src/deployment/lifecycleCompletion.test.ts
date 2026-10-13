@@ -7,6 +7,7 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
   symlink,
@@ -108,7 +109,7 @@ describe("lifecycle completion store", () => {
       role: "initial",
     });
     if (process.platform === "darwin") {
-      expect(os.tmpdir().startsWith("/var/")).toBe(true);
+      expect(await realpath("/var")).toBe("/private/var");
     }
   });
 
