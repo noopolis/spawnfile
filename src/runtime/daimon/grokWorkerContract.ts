@@ -8,9 +8,7 @@ import {
   type DaimonGrokBrokerModel,
   type DaimonGrokBrokerReasoningEffort
 } from "./contractManifest.js";
-import { DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES, DAIMON_GROK_WORKER_CONFIG_BYTES } from "./grokWorkerConfigBytes.js";
-
-export type DaimonGrokWorkerConfigVariant = "unclocked" | "clocked";
+import { DAIMON_GROK_WORKER_CONFIG_BYTES, DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES } from "./grokWorkerConfigBytes.js";
 
 export const DAIMON_GROK_WORKER_SANDBOX_PROFILE = "daimon-strict" as const;
 export const DAIMON_GROK_WORKER_HOME_DIRECTORY = ".grok" as const;
@@ -28,10 +26,9 @@ const UNSAFE_DENY_PATH_CHARACTER = new RegExp("[\"\\\\\\u0000-\\u001f\\u007f*?[\
 export const resolveDaimonGrokWorkerConfig = (
   model: DaimonGrokBrokerModel,
   reasoningEffort: DaimonGrokBrokerReasoningEffort,
-  variant: DaimonGrokWorkerConfigVariant = "unclocked",
-  vendored: Readonly<Record<string, Readonly<Record<string, string>>>> = variant === "clocked" ? DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES : DAIMON_GROK_WORKER_CONFIG_BYTES
+  vendored: Readonly<Record<string, Readonly<Record<string, string>>>> = DAIMON_GROK_WORKER_CONFIG_BYTES
 ): { bytes: string; sha256: string } => {
-  const pins = (variant === "clocked" ? DAIMON_GROK_ENGINE_BROKER.worker.clockedConfigSha256 : DAIMON_GROK_ENGINE_BROKER.worker.configSha256) as Readonly<Record<string, Readonly<Record<string, string>> | undefined>>;
+  const pins = DAIMON_GROK_ENGINE_BROKER.worker.configSha256 as Readonly<Record<string, Readonly<Record<string, string>> | undefined>>;
   const pin = pins[model]?.[reasoningEffort];
   const bytes = vendored[model]?.[reasoningEffort];
   if (pin === undefined || bytes === undefined || sha256(bytes) !== pin) {
@@ -41,6 +38,20 @@ export const resolveDaimonGrokWorkerConfig = (
     );
   }
   return { bytes, sha256: pin };
+};
+
+/** Validate Daimon's slot-zero template before substituting only the canonical slot path. */
+export const resolveDaimonGrokClockedWorkerConfig = (
+  model: DaimonGrokBrokerModel, reasoningEffort: DaimonGrokBrokerReasoningEffort, slot: number,
+  vendored: Readonly<Record<string, Readonly<Record<string, string>>>> = DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES
+): { bytes: string; sha256: string } => {
+  if (!Number.isSafeInteger(slot) || slot < 0) throw new SpawnfileError("compile_error", "Invalid Grok clock slot");
+  const template = vendored[model]?.[reasoningEffort];
+  const pin = DAIMON_GROK_ENGINE_BROKER.worker.clockedConfigSha256[model]?.[reasoningEffort];
+  if (!template || sha256(template) !== pin) throw new SpawnfileError("compile_error", "Clocked worker config does not match the contract manifest pin");
+  const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
+  const bytes = template.replaceAll(clock.timestampFilePath, clock.slotFilePattern.replace("{slot}", String(slot)));
+  return { bytes, sha256: sha256(bytes) };
 };
 
 /**

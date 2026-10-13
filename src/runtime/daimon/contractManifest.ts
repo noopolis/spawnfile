@@ -6,9 +6,9 @@ import { SpawnfileError } from "../../shared/index.js";
 import { DAIMON_WAKE_MOMENTS, isDaimonWakeMoments } from "./wakeMoments.js";
 
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
-  "noopolis.daimon.runtime-contract-manifest.v4" as const;
+  "noopolis.daimon.runtime-contract-manifest.v5" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:e7b457b2ca201cc686e66e841bb395780187dbd1c349b22be8973f0b346c6b4a" as const;
+  "sha256:e39551277c6727c8807b1247e759f57addcee3f17f1405ebc927179647d64de6" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -77,19 +77,11 @@ export const DAIMON_GROK_ENGINE_BROKER = {
       "grok-build": { low: "fb343f2809903f26d21681470943235031f946e99085542fd89555eb7782cbb5", medium: "8a587ef75c90eab70d19b24583e60051d6fba9d90c558839fdbb15588b4cc656", high: "a23724e00d670caee185ba7690d2daa868173e53905cf446f5329666f01ab4e3" }
     },
     clockedConfigSha256: {
-      "grok-4.6": { low: "634ec9ce49c9e8d508b574e7b183678330359cfed63738df209a38963c730dab", medium: "dacd7e1c2de68d9edd2250b436d76e67046d071f163d56b7c291a315f2342e8c", high: "7aac64db19a2f59967bbbe1ed7a8b748985927f0f15cad847eb8cd20535eb70b" },
-      "grok-4.5": { low: "831a68af36566ae24c1a8301b3fa866167fd173bf22334c2caf897c6d41c8a15", medium: "f517dfefb0b6ee6252d20bd81c057afca6d6f382c92c686d0b83e91a4a77ac07", high: "bf9d36286ec81fd5d37a726c5835d11349e8cc91bafe1428fef7171a3c509091" },
-      "grok-build": { low: "22adfcb78a281e768f878996de8665e56ff698bf9c46bf06ce894ef9c21c2512", medium: "74c5362427c371e06bbf4ea5f3e10024fdb8ea468103b2206f7f4e873572932a", high: "127e592c0df2c43de51559ae7c90e607f59e2b1ccf5b8c0a082cd64e46ab7823" }
+      "grok-4.5": {"high": "907d8967960c342b442d6d256b2585f3c85bd846a78578f596f0b605403d6d34", "low": "3c4f3515b21c1bffb3fb770e2ecb4b918b6c43d5e77c1fd47e1e6698d1fedee7", "medium": "9117e12b2f3f6fa045799592969cbaae1c2f3b1ea79330badac8655b9b41dd7a"},
+      "grok-4.6": {"high": "203744f6f0dfc0bc80cfb896880497edfd9b3de4dcf33060e8ef4d2ef5f220a7", "low": "751f1dcd04983e5e5883df5a8fefa04f201e187e5ef1f344d3bf83f950830432", "medium": "f1406f93a8091eb0c09e07321254a9c783a89b0bbf5548d9613d53a8d087a517"},
+      "grok-build": {"high": "6efddadc82c38020d3351829e54bb09fa456cd6d76ea1247902794d82a4a3ffa", "low": "a8c63ba910623a0686930c27db0733f4a2588c7fca9dd7da25c3f18027720ab5", "medium": "6afcd2b90c0d19794f8c0d22147a0f011946a92e613f89dae98b0ca729313101"},
     },
-    taskClock: {
-      preloadPath: "/usr/local/lib/daimon/libfaketime.so.1",
-      timestampFilePath: "/run/daimon-engine-broker/task-clock/faketime",
-      directoryPath: "/run/daimon-engine-broker/task-clock",
-      directoryMode: 0o755,
-      fileMode: 0o644,
-      ownerUid: 2100,
-      maxRegistrations: 1
-    },
+    taskClock: {"directoryMode": 493, "directoryPath": "/run/daimon-engine-broker/task-clock/slot-0", "fileMode": 420, "ownerUid": 2100, "preloadPath": "/usr/local/lib/daimon/libfaketime.so.1", "rootDirectoryPath": "/run/daimon-engine-broker/task-clock", "slotDirectoryPattern": "/run/daimon-engine-broker/task-clock/slot-{slot}", "slotFilePattern": "/run/daimon-engine-broker/task-clock/slot-{slot}/faketime", "timestampFilePath": "/run/daimon-engine-broker/task-clock/slot-0/faketime", "version": "noopolis.daimon.grok-broker-task-clock.v2", "workerView": "own-directory-visible-sibling-directories-denied"},
     home: {
       directory: { uid: 0, group: "worker", mode: 0o1771 },
       sessionsDirectory: { relativePath: "sessions", uid: 0, group: "worker", mode: 0o1771 },
@@ -102,9 +94,11 @@ export const DAIMON_GROK_ENGINE_BROKER = {
     }
   },
   bounds: { promptBytes: 65_536, capabilityBytes: 4_096, capabilityBundleBytes: 8_196, outputBytes: 262_144 },
-  controlProtocolVersion: "noopolis.daimon.engine-broker.v3",
+  controlProtocolVersion: "noopolis.daimon.engine-broker.v4",
   turnRecordVersions: ["noopolis.daimon.engine-broker-turn.v1", "noopolis.daimon.engine-broker-turn.v2"],
-  serviceConfigVersions: ["noopolis.daimon.engine-broker-service.v1", "noopolis.daimon.engine-broker-service.v2"],
+  serviceConfigVersions: ["noopolis.daimon.engine-broker-service.v1", "noopolis.daimon.engine-broker-service.v2", "noopolis.daimon.engine-broker-service.v3"],
+  slotRouting: {"controlCaller": "organization", "key": "slot", "repeatedAgentIds": true, "resetRequest": "reset_slot", "resetResponse": "slot_reset", "slotEnvironment": "DAIMON_ENGINE_BROKER_SLOT", "turnStoreDirectory": "slot-{slot}", "workersMayControl": false},
+  runRequestBudget: {"countsCredentialRetries": true, "fileName": "run-requests.json", "includesInferenceGrants": true, "maximumField": "maxRunRequests", "storeField": "runRequestStore"},
   turnLimits: {
     keys: ["maxRequests", "maxTokens", "timeoutMs"],
     v1Defaults: { maxRequests: 32, maxTokens: 300_000, timeoutMs: 240_000 },
@@ -117,7 +111,7 @@ export const DAIMON_GROK_ENGINE_BROKER = {
     missingUsageEstimate: { inputBytesPerToken: 2, outputTokens: 4_096 }
   },
   wakeLimitEnvironment: { timeoutMs: "DAIMON_ENGINE_WAKE_TIMEOUT_MS", maxTokens: "DAIMON_ENGINE_WAKE_TOKEN_CEILING" },
-  projectionVersion: "noopolis.daimon.grok-broker-projection.v2",
+  projectionVersion: "noopolis.daimon.grok-broker-projection.v3",
   slotPreflightVersion: "noopolis.daimon.grok-slot-preflight.v2",
   inferenceGrants: {
     requestKinds: ["request_inference_grant", "release_inference_grant"],

@@ -4,11 +4,11 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "n
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createDeployResources, deployResourcesAt } from "../deployment/index.js";
 import { DISTRIBUTION_REPORT_OUTPUT_FILE, parseDistributionReport } from "../distribution/index.js";
-import { capableDaimonManifest, useMatchingDaimonTestImage } from "../runtime/daimon/recording.test-helper.js";
+import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 import type { CompilePlan } from "./types.js";
 import { resolveWorkspaceGitPins } from "./workspaceGitPins.js";
@@ -54,7 +54,7 @@ describe("fetch: build git resources", () => {
     await writeFile(path.join(source, "2026-10-08/stories/s1.md"), "# story one\n");
     await writeFile(path.join(source, "README.md"), "private\n");
   });
-  afterEach(async () => { vi.unstubAllEnvs(); await rm(root, { force: true, recursive: true }); });
+  afterEach(async () => { await rm(root, { force: true, recursive: true }); });
 
   it("pins a moving branch to a commit at compile time, mounts it as a read-only bundle and reproduces it from the recorded commit", async () => {
     const first = await commitDay("s1 first\n");
@@ -200,7 +200,6 @@ describe("fetch: build git resources", () => {
         .replace("name: reporter", `name: ${agent}`).replace("runtime: openclaw", "runtime: daimon")
         .replace("provider: anthropic", "provider: openai").replace("method: claude-code", "method: codex"));
     }
-    useMatchingDaimonTestImage(root);
     const compiled = await compile("recording-out", { daimonContractManifest: capableDaimonManifest() });
     const pins = compiled.report.workspace_git_resources!;
     expect(new Set(pins.map((pin) => pin.id)).size).toBe(1);

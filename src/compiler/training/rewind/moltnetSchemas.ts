@@ -8,7 +8,9 @@ export const moltnetInstantSchema = text.refine((value) => {
 }, "Expected an RFC3339 instant with at most nanosecond precision");
 const instant = moltnetInstantSchema;
 const strings = z.array(text);
-const actor = z.object({ type: id, id, name: text.optional(), network_id: text.optional(),
+// Moltnet validates Actor.ID and Part.Kind, but Actor.Type is an unvalidated Go string.
+// Accept its zero value as stored; never fill or normalize native payload fields.
+const actor = z.object({ type: text, id, name: text.optional(), network_id: text.optional(),
   fqid: text.optional(), credential_bound: z.boolean().optional() }).strict();
 const target = z.object({ kind: z.enum(["room", "thread", "dm"]), room_id: text.optional(),
   thread_id: text.optional(), parent_message_id: text.optional(), dm_id: text.optional(),
@@ -47,7 +49,8 @@ const pairing = z.object({ id, remote_network_id: text, remote_network_name: tex
       http: strings.optional(), attach: strings.optional(), pair: strings.optional()
     }).strict().optional(), reason: text.optional(), message: text.optional() }).strict().optional()
 }).strict();
-export const moltnetEventSchema = z.object({ id, type: id, network_id: text,
+// The delivery store persists Event.Type without validation as well.
+export const moltnetEventSchema = z.object({ id, type: text, network_id: text,
   agent: agentEvent.optional(), message: moltnetMessageSchema.optional(), room: moltnetRoomSchema.optional(),
   thread: moltnetThreadSchema.optional(), dm: direct.optional(), pairing: pairing.optional(),
   replay_gap: z.object({ requested_event_id: text.optional(), oldest_event_id: text.optional(),

@@ -1,12 +1,14 @@
 import path from "node:path";
+import { renderTrainingTaskClockReset } from "./taskClock.js";
 
 import { DAIMON_GROK_SECCOMP_PROFILE_SHA256 } from "../../../shared/daimonGrokSeccompProfile.js";
 import { DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
 import { DAIMON_WAKE_FUSE_DIRECTORY } from "../../../runtime/daimon/config.js";
 import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRender.js";
-import { renderDaimonBrokerProvisioningProgram } from "../../containerDaimonBrokerRender.js";
-import { renderDaimonGrokHostPreflight } from "../../containerDaimonGrokWorkerProvisioning.js";
+import { renderDaimonBrokerProvisioningProgram, renderDaimonWorkspaceResourceSecurity } from "../../containerDaimonBrokerRender.js";
+import { renderDaimonGrokHostPreflight, renderDaimonGrokWorkerProvisioning } from "../../containerDaimonGrokWorkerProvisioning.js";
 import {
+  TRAINING_BROKER_SOCKET_PATHS, trainingSlotPaths, trainingSlotDescriptors, TRAINING_TURN_STORE_ROOT, TRAINING_RUN_REQUEST_STORE,
   DAIMON_BROKER_UID,
   DAIMON_ORGANIZATION_UID,
   TRAINING_GRANT_HOME_ROOT,
@@ -14,23 +16,13 @@ import {
   TRAINING_INFERENCE_LEDGER,
   TRAINING_OPTIONAL_DENY_DIRECTORIES,
   TRAINING_PAIDEIA_ROOT,
-  TRAINING_SLOT_ACCEPTANCE_STORE,
-  TRAINING_SEALED_INPUTS_ATTESTATION,
   TRAINING_SEALED_INPUTS_IDENTITY,
   TRAINING_SEALED_INPUTS_ROOT,
-  TRAINING_SLOT_ROOT,
-  TRAINING_SLOT_STATE_ROOT,
-  TRAINING_SLOT_TURN_STORE,
-  TRAINING_SLOT_USAGE_DIRECTORY,
-  TRAINING_SLOT_USAGE_LEDGER,
   TRAINING_SUPERVISOR_DIRECTORY,
   TRAINING_BROKER_TMPDIR,
-  TRAINING_SLOT_WORKSPACE,
   TRAINING_WORKER_ROOT,
-  TRAINING_WORKER_UID
 } from "./paths.js";
 import { trainingNamespaceDenialMechanism } from "./seccompRoutes.js";
-import { renderTrainingTaskClockAssertions, renderTrainingTaskClockReset } from "./taskClock.js";
 
 const quote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 
@@ -56,21 +48,22 @@ const PROVISION_DIRECTORY_HELPER = [
  * `2100:2000 2750` uid 2000 — Paideia, DSPy and every judge — cannot read a
  * single subject usage row or inference row it paid for.
  */
-export const trainingSlotDirectories = (): readonly { path: string; mode: string; uid: number; gid: number }[] => [
+export const trainingSlotDirectories = (slot = 0): readonly { path: string; mode: string; uid: number; gid: number }[] => [
   // `/run/training` itself is deliberately absent: it is a mount-point parent on the read-only
   // image root, and every writable child below it is its own tmpfs or bind.
-  { path: TRAINING_SLOT_ROOT, mode: "0755", uid: 0, gid: 0 },
+  { path: trainingSlotPaths(slot).root, mode: "0711", uid: 0, gid: 0 },
   { path: TRAINING_PAIDEIA_ROOT, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: "/home/training", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: "/work", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
-  { path: TRAINING_SLOT_WORKSPACE, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: TRAINING_WORKER_UID },
+  { path: trainingSlotPaths(slot).workspace, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: trainingSlotPaths(slot).workerUid },
   // The agent runtime home is deliberately absent: the shared broker provisioning creates it root-owned,
   // fills its setgid `tool-output/`, and only then narrows it to `2000:<worker> 0710`. Handing it over here
   // would leave root — which holds no `CAP_DAC_OVERRIDE` — unable to create the spill directory inside it.
-  { path: TRAINING_SLOT_STATE_ROOT, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
-  { path: TRAINING_SLOT_ACCEPTANCE_STORE, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
-  { path: TRAINING_SLOT_TURN_STORE, mode: "0700", uid: DAIMON_BROKER_UID, gid: DAIMON_BROKER_UID },
-  { path: TRAINING_SLOT_USAGE_DIRECTORY, mode: "2750", uid: DAIMON_BROKER_UID, gid: DAIMON_ORGANIZATION_UID },
+  { path: trainingSlotPaths(slot).state, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
+  { path: trainingSlotPaths(slot).acceptanceStore, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
+  { path: TRAINING_TURN_STORE_ROOT, mode: "0700", uid: DAIMON_BROKER_UID, gid: DAIMON_BROKER_UID },
+  { path: TRAINING_RUN_REQUEST_STORE, mode: "0700", uid: DAIMON_BROKER_UID, gid: DAIMON_BROKER_UID },
+  { path: trainingSlotPaths(slot).usageDirectory, mode: "2750", uid: DAIMON_BROKER_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_INFERENCE_DIRECTORY, mode: "2750", uid: DAIMON_BROKER_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: TRAINING_GRANT_HOME_ROOT, mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   // Traverse only: the supervisor socket inside it is the uid gate, and a directory nobody but root may
@@ -95,56 +88,73 @@ export const trainingSlotDirectories = (): readonly { path: string; mode: string
  * and the worker uid instead, and this refuses to provision a slot in an image
  * that did not.
  */
-export const renderTrainingIdentities = (): string[] => [
-  `for fixed_uid in ${DAIMON_ORGANIZATION_UID} ${DAIMON_BROKER_UID} ${TRAINING_WORKER_UID}; do`,
+export const renderTrainingIdentities = (slots = 4): string[] => [
+  `for fixed_uid in ${DAIMON_ORGANIZATION_UID} ${DAIMON_BROKER_UID} ${trainingSlotDescriptors(slots).map(p => p.workerUid).join(" ")}; do`,
   '  getent passwd "$fixed_uid" >/dev/null && getent group "$fixed_uid" >/dev/null || { echo "the training image must bake uid/gid $fixed_uid; the container root is read-only" >&2; exit 1; }',
   "done"
 ];
 
-/**
- * Root provisioning for the training container's one broker slot, as bash
- * lines run by the image's own root entrypoint and replayed verbatim by the
- * slot supervisor on every recycle.
- *
- * Everything below the slot skeleton is Daimon's audited production
- * provisioning: the same credential bootstrap and journal recovery, the same
- * `registrations.bin`, the same attested worker `GROK_HOME` layout, the same
- * P1b private worker temp, closed shared temp and setgid spill directory, and
- * the same `service.json` — here v2 with the per-slot usage ledger, the
- * per-slot tmpfs turn store and the evaluator `inferenceLedgerPath`.
- */
-export const renderTrainingBrokerProvisioning = (registration: DaimonGrokRegistration): string[] => [
+/** Slot-local skeleton, shared by initial provisioning and recycle. */
+const slotDirectories = (slot: number) => trainingSlotDirectories(slot).filter(entry =>
+  entry.path === trainingSlotPaths(slot).root || entry.path.startsWith(`${trainingSlotPaths(slot).root}/`));
+const renderDirectories = (entries: ReturnType<typeof trainingSlotDirectories>, ledgers: string[]): string[] => [
   ...PROVISION_DIRECTORY_HELPER,
-  // Two passes, because root here holds neither `CAP_DAC_OVERRIDE` nor `CAP_FOWNER`: create every
-  // directory while they are all still root-owned and traversable, then set ownership and mode from the
-  // deepest path up, so tightening a parent to `0700` never strands a child that still has to be created.
-  ...trainingSlotDirectories().map((entry) => `mkdir -p ${quote(entry.path)}`),
-  // Every deny entry needs an inode to mask; a bind the host did not supply is created root-owned and unreadable.
-  ...TRAINING_OPTIONAL_DENY_DIRECTORIES.map((target) => `if [ ! -e ${quote(target)} ]; then mkdir -p ${quote(target)}; provision_dir ${quote(target)} 0700 0 0; fi`),
-  // Both ledgers exist before their directories are handed to the broker: the broker appends rows `0640` in
-  // its own group, and the setgid directory below is what lets uid 2000 read a row it paid for.
-  ...[TRAINING_SLOT_USAGE_LEDGER, TRAINING_INFERENCE_LEDGER].map((ledger) =>
-    `if [ ! -e ${quote(ledger)} ]; then : > ${quote(ledger)}; fi; chown 0:0 ${quote(ledger)}; chmod 0640 ${quote(ledger)}; chown ${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} ${quote(ledger)}`),
-  ...[...trainingSlotDirectories()].sort((left, right) => right.path.split("/").length - left.path.split("/").length)
-    .map((entry) => `provision_dir ${quote(entry.path)} ${entry.mode} ${entry.uid} ${entry.gid}`),
-  ...renderDaimonGrokHostPreflight(),
-  ...renderTrainingTaskClockReset(),
-  ...renderDaimonBrokerProvisioningProgram([registration], [], {
-    turnStore: TRAINING_SLOT_TURN_STORE,
-    inferenceLedgerPath: TRAINING_INFERENCE_LEDGER
-  }, "clear", TRAINING_OPTIONAL_DENY_DIRECTORIES, TRAINING_BROKER_TMPDIR),
-  ...renderTrainingTaskClockAssertions(registration),
-  // The shared program leaves the broker's `/etc` root `0555 root:root`, which every uid can list. Training
-  // denies that directory to its worker, and a canary can only observe a denial the kernel actually enforces.
-  `chmod 0550 /etc/daimon-engine-broker; chown 0:${DAIMON_BROKER_UID} /etc/daimon-engine-broker`,
-  `test "$(stat -c '%u:%g %a' ${quote(TRAINING_SLOT_USAGE_DIRECTORY)})" = "${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} 2750"`,
+  ...entries.map(entry => `mkdir -p ${quote(entry.path)}`),
+  ...ledgers.map(ledger => `if [ ! -e ${quote(ledger)} ]; then : > ${quote(ledger)}; fi; chown 0:0 ${quote(ledger)}; chmod 0640 ${quote(ledger)}; chown ${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} ${quote(ledger)}`),
+  ...[...entries].sort((a, b) => b.path.split("/").length - a.path.split("/").length)
+    .map(entry => `provision_dir ${quote(entry.path)} ${entry.mode} ${entry.uid} ${entry.gid}`)
+];
+
+const renderSlotAssertions = (r: DaimonGrokRegistration): string[] => [
+  `test "$(stat -c '%u:%g %a' ${quote(trainingSlotPaths(r.slot).usageDirectory)})" = "${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} 2750"`,
   `test "$(stat -c '%u:%g %a' ${quote(TRAINING_INFERENCE_DIRECTORY)})" = "${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} 2750"`,
   `test "$(stat -c '%u:%g %a' ${quote(TRAINING_GRANT_HOME_ROOT)})" = "${DAIMON_ORGANIZATION_UID}:${DAIMON_ORGANIZATION_UID} 700"`,
-  // The judge grant home root is the evaluator's alone: no worker uid may even traverse it.
-  `setpriv --clear-groups --reuid ${TRAINING_WORKER_UID} --regid ${TRAINING_WORKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${quote(TRAINING_GRANT_HOME_ROOT)}'`,
-  `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'test -r ${quote(TRAINING_SLOT_USAGE_LEDGER)} && test -r ${quote(TRAINING_INFERENCE_LEDGER)}'`,
-  // The sealed train and test datasets: the one boundary here that must hold against the subject's own
-  // namespace, not only against an honest tool. Last, so it runs with every mode already final.
+  `setpriv --clear-groups --reuid ${r.uid} --regid ${r.uid} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${quote(TRAINING_GRANT_HOME_ROOT)}'`,
+  `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'test -r ${quote(r.usageLedgerPath)} && test -r ${quote(TRAINING_INFERENCE_LEDGER)}'`
+];
+
+/** Full container provisioning runs exactly once, before any broker process starts. */
+export const renderTrainingBrokerProvisioning = (input: DaimonGrokRegistration | readonly DaimonGrokRegistration[], maxRunRequests = 1000): string[] => {
+  if (!Number.isSafeInteger(maxRunRequests) || maxRunRequests < 1) throw new Error("Invalid run request cap");
+  const registrations = Array.isArray(input) ? input : [input as DaimonGrokRegistration];
+  const directories = [...new Map(registrations.flatMap(r => trainingSlotDirectories(r.slot)).map(d => [d.path, d])).values()];
+  return [
+    ...renderTrainingIdentities(registrations.length),
+    ...renderTrainingTaskClockReset(),
+    ...renderDirectories(directories, [...registrations.map(r => r.usageLedgerPath), TRAINING_INFERENCE_LEDGER]),
+    ...renderDaimonGrokHostPreflight(),
+    ...renderDaimonBrokerProvisioningProgram(registrations, [], {
+      version: "v3", maxRunRequests, runRequestStore: TRAINING_RUN_REQUEST_STORE,
+      turnStore: TRAINING_TURN_STORE_ROOT, inferenceLedgerPath: TRAINING_INFERENCE_LEDGER
+    }, "clear", TRAINING_OPTIONAL_DENY_DIRECTORIES, TRAINING_BROKER_TMPDIR, [
+      `mkdir -p ${quote(DAIMON_GROK_ENGINE_BROKER.worker.taskClock.rootDirectoryPath)}; chmod 0755 ${quote(DAIMON_GROK_ENGINE_BROKER.worker.taskClock.rootDirectoryPath)}`,
+      ...registrations.flatMap(r => {
+        const p = trainingSlotPaths(r.slot);
+        return [
+          `mkdir -p ${quote(p.clockDirectory)}; chown 0:0 ${quote(p.clockDirectory)}; chmod 0755 ${quote(p.clockDirectory)}`,
+          `printf '+0\\n' > ${quote(p.clockFile)}; chmod 0644 ${quote(p.clockFile)}; chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(p.clockFile)}`,
+          `chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(p.clockDirectory)}`
+        ];
+      })
+    ]),
+    `chmod 0550 /etc/daimon-engine-broker; chown 0:${DAIMON_BROKER_UID} /etc/daimon-engine-broker`,
+    ...registrations.flatMap(r => [...renderSlotAssertions(r), ...renderTrainingSealedInputsAssertions(r.uid, r.privateTmp)])
+  ];
+};
+
+/** Reuse the audited worker renderer; never touch service config, credentials, shared temps or siblings. */
+export const renderTrainingSlotProvisioning = (registration: DaimonGrokRegistration): string[] => [
+  ...renderDirectories(slotDirectories(registration.slot), [registration.usageLedgerPath]),
+  // Keep worker-home and private-tmp identities stable: sibling turns attest them concurrently.
+  `setpriv --clear-groups --reuid=${registration.uid} --regid=${registration.uid} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- mkdir -p ${quote(registration.grokHome)}`,
+  `chown 0:0 ${quote(registration.grokHome)}; chmod 0700 ${quote(registration.grokHome)}`,
+
+  "node <<'SPAWNFILE_TRAINING_SLOT_PROVISION'",
+  "const crypto = require('node:crypto'); const fs = require('node:fs');",
+  ...renderDaimonWorkspaceResourceSecurity([]),
+  ...renderDaimonGrokWorkerProvisioning([registration], {}, [], "slot"),
+  "SPAWNFILE_TRAINING_SLOT_PROVISION",
+  ...renderSlotAssertions(registration),
   ...renderTrainingSealedInputsAssertions(registration.uid, registration.privateTmp)
 ];
 
@@ -193,14 +203,14 @@ export const renderTrainingBrokerProvisioning = (registration: DaimonGrokRegistr
  * the seal. The private tmp is also the workspace the subject itself has.
  */
 export const renderTrainingSealedInputsAssertions = (
-  workerUid = TRAINING_WORKER_UID,
-  privateTmp = path.posix.join(TRAINING_WORKER_ROOT, String(TRAINING_WORKER_UID), "tmp"),
+  workerUid = trainingSlotPaths(0).workerUid,
+  privateTmp = trainingSlotPaths(0).privateTmp,
   mechanism = trainingNamespaceDenialMechanism()
 ): string[] => [
   // Diagnostics go to a file rather than into the verdict: a route's stderr is util-linux prose that
   // would turn every real verdict into "unknown", but a no-verdict refusal with no diagnostic is what
   // made the first live failure unreadable, so the unknown branch prints it back.
-  `seal_diagnostic=${quote(`${TRAINING_SLOT_ROOT}/seal-probe.err`)}`,
+  `seal_diagnostic=${quote(`${trainingSlotPaths(workerUid - trainingSlotPaths(0).workerUid).root}/seal-probe.err`)}`,
   `seal_worker() { setpriv --clear-groups --reuid ${workerUid} --regid ${workerUid} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- /bin/sh -c "$1" 2>"$seal_diagnostic"; }`,
   "seal_rows=''",
   'seal_record() { if [ -n "$seal_rows" ]; then seal_rows="$seal_rows,"; fi; seal_rows="$seal_rows{\\"route\\":\\"$1\\",\\"verdict\\":\\"$2\\"}"; }',
@@ -236,7 +246,7 @@ export const renderTrainingSealedInputsAssertions = (
   // cross-repo `noopolis.daimon.grok-slot-preflight.v2` canary shape is deliberately untouched — its
   // schema lives in Daimon and no consumer here can validate an added member — so the per-route
   // mechanism is recorded here rather than implied by a bare `result: "denied"` there.
-  `seal_attestation=${quote(TRAINING_SEALED_INPUTS_ATTESTATION)}`,
+  `seal_attestation=${quote(trainingSlotPaths(workerUid - trainingSlotPaths(0).workerUid).sealedInputsAttestation)}`,
   `printf '{"version":"spawnfile.training-sealed-inputs.v1","root":"%s","worker_uid":%s,"identity":"%s","pinned_seccomp_profile_sha256":"%s","namespace_routes":"%s","routes":[%s]}\\n' `
     + `${quote(TRAINING_SEALED_INPUTS_ROOT)} ${workerUid} `
     + `"$(stat -c '%u:%g %a' ${quote(TRAINING_SEALED_INPUTS_ROOT)})" ${quote(DAIMON_GROK_SECCOMP_PROFILE_SHA256)} `

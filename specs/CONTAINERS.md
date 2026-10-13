@@ -188,7 +188,7 @@ Daimon contract enters Spawnfile: it reads a Daimon checkout
 digest plus Daimon's worker `config.toml` renderer bytes.
 
 Manifest v4 adds the separate clocked worker variant, engine-broker protocol v3
-and projection v2. It also declares `wakeMoments` and `agents[].recording`:
+and projection v3. It also declares `wakeMoments` and `agents[].recording`:
 with an image attesting this manifest, declared training recording passes the
 recording capability gate. Recording remains opt-in.
 

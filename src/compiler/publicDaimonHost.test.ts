@@ -19,11 +19,14 @@ afterEach(async () => {
 });
 
 describe("public Daimon host fixture", () => {
-  it("requires a re-pin before production compiles can use the new manifest", async () => {
+  it("compiles a public host against the CI-published Daimon index with no local identity", async () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-public-daimon-"));
     temporaryDirectories.push(outputDirectory);
-    await expect(compileProject(fixture, { outputDirectory })).rejects.toThrow(/does not attest the compiler's exact contract manifest/u);
-    await expect(readUtf8File(path.join(outputDirectory, "Dockerfile"))).rejects.toThrow();
+    await compileProject(fixture, { outputDirectory });
+    const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
+    expect(dockerfile).toContain("COPY --from=noopolis/spawnfile-runtime-daimon@sha256:d4389f1cb99a8d2bf13134737ae058c0e48019d465bd35fbb250d7cde138b836 ");
+    expect(dockerfile).toContain('amd64) expected="sha256:9db4f4d5b62c505a445429da9ae8cf8bce21590bd1b67f449d17e427934a5421"');
+    expect(dockerfile).toContain('arm64) expected="sha256:8536fc5543378a8617a99bbdbddd0b6e909a6c0d4ed5f9bb5805d501a17ca90c"');
   });
 
   it("compiles against an explicit local identity without changing production registry pins", async () => {
@@ -57,7 +60,7 @@ describe("public Daimon host fixture", () => {
       `COPY --from=${LOCAL_DAIMON_IMAGE_REPOSITORY}@${digest("c")} `
     );
     expect(dockerfile).toContain(digest("a"));
-    expect(dockerfile).not.toContain("sha256:85875f67af630e8b4e667a72f20f0b491940cfb3feb7fe132a13a84678147747");
+    expect(dockerfile).not.toContain("sha256:d4389f1cb99a8d2bf13134737ae058c0e48019d465bd35fbb250d7cde138b836");
     await expect((await import("node:fs/promises")).readFile(path.join(outputDirectory, "spawnfile-report.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({
       container: { local_daimon_runtime: { registry_authority: "127.0.0.1:54321", image_reference: `${LOCAL_DAIMON_IMAGE_REPOSITORY}@${digest("c")}` } }
     });

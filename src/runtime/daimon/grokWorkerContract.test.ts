@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { DAIMON_GROK_BROKER_MODELS, DAIMON_GROK_BROKER_REASONING_EFFORTS, DAIMON_GROK_ENGINE_BROKER } from "./contractManifest.js";
 import { DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES, DAIMON_GROK_WORKER_CONFIG_BYTES, DAIMON_GROK_WORKER_PROFILE_SAMPLES } from "./grokWorkerConfigBytes.js";
-import { renderDaimonGrokWorkerSandboxProfile, resolveDaimonGrokWorkerConfig } from "./grokWorkerContract.js";
+import { renderDaimonGrokWorkerSandboxProfile, resolveDaimonGrokWorkerConfig, resolveDaimonGrokClockedWorkerConfig } from "./grokWorkerContract.js";
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
@@ -17,13 +17,6 @@ describe("vendored Daimon Grok worker contract", () => {
         expect(sha256(resolved.bytes)).toBe(DAIMON_GROK_ENGINE_BROKER.worker.configSha256[model][effort]);
         expect(resolved.bytes).toContain(`model = "${model}"`);
         expect(resolved.bytes).toContain(`value = "${effort}"`);
-        expect(resolved.bytes).not.toMatch(/LD_PRELOAD|FAKETIME/u);
-        const clocked = resolveDaimonGrokWorkerConfig(model, effort, "clocked");
-        expect(clocked.bytes).toBe(DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES[model][effort]);
-        expect(clocked.sha256).toBe(DAIMON_GROK_ENGINE_BROKER.worker.clockedConfigSha256[model][effort]);
-        expect(sha256(clocked.bytes)).toBe(clocked.sha256);
-        expect(clocked.bytes).toContain(DAIMON_GROK_ENGINE_BROKER.worker.taskClock.preloadPath);
-        expect(clocked.bytes).toContain(DAIMON_GROK_ENGINE_BROKER.worker.taskClock.timestampFilePath);
       }
     }
   });
@@ -33,11 +26,17 @@ describe("vendored Daimon Grok worker contract", () => {
       ...DAIMON_GROK_WORKER_CONFIG_BYTES,
       "grok-4.6": { ...DAIMON_GROK_WORKER_CONFIG_BYTES["grok-4.6"], low: DAIMON_GROK_WORKER_CONFIG_BYTES["grok-4.6"].low.replace("grok-4.6", "grok-4.5") }
     };
-    expect(() => resolveDaimonGrokWorkerConfig("grok-4.6", "low", "unclocked", tampered)).toThrow(/does not match the contract manifest pin/u);
+    expect(() => resolveDaimonGrokWorkerConfig("grok-4.6", "low", tampered)).toThrow(/does not match the contract manifest pin/u);
     const swapped = { ...DAIMON_GROK_WORKER_CONFIG_BYTES, "grok-4.6": { ...DAIMON_GROK_WORKER_CONFIG_BYTES["grok-4.6"], low: DAIMON_GROK_WORKER_CONFIG_BYTES["grok-4.6"].medium } };
-    expect(() => resolveDaimonGrokWorkerConfig("grok-4.6", "low", "unclocked", swapped)).toThrow(/manifest pin/u);
-    expect(() => resolveDaimonGrokWorkerConfig("grok-4.6", "low", "clocked", DAIMON_GROK_WORKER_CONFIG_BYTES)).toThrow(/manifest pin/u);
-    expect(() => resolveDaimonGrokWorkerConfig("grok-4.6", "low", "unclocked", DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES)).toThrow(/manifest pin/u);
+    expect(() => resolveDaimonGrokWorkerConfig("grok-4.6", "low", swapped)).toThrow(/manifest pin/u);
+  });
+
+  it("refuses a changed clocked template and invalid slot before deriving slot-specific bytes", () => {
+    expect(() => resolveDaimonGrokClockedWorkerConfig("grok-4.6", "low", 2, {
+      ...DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES,
+      "grok-4.6": { ...DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES["grok-4.6"], low: DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES["grok-4.6"].low + " " }
+    })).toThrow(/manifest pin/);
+    for (const slot of [-1, 0.5, NaN]) expect(() => resolveDaimonGrokClockedWorkerConfig("grok-4.6", "low", slot)).toThrow(/slot/);
   });
 
   it("renders sandbox profile bytes identical to Daimon's renderer", () => {

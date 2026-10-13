@@ -6,7 +6,7 @@ import {
 } from "../../../runtime/daimon/contractManifest.js";
 import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRender.js";
 import type { TrainingBrokerDeclaration } from "./declaration.js";
-import { TRAINING_SLOT_RUNTIME_HOME, TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_WORKSPACE, TRAINING_WORKER_HOME } from "./paths.js";
+import { trainingSlotPaths } from "./paths.js";
 
 /**
  * The slice of Daimon's public `@noopolis/daimon/runtime` export the slot
@@ -32,8 +32,8 @@ export const loadDaimonProjectionModule = async (load: () => Promise<unknown> = 
   catch { throw new SpawnfileError("runtime_error", "The training image must install @noopolis/daimon with its public /runtime export"); }
   if (typeof daimon.resolveOrganizationGrokBrokerProjection !== "function" || typeof daimon.grokBrokerProjectionSha256 !== "function"
     || daimon.GROK_ENGINE_BROKER?.projectionVersion !== DAIMON_GROK_ENGINE_BROKER.projectionVersion
-    || daimon.GROK_ENGINE_BROKER.slotPreflightVersion !== DAIMON_GROK_ENGINE_BROKER.slotPreflightVersion
     || daimon.GROK_ENGINE_BROKER.controlProtocolVersion !== DAIMON_GROK_ENGINE_BROKER.controlProtocolVersion
+    || daimon.GROK_ENGINE_BROKER.slotPreflightVersion !== DAIMON_GROK_ENGINE_BROKER.slotPreflightVersion
     || daimon.GROK_ENGINE_BROKER.nativeAbiVersion !== DAIMON_GROK_ENGINE_BROKER.nativeAbiVersion) {
     throw new SpawnfileError("runtime_error", "The installed Daimon Grok broker contract differs from this compiler's vendored manifest");
   }
@@ -50,19 +50,19 @@ export const loadDaimonProjectionModule = async (load: () => Promise<unknown> = 
  * of peers reach `resolveOrganizationGrokBrokerProjection`, so this minimal
  * config and Paideia's fuller one compute the same projection digest. A peer
  * agent would change Daimon's protected set and the digest with it, which is
- * exactly why training runs one slot.
+ * why each slot resolves its own one-agent projection with explicit sibling deny paths.
  */
 export const trainingOrganizationRuntimeConfig = (declaration: {
   agentId: string; model: DaimonGrokBrokerModel; reasoningEffort: DaimonGrokBrokerReasoningEffort;
-}): Record<string, unknown> => ({
+}, slot = 0): Record<string, unknown> => ({
   version: "noopolis.daimon.organization-runtime.v1",
-  host: { bindHost: "127.0.0.1", port: 19_700, controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN" },
+  host: { bindHost: "127.0.0.1", port: trainingSlotPaths(slot).ports.workerControl, controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN" },
   agents: [{
     id: declaration.agentId,
     name: declaration.agentId,
     instructions: "training subject",
-    workspacePath: TRAINING_SLOT_WORKSPACE,
-    runtimeHomePath: TRAINING_SLOT_RUNTIME_HOME,
+    workspacePath: trainingSlotPaths(slot).workspace,
+    runtimeHomePath: trainingSlotPaths(slot).runtimeHome,
     engine: { kind: "grok", model: declaration.model, reasoningEffort: declaration.reasoningEffort }
   }]
 });
@@ -81,30 +81,31 @@ export const resolveTrainingGrokProjection = async (
   daimon: DaimonProjectionModule
 ): Promise<TrainingGrokProjection> => {
   const projection = daimon.resolveOrganizationGrokBrokerProjection(
-    trainingOrganizationRuntimeConfig(declaration), declaration.agentId, {
+    trainingOrganizationRuntimeConfig(declaration, registration.slot), declaration.agentId, {
       slot: registration.slot,
-      workerUid: registration.uid,
-      workerHomePath: TRAINING_WORKER_HOME,
       workerConfigVariant: "clocked",
+      workerUid: registration.uid,
+      workerHomePath: registration.home,
       architecture: declaration.architecture,
       usageLedgerPath: registration.usageLedgerPath,
       limits: declaration.limits,
       // The mask that protects the wake-acceptance store is the slot state root it lives in: the store's
       // own parent is `2000:2000 0700`, so bubblewrap could not materialize a deny target inside it as
       // the worker uid. Every party that recomputes this projection must pass the same value.
-      acceptanceStorePath: TRAINING_SLOT_STATE_ROOT,
+      acceptanceStorePath: trainingSlotPaths(registration.slot).state,
       denyPaths: registration.denyPaths,
       seccompProfileSha256: declaration.seccompProfileSha256,
       profileSha256: registration.profileSha256
     }) as unknown as Record<string, unknown>;
   const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
-  const projectedClock = projection.taskClock as Record<string, unknown> | undefined;
-  if (registration.workerConfigVariant !== "clocked" || projection.version !== DAIMON_GROK_ENGINE_BROKER.projectionVersion
-    || projection.workerConfigVariant !== "clocked" || projection.workerConfigSha256 !== registration.configSha256
-    || projection.profileSha256 !== registration.profileSha256 || !projectedClock
-    || Object.keys(projectedClock).length !== Object.keys(clock).length
-    || Object.entries(clock).some(([key, value]) => projectedClock[key] !== value)) {
-    throw new SpawnfileError("runtime_error", "Daimon's Grok broker projection differs from the provisioned clocked worker config");
+  const expectedClock = { ...clock, directoryPath: clock.slotDirectoryPattern.replace("{slot}", String(registration.slot)),
+    timestampFilePath: clock.slotFilePattern.replace("{slot}", String(registration.slot)) };
+  const actualClock = projection.taskClock as Record<string, unknown> | undefined;
+  if (registration.configVariant !== "clocked" || projection.version !== DAIMON_GROK_ENGINE_BROKER.projectionVersion
+    || projection.profileSha256 !== registration.profileSha256 || actualClock === undefined
+    || Object.entries(expectedClock).some(([key, value]) => actualClock[key] !== value)
+    || projection.workerConfigVariant !== "clocked" || projection.workerConfigSha256 !== registration.configSha256) {
+    throw new SpawnfileError("runtime_error", "Daimon's clocked worker config differs from the provisioned registration");
   }
   const denied = [...(projection.denyPaths as string[])];
   if (denied.length !== registration.denyPaths.length || denied.some((entry, index) => entry !== registration.denyPaths[index])) {

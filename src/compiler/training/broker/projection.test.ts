@@ -8,7 +8,7 @@ import { resolveTrainingGrokRegistration } from "./registration.js";
 
 const broker = DAIMON_GROK_ENGINE_BROKER;
 const declaration = parseTrainingBrokerDeclaration({
-  version: "spawnfile.training-broker.v1", engine: "grok", agentId: "agent:author", model: "grok-4.6", reasoningEffort: "low",
+  version: "spawnfile.training-broker.v2", slots: 1, engine: "grok", agentId: "agent:author", model: "grok-4.6", reasoningEffort: "low",
   architecture: "arm64", limits: broker.turnLimits.v1Defaults, bootstrap: "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
   organizationUid: 2000, seccompProfileSha256: "a".repeat(64)
 });
@@ -32,10 +32,10 @@ const moduleFor = (overrides: Record<string, unknown> = {}): DaimonProjectionMod
 });
 
 describe("training clocked projection", () => {
-  it("binds the v2 variant and selected config digest into the slot receipt", async () => {
+  it("binds the v3 variant and selected config digest into the slot receipt", async () => {
     const daimon = await loadDaimonProjectionModule(async () => moduleFor());
     const result = await resolveTrainingGrokProjection(declaration, registration, daimon);
-    expect(result.projection).toMatchObject({ version: "noopolis.daimon.grok-broker-projection.v2",
+    expect(result.projection).toMatchObject({ version: "noopolis.daimon.grok-broker-projection.v3",
       workerConfigVariant: "clocked", workerConfigSha256: registration.configSha256, taskClock: broker.worker.taskClock });
     const receipt = buildTrainingSlotReceipt({ slot: 0, workerUid: 2200, generation: 1, nonce: "a".repeat(64),
       projectionSha256: result.projectionSha256, sandboxProfileSha256: registration.profileSha256,
@@ -55,7 +55,7 @@ describe("training clocked projection", () => {
 
   it("refuses deny-list drift and an unclocked registration", async () => {
     await expect(resolveTrainingGrokProjection(declaration, registration, moduleFor({ denyPaths: [] }))).rejects.toThrow(/deny list differs/u);
-    await expect(resolveTrainingGrokProjection(declaration, { ...registration, workerConfigVariant: "unclocked" }, moduleFor())).rejects.toThrow(/clocked worker config/u);
+    await expect(resolveTrainingGrokProjection(declaration, { ...registration, configVariant: "unclocked" }, moduleFor())).rejects.toThrow(/clocked worker config/u);
   });
 
   it.each(["projectionVersion", "controlProtocolVersion", "slotPreflightVersion", "nativeAbiVersion"] as const)("refuses an installed Daimon with an old %s", async (field) => {

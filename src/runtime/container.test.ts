@@ -89,8 +89,12 @@ describe("runtime container install recipes", () => {
     ]);
   });
 
-  it("requires a re-pin because the published Daimon image attests the old manifest", async () => {
-    await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(/does not attest the compiler's exact contract manifest/u);
+  it("copies the CI-published Daimon index and checks the per-architecture receipt by default", async () => {
+    const recipe = await createRuntimeInstallRecipe("daimon");
+    expect(recipe.copyCommands).toEqual([
+      `COPY --from=noopolis/spawnfile-runtime-daimon@sha256:d4389f1cb99a8d2bf13134737ae058c0e48019d465bd35fbb250d7cde138b836 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
+    ]);
+    expect(recipe.commands[0]).toContain('case "$arch" in amd64) expected="sha256:9db4f4d5b62c505a445429da9ae8cf8bce21590bd1b67f449d17e427934a5421" ;; arm64) expected="sha256:8536fc5543378a8617a99bbdbddd0b6e909a6c0d4ed5f9bb5805d501a17ca90c" ;;');
   });
 
   it("installs overridden runtime packages from the vendored tarball path in the Pi recipe", async () => {
@@ -205,7 +209,9 @@ describe("runtime container install recipes", () => {
 
   it("ignores the legacy Daimon base-image override without bypassing the manifest gate", async () => {
     process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-runtime-daimon:legacy";
-    await expect(createRuntimeInstallRecipe("daimon")).rejects.toThrow(/does not attest the compiler's exact contract manifest/u);
+    const recipe = await createRuntimeInstallRecipe("daimon");
+    expect(recipe.baseImage).toBeUndefined();
+    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:d4389f1cb99a8d2bf13134737ae058c0e48019d465bd35fbb250d7cde138b836");
   });
 
   it("omits NOOPOLIS_RUN_ID from every recipe's env when unset", async () => {

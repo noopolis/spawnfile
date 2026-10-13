@@ -116,7 +116,7 @@ const createState = async (): Promise<State> => {
     mkdir(home, { mode: 0o700 }), mkdir(output, { mode: 0o700 }),
     mkdir(requests, { mode: 0o700 }), writeFile(callsPath, "", { mode: 0o600 })
   ]);
-  const fakeDocker = path.join(root, "docker-safe");
+  const fakeDocker = path.join(root, "docker-safe.cjs");
   const resourcePath = path.join(root, "docker-resources.json");
   await writeFile(fakeDocker, `#!${process.execPath}
 const fs = require("node:fs");

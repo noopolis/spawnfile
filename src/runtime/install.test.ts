@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
 
 import {
   assertInstallSelectionsCoverCompileableRuntimes,
@@ -18,23 +17,21 @@ describe("runtime install selection", () => {
     ]);
   });
 
-  it("preserves the published install pin and its old manifest; requires a re-pin", async () => {
+  it("resolves Daimon install selection from the pinned runtime image", async () => {
     await expect(resolveRuntimeInstallSelection("daimon")).resolves.toEqual({
       capabilityReceipt: undefined,
-      capabilityReceipts: { amd64: "sha256:4714bbf377acdb098fcf90c0c91e55494f0996fca77e28cd599b6a72c7cac2dc", arm64: "sha256:f48018b729b984fde30af433607087c2f72019aad59ccf26d2641f18757c2dc6" },
-      contractManifestSha256: "sha256:f7bdd283c420cb6685d32fb556bfb1dcf48f756b3a5ca5ae61e96950152a5cc0",
-      digest: "sha256:85875f67af630e8b4e667a72f20f0b491940cfb3feb7fe132a13a84678147747",
+      capabilityReceipts: { amd64: "sha256:9db4f4d5b62c505a445429da9ae8cf8bce21590bd1b67f449d17e427934a5421", arm64: "sha256:8536fc5543378a8617a99bbdbddd0b6e909a6c0d4ed5f9bb5805d501a17ca90c" },
+      contractManifestSha256: "sha256:e39551277c6727c8807b1247e759f57addcee3f17f1405ebc927179647d64de6",
+      digest: "sha256:d4389f1cb99a8d2bf13134737ae058c0e48019d465bd35fbb250d7cde138b836",
       ecosystem: "node",
       image: "noopolis/spawnfile-runtime-daimon",
       installHint: "Copy a pinned Daimon runtime image.",
       kind: "container_image",
       runtimeName: "daimon",
-      runtimeRef: "834955934e102349335362c37524261625e38dbb",
+      runtimeRef: "0b3bc7cb2d5b92d4eaf222066c3817191190be7e",
       selectionSource: "runtime_registry_install",
-      tag: "0.2.0-8349559"
+      tag: "0.2.0-0b3bc7c"
     });
-    const selection = await resolveRuntimeInstallSelection("daimon");
-    expect(selection.kind === "container_image" && selection.contractManifestSha256).not.toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
   });
 
   it("resolves OpenClaw install selection from the pinned runtime image", async () => {

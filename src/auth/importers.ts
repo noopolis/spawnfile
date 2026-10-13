@@ -2,13 +2,17 @@ import path from "node:path";
 import os from "node:os";
 
 import {
+  ensurePrivateDirectory,
   fileExists,
   readUtf8File,
+  writeDurableFile,
   writePrivateUtf8File
 } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import { registerImportedAuth, setAuthProfileEnv } from "./profileStore.js";
+import { ensureAuthProfile, registerImportedAuth, setAuthProfileEnv } from "./profileStore.js";
+import { resolveImportedAuthDirectory } from "./paths.js";
+import { acquireTrainingGrokWritebackLock } from "./trainingGrokWritebackLock.js";
 
 const ENV_LINE_PATTERN = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/;
 const CLAUDE_CODE_KEYCHAIN_SERVICE = "Claude Code-credentials";
@@ -142,9 +146,20 @@ export const importGrokAuth = async (
   if (!(await fileExists(authFilePath))) {
     throw new SpawnfileError("validation_error", `Grok auth file does not exist: ${authFilePath}`);
   }
-  const { directory, profile } = await registerImportedAuth(profileName, "grok");
-  await writePrivateUtf8File(path.join(directory, "auth.json"), await readUtf8File(authFilePath));
-  return profile;
+  await ensureAuthProfile(profileName);
+  const directory = resolveImportedAuthDirectory(profileName, "grok");
+  await ensurePrivateDirectory(path.dirname(directory));
+  await ensurePrivateDirectory(directory);
+  const destination = path.join(directory, "auth.json");
+  const release = await acquireTrainingGrokWritebackLock(destination).catch(() => {
+    throw new SpawnfileError("validation_error", "Grok credential lock unavailable; retry import after the active writer finishes");
+  });
+  try {
+    const content = await readUtf8File(authFilePath);
+    const { profile } = await registerImportedAuth(profileName, "grok");
+    await writeDurableFile(destination, content);
+    return profile;
+  } finally { release(); }
 };
 
 export const importClaudeCodeAuth = async (

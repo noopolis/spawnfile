@@ -1,35 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
-import { DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES } from "../../../runtime/daimon/grokWorkerConfigBytes.js";
-import { renderDaimonGrokWorkerProvisioning } from "../../containerDaimonGrokWorkerProvisioning.js";
 
 import { renderDaimonGrokServiceConfig } from "../../containerDaimonGrokWorkerRender.js";
 import { trainingBrokerTmpfsTargets } from "../container/security.js";
 import { brokerProcessPlan } from "./processes.js";
 import { renderTrainingBrokerProvisioning, trainingSlotDirectories } from "./provisioning.js";
 import { resolveTrainingGrokDenyPaths, resolveTrainingGrokRegistration } from "./registration.js";
-import {
-  TRAINING_ADDED_DENY_PATHS,
-  TRAINING_BROKER_TMPDIR,
-  TRAINING_BROKER_SOCKET_PATHS,
-  TRAINING_SLOT_RUNTIME_HOME,
-  TRAINING_WORKER_HOME,
-  TRAINING_SLOT_WORKSPACE,
-  TRAINING_CALLER_PROTECTED_PATHS,
-  TRAINING_EVALUATOR_ROOTS,
-  TRAINING_GRANT_HOME_ROOT,
-  TRAINING_INFERENCE_DIRECTORY,
-  TRAINING_INFERENCE_LEDGER,
-  TRAINING_REALM_MOUNT,
-  TRAINING_SLOT_ACCEPTANCE_STORE,
-  TRAINING_SLOT_STATE_ROOT,
-  TRAINING_SLOT_TURN_STORE,
-  TRAINING_SLOT_USAGE_DIRECTORY,
-  TRAINING_SLOT_USAGE_LEDGER
-} from "./paths.js";
+import { TRAINING_BROKER_TMPDIR, TRAINING_CALLER_PROTECTED_PATHS, TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY, TRAINING_INFERENCE_LEDGER, TRAINING_REALM_MOUNT, trainingSlotPaths, trainingEvaluatorPaths, trainingWipeTargets, trainingClearTargets } from "./paths.js";
 
 const slot = () => resolveTrainingGrokRegistration({ agentId: "agent:author", model: "grok-4.6", reasoningEffort: "low" });
 
+const TRAINING_ADDED_DENY_PATHS = trainingEvaluatorPaths(0, 1).map(p => p.path).sort();
+const TRAINING_EVALUATOR_ROOTS = trainingEvaluatorPaths(0, 1).filter((p, i, rows) => rows.findIndex(q => q.role === p.role) === i);
 describe("training Grok slot registration", () => {
   it("denies every evaluator root, the caller's whole /run/paideia, the control root and the judge grant home", () => {
     const denied = slot().denyPaths;
@@ -39,8 +20,8 @@ describe("training Grok slot registration", () => {
       expect(denied.some((entry) => covered === entry || covered.startsWith(`${entry}/`)), covered).toBe(true);
     }
     for (const entry of [...TRAINING_EVALUATOR_ROOTS.map((role) => role.path),
-      ...TRAINING_BROKER_SOCKET_PATHS, "/etc/daimon-engine-broker", TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY,
-      TRAINING_SLOT_STATE_ROOT, TRAINING_SLOT_TURN_STORE, TRAINING_REALM_MOUNT]) {
+      "/run/daimon-engine-broker/control.sock", "/etc/daimon-engine-broker", TRAINING_GRANT_HOME_ROOT, TRAINING_INFERENCE_DIRECTORY,
+      TRAINING_SLOT_STATE_ROOT, "/run/training/turns", TRAINING_REALM_MOUNT]) {
       expect(denied, entry).toContain(entry);
     }
     expect(denied).toEqual([...denied].sort());
@@ -71,36 +52,21 @@ describe("training Grok slot registration", () => {
     expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/var/tmp"])).toThrow(/base profile grant/u);
   });
 
+  it("refuses masks over its clock or preload library", () => {
+    for (const denied of [trainingSlotPaths(0).clockDirectory, "/run/daimon-engine-broker/task-clock", "/usr/local/lib/daimon",
+      "/usr/lib/x86_64-linux-gnu/faketime", "/usr/lib/aarch64-linux-gnu/faketime"]) {
+      expect(() => resolveTrainingGrokDenyPaths([denied])).toThrow(/task clock/);
+    }
+  });
+
   it("refuses nested masks and a mask over the subject's own workspace", () => {
     expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/training/output/runs"])).toThrow(/masks cannot nest/u);
-    expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/training/slot/runtime-home"])).toThrow(/own workspace, home, or runtime home/u);
+    expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/training/slots/0/runtime-home"])).toThrow(/own workspace, home, or runtime home/u);
   });
 
   it("points the registration at the per-slot ledger, never the container ledger", () => {
     expect(slot().usageLedgerPath).toBe(TRAINING_SLOT_USAGE_LEDGER);
     expect(slot().usageLedgerPath.startsWith("/var/lib/spawnfile/daimon/usage")).toBe(false);
-  });
-
-  it("selects the vendored clocked bytes and keeps the directory visible through strict's read-only /run mount", () => {
-    const registration = slot(), clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
-    expect(registration.workerConfigVariant).toBe("clocked");
-    expect(registration.config).toBe(DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES["grok-4.6"].low);
-    expect(registration.configSha256).toBe(DAIMON_GROK_ENGINE_BROKER.worker.clockedConfigSha256["grok-4.6"].low);
-    expect(registration.profile).toContain('extends = "strict"');
-    expect(registration.profile).not.toMatch(/write|read_write/u);
-    for (const file of [clock.timestampFilePath, clock.directoryPath, clock.preloadPath,
-      "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1", "/usr/lib/aarch64-linux-gnu/faketime/libfaketime.so.1"]) {
-      expect(registration.denyPaths.some((denied) => file === denied || file.startsWith(`${denied}/`))).toBe(false);
-      expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, file])).toThrow(/task clock|base profile grant/u);
-    }
-    expect(() => resolveTrainingGrokDenyPaths([...TRAINING_ADDED_DENY_PATHS, "/run/daimon-engine-broker"])).toThrow(/task clock/u);
-  });
-
-  it("refuses multiple registrations when any slot is clocked", () => {
-    for (const variant of ["clocked", "unclocked"] as const) {
-      expect(() => renderDaimonGrokWorkerProvisioning([slot(), { ...slot(), agentId: "agent:peer", workerConfigVariant: variant }]))
-        .toThrow(/exactly one registration/u);
-    }
   });
 
   it("refuses an undeclared model or reasoning effort", () => {
@@ -182,3 +148,5 @@ describe("training wipe targets and the broker temp", () => {
     expect(script).toContain("spawnfile_holds_mount");
   });
 });
+
+const { workspace: TRAINING_SLOT_WORKSPACE, runtimeHome: TRAINING_SLOT_RUNTIME_HOME, state: TRAINING_SLOT_STATE_ROOT, acceptanceStore: TRAINING_SLOT_ACCEPTANCE_STORE, turns: TRAINING_SLOT_TURN_STORE, usageDirectory: TRAINING_SLOT_USAGE_DIRECTORY, usageLedger: TRAINING_SLOT_USAGE_LEDGER, workerHome: TRAINING_WORKER_HOME } = trainingSlotPaths(0);

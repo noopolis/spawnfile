@@ -60,9 +60,19 @@ it("materializes nonempty historical memory in an isolated production package wi
   await jsonl(history, "memory/agent%3Aa/self/events.jsonl", [event]);
   await writeFile(path.join(directory, "check.mjs"), `
 import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
 import { readFile, readdir } from "node:fs/promises";
-import { materializeMemory } from "spawnfile/dist/compiler/training/rewind/memory.js";
-import { openHistory } from "spawnfile/dist/compiler/training/rewind/history.js";
+// A package below TMPDIR must not borrow dependencies from the enclosing checkout.
+const packageRoot = new URL("./", import.meta.url).href;
+registerHooks({ resolve(specifier, context, nextResolve) {
+  const result = nextResolve(specifier, context);
+  if (!result.url.startsWith("node:") && !result.url.startsWith(packageRoot)) {
+    throw Object.assign(new Error("Dependency escaped the production package: " + specifier), { code: "ERR_MODULE_NOT_FOUND" });
+  }
+  return result;
+} });
+const { materializeMemory } = await import("spawnfile/dist/compiler/training/rewind/memory.js");
+const { openHistory } = await import("spawnfile/dist/compiler/training/rewind/history.js");
 const manifest = JSON.parse(await readFile("package.json", "utf8"));
 for (const name of Object.keys(manifest.devDependencies)) {
   assert.throws(() => import.meta.resolve(name), { code: "ERR_MODULE_NOT_FOUND" });

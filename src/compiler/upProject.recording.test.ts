@@ -6,7 +6,7 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { readDeployResources, readDeploymentRecord, deployResourceLogPath, deployResourcesAt, downDeployment } from "../deployment/index.js";
-import { capableDaimonManifest, useMatchingDaimonTestImage } from "../runtime/daimon/recording.test-helper.js";
+import { capableDaimonManifest } from "../runtime/daimon/recording.test-helper.js";
 import { compileProject } from "./compileProject.js";
 import { upProject } from "./upProject.js";
 
@@ -22,7 +22,6 @@ vi.mock("../deployment/index.js", async (original) => ({
 let root: string;
 beforeEach(() => {
   root = mkdtempSync(path.join(os.tmpdir(), "spawnfile-up-recording-"));
-  useMatchingDaimonTestImage(root);
   vi.stubEnv("SPAWNFILE_HOME", path.join(root, "home"));
   vi.stubEnv("NOOPOLIS_RUN_ID", "recording-test");
 });

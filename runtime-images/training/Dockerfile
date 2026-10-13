@@ -24,8 +24,8 @@ RUN . /etc/os-release && test "$VERSION_CODENAME" = bookworm \
 # The broker-capable container runs on a read-only root, so the fixed Daimon
 # identities are baked here instead of being created by the entrypoint the way
 # the production organization image creates them. It depends on nothing from the
-# build context, so it precedes dependency and source layers.
-RUN for fixed_uid in 2000 2100 2200; do \
+# build context, so it sits first: it is the least frequently changing layer.
+RUN for fixed_uid in 2000 2100 2200 2201 2202 2203 2204 2205 2206 2207; do \
       groupadd -K GID_MIN=1 --gid "$fixed_uid" "daimon-$fixed_uid" \
    && useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$fixed_uid" --gid "$fixed_uid" \
         --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; \
@@ -38,7 +38,7 @@ RUN for fixed_uid in 2000 2100 2200; do \
 # CAP_DAC_OVERRIDE there cannot override an inode owned by real uid 0; and a fresh bind of the parent
 # re-exposes this same directory rather than the bytes under it. Nothing at runtime can widen it,
 # because the container root is read-only — the slot provisioning asserts the mode and refuses otherwise.
-RUN mkdir -p /run/training/inputs /run/training/output \
+RUN mkdir -p /run/training/inputs /run/training/output /run/training/slots \
  && chown 0:0 /run/training /run/training/output && chmod 0755 /run/training /run/training/output \
  && chown 0:2000 /run/training/inputs && chmod 0750 /run/training/inputs
 

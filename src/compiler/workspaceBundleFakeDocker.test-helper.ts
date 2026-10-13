@@ -58,7 +58,7 @@ export interface FakeDocker {
 }
 
 export const createFakeDocker = async (directory: string): Promise<FakeDocker> => {
-  const command = path.join(directory, "fake-docker"), log = path.join(directory, "fake-docker.log");
+  const command = path.join(directory, "fake-docker.cjs"), log = path.join(directory, "fake-docker.log");
   await writeFile(command, SCRIPT);
   await chmod(command, 0o755);
   await writeFile(log, "");
