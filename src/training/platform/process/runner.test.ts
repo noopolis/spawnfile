@@ -33,6 +33,19 @@ describe('bounded process protocol', () => {
     expect(result.stop).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
   });
 
+  it('preserves non-Error observation rejections and stops the live process', async () => {
+    const onLine = vi.fn(async () => { throw 'capture sink rejected'; });
+    const result = await runProcess(options('console.log("event");setInterval(()=>{},10)', {
+      onLine,
+    })).completion;
+    expect(onLine).toHaveBeenCalledExactlyOnceWith('event', expect.any(AbortSignal));
+    expect(result.error).toBe('capture sink rejected');
+    expect(result.cancelled).toBe(true);
+    expect(result.stop).toMatchObject({
+      state: 'acknowledged', quiescence: 'confirmed', reason: 'observation or output failure',
+    });
+  });
+
   it('enforces an output byte limit and a process deadline', async () => {
     const large = await runProcess(options('console.log("too big");setInterval(()=>{},10)', { maxBytes: 2 })).completion;
     expect(large.error).toContain('byte limit');
