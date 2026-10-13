@@ -1,0 +1,12 @@
+#!/bin/sh
+# commit-policy-commit-message-hook: one Conventional Commits line per authored commit, no attribution.
+# Run by the dispatcher the opt-in installer sets as core.hooksPath (.github/scripts/ci/commit-message.mts --install), or
+# directly when core.hooksPath is .github/hooks; CI checks the same rules on every PR. Skip once with git commit --no-verify.
+command -v node >/dev/null 2>&1 || { echo "commit-msg: node is missing" >&2; exit 1; }
+root=$(git rev-parse --show-toplevel) || exit 1
+# Missing inputs must not silently disable validation; older branches can explicitly use --no-verify.
+[ -f "$root/.github/scripts/ci/commit-message.mts" ] || {
+  echo "commit-msg: .github/scripts/ci/commit-message.mts is missing; restore it or explicitly use --no-verify" >&2
+  exit 1
+}
+exec node "$root/.github/scripts/ci/commit-message.mts" "$1"
