@@ -106,6 +106,7 @@ it.each(['fail', 'unknown'] as const)('excludes verified false conditions and lo
   f.doc.units = f.doc.units.filter(unit => unit.kind !== 'claim');
   expect((await gradeAtomic(f.runtime, f.inputs)).checks.find(score => score.check.id === 'bob-only@missing')?.check.status).toBe('missing');
   f.runtime.templates.templates.forEach(template => { if (template.applies_to === 'claim') template.optional = true; });
+  // Optional families trust the omission audit: an empty audit leaves no missing check to void the grade.
   expect((await gradeAtomic(f.runtime, f.inputs)).checks.some(score => score.check.id.endsWith('@missing'))).toBe(false);
 });
 
