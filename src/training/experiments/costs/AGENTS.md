@@ -31,3 +31,5 @@ No model calls, authentication, subprocesses, runtime construction or deployment
 Collect direct failure decisionAccounting as well as successful grade receipts.
 Failed attempts remain in original evaluations after repair/resume; origin IDs
 still deduplicate plan aliases and copied measurements.
+
+Cost planning shares explicit validation selection and evidence-lineage isolation with execution.

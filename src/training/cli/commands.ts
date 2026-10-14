@@ -2,7 +2,7 @@ import { readSpawnfileContext } from './spawnfile/index.js';
 import { resolveTrainingOptimizer, populationSearch, bridgeProposal } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
-import { partitionTraining } from '../experiments/training/index.js';
+import { resolveTrainingPartitions } from '../experiments/training/index.js';
 import { configuredCostRoutes, commandCheckpoint, prepareComparison } from './training/index.js';
 import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
 import { randomUUID } from 'node:crypto';
@@ -41,6 +41,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   if (args.flags['spawnfile-context'] && !dependencies.spawnfile) throw new Error('Spawnfile native training requires a supported isolated preparation integration; no native trial was started');
   const inputs = await prepareCliInputs(args, io, dependencies);
   const dataset = inputs.datasets.load(args.command === 'train' ? one(args, 'train') : args.dataset!, args.command === 'train');
+  const validation = args.command === 'train' && args.flags.validation ? inputs.datasets.load(one(args, 'validation'), true) : undefined;
   const test = args.command === 'train' ? inputs.datasets.load(one(args, 'test'), true) : undefined;
   if (args.command === 'evaluate' && dataset.records.length > inputs.maxTrials) throw new Error('Dataset exceeds --max-trials; no records are silently dropped');
   const comparison = prepareComparison(args, io, inputs.candidate);
@@ -54,7 +55,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const maxProposals = comparison ? 0 : count(args, 'max-proposals', 3, 1000);
   const seed = count(args, 'seed', 0, 2 ** 32 - 1, 0);
   const costConfig = readCostConfig(args, io);
-  const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, test,
+  const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, validation, test,
     subjectModel: inputs.model, ...(comparison ? {mode:'comparison' as const} : {optimizerModel: optimizerModel!}), validationGroups: args.flags['validation-group'],
     ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs),
     maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
@@ -74,7 +75,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     const fork = repair ? await (async () => {
       const parent = await readParentCheckpoints(repair.receipt);
       await importMeasurementCaptures({ receipt: repair.receipt, store, baseline: native.candidate,
-        datasets: partitionTraining(dataset, args.flags['validation-group']) });
+        datasets: resolveTrainingPartitions(dataset, validation, args.flags['validation-group']) });
       return { directory: parent.directory, identity: repair.receipt.parent.executionIdentity,
         id: repair.receipt.parent.experimentId, digest: repair.receipt.parent.checkpoints.optimizer,
         hostDigest: repair.receipt.parent.checkpoints.host, trainingDigest: repair.receipt.parent.checkpoints.training,
@@ -97,14 +98,15 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     live = args.flags.view === undefined ? undefined : await startLiveViewer({
       bindHost: dependencies.viewerBindHost,
       port: count(args, 'view', 0, 65535, 0), io, store, id: attemptId, datasetId: dataset.id, planDigest: dataset.sharedPlanDigest,
-      baseline: native.candidate, cases: dataset.records.map((record) => ({ id: record.id, split: 'train' })),
+      baseline: native.candidate, cases: [...dataset.records.map((record) => ({ id: record.id, split: 'train' as const })),
+        ...validation?.records.map(record => ({ id: record.id, split: 'validation' as const })) ?? []],
       testCases: test?.records.map((record) => ({ id: record.id, split: 'test' })) ?? [],
       comparison,
       budget: test === undefined || comparison ? undefined : { maxMetricCalls: metricCalls, maxProposals },
       costs: { subjectModel: native.model, prices: costConfig.prices, costPlan },
     });
     if (test !== undefined && comparison) {
-      const report = await compareCandidates({ id, baseline: native.candidate, ...comparison, train: dataset, test,
+      const report = await compareCandidates({ id, baseline: native.candidate, ...comparison, train: dataset, validation, test,
         validationGroups: args.flags['validation-group'], native: base, maxTrials: inputs.maxTrials, signal,
         checkpoint: { ...checkpoint!, maxRecoveryAttempts: args.training?.recovery?.max_attempts ?? 2 },
         onProgress: async event => { await journal.observe(event); await live?.observe(event); } });
@@ -119,7 +121,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     if (test !== undefined) {
       const report = await trainAgent({
         concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined,
-        slotsFile: args.flags['slots-file'] ? resolve(io.cwd, one(args, 'slots-file')) : undefined, id, baseline: native.candidate, train: dataset, test,
+        slotsFile: args.flags['slots-file'] ? resolve(io.cwd, one(args, 'slots-file')) : undefined, id, baseline: native.candidate, train: dataset, validation, test,
         validationGroups: args.flags['validation-group'], native: base,
         inference: { provider: native.inference!, model: optimizerModel! },
         bridge: bridge!,

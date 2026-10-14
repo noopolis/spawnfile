@@ -3,6 +3,7 @@ import type { TrainingModel } from '../contracts/training-config.js';
 import type { GrokInferenceGrantAuthority, InferenceProvider, SubjectAdapter } from '../contracts/index.js';
 import type { BlobReference } from '../storage/index.js';
 import type { DatasetRegistry, EditPolicy, NativePreparationContext, StoredTrialOptions } from '../index.js';
+import type { TrainingMomentPreparation } from './spawnfile/moments.js';
 import type { SpawnfileTrainingContext } from './spawnfile/index.js';
 
 export interface CliIO {
@@ -44,6 +45,8 @@ export interface SpawnfileCliIntegration {
   readonly judgeCacheRoot?: string;
   preparations?: DatasetRegistry['preparations'];
   unlockedSetupPaths?: readonly string[];
+  /** Named trusted hooks re-materialize authored cases into fresh per-trial state. */
+  momentPreparations?: Readonly<Record<string, TrainingMomentPreparation>>;
   /** Narrows explicitly selected editable files to their declared sections. Cannot unlock identity. */
   editPolicies?: Readonly<Record<string, EditPolicy>>;
   /** Resolved public optimizer and optional hard boundaries (max 50, each 1..500 characters).

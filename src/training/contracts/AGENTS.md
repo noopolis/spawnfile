@@ -20,3 +20,5 @@ repairs. Optionality accepts legacy captures, not permission to omit new IDs.
 
 EvaluationResult retains paid failure receipts as decisionAccounting even when
 no GradeResult exists. Error status and receipt ownership survive replay/repair.
+
+Dataset lineage names evidence ancestors across splits; authored validation paths remain dataset-relative controls.

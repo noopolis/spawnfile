@@ -14,3 +14,5 @@ optimizer.budget.rounds with 1 <= keep <= variants. Validate method=gepa, select
 patience, verbatim boundaries and proposal rewrite_share/hypothesis_similarity.
 Existing named-model routing stays unchanged. A declared proposal cap must cover
 keep + variants; the CLI derives omitted caps before execution.
+
+training.validation selects a separate contained relative dataset path and is mutually exclusive with validation_groups.

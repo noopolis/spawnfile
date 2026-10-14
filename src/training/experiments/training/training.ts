@@ -14,7 +14,7 @@ import type { InferenceProvider } from '../../contracts/execution.js';
 import { InferenceFailure } from '../../inference/index.js';
 import { createDspyGeneration, runDspyOptimization, readDspyCheckpointEvidence, type DspyOptimizationOptions, type DspyResult } from '../../optimization/index.js';
 import type { TrialReport } from '../trials/index.js';
-import { partitionTraining } from './partition.js';
+import { resolveTrainingPartitions } from './partition.js';
 import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
 import { freezeCriteria } from './criteria.js';
@@ -71,8 +71,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   options = { ...options, concurrency, slots,
     onProgress: progress ? event => mutations.run(() => progress(event)) : undefined };
   validateCandidate(options.baseline);
-  const partition = options.validation ? { train: options.train, validation: options.validation }
-    : partitionTraining(options.train, options.validationGroups);
+  const partition = resolveTrainingPartitions(options.train, options.validation, options.validationGroups);
   validateDatasetSplit(partition.train, options.test, partition.validation);
   const criteria = new Map<ResolvedDataset, StoredTrialOptions['evaluation']>();
   for (const [phase, dataset] of [['train', partition.train], ['validation', partition.validation], ['test', options.test]] as const) {

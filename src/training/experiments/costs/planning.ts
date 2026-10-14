@@ -1,6 +1,6 @@
 import type { CheckNode, ResolvedDataset } from '../../contracts/dataset.js';
 import { builtinEvaluatorDefinitions, validateCostDatasetSplit, projectDatasetCost, type CostDataset, type CostRecord } from '../../cases/index.js';
-import { partitionTraining } from '../training/index.js';
+import { resolveTrainingPartitions } from '../training/index.js';
 import { resolveCostAssumptions } from './assumptions.js';
 import { valueUsage } from './valuation.js';
 import type { CostAssumptions, ModelPrice, Range, TokenAssumption } from './types.js';
@@ -71,7 +71,7 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
   for (const [value, max] of [[options.maxTrials, 10000], ...options.mode === 'comparison' ? [] : [[options.maxProposals, 1000]]]) {
     if (!Number.isSafeInteger(value) || value! < 1 || value! > max!) throw new Error('Invalid training cost budget');
   }
-  const partition = validation ? { train, validation } : partitionTraining(train, options.validationGroups);
+  const partition = resolveTrainingPartitions(train, validation, options.validationGroups);
   if ([partition.train, partition.validation, test].some(dataset => dataset.records.length === 0)) {
     throw new Error('Cost planning requires nonempty training, validation and test partitions');
   }

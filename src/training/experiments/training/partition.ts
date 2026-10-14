@@ -16,3 +16,11 @@ export function partitionTraining<T extends { id: string; records: Array<{ group
   return { train: { ...dataset, id: `${dataset.id}/train`, records: train },
     validation: { ...dataset, id: `${dataset.id}/validation`, records: validation } };
 }
+
+/** Explicit authored validation retains its own dataset identity and records. */
+export function resolveTrainingPartitions<T extends { id: string; records: Array<{ group?: string }> }>(
+  train: T, validation?: T, groups?: readonly string[],
+): { train: T; validation: T } {
+  if (validation && groups) throw new Error('Explicit validation and validation groups are mutually exclusive');
+  return validation ? { train, validation } : partitionTraining(train, groups);
+}

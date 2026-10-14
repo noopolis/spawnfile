@@ -47,3 +47,5 @@ older invocations remain valid and malformed or unknown index fields still fail.
 
 Real GEPA regression coverage must verify rejected candidate files/patches,
 round attribution and successful completed resume without new native trials.
+
+Explicit --validation datasets flow through execution, costs and repair without repartitioning; groups and explicit validation cannot compete.

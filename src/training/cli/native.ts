@@ -7,6 +7,7 @@ import { createEvaluationRegistry } from '../evaluation/index.js';
 import { count, judgeCitationRepairs, one, pairs, type CliArguments } from './arguments.js';
 import { CliDatasets } from './datasets.js';
 import type { CliDependencies, CliIO } from './types.js';
+import { spawnfileEnvironment } from './spawnfile/index.js';
 import { prepareSpawnfileInputs } from './spawnfile/index.js';
 import type { StoredTrialOptions } from '../experiments/index.js';
 
@@ -65,7 +66,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if ('context' in inputs) {
     const context = inputs.context;
-    prepareEnvironment = (paths, signal, trial) => dependencies.spawnfile!.prepareEnvironment(paths, signal, trial, context);
+    prepareEnvironment = spawnfileEnvironment(dependencies.spawnfile!, context);
   }
   const subjectRoot = 'context' in inputs ? dependencies.spawnfile!.subjectRoot : undefined;
   return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot, closeInference: configured.close,

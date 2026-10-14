@@ -121,3 +121,11 @@ describe('dataset-authored training configuration', () => {
     expect(() => parseDatasetYaml(stringify(dataset({ ...config, ...override })))).toThrow();
   });
 });
+
+it('accepts a separate dataset-relative validation input and rejects ambiguous or escaping inputs', () => {
+  const models = { local: { provider: 'ollama', model: 'local' } };
+  expect(validateTrainingConfiguration({ models, validation: 'validation.paideia.yaml' }).validation).toBe('validation.paideia.yaml');
+  for (const config of [{ validation: '../secret.yaml' }, { validation: 'validation.yaml', validation_groups: ['a'] }]) {
+    expect(() => validateTrainingConfiguration({ models, ...config })).toThrow();
+  }
+});

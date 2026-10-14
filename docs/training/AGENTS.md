@@ -23,3 +23,5 @@ prior captures, later rescores, sealed results and unattributed legacy trials.
 Rejected evaluated manifests and paid failure receipts survive completed resume.
 Failure-row identities follow the producing measurement: retained native evidence
 keeps its trial ID, while rescored final evidence uses the latest rescore ID.
+
+Training configuration documents explicit validation and the generic named moment preparation receipt; org state reconstruction remains integration-owned.

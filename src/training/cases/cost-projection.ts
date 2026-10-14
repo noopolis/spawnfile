@@ -6,6 +6,7 @@ export interface CostRecord {
   schema: 'paideia.cost-record.v1';
   id: string;
   group?: string;
+  lineage?: string[];
   selectedFiles: FileSelector[];
   costChecks: Array<{ check: CheckNode; live: boolean }>;
 }
@@ -38,5 +39,5 @@ function projectRecordCost(record: ResolvedRecord): CostRecord {
   }
   for (const turn of record.turns ?? []) for (const check of turn.checks ?? []) add(check);
   for (const check of record.live.checks) add(check, true);
-  return { schema: 'paideia.cost-record.v1', id: record.id, group: record.group, selectedFiles: structuredClone(selectedFiles(record)), costChecks };
+  return { schema: 'paideia.cost-record.v1', id: record.id, group: record.group, ...(record.lineage ? { lineage: [...record.lineage] } : {}), selectedFiles: structuredClone(selectedFiles(record)), costChecks };
 }

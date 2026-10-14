@@ -80,3 +80,5 @@ The CLI owns local operator report/bundle export; it never reselects from test.
 Forward actual optimizer callback round IDs to stored trials. Candidate manifests
 belong to native measurement persistence, independent of final optimizer selection;
 completed checkpoint resume must retain rejected evaluated proposals.
+
+resolveTrainingPartitions preserves explicit validation dataset identity and rejects competing group controls. Split checks still bind all three roles.
