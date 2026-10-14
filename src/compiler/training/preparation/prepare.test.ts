@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmod, lstat, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, readFile, readlink, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, it } from "vitest";
@@ -113,6 +113,25 @@ it("stages selective input closure and forwards resource paths through the snaps
   expect(prepared.args).toContain(`archive=${prepared.context.project.root}`);
   expect(prepared.args.filter(value => value === path.join(prepared.context.project.root, "train.yaml"))).toHaveLength(3);
   await prepareTraining({ ...f.options, args: [...args, "--resume"] });
+});
+
+it("preserves feed current links in mapped training inputs and refuses link-only snapshot tampering on resume", async () => {
+  const f = await fixture(), feedPath = "resources/public-content-volume";
+  await f.put(`project/${feedPath}/trees/rev/content.txt`, "historical feed");
+  await f.put(`project/${feedPath}/trees/other/content.txt`, "historical feed");
+  await symlink("trees/rev", path.join(f.context.project.root, feedPath, "current"));
+  f.config.inputs[0]!.include = ["Spawnfile", "train.yaml", "resources"]; await f.save();
+  const prepared = await prepareTraining(f.options); if ("dryRun" in prepared) throw Error("actual expected");
+  const current = path.join(prepared.context.project.root, feedPath, "current");
+  expect((await lstat(current)).isSymbolicLink(), "mapped feed link guarantee").toBe(true);
+  expect(await readlink(current)).toBe("trees/rev");
+  expect(await readFile(path.join(current, "content.txt"), "utf8")).toBe("historical feed");
+  const launch = JSON.parse(await readFile(prepared.configPath, "utf8"));
+  expect(launch.inputs[0]).toMatchObject({ source: prepared.context.project.root, destination: "/run/training/inputs/project" });
+  await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).resolves.toMatchObject({ digest: prepared.digest });
+  await rm(current); await symlink("trees/other", current);
+  await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] }), "feed resume link identity guarantee")
+    .rejects.toThrow("snapshot changed");
 });
 
 it("resolves immutable repository references and rejects missing images, overlapping inputs and preexisting files", async () => {
