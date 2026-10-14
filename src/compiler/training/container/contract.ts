@@ -24,10 +24,13 @@ export const trainingContainerConfigSchema = z.object({
   auth: z.array(z.object({ source: hostPath, provider: z.enum(["codex", "claude"]) }).strict()).max(2),
   evaluatorRoutes: trainingEvaluatorRoutesSchema.optional(),
   evaluatorSecrets: trainingEvaluatorSecretsSchema(hostPath).optional(),
+  subjectIsolation: z.literal("codex-native-sandbox").optional(),
   /** Present only on `spawnfile.training-container.v4`: the brokered Grok slot this container runs as root. */
   broker: brokerLaunchSchema.optional()
 }).strict().superRefine((value, context) => {
-  if (value.evaluatorSecrets && !value.broker) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation" });
+  if (value.evaluatorSecrets && !value.broker && !value.subjectIsolation) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation or explicit codex-native-sandbox subject isolation" });
+  if (value.subjectIsolation && value.version !== "spawnfile.training-container.v1") context.addIssue({ code: "custom", message: "Codex native subject isolation requires a non-brokered v1 launch" });
+  if (value.subjectIsolation && !value.evaluatorRoutes?.some(route => route.provider === "typesafe")) context.addIssue({ code: "custom", message: "Codex native subject isolation requires a TypeSafe evaluator route" });
   if (value.evaluatorSecrets && !value.evaluatorRoutes?.some(route => route.provider === "typesafe")) {
     context.addIssue({ code: "custom", message: "TypeSafe secret requires a declared evaluator route" });
   }

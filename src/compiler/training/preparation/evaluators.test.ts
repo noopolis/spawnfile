@@ -2,6 +2,7 @@ import { chmod, link, readFile, readdir, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { prepareTraining } from "./prepare.js";
+import { trainingPreparationSchema } from "./contract.js";
 import { preparationFixture, imageDocker, image } from "./fixtures.test-helper.js";
 
 const roots: string[] = [];
@@ -10,7 +11,7 @@ const routes = [
   { purpose: "extraction" as const, provider: "codex-subscription" as const, model: "extract-model", maxRequests: 12 },
   { purpose: "decisions" as const, provider: "typesafe" as const, model: "judge-model", maxRequests: 20, maxSpendUsd: 1 }
 ];
-async function setup() {
+async function setup(native = false) {
   const f = await preparationFixture(); roots.push(f.root);
   f.config.version = "spawnfile.training-container.v4";
   f.config.broker = { engine: "grok", maxRunRequests: 50, agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low",
@@ -18,6 +19,13 @@ async function setup() {
   await f.put("broker-auth", "fake-subscription"); await chmod(path.join(f.root, "broker-auth"), 0o600);
   f.config.evaluatorRoutes = routes;
   f.config.evaluatorSecrets = [{ provider: "typesafe", source: "typesafe-key" }];
+  if (native) {
+    f.config.version = "spawnfile.training-container.v2";
+    delete f.config.broker;
+    f.config.subjectIsolation = "codex-native-sandbox";
+    f.config.auth[0]!.provider = "codex";
+    f.context.agent.engine = "codex";
+  }
   await f.put("typesafe-key", "test-only-key-marker"); await f.save();
   const docker = imageDocker();
   const options = { configPath: f.configPath, context: f.context, args: f.args, dryRun: false, process: docker.process,
@@ -83,5 +91,46 @@ it("rejects hardlinked evaluator secret aliases before image or input reads", as
   await link(path.join(f.root, "typesafe-key"), path.join(f.root, "integration/key-alias"));
   await expect(prepareTraining(f.options)).rejects.toThrow("hardlink aliases");
   await expect(prepareTraining({ ...f.options, dryRun: true })).rejects.toThrow("hardlink aliases");
+  expect(f.docker.calls).toEqual([]);
+});
+
+it("lowers explicit Codex isolation and evaluator references into v1 and preserves exact resume", async () => {
+  const f = await setup(true); f.config.image = { ref: image }; await f.save();
+  const result = await prepareTraining(f.options); if ("dryRun" in result) throw Error("actual expected");
+  const launch = JSON.parse(await readFile(result.configPath, "utf8"));
+  expect(launch.subjectIsolation, "Codex preparation isolation propagation guarantee").toBe("codex-native-sandbox");
+  expect(launch.version).toBe("spawnfile.training-container.v1");
+  expect(launch.broker).toBeUndefined();
+  expect(launch.auth[0].provider).toBe("codex");
+  expect(launch.evaluatorRoutes).toEqual(routes);
+  expect(launch.evaluatorSecrets).toEqual([{ provider: "typesafe", source: path.join(f.root, "typesafe-key") }]);
+  expect(JSON.stringify([launch, f.docker.calls])).not.toContain("test-only-key-marker");
+  expect(await prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).toEqual({ ...result, args: [...result.args, "--resume"] });
+  delete f.config.subjectIsolation; delete f.config.evaluatorSecrets; await f.save();
+  await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).rejects.toThrow("exact resume rejected");
+});
+
+it("admits non-broker preparation secrets only with explicit Codex isolation and a TypeSafe route", async () => {
+  const f = await setup(true);
+  expect(trainingPreparationSchema.safeParse(f.config).success).toBe(true);
+  expect(trainingPreparationSchema.safeParse({ ...f.config, subjectIsolation: undefined }).success,
+    "Codex preparation secret admission guarantee").toBe(false);
+  for (const config of [{ ...f.config, evaluatorRoutes: [routes[0]] },
+    { ...f.config, evaluatorRoutes: undefined, evaluatorSecrets: undefined },
+    { ...f.config, version: "spawnfile.training-container.v4", broker: { engine: "grok", maxRunRequests: 50,
+      agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low", architecture: "arm64",
+      limits: { maxRequests: 4, maxTokens: 100, timeoutMs: 1000 }, realmVolume: "realm", bootstrap: "broker-auth" } }
+  ]) expect(trainingPreparationSchema.safeParse(config).success).toBe(false);
+});
+
+it("rejects hardlinked and symlinked Codex evaluator leaves even in preparation dry-run", async () => {
+  const f = await setup(true);
+  await symlink(path.join(f.root, "typesafe-key"), path.join(f.root, "alias"));
+  f.config.evaluatorSecrets![0]!.source = "alias"; await f.save();
+  await expect(prepareTraining({ ...f.options, dryRun: true })).rejects.toThrow("symlink aliases");
+  f.config.evaluatorSecrets![0]!.source = "typesafe-key"; await f.save();
+  await link(path.join(f.root, "typesafe-key"), path.join(f.root, "integration/key-alias"));
+  await expect(prepareTraining({ ...f.options, dryRun: true })).rejects.toThrow("hardlink aliases");
+  await expect(prepareTraining(f.options)).rejects.toThrow("hardlink aliases");
   expect(f.docker.calls).toEqual([]);
 });

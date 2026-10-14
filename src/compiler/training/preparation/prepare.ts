@@ -47,6 +47,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const evaluatorSecrets = config.evaluatorSecrets?.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
   const protectedLeaves = [...auth, ...evaluatorSecrets ?? []];
   const evaluatorConfig = { ...(config.evaluatorRoutes ? { evaluatorRoutes: config.evaluatorRoutes } : {}),
+    ...(config.subjectIsolation ? { subjectIsolation: config.subjectIsolation } : {}),
     ...(evaluatorSecrets ? { evaluatorSecrets } : {}) };
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
   for (let index = 0; index < options.args.length; index++) {

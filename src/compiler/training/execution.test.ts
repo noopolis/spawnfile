@@ -1,5 +1,5 @@
 import { defaultTrainingOutputRoot } from "./output.js";
-import { mkdir, readdir, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { allocateTrainingOutputParent, lowerTrainingExecution, mapTrainingExecution, trainingExecutionSchema } from "./execution.js";
@@ -60,6 +60,22 @@ it("accepts lowered v4 launch configurations without preparation-only fields and
     .catch((error: Error) => ({ error }));
   expect(result, "lowered v4 dispatch guarantee").toMatchObject({ declaration: config });
   await expect(lower(root, [], { trainingConfig: path.join(root, "launch.json") })).rejects.toThrow("requires --training-image");
+});
+it("preserves Codex isolation and evaluator references from authored container declarations in both lowering paths", async () => {
+  const root = await executionFixture();
+  const preparation = JSON.parse(await readFile(path.join(root, "training/container.json"), "utf8"));
+  const evaluators = { subjectIsolation: "codex-native-sandbox",
+    evaluatorRoutes: [{ purpose: "decisions", provider: "typesafe", model: "judge", maxRequests: 2, maxSpendUsd: 1 }],
+    evaluatorSecrets: [{ provider: "typesafe", source: path.join(root, "typesafe-key") }] };
+  const launch = { version: "spawnfile.training-container.v1", dockerContext: "local",
+    inputs: [{ source: root, destination: "/run/training/inputs/project" }],
+    output: { source: path.join(root, "unused"), destination: "/run/training/output" }, auth: [] };
+  for (const declaration of [preparation, launch]) {
+    await writeTrainingFile(root, "training/container.json", JSON.stringify({ ...declaration, ...evaluators }));
+    const result = await lower(root, [], { trainingImage: executionImage });
+    expect(result.declaration).toMatchObject(evaluators);
+    expect(result.declaration.broker).toBeUndefined();
+  }
 });
 it("maps graders, validation moments, source identities, and execution paths without changing roles or controls", async () => {
   const root = await executionFixture(), { execution } = await lower(root);
