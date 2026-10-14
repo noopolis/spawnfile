@@ -171,3 +171,26 @@ it('does not construct an optimizer route for comparison and rejects requesting 
   expect(inference.judges).toEqual({});
   expect(() => inference.inference).toThrow('no optimizer');
 });
+
+it('hands an explicit validation file to cost preflight and rejects cross-role lineage leakage', async () => {
+  const f = await fixture({ models: configuration.models, optimizer: { model: 'large' }, validation: 'validation.yaml', test: 'test.yaml' });
+  await writeFile(join(f.root, 'evals/train.yaml'), `${datasetText([{ id: 'train', group: 'train' }])}\ntraining: ${JSON.stringify({ models: configuration.models, optimizer: { model: 'large' }, validation: 'validation.yaml', test: 'test.yaml' })}\n`);
+  await writeFile(join(f.root, 'evals/validation.yaml'), datasetText([{ id: 'validation', group: 'validation' }]));
+  const selected = authoredArguments(parseArguments(f.args), f.io);
+  expect(selected.flags.validation).toEqual([join(f.root, 'evals/validation.yaml')]);
+  expect(await main(f.args, f.io)).toBe(0);
+  expect(JSON.parse(f.stdout.at(-1)!).datasetDigests.validation).toMatch(/^sha256:/);
+  expect(await main([...f.args.filter(value => value !== '--dry-run'), '--bridge-command', f.bridge, '--out', 'explicit'], f.io,
+    { ...f.dependencies, modelInference: () => f.dependencies.inference!(15000) })).toBe(0);
+  const index = JSON.parse(await readFile(join(f.root, 'explicit/invocation.json'), 'utf8'));
+  const store = await openExperimentStore(join(f.root, 'explicit'));
+  const report = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId] })).toString());
+  expect(report.partitions).toEqual({ train: ['train'], validation: ['validation'], test: ['x'] });
+  expect(() => authoredArguments(parseArguments([...f.args, '--validation-group', 'train']), f.io)).toThrow('mutually exclusive');
+  for (const file of ['train', 'validation']) {
+    const path = join(f.root, `evals/${file}.yaml`);
+    await writeFile(path, (await readFile(path, 'utf8')).replace(`    group: ${file}`, `    group: ${file}\n    lineage: [shared-origin]`));
+  }
+  expect(await main(f.args, f.io)).toBe(2);
+  expect(f.stderr.at(-1)).toContain('lineage leakage');
+});

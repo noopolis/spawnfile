@@ -13,3 +13,5 @@ evidence stays in research/; user-facing pages belong in website/.
   focused AGENTS.md and CLAUDE.md pairs in new maintained subdirectories.
 - Check local links and examples against the actual source or proposal they cite.
   Prose edits need no synthetic evaluator or review-council machinery.
+
+Training configuration documents explicit validation and the generic named moment preparation receipt; org state reconstruction remains integration-owned.

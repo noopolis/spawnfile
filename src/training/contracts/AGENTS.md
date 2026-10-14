@@ -15,3 +15,5 @@ Evaluation contexts may carry injected neutral grader runtimes. Nested gate
 execution and the graded artifact are engine-owned capabilities; grader results
 retain calibration identity and coverage. Judge calls distinguish local billing
 and measured wall time without inventing usage.
+
+Dataset lineage names evidence ancestors across splits; authored validation paths remain dataset-relative controls.

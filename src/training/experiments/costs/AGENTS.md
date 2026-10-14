@@ -19,3 +19,5 @@ No model calls, authentication, subprocesses, runtime construction or deployment
 - Accept only validated execution datasets or explicitly non-executable cost
   projections. Report preparation checks as unverified; never imply readiness.
   Cost projections preserve call counts and split identities without native inputs.
+
+Cost planning shares explicit validation selection and evidence-lineage isolation with execution.

@@ -361,3 +361,35 @@ Trusted integrations receive `CliExecutionIdentityContext.comparisonCandidateId`
 with the frozen authored content identity and no `bridge` for this mode. Bind that
 explicit comparison identity into the environment receipt; do not require or invent
 a DSPy launch. Ordinary optimizer execution still supplies its actual bridge launch.
+
+## Explicit authored validation and historical cases
+
+`train --validation validation.paideia.yaml` selects a separate validation dataset;
+`training.validation` provides the same dataset-relative default. This retains every
+train record and the validation dataset's own identity. It is mutually exclusive
+with `validation_groups` and `--validation-group`. Execution, comparison and dry-run
+apply the same group, record, source-path, source-hash and optional `record.lineage`
+cross-role isolation checks. Each lineage ancestor must stay in one role.
+
+Spawnfile integrations can declare named `momentPreparations` callbacks for
+`setup.trainingMoment` cases. The frozen `spawnfile.training-moment-case.v1` metadata
+contains projectRoot, agent, role, dataset, role-prefixed example, at, effectiveAt,
+wake, group, lineage, lowered momentRoot, optional historyDir and hook name.
+The callback receives fresh trial paths, signal, trial, project context and metadata;
+it re-runs rewind into `paths.control/moment` and prepares the native environment.
+The lowered bundle is provenance, never a writable trial template.
+
+Without an explicit validation dataset, automatic or `--validation-group` holdouts
+retain their authored `role: train`, dataset and `train:` example selector for
+rewind. The callback receives `trial.phase: validation` for evaluation separately;
+it must rewind using the authored metadata. All other role/phase mismatches fail
+before the callback runs, and rewind evidence must retain the authored role.
+
+The callback returns ordinary environment fields plus `momentReceipt` with
+`version: paideia.training-moment-prepared.v1`, trialId, example, momentRoot and at.
+Paideia verifies an initially absent destination, a real isolated directory,
+receipt identity and the rewind's materialized `moment.json` plus successful
+`leak-check.json` before starting the adapter. Missing hooks, stale/shared roots,
+refused rewinds, mismatched identities and cancellation fail the trial. The
+registered callback owns domain state reconstruction and native research/filing
+behavior; neither the public dispatcher nor the core invents those observations.

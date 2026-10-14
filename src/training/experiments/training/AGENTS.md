@@ -72,3 +72,5 @@ Slot descriptors and effective concurrency bind checkpoint identity.
 Population search controls pass unchanged to optimization and participate in the
 training checkpoint identity. Derive component editScope from the frozen baseline,
 not integration claims, so provenance reflects actual whole-file or heading edits.
+
+resolveTrainingPartitions preserves explicit validation dataset identity and rejects competing group controls. Split checks still bind all three roles.
