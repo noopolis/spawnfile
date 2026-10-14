@@ -19,7 +19,7 @@ it("lowers authored inputs and exact optimizer controls with a fresh contained o
   expect(result.execution.output).toMatch(new RegExp(`^${root}/.spawn/training/agent%3Awriter/`));
   expect(next.execution.output).not.toBe(result.execution.output);
   expect(result.execution.optimizer).toEqual(optimizer);
-  expect(result.execution.args, "validation CLI handoff guarantee").toEqual(["--train", path.join(root, "training/train.yaml"), "--validation", path.join(root, "training/validation.yaml"), "--test", path.join(root, "training/test.yaml"),
+  expect(result.execution.args, "validation CLI handoff guarantee").toEqual(["--experiment-timeout-ms", "43200000", "--train", path.join(root, "training/train.yaml"), "--validation", path.join(root, "training/validation.yaml"), "--test", path.join(root, "training/test.yaml"),
     "--editable", "AGENTS.md", "--optimizer-model", optimizer.model, "--out", result.execution.output]);
   expect(result.execution.authoring.targets[0]!.datasets.validation).toMatchObject({ path: "training/validation.yaml" });
   expect(result.execution.authoring.graders[0]!.sourcePath).toBe(path.join(root, "training/writing.grader.yaml"));
@@ -29,12 +29,24 @@ it("lowers authored inputs and exact optimizer controls with a fresh contained o
 it("keeps all explicit execution flags as overrides without replacing the original authoring provenance", async () => {
   const root = await executionFixture();
   const args = ["--train", "override.yaml", "--test", "held.yaml", "--validation", "validation-override.yaml", "--editable", "OTHER.md", "--optimizer-model", "override-model",
-    "--max-proposals", "2", "--out", path.join(root, "chosen")];
+    "--max-proposals", "2", "--experiment-timeout-ms", "60000000", "--trial-timeout-ms", "4000000", "--out", path.join(root, "chosen")];
   const result = await lower(root, args, { trainingConfig: path.join(root, "training/container.json"), trainingImage: executionImage });
   expect(result.execution.args).toEqual(args);
   expect(result.trainingImage).toBe(executionImage);
   expect(result.execution.optimizer).toEqual({ ...optimizer, model: "override-model" });
   expect(result.execution.authoring.optimizer).toEqual(optimizer);
+});
+it("keeps the legacy experiment override while independently lowering an authored trial deadline", async () => {
+  const root = await executionFixture(), project = await loadTrainingProject(root);
+  const plan = resolveTrainingPlan(project, "writer", "test");
+  plan.deadlines = { experiment_ms: 60_000_000, trial_ms: 5_000_000 };
+  const args = ["--timeout-ms", "5000", "--out", path.join(root, "chosen")];
+  const lowered = await lowerTrainingExecution({ project, plan, args });
+  expect(lowered.execution.args).not.toContain("--experiment-timeout-ms");
+  expect(lowered.execution.args).toEqual(expect.arrayContaining(["--timeout-ms", "5000", "--trial-timeout-ms", "5000000"]));
+  const override = await lowerTrainingExecution({ project, plan, args: [...args, "--trial-timeout-ms", "2000"] });
+  expect(override.execution.args).toEqual(expect.arrayContaining(["--trial-timeout-ms", "2000"]));
+  expect(override.execution.args).not.toContain("5000000");
 });
 it("accepts lowered v4 launch configurations without preparation-only fields and requires their explicit image", async () => {
   const root = await executionFixture();

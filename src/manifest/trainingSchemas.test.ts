@@ -20,6 +20,14 @@ const declaration = {
 };
 
 describe("training declarations", () => {
+  it("accepts independent experiment/trial deadlines beyond one hour and rejects unsafe durations", () => {
+    const deadlines = { experiment_ms: 43_200_000, trial_ms: 3_600_000 };
+    expect(trainingDeclarationSchema.parse({ deadlines })).toEqual({ deadlines });
+    for (const invalid of [{ experiment_ms: 0 }, { experiment_ms: 1.5 }, { experiment_ms: 604_800_001 },
+      { trial_ms: 86_400_001 }, { trial_ms: -1 }, { unknown: 1000 }]) {
+      expect(trainingDeclarationSchema.safeParse({ deadlines: invalid }).success).toBe(false);
+    }
+  });
   it("accepts the complete signed authoring surface without adding defaults", () => {
     expect(trainingDeclarationSchema.parse(declaration)).toEqual(declaration);
     expect(trainingDeclarationSchema.parse({})).toEqual({});

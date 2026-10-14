@@ -23,6 +23,13 @@ afterEach(async () => {
 const options = { packageVersion: "0.1.17" };
 
 describe("pure training plan resolution", () => {
+  it("declares a twelve-hour experiment default and retains authored independent deadlines", async () => {
+    const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest() });
+    expect((await createTrainingPlan(root, options)).deadlines).toEqual({ experiment_ms: 43_200_000 });
+    await writeTrainingFile(root, "Spawnfile", agentManifest({ training: { ...training,
+      deadlines: { experiment_ms: 60_000_000, trial_ms: 5_000_000 } } }));
+    expect((await createTrainingPlan(root, options)).deadlines).toEqual({ experiment_ms: 60_000_000, trial_ms: 5_000_000 });
+  });
   it("resolves twice identically without I/O, clock reads, or input mutation", async () => {
     const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest() });
     const project = await loadTrainingProject(root);

@@ -60,6 +60,12 @@ export const lowerTrainingExecution = async (options: LowerTrainingExecutionOpti
     return invalid("A lowered container launch configuration requires --training-image; use a v2/v4 preparation declaration for a declared image");
   }
   const args = [...options.args];
+  if (!args.includes("--experiment-timeout-ms") && !args.includes("--timeout-ms")) {
+    args.push("--experiment-timeout-ms", String(plan.deadlines?.experiment_ms ?? 43_200_000));
+  }
+  if (!args.includes("--trial-timeout-ms") && plan.deadlines?.trial_ms !== undefined) {
+    args.push("--trial-timeout-ms", String(plan.deadlines.trial_ms));
+  }
   // These are authoring locators. The receipt consumer lowers ALL target datasets into one file per role.
   for (const role of ["train", "validation", "test"] as const) {
     if (option(args, `--${role}`) !== undefined) continue;

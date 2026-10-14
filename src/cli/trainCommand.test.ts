@@ -22,7 +22,7 @@ const container = ["--training-image", `sha256:${"a".repeat(64)}`, "--training-c
 const base = ["--train", "train.paideia.yaml", "--test", "test.paideia.yaml", "--out", "local output"];
 const { version: packageVersion } = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
 const emptyPlan = (root: string): Awaited<ReturnType<CliHandlers["createTrainingPlan"]>> => ({
-  agent: { id: "agent:author", name: "author" }, graders: [], optimizer: null,
+  agent: { id: "agent:author", name: "author" }, deadlines: { experiment_ms: 43_200_000 }, graders: [], optimizer: null,
   producer: { package: "spawnfile", version: packageVersion },
   project: { manifest: path.join(root, "Spawnfile"), root },
   record: null, targets: [], version: "spawnfile.training-plan.v1"
@@ -217,12 +217,12 @@ describe("spawnfile train", () => {
     })).toBe(0);
     expect(stderr).toEqual([]);
     expect(delegate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
-      args: [...base, ...(flags.length ? ["--concurrency", "2"] : [])],
+      args: [...base, ...(flags.length ? ["--concurrency", "2"] : []), "--experiment-timeout-ms", "43200000"],
       trainingConfig: "/training.json", dryRun: false
     }));
   });
 
-  it("resolves the real canonical project and forwards only explicit Paideia options", async () => {
+  it("resolves the real canonical project and preserves explicit Paideia options", async () => {
     const root = await project(), stdout: string[] = [], stderr: string[] = [];
     const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
     const forbidden = vi.fn(async () => { throw new Error("must not compile, build or authenticate"); });
@@ -246,12 +246,12 @@ describe("spawnfile train", () => {
     expect(stderr).toEqual([]);
   });
 
-  it("delegates YAML-owned test selection and permits the complete YAML time budget", async () => {
+  it("delegates YAML-owned test selection and forwards the complete default experiment budget", async () => {
     const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
     expect(await runCli(["train", await project(), "--train", "train.paideia.yaml", "--dry-run"], {
       handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(0);
-    expect(delegate.mock.calls[0]![0]).toMatchObject({ timeoutMs: 3_605_000, args: ["--train", "train.paideia.yaml", "--dry-run"] });
+    expect(delegate.mock.calls[0]![0]).toMatchObject({ timeoutMs: 43_205_000, args: ["--train", "train.paideia.yaml", "--dry-run", "--experiment-timeout-ms", "43200000"] });
   });
 
   it("forwards explicit resume to Paideia without changing canonical agent context", async () => {
@@ -259,7 +259,7 @@ describe("spawnfile train", () => {
     expect(await runCli(["train", await project(), ...base, ...container, "--resume"], {
       handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(0);
-    expect(delegate.mock.calls[0]![0].args).toEqual([...base, "--resume"]);
+    expect(delegate.mock.calls[0]![0].args).toEqual([...base, "--resume", "--experiment-timeout-ms", "43200000"]);
     expect(delegate.mock.calls[0]![0].context.agent.id).toBe("agent:author");
     expect(delegate.mock.calls[0]![0].dryRun).toBe(false);
   });
@@ -277,7 +277,7 @@ describe("spawnfile train", () => {
       signal: controller.signal, handlers: { delegatePaideiaTraining: async (options) => { captured = options; return 2; } },
       streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);
-    expect(captured).toMatchObject({ command: "paideia", timeoutMs: 3_605_000, signal: controller.signal, dryRun: false });
+    expect(captured).toMatchObject({ command: "paideia", timeoutMs: 43_205_000, signal: controller.signal, dryRun: false });
     expect(captured?.args).toContain("--bridge-command");
     expect(captured?.args).not.toContain("--dry-run");
   });
@@ -292,7 +292,7 @@ describe("spawnfile train", () => {
     expect(delegated).toHaveBeenCalledOnce();
   });
 
-  it.each(["0", "1.5", "-1", "NaN", "3600001"])("rejects timeout %s before extracting or delegating", async (timeout) => {
+  it.each(["0", "1.5", "-1", "NaN", "604800001"])("rejects timeout %s before extracting or delegating", async (timeout) => {
     const forbidden = vi.fn(async () => { throw Error("must not start"); });
     const code = await runCli(["train", "/missing", ...base, "--timeout-ms", timeout], {
       handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined }
@@ -316,7 +316,7 @@ describe("spawnfile train", () => {
       handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);
     expect(delegate.mock.calls[0]![0].args).toEqual(["--train", "train.paideia.yaml", "--test", "test.paideia.yaml",
-      "--judge-citation-repairs", literal, "--judge-citation-repairs", literal, "--out", "local output", "--dry-run"]);
+      "--judge-citation-repairs", literal, "--judge-citation-repairs", literal, "--out", "local output", "--dry-run", "--experiment-timeout-ms", "43200000"]);
   });
 });
 

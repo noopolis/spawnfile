@@ -51,6 +51,10 @@ export const trainingTargetSchema = z.object({
 }).strict();
 
 export const trainingDeclarationSchema = z.object({
+  deadlines: z.object({
+    experiment_ms: z.number().int().min(1).max(604_800_000).optional(),
+    trial_ms: z.number().int().min(1).max(86_400_000).optional()
+  }).strict().optional(),
   preparation: z.object({ hook: z.string().min(1), history: trainingRelativePathSchema.optional() }).strict().optional(),
   record: trainingRecordSchema.optional(),
   optimizer: trainingOptimizerSchema.optional(),

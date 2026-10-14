@@ -1005,7 +1005,8 @@ exclusion, state isolation and single-agent preparation are not supplied by this
 
 Repeated options: `--editable`, `--resource`, `--judge`, `--judge-citation-repairs`, `--validation-group`. Other
 forwarded options: `--train`, `--validation`, `--test`, `--optimizer-model`, `--bridge-command`, `--out`,
-`--max-trials`, `--max-proposals`, `--seed`, `--timeout-ms`, `--view`, `--cost-config`.
+`--max-trials`, `--max-proposals`, `--seed`, `--timeout-ms`, `--experiment-timeout-ms`,
+`--trial-timeout-ms`, `--view`, `--cost-config`.
 The canonical runtime/model/instruction selection cannot be replaced by generic CLI flags.
 
 `--judge-citation-repairs NAME=0|1` is forwarded literally to Paideia. The receiver
@@ -1024,6 +1025,18 @@ The parent verifies group/output quiescence before returning 0 or cancellation 1
 unknown cleanup is a runtime error. No signal uses an identity after its supervisor is reaped.
 This delegation requires POSIX process groups; escaped processes and remote effects are not observed.
 The child deadline is Paideia's declared deadline plus five seconds for cleanup.
+
+The training plan declares `deadlines.experiment_ms`, defaulting to 43200000
+(12 hours). Author `training.deadlines.experiment_ms` (1..604800000, up to seven
+days) and optional `training.deadlines.trial_ms` (1..86400000, up to 24 hours).
+Deadlines inherit through direct membership with local fields overriding inherited
+fields. `--experiment-timeout-ms` overrides the plan, followed by the legacy
+`--timeout-ms` alias; `--trial-timeout-ms` overrides the authored trial deadline.
+The outer experiment default is always forwarded to Paideia, and its supervisor
+gets that same duration plus the cleanup allowance. Paideia defaults each trial
+to one hour when no trial deadline is supplied. Experiment duration never changes
+broker turn limits (1800000 for a declared production-length 30-minute turn),
+judge/optimizer route deadlines or atomic extraction deadlines.
 
 ## JSON Schema
 
@@ -1372,6 +1385,25 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
       "required": [
         "id",
         "name"
+      ],
+      "additionalProperties": false
+    },
+    "deadlines": {
+      "type": "object",
+      "properties": {
+        "experiment_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800000
+        },
+        "trial_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        }
+      },
+      "required": [
+        "experiment_ms"
       ],
       "additionalProperties": false
     },
