@@ -96,3 +96,25 @@ it('retains source-row guards using derived cites and supports non-body and assi
   expect(validateDecomposition(document, { output: 'Just text', context: {} }).decomposition.units[0]).toMatchObject({ location: 'output', cites: [] });
   expect(validateDecomposition(document, { output: { widget: { caption: 'Just text' } }, context: {} }).decomposition.units[0]!.location).toBe('widget.caption');
 });
+
+it('limits assignment sources to declared obligation kinds and keeps relational endpoints output-only', () => {
+  const { templates, document, inputs } = fixture();
+  inputs.obligationKinds = ['requirement'];
+  templates.templates[0]!.applies_to = 'requirement';
+  templates.templates[0]!.instructions = 'Check {unit.text}.';
+  templates.templates[0]!.state = ['unit'];
+  templates.context.task = { role: 'assignment' };
+  inputs.context.task = 'Cover the team.';
+  inputs.context.other = 'Untrusted span.';
+  document.units = [{ id: 'r', kind: 'requirement', text: 'Cover the team.' }];
+  expect(validateDecomposition(document, inputs, templates)).toMatchObject({ rejected: [],
+    decomposition: { units: [{ location: 'context.task' }] } });
+  expect(instantiateChecksReport(templates, document, inputs).checks[0]!.status).toBe('ready');
+  for (const [kind, text] of [['claim', 'Cover the team.'], ['obligation', 'Cover the pay change.'],
+    ['requirement', 'Untrusted span.'], ['requirement', 'Invented span.']]) {
+    expect(locateUnit({ id: 'r', kind: kind!, text: text! }, inputs, templates)).toBe('text is not a verbatim source span');
+  }
+  document.units[0]!.pair = { left: { text: 'Cover the team.' }, right: { text: 'Cover the pay change.' } };
+  expect(validateDecomposition(document, inputs, templates).rejected[0]!.reasons).toEqual([
+    'pair.left: text is not a verbatim source span', 'pair.right: text is not a verbatim source span']);
+});

@@ -81,6 +81,7 @@ def test_rounds_slots_keep_seed_drop_determinism_and_train_cache():
     assert len(p["candidates"]) == 5
     assert p["proposals"] == 6  # one planning + two realization calls per round
     evaluations = [params for method, params in first.calls if method == "evaluate"]
+    assert [row["round"] for row in evaluations] == [0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
     assert len(evaluations) == 10  # complete train and validation for every candidate
     assert len({(row["caseId"], json.dumps(row["components"])) for row in evaluations}) == 10
     for candidate in p["candidates"]:

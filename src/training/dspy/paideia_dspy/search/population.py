@@ -147,6 +147,7 @@ class Population:
         reason = "rounds"
         rng = random.Random(self.request.seed)
         for number in range(1, self.search.rounds + 1):
+            self.session.round = number
             parents = kept[:]
             rng.shuffle(parents)
             # Reserve uncached feedback as well as the packet's minimum planning,

@@ -36,3 +36,6 @@ Every accepted candidate gets complete validation and train passes at admission,
 including final-round candidates. Reserve the sum of both split sizes before
 planning/realization. Cache unchanged parent feedback; settled checkpoint callbacks
 replay without new trials. Sealed test has no bridge callback role.
+
+Set the session round before parent feedback and variant validation. Cached
+feedback is a prior capture, never a fresh measurement in the current round.

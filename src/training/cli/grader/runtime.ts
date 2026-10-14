@@ -1,3 +1,5 @@
+import { parseYaml } from '../../graders/format/index.js';
+import { buildAtomicRuntime } from './atomic/index.js';
 import { readFile } from 'node:fs/promises';
 import { loadGrader, loadLabels, parseCalibrationJson, sha256, checkCalibration, createCalibrationIdentity,
   decisionModels, decisionModelIdentities, stableDigest, type GradingRuntime } from '../../graders/index.js';
@@ -43,4 +45,11 @@ export async function buildGradingRuntime(graderFile: string, dependencies: Grad
   return { grader, calibration, backend, backends, teacher: { provider, model: definition.model },
     goldenDigest: golden.goldenDigest, promptTemplateVersion: DECISION_PROMPT_VERSION,
     resource: routeResources[0]!, resources: [...new Set(routeResources)], definitionDigest: sha256(source), calibrationDigest: sha256(calibrationSource) };
+}
+
+/** Public grader-file dispatch used by native training/evaluation hosts. */
+export async function buildExecutableGradingRuntime(file: string, dependencies: GraderDependencies = {}, signal?: AbortSignal) {
+  signal?.throwIfAborted();
+  const value = parseYaml(await readFile(file, 'utf8')) as { schema?: string };
+  return value?.schema === 'paideia.atomic-grader.v1' ? buildAtomicRuntime(file, dependencies) : buildGradingRuntime(file, dependencies, signal);
 }

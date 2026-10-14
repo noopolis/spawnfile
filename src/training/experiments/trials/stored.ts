@@ -57,6 +57,8 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
       await options.store.appendEvent(options.id, { id: randomUUID(), payload: { type: 'candidate.installed', receipts } }, 'evaluator');
       return { ...environment, instructions: instructions.map(resource => resource.content).join('\n\n') };
     } });
+  report.candidate = structuredClone(options.candidate);
+  if (options.round !== undefined) report.round = options.round;
   await options.store.appendEvaluation(options.id, { id: randomUUID(), report }, 'evaluator');
   return report;
 }

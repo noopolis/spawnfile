@@ -22,6 +22,7 @@ class Session:
         self.proposal_stopped = False
         self.seed_replay: dict[str, EvaluationResult] = {}
         self.failure: BridgeError | None = None
+        self.round = 0
         self._lock = threading.RLock()
 
     def __deepcopy__(self, _memo):
@@ -74,6 +75,7 @@ class Session:
             self.evaluations += 1
         result = self._call("evaluate", {
             "caseId": case_id, "split": split, "components": components,
+            "round": self.round,
         }, EvaluationResult)
         with self._lock:
             if split == "validation" and (result.feedback or result.output):
@@ -100,6 +102,10 @@ class Session:
                 generation["modelBasis"] = result.modelBasis
             self.generations.append(generation)
             return result
+
+    def on_iteration_start(self, event):
+        # Upstream GEPA supplies the real iteration, including on resume.
+        self.round = event["iteration"]
 
     def should_stop(self, _state):
         # GEPA checks at iteration boundaries. Reserve one training baseline, one

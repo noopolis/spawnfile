@@ -26,3 +26,9 @@ Never derive invocation ownership from backend history or receipt offsets.
 Paid grading failures retain invocation-scoped, allowlisted decision receipts on
 DecisionAccountingError after started provider work settles; never attach request
 payloads or provider response extensions to failure accounting.
+Retain originating requestId in success, failure and persisted receipt schemas.
+Assign once at invocation accounting for injected backends that omit it; never
+replace existing IDs or derive identity from price, check or measurement names.
+
+Expose one decisionAccountingSchema for successful and failed persisted results;
+keep the same strict receipt allowlist at both replay surfaces.

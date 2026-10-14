@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import type { AtomicFeedback, AtomicGradeResult } from '../../graders/atomic/index.js';
 import type { DataMap, ResolvedRecord } from '../../contracts/dataset.js';
 import type { ArtifactSnapshot } from '../../contracts/evaluation.js';
 import { snapshotCandidate } from '../../candidates/index.js';
@@ -22,6 +23,14 @@ function artifact(name: string, value: unknown): ArtifactSnapshot {
   const bytes = JSON.stringify(value);
   return { name, value, bytes, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
     checkpointId: 'snapshot', provenance: 'synthetic test collector' };
+}
+function atomicGrade(feedback: AtomicFeedback): AtomicGradeResult {
+  return { schema: 'paideia.atomic-grade.v1', status: 'fail', score: 0, coverage: 1,
+    criticalGate: 0, obligationCoverage: 1, quality: 0.2,
+    identity: { definitionDigest: 'a'.repeat(64), templatesDigest: 'a'.repeat(64),
+      outputDigest: 'a'.repeat(64), contextDigest: 'a'.repeat(64) },
+    checks: [], extraction: { receipts: [{ response_text: 'PROTECTED SECRET' }], judgeCalls: [] },
+    receipts: [], feedback, judgeCalls: [] };
 }
 function record(): ResolvedRecord {
   return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
@@ -129,7 +138,7 @@ it('keeps nested measurements, stage weights and live atomic failures outside ov
   const parent = { ...leaf, id: 'parent', children: [leaf] };
   const score = { finality: 'final' as const, lower: 0.3, upper: 0.3, assessedWeight: 2, missingWeight: 0 };
   captured.evaluation.stages = [{ id: 'writing', checks: [parent], gate: parent, weights: { parent: 2 }, score }];
-  const liveResult = { ...leaf, atomicGrading: { feedback: atomic } };
+  const liveResult = { ...leaf, atomicGrading: atomicGrade(atomic) };
   captured.live = [{ checkId: 'live', boundary: 'close', result: liveResult }];
   const before = structuredClone(captured);
   const feedback = JSON.parse(trainingFeedback(selected, captured).feedback);
@@ -232,8 +241,7 @@ it('projects only the public atomic feedback, including missing probabilities, a
     { template: 'evidence', unit: 'No evidence observed.', probability: null },
   ] };
   const check = { id: 'writing', status: 'fail' as const, finality: 'final' as const, score: 0.3,
-    reason: 'Atomic criteria failed.', evidence: [], atomicGrading: { feedback: atomic,
-      extraction: { receipts: ['PROTECTED SECRET'] }, checks: ['PROTECTED SECRET'], receipts: ['PROTECTED SECRET'] } };
+    reason: 'Atomic criteria failed.', evidence: [], atomicGrading: atomicGrade(atomic) };
   captured.evaluation.stages = [{ id: 'writing', checks: [check], gate: check }];
   const before = structuredClone(captured);
   const feedback = JSON.parse(trainingFeedback(record(), captured).feedback);
@@ -250,7 +258,7 @@ it('caps atomic feedback and article excerpts by wire bytes, including JSON esca
   const atomic = { failed_check_count: 100, omitted_failed_checks: 0,
     failed_checks: Array.from({ length: 100 }, (_, i) => ({ template: `check-${i}`, unit, probability: i === 0 ? null : 0.2 })) };
   const check = { status: 'fail' as const, finality: 'final' as const, score: 0.2, reason: 'Failed checks', evidence: [],
-    atomicGrading: { feedback: atomic } };
+    atomicGrading: atomicGrade(atomic) };
   captured.evaluation.stages = [{ id: 'writing', checks: [check], gate: check }];
   captured.snapshot.output = `Article beginning: ${unit.repeat(50)}`;
   const result = trainingFeedback(selected, captured);
@@ -274,8 +282,8 @@ it('caps atomic feedback and article excerpts by wire bytes, including JSON esca
 it('enforces the atomic count and unit limits even when the byte budget has room', () => {
   const captured = report();
   const check = { status: 'fail' as const, finality: 'final' as const, reason: 'Failures', evidence: [],
-    atomicGrading: { feedback: { failed_check_count: 50, omitted_failed_checks: 0,
-      failed_checks: Array.from({ length: 50 }, () => ({ template: 'tiny', unit: 'x', probability: 0 })) } } };
+    atomicGrading: atomicGrade({ failed_check_count: 50, omitted_failed_checks: 0,
+      failed_checks: Array.from({ length: 50 }, () => ({ template: 'tiny', unit: 'x', probability: 0 })) }) };
   captured.evaluation.stages = [{ id: 'writing', checks: [check], gate: check }];
   const projected = JSON.parse(trainingFeedback(record(), captured).feedback).evaluation.stages[0].checks[0].atomic;
   expect(projected.failed_checks).toHaveLength(40);
@@ -290,7 +298,7 @@ it.each([12000, 60000])('retains atomic failures through both compaction layers 
     { template: 'evidence', unit: 'No evidence observed.', probability: null },
   ] };
   const long = { id: 'earlier-check', status: 'fail' as const, finality: 'final' as const, score: 0.25, reason: 'r'.repeat(size), evidence: [] };
-  const failed = { ...long, id: 'atomic-check', reason: 'Atomic failure.', atomicGrading: { feedback: atomic } };
+  const failed = { ...long, id: 'atomic-check', reason: 'Atomic failure.', atomicGrading: atomicGrade(atomic) };
   captured.evaluation.stages = [{ id: 'writing', checks: [long, failed], gate: failed }];
   captured.snapshot.subjectUsage = { status: 'complete', usage: { inputTokens: 20, cachedInputTokens: 5, outputTokens: 4, reasoningTokens: null, source: 'native' } };
   selected.outputs = { draft: 'draft.json', accepted: 'accepted.json' };
@@ -355,3 +363,21 @@ print(json.dumps(payloads))
     }
   }
 }, 30000);
+
+it('passes only compact atomic failures to optimization, preserving protected receipts in the report', () => {
+  const captured = report();
+  const feedback = { failed_check_count: 1, omitted_failed_checks: 0,
+    failed_checks: [{ template: 'supported', unit: 'An observed claim.', probability: 0.2 }] };
+  const atomicGrading: import('../../graders/atomic/index.js').AtomicGradeResult = {
+    schema: 'paideia.atomic-grade.v1', status: 'fail', score: 0, coverage: 1, criticalGate: 0, obligationCoverage: 1, quality: 0.2,
+    identity: { definitionDigest: 'a'.repeat(64), templatesDigest: 'a'.repeat(64), outputDigest: 'a'.repeat(64), contextDigest: 'a'.repeat(64) },
+    checks: [], extraction: { receipts: [{ response_text: 'PROTECTED RECEIPT'.repeat(200_000) }], judgeCalls: [] }, receipts: [], feedback, judgeCalls: [],
+  };
+  captured.evaluation.stages = [{ id: 'terminal', checks: [{ id: 'quality', status: 'fail', finality: 'final', reason: 'Failed', evidence: [], atomicGrading }],
+    gate: { status: 'fail', finality: 'final', reason: 'Failed', evidence: [] } }];
+  const result = trainingFeedback(record(), captured);
+  expect(JSON.parse(result.feedback).evaluation.stages[0].checks[0].atomic).toEqual(feedback);
+  expect(Buffer.byteLength(result.feedback)).toBeLessThan(2000);
+  expect(result.feedback).not.toContain('PROTECTED RECEIPT');
+  expect(captured.evaluation.stages[0]!.checks[0]!.atomicGrading!.extraction.receipts).toEqual(atomicGrading.extraction.receipts);
+});

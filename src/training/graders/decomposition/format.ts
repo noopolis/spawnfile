@@ -31,7 +31,11 @@ export const decompositionSchema = z.strictObject({
 });
 export type AtomicUnit = z.infer<typeof unitSchema>;
 export type Decomposition = z.infer<typeof decompositionSchema>;
-export interface DecompositionInputs { output: unknown; context: Record<string, unknown> }
+export interface DecompositionInputs {
+  output: unknown; context: Record<string, unknown>;
+  /** Assignment span access is limited to these kinds; standalone callers default to obligation. */
+  obligationKinds?: readonly string[];
+}
 const read = z.string().regex(/^(unit(?:\.pair)?(?:\.(?:cited_rows|source_snapshots))?|paragraph|neighbors|output\.[\w.-]+|context\.[\w-]+)$/);
 const answer = z.union([z.string(), z.number().int(), z.boolean()]).transform(String);
 const templateSchema = z.strictObject({

@@ -49,3 +49,7 @@ identity probes, cache misses and scoring; never slice backend receipt history.
 Grade/calibrate failures emit paideia.grader-failure.v1 JSON accounting before
 nonzero exit. Include completed earlier candidates and failed attempts, exclude
 prior invocations, and keep diagnostics outside the sanitized accounting result.
+
+buildExecutableGradingRuntime dispatches the protected public grader-file schema.
+Atomic construction lives in atomic/ and shares a route spend cap across trials;
+explicit host overrides may lower, never raise, the authored cap.

@@ -42,6 +42,8 @@ beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'paideia-cli-broker-'));
   bin = path.join(root, 'bin');
   await mkdir(bin);
+  // TMPDIR may live inside this ESM repository; the generated CLI uses CommonJS.
+  await writeFile(path.join(bin, 'package.json'), JSON.stringify({ type: 'commonjs' }));
   await mkdir(path.join(root, 'homes'), { mode: 0o700 });
   process.env['PATH'] = `${bin}${path.delimiter}${saved.PATH ?? ''}`;
   process.env['PAIDEIA_GROK_BROKER_CONTROL_SOCKET'] = '/run/daimon-engine-broker/control.sock';

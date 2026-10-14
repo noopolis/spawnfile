@@ -15,6 +15,7 @@ import { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture }
 import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
+  const started = performance.now();
   const { adapter, registry } = options;
   const record = structuredClone(options.record);
   if (!options.id || !options.model) throw new Error('Trial identity and model are required');
@@ -216,7 +217,9 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     } else if (execution !== 'completed' && !live.decisive) gates.push(result('error', error ?? control.reason ?? 'Incomplete native execution'));
     const report: TrialReport = { schema: 'paideia.trial.v1', id: options.id, phase: options.phase,
       candidateId: options.candidateId, datasetDigest: options.datasetDigest, planDigest: options.planDigest,
-      recordId: record.id, paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
+      recordId: record.id, durationMs: performance.now() - started,
+      subject: { adapterId: adapter.id, requestedModel: options.model, isolation: adapter.capabilities.isolation },
+      paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
       expectedTurns: inputs.length, turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),
       stop: structuredClone(finalStop), ...(diagnostic ? { diagnostic: structuredClone(diagnostic) } : {}), ...(error ? { error } : {}) };
     if (sinkFailed) throw new Error('Trial evidence persistence failed; no durable success report');

@@ -3,7 +3,9 @@ import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parseDatasetYaml, resolveDataset, resolveDatasetForCost } from '../cases/index.js';
 import type { CostDataset } from '../cases/index.js';
 import type { CheckNode, ResolvedDataset, ResolutionOptions } from '../contracts/index.js';
-import { buildGradingRuntime, type GraderDependencies } from './grader/index.js';
+import { buildExecutableGradingRuntime, type GraderDependencies } from './grader/index.js';
+import type { AtomicRuntime } from '../graders/atomic/index.js';
+import type { GraderBinding } from '../cases/index.js';
 import type { GradingRuntime } from '../graders/index.js';
 import { assertModelRequestAdmission } from '../inference/index.js';
 
@@ -54,17 +56,17 @@ export class CliDatasets {
   }
 
   /** All model construction happens after resolution and before the native subject. */
-  async buildGraders(dependencies: GraderDependencies = {}, requireExclusions = false): Promise<Record<string, GradingRuntime>> {
-    const graders: Record<string, GradingRuntime> = {};
+  async buildGraders(dependencies: GraderDependencies = {}, requireExclusions = false): Promise<Record<string, GradingRuntime | AtomicRuntime>> {
+    const graders: Record<string, GradingRuntime | AtomicRuntime> = {};
     for (const dataset of this.loaded.values()) for (const check of graderChecks(dataset)) {
       assertModelRequestAdmission('native-grader', 'grader');
       const filename = check.grader as string;
-      const binding = check.grader_binding as { definitionDigest: string; calibrationDigest: string };
-      const runtime = graders[filename] ?? await buildGradingRuntime(filename, dependencies);
-      if (runtime.definitionDigest !== binding.definitionDigest || runtime.calibrationDigest !== binding.calibrationDigest) {
+      const binding = check.grader_binding as GraderBinding;
+      const runtime = graders[filename] ?? await buildExecutableGradingRuntime(filename, dependencies);
+      if (runtime.definitionDigest !== binding.definitionDigest || ('kind' in runtime ? runtime.templatesDigest !== binding.templatesDigest || binding.kind !== 'atomic' : runtime.calibrationDigest !== binding.calibrationDigest)) {
         throw new Error(`Grader or calibration changed after dataset resolution: ${filename}`);
       }
-      if (requireExclusions) for (const excluded of this.loaded.values()) {
+      if (requireExclusions && !('kind' in runtime)) for (const excluded of this.loaded.values()) {
         if (!runtime.calibration.identity.exclusions.some(item => item.digest === excluded.sourceDigest.replace(/^sha256:/, ''))) {
           throw new Error(`Grader calibration must exclude dataset ${excluded.sourceName}; internal validation requires excluding the whole training dataset`);
         }

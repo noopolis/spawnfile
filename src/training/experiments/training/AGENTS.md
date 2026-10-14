@@ -89,4 +89,21 @@ Python proposer, whose own output compaction must reserve the same artifacts.
 The adjacent feedback tests pass large projected results through Python Session
 and both population generation phases, asserting current/history atomic retention.
 
+Atomic feedback includes only the runtime-bounded failed-check projection: unit text,
+template, probability and omitted count. Never forward decomposition/checkpoint
+responses to the optimizer; the protected original report retains them.
+
+trialScore refuses every errored atomic measurement or typed atomic failure anywhere in the final evaluation tree before any reward can be returned, even when a decisive sibling or explicit gate masks the error.
+This includes atomicFailure from early acceptance-gate errors; genuine failing
+gate judgments remain behavioral zeros. atomic-gates.test.ts exercises resolved
+grader gates through real rubric evaluation with fake providers.
+
+Completed reports carry invocation elapsed host durationMs, including restoration
+and sealed tests. Do not sum parallel trial durations as invocation elapsed time.
+The CLI owns local operator report/bundle export; it never reselects from test.
+
+Forward actual optimizer callback round IDs to stored trials. Candidate manifests
+belong to native measurement persistence, independent of final optimizer selection;
+completed checkpoint resume must retain rejected evaluated proposals.
+
 resolveTrainingPartitions preserves explicit validation dataset identity and rejects competing group controls. Split checks still bind all three roles.

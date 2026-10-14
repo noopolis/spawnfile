@@ -3,7 +3,7 @@ import type { JudgeCall } from './evaluation.js';
 /** Runtime-neutral option scoring; expectedOptions is bounds metadata, never prompt data. */
 export interface DecisionRequest {
   key: string;
-  type: 'yes-no' | 'choice' | 'score';
+  type: 'yes-no' | 'noul' | 'choice' | 'score';
   optionLabels: readonly (string | number)[];
   expectedOptions?: readonly (string | number)[];
   instructions: string;
@@ -15,6 +15,8 @@ export interface DecisionResult {
   probabilities: Record<string, number> | null;
   status: 'ok' | 'missing';
   reason?: string;
+  /** Infrastructure refusal, distinct from missing behavioral evidence. */
+  failureCause?: 'spend-cap' | 'request-rejected';
   bounded?: boolean;
   /** Provider probabilities have approximately 0.01 resolution, even when their sum is one. */
   providerRounded?: boolean;
@@ -25,6 +27,8 @@ export interface DecisionResult {
 export interface DecisionIdentity { backend: string; model: string; digest?: string; fingerprint?: string; endpoint?: string }
 export interface DecisionSpendBudget { maxUsd?: number; spentUsd: number; reservedUsd: number }
 export interface DecisionRequestReceipt {
+  /** Originating dispatched attempt; retained across references and repairs. Absent in legacy captures. */
+  requestId?: string;
   billing: 'api'; model: string; endpoint: string;
   inputTokens: number | null; outputTokens: number | null; usd: number | null;
   estimatedInputTokens: number; estimatedUsd: number; latencyMs: number; status: number | null;

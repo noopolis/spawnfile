@@ -49,6 +49,8 @@ export interface TrainingReport {
   id: string;
   baseline: CandidateManifest;
   selected: CandidateManifest;
+  /** Elapsed host time for this invocation, including restoration and sealed testing. */
+  durationMs?: number;
   optimizer: DspyResult;
   partitions: { train: string[]; validation: string[]; test: string[] };
   trials: TrialReport[];
@@ -62,6 +64,7 @@ export interface TrainingReport {
     executionIdentity: string; receiptDigest: string; inheritedTrialIds: string[] };
 }
 export async function trainAgent(options: TrainingOptions): Promise<TrainingReport> {
+  const started = performance.now();
   if ('maxRunRequests' in options) throw new Error('Run-wide Grok request admission is not implemented; maxRunRequests cannot be enforced');
   const { concurrency, pool, slots } = await loadTrialSlots(options);
   const progress = options.onProgress;
@@ -101,7 +104,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     if (!candidate) { candidate = deriveCandidate(options.baseline, options.baseline, components); candidates.set(identity, candidate); }
     return candidate;
   };
-  const trial = async (dataset: ResolvedDataset, caseId: string, phase: 'train' | 'validation' | 'test', candidate: CandidateManifest, signal?: AbortSignal, callbackId?: string) => {
+  const trial = async (dataset: ResolvedDataset, caseId: string, phase: 'train' | 'validation' | 'test', candidate: CandidateManifest, signal?: AbortSignal, callbackId?: string, round?: number) => {
     const record = dataset.records.find(record => record.id === caseId);
     if (!record) throw new Error(`Case ${caseId} is not in ${phase}`);
     const key = callbackId ?? `test:${candidate.id}:${caseId}`;
@@ -131,7 +134,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     let confirmed = false;
     let report: TrialReport;
     try {
-    report = await runStoredTrial({ ...options.native, slot: lease?.slot, id, phase, record: structuredClone(record), candidate,
+    report = await runStoredTrial({ ...options.native, slot: lease?.slot, id, phase, round, record: structuredClone(record), candidate,
       datasetId: dataset.id, datasetDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest,
       signal: signal ?? options.signal, evaluation: criteria.get(dataset)!,
       protectedPaths: [...options.native.protectedPaths ?? [], ...options.checkpoint ? [options.checkpoint.directory] : []],
@@ -177,7 +180,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     },
     evaluate: async (request, signal, callbackId) => {
       const dataset = request.split === 'train' ? partition.train : partition.validation;
-      const report = await trial(dataset, request.caseId, request.split, candidateFor(request.components), signal, callbackId);
+      const report = await trial(dataset, request.caseId, request.split, candidateFor(request.components), signal, callbackId, request.round);
       const record = dataset.records.find(record => record.id === request.caseId)!;
       return { score: trialScore(measured(report)), captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation) };
     } });
@@ -189,7 +192,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   const heldOut = await evaluateHeldOut({ candidates: frozen, caseIds: options.test.records.map(record => record.id), concurrency,
     trial: (candidate, caseId) => trial(options.test, caseId, 'test', candidate),
     measurement: report => ({ id: measured(report).id, score: trialScore(measured(report)) }) });
-  const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, baseline: options.baseline, selected, optimizer,
+  const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer,
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
       test: options.test.records.map(record => record.id) }, trials, heldOut, ...(rescores.length ? { rescores } : {}),
     ...(options.checkpoint?.fork ? { lineage: { kind: 'measurement-repair' as const,

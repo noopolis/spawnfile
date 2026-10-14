@@ -29,5 +29,8 @@ test('persists explicit API accounting and spend-cap reasons without accepting u
     decisionAccounting: { billing: 'api', requests: 1, inputTokens: 10, outputTokens: 0, usd: 0.001,
       latencyMs: { p50: 5, p95: 5 }, receipts: [receipt] } };
   expect(schema.parse(api)).toEqual(api);
+  const identified = { ...api, decisionAccounting: { ...api.decisionAccounting, receipts: [{ ...receipt, requestId: 'origin' }] } };
+  expect(schema.parse(identified)).toEqual(identified);
+  expect(() => schema.parse({ ...api, decisionAccounting: { ...api.decisionAccounting, receipts: [{ ...receipt, requestId: '' }] } })).toThrow();
   expect(() => schema.parse({ ...api, decisionAccounting: { ...api.decisionAccounting, receipts: [{ ...receipt, Authorization: 'secret' }] } })).toThrow();
 });

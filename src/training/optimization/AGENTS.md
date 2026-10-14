@@ -87,3 +87,7 @@ their development measurements; resume replays settled callbacks without new wor
 admission before bridge launch/checkpoint restoration. The host independently checks
 all candidate evaluations and returned candidates against the original seed. Unsupported
 prose constraints fail closed; exact text gates do not certify semantic compliance.
+
+Evaluation callbacks accept an optional nonnegative round from the bridge. Host
+journals bind it to callback identity; training persists it before export. Old
+callbacks may lack attribution; do not infer rounds from final candidate aggregates.

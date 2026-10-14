@@ -17,7 +17,8 @@ const reference = z.object({ runId: id, id, digest: id, size: z.number().int().n
 const indexSchema = z.object({ schema: z.literal('paideia.invocation.v1'), command: z.enum(['evaluate', 'train']),
   outcome: z.literal('failed').optional(),
   summaryRunId: id, phase: z.enum(['train', 'test']), candidateId: id, trialIds: z.array(id),
-  report: reference, candidate: reference }).strict();
+  report: reference, candidate: reference,
+  trainingExport: z.object({ directory: id, markdown: id, json: id }).strict().optional() }).strict();
 const budgetSchema = z.object({ maxMetricCalls: z.number().int().nonnegative(), maxProposals: z.number().int().nonnegative() });
 
 export async function loadInvocationViewer(root: string): Promise<() => Promise<ViewerData>> {

@@ -1,3 +1,6 @@
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { snapshotCandidate } from '../../candidates/index.js';
 import { expect, test } from 'vitest';
 import type { JudgeCall } from '../../contracts/evaluation.js';
 import type { Usage } from '../../contracts/execution.js';
@@ -5,6 +8,30 @@ import type { GradeResult } from '../../graders/index.js';
 import { capturedTrial } from './source.js';
 import { fixture } from './fixture.js';
 import { trialReportSchema } from './schema.js';
+import { trialScore } from '../training/index.js';
+import { summarizeCosts } from '../costs/index.js';
+import { createTypeSafeDecision } from '../../inference/decision/index.js';
+
+test('replay preserves atomic acceptance-gate failures without fabricating a grade', async () => {
+  const { store, options, report } = await fixture(report => {
+    const atomic = { status: 'error' as const, finality: 'final' as const, reason: 'Gate failed', evidence: [],
+      atomicFailure: { cause: 'acceptance-gate' as const, gateId: 'accepted' } };
+    const masked = { ...report.evaluation.checks.old!, children: [atomic] };
+    report.evaluation.checks.old = masked;
+    report.evaluation.stages[0]!.checks = [masked];
+    report.evaluation.stages[0]!.gate = masked;
+    report.turns[0]!.checks = [masked];
+    report.live = [{ checkId: 'quality', boundary: 'event', result: masked }];
+  });
+  const captured = capturedTrial(await store.readReplay(options.runId, options.access));
+  expect(captured.report).toEqual(report);
+  expect(() => trialScore(captured.report)).toThrow('unscorable atomic grading measurement');
+  for (const atomicFailure of [{ cause: 'invented', gateId: 'accepted' }, { cause: 'acceptance-gate', gateId: '' }, { cause: 'acceptance-gate' }]) {
+    const malformed = { ...report, evaluation: { ...report.evaluation,
+      checks: { old: { ...report.evaluation.checks.old!, atomicFailure } } } };
+    expect(() => trialReportSchema.parse(malformed)).toThrow();
+  }
+});
 
 const usage: Usage = { inputTokens: 40, cachedInputTokens: 10, cacheWriteInputTokens: 6,
   cacheWrite5mInputTokens: 2, cacheWrite1hInputTokens: 4,
@@ -123,4 +150,72 @@ test('replay preserves typed tool refusal on persisted grading calls', async () 
   expect(trialReportSchema.parse(JSON.parse(JSON.stringify(report))).evaluation.judgeCalls).toEqual([refused]);
   expect(() => trialReportSchema.parse({ ...report, evaluation: { ...report.evaluation,
     judgeCalls: [{ ...refused, failureDetail: 'SECRET' }] } })).toThrow();
+});
+
+test.each(['measured', 'payment-error'] as const)('stored replay preserves atomic identities and request costs: %s', async mode => {
+  const digest = 'a'.repeat(64);
+  const backend = createTypeSafeDecision({ model: 'jev-1.0.0', env: { TYPESAFE_API_KEY: 'offline-key' },
+    fetch: async () => mode === 'payment-error' ? new Response('', { status: 402 }) : Response.json({ model: 'jev-1.0.0', answers: { q: { type: 'noul', noul: 1 } },
+      usage: { input_tokens: 500, output_tokens: 0 } }) });
+  const receipts: import('../../contracts/grading.js').DecisionRequestReceipt[] = [];
+  const scoring = backend.score([{ key: 'q', type: 'noul', optionLabels: ['true', 'false'], instructions: 'Covered?', projection: {} }], undefined, receipts);
+  if (mode === 'payment-error') await expect(scoring).rejects.toThrow('payment failed');
+  else await scoring;
+  expect(receipts[0]!.requestId).toEqual(expect.any(String));
+  const atomicGrading: import('../../graders/atomic/index.js').AtomicGradeResult = {
+    schema: 'paideia.atomic-grade.v1', status: mode === 'payment-error' ? 'error' : 'unknown', score: mode === 'payment-error' ? null : 0, coverage: 0, criticalGate: 0, obligationCoverage: 0, quality: 0,
+    identity: { definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest },
+    checks: [], extraction: { receipts: [{ failure: 'malformed', response_text: 'raw protected extraction' }], judgeCalls: [call] },
+    receipts,
+    feedback: { failed_check_count: 1, omitted_failed_checks: 0, failed_checks: [{ template: 'support', unit: 'Observed span', probability: null }] }, judgeCalls: [call],
+  };
+  const { store, options, report } = await fixture(report => {
+    const graded = { ...report.evaluation.checks.old!, atomicGrading };
+    report.evaluation.checks.old = graded; report.evaluation.stages[0]!.checks = [graded];
+    report.turns[0]!.checks = [graded]; report.live = [{ checkId: 'grader', boundary: 'artifact', result: graded }];
+  });
+  const replayed = capturedTrial(await store.readReplay(options.runId, options.access)).report;
+  expect(replayed).toEqual(report);
+  const costs = summarizeCosts([replayed], { subjectModel: 'unknown' });
+  expect(costs.entries.filter(entry => entry.decisionReceipt).map(entry => entry.decisionReceipt)).toEqual(receipts);
+  expect(costs.knownSubtotalUsd.low).toBeCloseTo(receipts[0]!.usd ?? 0);
+  if (mode === 'payment-error') {
+    expect(costs.entries.find(entry => entry.decisionReceipt)!.valuation.status).toBe('incomplete');
+    expect(() => trialScore(replayed)).toThrow('unscorable atomic grading measurement');
+  }
+  const legacy = structuredClone(report);
+  delete legacy.evaluation.checks.old!.atomicGrading!.receipts[0]!.requestId;
+  expect(trialReportSchema.parse(legacy)).toEqual(legacy);
+  for (const invalid of [{ ...atomicGrading, coverage: -1 }, { ...atomicGrading, identity: { ...atomicGrading.identity, outputDigest: 'changed' } },
+    { ...atomicGrading, receipts: [{ ...atomicGrading.receipts[0], usd: -1 }] },
+    { ...atomicGrading, receipts: [{ ...atomicGrading.receipts[0], requestId: '' }] }]) {
+    expect(() => trialReportSchema.parse({ ...report, evaluation: { ...report.evaluation,
+      checks: { old: { ...report.evaluation.checks.old, atomicGrading: invalid } } } })).toThrow();
+  }
+});
+
+test('replay retains host durations and declared subject isolation without inventing them in legacy reports', async () => {
+  const { report } = await fixture();
+  report.durationMs = 123.5;
+  report.subject = { adapterId: 'native', requestedModel: 'requested-alias', isolation: 'declared isolation' };
+  expect(trialReportSchema.parse(report)).toMatchObject({ durationMs: 123.5, subject: report.subject });
+  expect(() => trialReportSchema.parse({ ...report, durationMs: -1 })).toThrow();
+  delete report.durationMs; delete report.subject;
+  expect(trialReportSchema.parse(report).durationMs).toBeUndefined();
+  expect(trialReportSchema.parse(report).subject).toBeUndefined();
+});
+
+
+test('replay retains valid evaluated manifests and rounds, rejecting altered identities or sealed attribution', async () => {
+  const { report, runRoot } = await fixture();
+  await writeFile(join(runRoot, 'instructions.md'), 'Keep the original policy.');
+  const candidate = await snapshotCandidate({ sourceRoot: runRoot, resources: [{ id: 'instructions', sourcePath: 'instructions.md',
+    destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' }] });
+  report.candidateId = candidate.id; report.candidate = candidate; report.round = 2;
+  expect(trialReportSchema.parse(JSON.parse(JSON.stringify(report)))).toMatchObject({ candidate, round: 2 });
+  expect(() => trialReportSchema.parse({ ...report, candidateId: 'other' })).toThrow('identity mismatch');
+  expect(() => trialReportSchema.parse({ ...report, candidate: { ...candidate, id: 'corrupt' } })).toThrow('manifest');
+  expect(() => trialReportSchema.parse({ ...report, phase: 'test' })).toThrow('search round');
+  expect(() => trialReportSchema.parse({ ...report, round: -1 })).toThrow();
+  expect(() => trialReportSchema.parse({ ...report, round: 0.5 })).toThrow();
 });

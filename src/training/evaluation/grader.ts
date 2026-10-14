@@ -1,7 +1,8 @@
+import { evaluateAtomicGrader } from './atomic-grader.js';
 import type { CheckNode } from '../contracts/dataset.js';
 import type { EvaluationContext, EvaluationResult } from '../contracts/evaluation.js';
 import type { GraderBinding } from '../cases/index.js';
-import { allQuestions, gradeOutput, type GateOutcome } from '../graders/index.js';
+import { allQuestions, DecisionAccountingError, gradeOutput, type GateOutcome } from '../graders/index.js';
 import { collectJudgeCalls, result } from './logic/index.js';
 import { selectEvidence } from './selectors.js';
 
@@ -9,8 +10,10 @@ import { selectEvidence } from './selectors.js';
 export async function evaluateGrader(check: CheckNode, context: EvaluationContext): Promise<EvaluationResult> {
   const runtime = context.graders?.[check.grader as string];
   if (!runtime) throw new Error(`Unresolved grader runtime ${String(check.grader)}`);
+  if ('kind' in runtime && runtime.kind === 'atomic') return evaluateAtomicGrader(check, context, runtime);
+  const legacy = runtime as import('../graders/index.js').GradingRuntime;
   const binding = check.grader_binding as GraderBinding | undefined;
-  if (!binding || runtime.definitionDigest !== binding.definitionDigest || runtime.calibrationDigest !== binding.calibrationDigest) {
+  if (!binding || legacy.definitionDigest !== binding.definitionDigest || legacy.calibrationDigest !== binding.calibrationDigest) {
     throw new Error('Grader runtime identity does not match resolved grader/calibration files');
   }
   const selected = selectEvidence(check.input as string, context.snapshot);
@@ -19,14 +22,14 @@ export async function evaluateGrader(check: CheckNode, context: EvaluationContex
   const evidence = [...selected.evidence];
   const selectors = (check.context ?? {}) as Record<string, string>;
   for (const name of Object.keys(selectors)) {
-    if (!Object.hasOwn(runtime.grader.context, name)) throw new Error(`Unknown grader context ${name}`);
+    if (!Object.hasOwn(legacy.grader.context, name)) throw new Error(`Unknown grader context ${name}`);
     const selection = selectEvidence(selectors[name]!, context.snapshot);
     if (selection.found) bound[name] = selection.value;
     evidence.push(...selection.evidence);
   }
   // Direct engine clients must not bypass the resolution guarantee; absent trial data
   // stays absent so instance expansion records missing coverage instead of empty evidence.
-  const unbound = allQuestions(runtime.grader).flatMap(question => [...question.reads, ...(typeof question.when === 'object' ? [question.when.field] : [])])
+  const unbound = allQuestions(legacy.grader).flatMap(question => [...question.reads, ...(typeof question.when === 'object' ? [question.when.field] : [])])
     .filter(read => read.startsWith('context.') && !Object.hasOwn(selectors, read.slice(8)));
   if (unbound.length) return { ...result('unknown', `Unbound grader context: ${unbound.join(', ')}`, context.snapshot.closed), evidence };
   const children: EvaluationResult[] = [];
@@ -40,9 +43,17 @@ export async function evaluateGrader(check: CheckNode, context: EvaluationContex
     gateOutcomes[gate.id] = evaluated.status === 'skipped' ? 'unknown' : evaluated.status;
     if (evaluated.status === 'fail') break;
   }
-  const graded = await gradeOutput({ ...runtime, output: selected.value, context: bound, gateOutcomes, signal: context.signal });
+  let graded;
+  try { graded = await gradeOutput({ ...legacy, output: selected.value, context: bound, gateOutcomes, signal: context.signal }); }
+  catch (error) {
+    if (!(error instanceof DecisionAccountingError)) throw error;
+    const judgeCalls = collectJudgeCalls(children);
+    return { ...result('error', error.message, context.snapshot.closed), evidence, children, judgeCalls,
+      decisionAccounting: error.decisionAccounting,
+      usage: judgeCalls.flatMap(call => call.usage ? [call.usage] : []) };
+  }
   const judgeCalls = collectJudgeCalls([...children, { ...result(graded.status, 'Grader'), judgeCalls: graded.judgeCalls }]);
-  return { ...result(graded.status, `Grader ${runtime.grader.id}; coverage ${graded.coverage}`, context.snapshot.closed),
+  return { ...result(graded.status, `Grader ${legacy.grader.id}; coverage ${graded.coverage}`, context.snapshot.closed),
     score: graded.score, grading: graded, evidence, children, judgeCalls,
     usage: judgeCalls.flatMap(call => call.usage ? [call.usage] : []) };
 }

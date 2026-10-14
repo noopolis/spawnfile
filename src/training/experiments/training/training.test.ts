@@ -78,6 +78,7 @@ it('runs fixed partitions, freezes selection, then compares fresh sealed baselin
           { caseId: 'Alpha', split: 'train', captureId: training.captureId }, { caseId: 'Beta', split: 'validation', captureId: improved.captureId } ], generations: [] } };
   });
   const report = await trainAgent(options);
+  expect(report.durationMs).toBeGreaterThan(0);
   expect(report.heldOut.map(result => result.meanScore)).toEqual([0, 1]); expect(report.trials).toHaveLength(5);
   const frozen = events.findIndex(event => event.type === 'selection.frozen');
   const firstTest = events.findIndex(event => event.type === 'trial.queued' && (event.payload as { phase: string }).phase === 'test');

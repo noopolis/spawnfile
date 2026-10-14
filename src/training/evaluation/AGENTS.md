@@ -41,3 +41,19 @@ resources and nested gate resources serialize; gates without concurrency opt-in
 make the enclosing grader sequential. No inference or CLI imports belong here.
 Failed mechanical gates stop grader inference immediately, retaining gate evidence
 and calls; unknown gates continue grading with an unknown aggregate status.
+
+Atomic routes bind only accepted artifacts and declared observed context. Freeze
+the neutral route policy; match definition/template digests before extraction.
+Failed acceptance gates stop inference; atomicGrading retains receipts and probabilities.
+Acceptance gates with nested errors emit atomicFailure with their gate ID and no score before
+extraction. Preserve gate children and actual judge calls; never fabricate a grade.
+
+Atomic admission errors retain the spend-cap reason and omit the evaluator score; aggregation diagnostics are not measured behavioral scores.
+
+Isolated grader backends retain billing capabilities so paid receipts survive
+the builtin route. Named passed references and selective repair preserve receipt
+requestId even when the enclosing check or measurement identity changes.
+
+The grader builtin catches DecisionAccountingError at its owning boundary and
+returns an error with allowlisted decisionAccounting, gate children and their calls.
+Never turn paid failure into a grade or discard receipts in the generic error path.

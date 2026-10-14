@@ -1,7 +1,7 @@
 import type { EvaluationResult, PlanEvaluation } from '../../contracts/evaluation.js';
 import type { DataMap, ResolvedRecord } from '../../contracts/dataset.js';
 import type { TrialReport } from '../trials/index.js';
-import type { AtomicFeedback } from '../../contracts/atomic-feedback.js';
+import type { AtomicFeedback } from '../../graders/atomic/index.js';
 import { createHash } from 'node:crypto';
 
 export const trainingFeedbackLimits = { outputBytes: 16384, feedbackBytes: 32768, atomicBytes: 8192, atomicChecks: 40, unitChars: 1000 } as const;
@@ -43,9 +43,6 @@ function compactAtomic(feedback: AtomicFeedback, limit: number = trainingFeedbac
   return value;
 }
 
-/** Structural seam shared with the atomic grader; protected grade fields stay opaque. */
-type AtomicEvaluation = EvaluationResult & { atomicGrading?: { feedback: AtomicFeedback } };
-
 /** Only authored task outputs are optimizer-visible; collector metadata is not output. */
 function taskOutput(record: ResolvedRecord, report: TrialReport): string {
   const collectors = record.setup?.artifacts as DataMap | undefined;
@@ -80,7 +77,7 @@ function taskOutput(record: ResolvedRecord, report: TrialReport): string {
   return JSON.stringify(compact);
 }
 
-function checkFeedback(check: AtomicEvaluation, measurementsOnly = false): unknown {
+function checkFeedback(check: EvaluationResult, measurementsOnly = false): unknown {
   return { id: check.id, status: check.status, score: check.score, finality: check.finality,
     ...(!measurementsOnly ? { reason: check.reason,
       ...(check.atomicGrading ? { atomic: compactAtomic(check.atomicGrading.feedback) } : {}) } : {}),
@@ -98,7 +95,7 @@ function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialR
   const text = JSON.stringify(value);
   if (Buffer.byteLength(text) <= trainingFeedbackLimits.feedbackBytes) return text;
   const atomic: AtomicFeedback = { failed_check_count: 0, omitted_failed_checks: 0, failed_checks: [] };
-  const collect = (check: AtomicEvaluation) => {
+  const collect = (check: EvaluationResult) => {
     if (check.atomicGrading) {
       const item = compactAtomic(check.atomicGrading.feedback);
       atomic.failed_check_count += item.failed_check_count;
