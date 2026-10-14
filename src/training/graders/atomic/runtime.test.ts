@@ -56,6 +56,10 @@ it('fails critical checks, never dilutes penalties with easy facts and deduplica
   const f = fixture(), grade = await gradeAtomic(f.runtime, f.inputs);
   const failing = grade.checks.map(score => ({ ...score, probability: score.kind === 'claim' ? 0.5 : 1 }));
   expect(aggregateAtomic(f.runtime.grader, failing)).toMatchObject({ score: 0, criticalGate: 0, coverage: 1 });
+  const penalty = aggregateAtomic({ ...f.runtime.grader, aggregation: { ...f.runtime.grader.aggregation, method: 'coverage-times-quality' } }, failing);
+  expect(penalty.criticalGate).toBe(0);
+  expect(penalty.score).toBeGreaterThan(0);
+  expect(penalty.score).toBeCloseTo(penalty.obligationCoverage * penalty.quality);
   const quality = aggregateAtomic(f.runtime.grader, failing).quality;
   const easy = { ...failing[0]!, probability: 1, occurrence: 'new', severity: 'minor' as const };
   expect(aggregateAtomic(f.runtime.grader, [...failing, ...Array.from({ length: 100 }, () => easy)]).quality).toBe(quality);
