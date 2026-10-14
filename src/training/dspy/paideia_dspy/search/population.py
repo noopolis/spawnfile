@@ -67,7 +67,9 @@ class Population:
         self.candidates.append({"components": components, "parents": [parent],
                                 "perCaseScores": scores, "validationScore": sum(scores.values()) / len(scores),
                                 "discoveryEvaluations": discovery})
-        return len(self.candidates) - 1
+        index = len(self.candidates) - 1
+        self.feedback(index)
+        return index
 
     def feedback(self, index):
         if index not in self.train:
@@ -104,7 +106,7 @@ class Population:
         slot_hypotheses = []
         slot_components = []
         for _ in range(self.policy["max_attempts"]):
-            if not self.proposal_room(1) or not self.metric_room(len(self.request.validationCaseIds)):
+            if not self.proposal_room(1) or not self.metric_room(len(self.request.validationCaseIds) + len(self.request.trainCaseIds)):
                 break
             components, hypothesis, impact = realize(self.session, parent, feedback, planned,
                                                      row["rejectionReason"] if row["attempts"] else None)
@@ -150,7 +152,7 @@ class Population:
             # Reserve uncached feedback as well as the packet's minimum planning,
             # realization and complete validation pass before starting any parent.
             first_cost = (0 if parents[0] in self.train else len(self.request.trainCaseIds))
-            if not self.proposal_room(2) or not self.metric_room(first_cost + len(self.request.validationCaseIds)):
+            if not self.proposal_room(2) or not self.metric_room(first_cost + len(self.request.validationCaseIds) + len(self.request.trainCaseIds)):
                 reason = "budget"
                 break
             strategies = ["rewrite"] * math.ceil(self.search.variants * self.search.rewriteShare)
@@ -160,7 +162,7 @@ class Population:
             for parent in parents:
                 slots = [(slot, strategy) for slot, index, strategy in assignments if index == parent]
                 cost = 0 if parent in self.train else len(self.request.trainCaseIds)
-                if not self.proposal_room(2) or not self.metric_room(cost + len(self.request.validationCaseIds)):
+                if not self.proposal_room(2) or not self.metric_room(cost + len(self.request.validationCaseIds) + len(self.request.trainCaseIds)):
                     for slot, strategy in slots:
                         rows.append({"slot": slot, "parent": parent, "strategy": strategy, "hypothesis": "",
                                      "targetedCriteria": [], "behavioralChange": None, "lexicalChange": None,

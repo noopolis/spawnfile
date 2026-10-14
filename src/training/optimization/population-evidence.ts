@@ -17,6 +17,14 @@ export function verifyPopulationEvidence(result: DspyResult, start: DspyStart, c
       || seedTrain.some(row => row.split !== 'train' || !sameComponents(row.components, start.components))) {
     throw new Error('Population round 0 requires complete seed train evaluation');
   }
+  for (const candidate of provenance.candidates.slice(1)) {
+    const trained = completed.filter(row => row.split === 'train' && sameComponents(row.components, candidate.components));
+    const ids = new Set(trained.map(row => row.caseId));
+    if (trained.length !== start.trainCaseIds.length || ids.size !== start.trainCaseIds.length
+        || start.trainCaseIds.some(id => !ids.has(id))) {
+      throw new Error('Population candidate requires complete train evaluation');
+    }
+  }
   const expectedScope = start.editScope ?? Object.fromEntries(Object.keys(start.components).map(key => [key, 'whole-file']));
   if (!isDeepStrictEqual(provenance.editScope, expectedScope)) throw new Error('Population edit scope contradicts declared resources');
   const rounds = provenance.rounds;
@@ -123,8 +131,8 @@ function verifyStop(result: DspyResult, start: DspyStart, completed: readonly Co
   // least one possible parent to be unfundable; do not claim RNG replay verification.
   const budgetBlocked = empty.length > 0
     ? empty.every(slot => proposalRemaining < (slot.hypothesis ? 1 : 2)
-      || metricRemaining < start.validationCaseIds.length + trainCost(slot.parent))
-    : kept.some(parent => proposalRemaining < 2 || metricRemaining < start.validationCaseIds.length + trainCost(parent));
+      || metricRemaining < start.validationCaseIds.length + start.trainCaseIds.length + trainCost(slot.parent))
+    : kept.some(parent => proposalRemaining < 2 || metricRemaining < start.validationCaseIds.length + start.trainCaseIds.length + trainCost(parent));
   const patience = search.patience ?? search.rounds;
   const valid = p.stopReason === 'rounds' ? count === search.rounds && empty.length === 0
     : p.stopReason === 'patience' ? count > 0 && count < search.rounds && stale >= patience && empty.length === 0

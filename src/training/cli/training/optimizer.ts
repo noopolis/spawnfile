@@ -66,6 +66,16 @@ export function populationSearch(optimizer?: TrainingOptimizer) {
   };
 }
 
+/** One baseline plus every declared variant, each on train and validation; two sealed passes. */
+export function trainingTrialBudget(args: CliArguments, trainCases: number, validationCases = 0, testCases = 0): number {
+  const search = args.command === 'train' && !args.training?.comparison ? populationSearch(args.training?.optimizer) : undefined;
+  const derived = search ? (1 + search.variants * search.rounds) * (trainCases + validationCases) + 2 * testCases : 20;
+  if (args.flags['max-trials'] === undefined && (!Number.isSafeInteger(derived) || derived > 10000)) {
+    throw new Error('Derived population trial budget exceeds the 10000 trial ceiling; declare a smaller --max-trials cap');
+  }
+  return count(args, 'max-trials', derived, 10000);
+}
+
 /** Population-only policy fields live in search, leaving the GEPA wire shape unchanged. */
 export function bridgeProposal(optimizer?: TrainingOptimizer) {
   if (!optimizer?.proposal) return undefined;

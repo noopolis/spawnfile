@@ -31,3 +31,8 @@ seeds before callbacks and reject violations before evaluation. Free-form prose 
 unsupported. Never replace exact enforcement with proposer attestations or imply
 semantic compliance. `instruction_text.py` excludes Markdown metadata before unit
 segmentation without discarding fenced examples.
+
+Every accepted candidate gets complete validation and train passes at admission,
+including final-round candidates. Reserve the sum of both split sizes before
+planning/realization. Cache unchanged parent feedback; settled checkpoint callbacks
+replay without new trials. Sealed test has no bridge callback role.

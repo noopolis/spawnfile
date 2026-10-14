@@ -17,3 +17,8 @@ retain calibration identity and coverage. Judge calls distinguish local billing
 and measured wall time without inventing usage.
 
 Dataset lineage names evidence ancestors across splits; authored validation paths remain dataset-relative controls.
+
+`AtomicFeedback` is the optimizer-safe wire projection shared with the atomic
+grader: failure/omission counts and template, unit text, nullable probability.
+Keep it structurally compatible with the grader's public feedback type; extraction,
+raw checks, identities and transport receipts never belong in this contract.

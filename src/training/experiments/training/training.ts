@@ -19,6 +19,7 @@ import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
 import { freezeCriteria } from './criteria.js';
 import { trainingFeedback } from './feedback.js';
+import { evaluateHeldOut } from './held-out.js';
 import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
 export interface TrainingOptions {
@@ -185,13 +186,9 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   // Freeze selection BEFORE the sealed test can execute or become feedback.
   const frozen = [...new Map([options.baseline, selected].map(candidate => [candidate.id, candidate])).values()];
   await options.onProgress?.({ type: 'selection.frozen', payload: { selectedId: selected.id, baselineId: options.baseline.id, optimizer } });
-  const heldOut: TrainingReport['heldOut'] = [];
-  for (const candidate of frozen) {
-    const reports: TrialReport[] = [];
-    for (const record of options.test.records) reports.push(await trial(options.test, record.id, 'test', candidate));
-    heldOut.push({ candidateId: candidate.id, meanScore: reports.reduce((sum, report) => sum + trialScore(measured(report)), 0) / reports.length,
-      trialIds: reports.map(report => report.id), evaluationIds: reports.map(report => measured(report).id) });
-  }
+  const heldOut = await evaluateHeldOut({ candidates: frozen, caseIds: options.test.records.map(record => record.id), concurrency,
+    trial: (candidate, caseId) => trial(options.test, caseId, 'test', candidate),
+    measurement: report => ({ id: measured(report).id, score: trialScore(measured(report)) }) });
   const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, baseline: options.baseline, selected, optimizer,
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
       test: options.test.records.map(record => record.id) }, trials, heldOut, ...(rescores.length ? { rescores } : {}),

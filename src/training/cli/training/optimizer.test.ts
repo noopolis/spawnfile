@@ -4,7 +4,7 @@ import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { type CliArguments } from '../arguments.js';
 import type { SpawnfileCliIntegration } from '../types.js';
 import type { SpawnfileTrainingContext } from '../spawnfile/index.js';
-import { bridgeProposal, populationSearch, resolveTrainingOptimizer } from './optimizer.js';
+import { bridgeProposal, populationSearch, resolveTrainingOptimizer, trainingTrialBudget } from './optimizer.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { force: true, recursive: true }))); });
@@ -13,6 +13,20 @@ const models: TrainingConfiguration['models'] = {
 };
 const population = { model: 'reflect', variants: 4, keep: 2, budget: { rounds: 3 } };
 const args = (training: TrainingConfiguration = { models, optimizer: population }): CliArguments => ({ command: 'train', flags: {}, training });
+
+it('derives full population trial budgets after case resolution and respects explicit caps', () => {
+  expect(trainingTrialBudget(args(), 2, 1, 1)).toBe(41);
+  expect(trainingTrialBudget(args(), 3, undefined, 1)).toBe(41); // internal partition preserves total cases
+  expect(trainingTrialBudget(args(), 2, 2, 3)).toBe(58);
+  expect(trainingTrialBudget({ ...args(), flags: { 'max-trials': ['20'] } }, 2, 1, 1)).toBe(20);
+  expect(trainingTrialBudget(args({ models }), 2, 1, 1)).toBe(20);
+  expect(trainingTrialBudget({ command: 'evaluate', flags: {} }, 2)).toBe(20);
+  const comparison = { candidate: { name: 'frozen', replacements: [{ resource: 'AGENTS.md', source: 'variant.md' }] } };
+  expect(trainingTrialBudget(args({ models, comparison }), 2, 1, 1)).toBe(20);
+  expect(() => trainingTrialBudget(args(), 1000, 0, 1)).toThrow('10000 trial ceiling');
+  expect(trainingTrialBudget({ ...args(), flags: { 'max-trials': ['10000'] } }, 1000, 0, 1)).toBe(10000);
+  expect(() => trainingTrialBudget({ ...args(), flags: { 'max-trials': ['10001'] } }, 2, 1, 1)).toThrow('--max-trials');
+});
 
 it('resolves exact population defaults and keeps new policies out of legacy proposal wire data', async () => {
   expect(populationSearch(population)).toEqual({ variants: 4, keep: 2, rounds: 3, selection: 'pareto',

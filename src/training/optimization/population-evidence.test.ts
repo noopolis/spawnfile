@@ -25,7 +25,9 @@ function fixture() {
   }
   host.completed.splice(2, 0, { caseId: 'train', split: 'train', components: start.components,
     result: { score: 0, captureId: 'seed-train', feedback: '', output: '' } });
-  host.evaluations = 9;
+  for (const candidate of candidates.slice(1)) host.completed.push({ caseId: 'train', split: 'train', components: candidate.components,
+    result: { score: 0, captureId: `train-${candidate.components.A}`, feedback: '', output: '' } });
+  host.evaluations = 12;
   host.proposals = 4;
   host.generations.push(...[
     { hypotheses: rounds[1]!.variants.map(slot => ({ strategy: slot.strategy, targetedCriteria: slot.targetedCriteria })) },
@@ -34,12 +36,23 @@ function fixture() {
   ].map(body => ({ model: 'fake', usage: null, route: 'fake', text: JSON.stringify(body) })));
   const result = resultSchema.parse({ schema: DSPY_SCHEMA, kind: 'result', id: start.id, components: candidates[1]!.components,
     provenance: { optimizer: 'paideia.population', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
-      evaluations: 9, changeEvidence: 'bridge-reported-v2', proposals: 4, selectedCandidateIndex: 1, candidates, rounds, editScope: { A: 'whole-file' }, stopReason: 'rounds',
+      evaluations: 12, changeEvidence: 'bridge-reported-v2', proposals: 4, selectedCandidateIndex: 1, candidates, rounds, editScope: { A: 'whole-file' }, stopReason: 'rounds',
       captures: host.completed.map(({ caseId, split, result }) => ({ caseId, split, captureId: result.captureId })),
       generations: host.generations.map(({ model, usage, text }) => ({ model, usage, text })) } });
   return { result, start, host };
 }
 type Fixture = ReturnType<typeof fixture>;
+
+it.each(['missing', 'duplicate', 'wrong case', 'wrong components'])('rejects incomplete candidate training: %s', mutation => {
+  const f = fixture();
+  const index = f.host.completed.findIndex(row => row.split === 'train' && row.components.A === 'candidate-1');
+  const row = f.host.completed[index]!;
+  if (mutation === 'missing') f.host.completed.splice(index, 1);
+  else if (mutation === 'duplicate') f.host.completed.push(row);
+  else if (mutation === 'wrong case') row.caseId = 'sealed';
+  else row.components = { A: 'seed' };
+  expect(() => verifyPopulationEvidence(f.result, f.start, f.host.completed)).toThrow('complete train');
+});
 
 it('checks Pareto retention independently, including a lower mean nondominated candidate', async () => {
   const { result, start, host } = fixture();
@@ -103,6 +116,8 @@ function concurrentSeedFixture() {
   const original = f.host.completed[2]!;
   f.host.completed.splice(2, 0, { ...original, caseId: 'other-train', result: { ...original.result, captureId: 'other-seed-train' } });
   for (const candidate of f.result.provenance.candidates.slice(1)) candidate.discoveryEvaluations++;
+  for (const candidate of f.result.provenance.candidates.slice(1)) f.host.completed.push({ ...original,
+    caseId: 'other-train', components: candidate.components, result: { ...original.result, captureId: `other-${candidate.components.A}` } });
   syncHost(f);
   return f;
 }
@@ -213,7 +228,7 @@ it('accepts rejected attempts and a planned empty slot only at a real budget sto
   rejected!.attempts[0]!.status = 'rejected'; rejected!.attempts[0]!.rejectionReason = 'below-min-change';
   empty!.status = 'empty'; empty!.candidateIndex = null; empty!.rejectionReason = 'budget'; empty!.attempts = [];
   f.result.provenance.candidates.splice(2); f.result.provenance.rounds![1]!.kept = [1, 0];
-  f.host.generations.pop(); f.host.completed.splice(5); syncHost(f);
+  f.host.generations.pop(); f.host.completed.splice(0, f.host.completed.length, ...f.host.completed.filter(row => row.components.A === 'seed' || row.components.A === 'candidate-1')); syncHost(f);
   f.result.provenance.stopReason = 'budget'; f.start.budget.maxMetricCalls = f.host.evaluations;
   await expect(verifyDspyResult(f.result, f.host, new AbortController().signal)).resolves.toBeUndefined();
   f.start.budget.maxMetricCalls = 20;

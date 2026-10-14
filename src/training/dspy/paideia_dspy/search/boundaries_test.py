@@ -49,7 +49,7 @@ def test_boundary_admission_precedes_evaluation(boundary, after, accepted):
     row = result['rounds'][1]['variants'][0]
     assert row['status'] == ('accepted' if accepted else 'rejected')
     assert row['rejectionReason'] == (None if accepted else 'hard-boundary')
-    assert result['evaluations'] == (3 if accepted else 2)
+    assert result['evaluations'] == (4 if accepted else 2)
     assert len(result['candidates']) == (2 if accepted else 1)
     evaluations = [params for method, params in host.calls if method == 'evaluate']
     assert len(evaluations) == result['evaluations']
@@ -76,7 +76,7 @@ def test_preserved_component_allows_other_components_to_change_and_repairs_viola
     row = result['rounds'][1]['variants'][0]
     assert [attempt['rejectionReason'] for attempt in row['attempts']] == ['hard-boundary', None]
     assert result['candidates'][1]['components'] == {'guide': TEXTS[1], 'contract': seed['contract']}
-    assert result['evaluations'] == 3
+    assert result['evaluations'] == 4
     assert all(params['components']['contract'] == seed['contract']
                for method, params in host.calls if method == 'evaluate')
 

@@ -73,4 +73,20 @@ Population search controls pass unchanged to optimization and participate in the
 training checkpoint identity. Derive component editScope from the frozen baseline,
 not integration claims, so provenance reflects actual whole-file or heading edits.
 
+`held-out.ts` runs baseline/selected jobs after checkpoint freeze and the awaited
+selection event. Bound workers by effective slot concurrency, preserve candidate
+and case order in comparisons, stop dequeueing on failure and drain active jobs.
+Leases stay with the existing trial owner through collection/publication.
+`feedback.ts` forwards only public atomic feedback. Cap output at 16 KiB and
+feedback at 32 KiB by encoded UTF-8 size; atomic failures get 8 KiB, 40 checks and
+1000 characters per unit, with explicit omission counts. Oversized feedback keeps
+structured atomic failures beside an identified excerpt. Never mutate raw reports.
+Reserve an excerpt for every declared artifact before optional chat. Oversized
+feedback retains criterion IDs/status/scores, nested results, stage weights and
+subject usage structurally, outside its prose excerpt. Refuse structured evidence
+that cannot fit the cap instead of dropping it. Verify retention through the
+Python proposer, whose own output compaction must reserve the same artifacts.
+The adjacent feedback tests pass large projected results through Python Session
+and both population generation phases, asserting current/history atomic retention.
+
 resolveTrainingPartitions preserves explicit validation dataset identity and rejects competing group controls. Split checks still bind all three roles.

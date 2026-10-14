@@ -57,6 +57,38 @@ def test_current_feedback_removes_gepa_duplicates_without_losing_output_or_reaso
     assert current_feedback({"first": [{}]})["entries"][0]["feedback"] == ""
 
 
+def test_declared_artifact_excerpts_survive_chat_and_both_encoded_compaction_layers():
+    import copy
+    from .proposal_history import bounded_output, encoded
+    output = {"output": {"text": "optional chat " + "😀\\\"" * 17000}, "artifacts": {
+        "draft": {"status": "available", "value": {"headline": "Draft", "body": "Draft article begins " + "😀" * 20000}},
+        "accepted": {"status": "available", "value": {"headline": "Accepted", "body": "Accepted article begins " + "é" * 20000}},
+        "missing": {"status": "unavailable"}}}
+    before = copy.deepcopy(output)
+    for value in [output, bounded_output(output, 16384)]:
+        current = current_feedback({"bundle": [{"Inputs": {"case_id": "train"},
+            "Generated Outputs": {"score": .2, "feedback": "reason", "output": json.dumps(value)}}]})
+        projected = current["entries"][0]["output"]
+        assert "Draft article begins" in encoded(projected["artifacts"]["draft"]["value"])
+        assert "Accepted article begins" in encoded(projected["artifacts"]["accepted"]["value"])
+        assert projected["artifacts"]["missing"] == {"status": "unavailable"}
+        assert len(encoded(current)) <= 65536
+    assert output == before
+    assert bounded_output({"artifacts": {"small": {"status": "available", "value": "article"}}}, 1024)["artifacts"]["small"]["value"] == "article"
+    with pytest.raises(BridgeError, match="artifact identifiers"):
+        bounded_output({"artifacts": {"name" * 1000: {"status": "unavailable"}}}, 1024)
+
+
+def test_removing_per_artifact_proposal_reservation_is_killed(monkeypatch):
+    from . import proposal_history
+    test_declared_artifact_excerpts_survive_chat_and_both_encoded_compaction_layers()
+    with monkeypatch.context() as patch:
+        patch.setattr(proposal_history, "bounded_output", proposal_history.bounded_value)
+        with pytest.raises((AssertionError, KeyError)):
+            test_declared_artifact_excerpts_survive_chat_and_both_encoded_compaction_layers()
+    test_declared_artifact_excerpts_survive_chat_and_both_encoded_compaction_layers()
+
+
 class HistoryHost:
     def __init__(self, duplicates=0):
         self.calls = []
@@ -173,3 +205,86 @@ def test_measurements_do_not_interpret_untyped_feedback_as_evaluation_structure(
     for malformed in ["text", {"stages": "text"}, {"stages": [None, {"checks": "text"}]}]:
         assert measurements({"evaluation": malformed})["criteria"] == []
     assert measurements({"evaluation": {"stages": [{"checks": [None, {"id": "ok", "children": "text"}]}]}})["criteria"] == [{"stage": None, "id": "ok"}]
+
+
+@pytest.mark.parametrize("limit", [1024, 2048, 65536])
+def test_atomic_diagnostics_reserve_wire_space_before_prose_and_count_omissions(limit):
+    import copy
+    from .proposal_history import encoded
+    unit = '😀\\"' * 1000
+    atomic = {"failed_check_count": 83, "omitted_failed_checks": 3,
+              "failed_checks": [{"template": "attribution", "unit": unit,
+                                  "probability": None if i == 0 else .1} for i in range(80)]}
+    feedback = {"task": "x" * 12000, "criteria": "c" * 12000, "evaluation": {"stages": [
+        {"id": "writing", "checks": [{"reason": "r" * 12000,
+            "children": [{"atomic": atomic}]}]}]}, "subjectUsage": None}
+    session = Session(request(), lambda *_: None)
+    result = {"score": 0.2, "feedback": json.dumps(feedback), "output": "Article beginning: " + "a" * 20000}
+    session.results = [{"method": "evaluate", "params": {"split": "train", "caseId": "train",
+                        "components": session.request.components}, "result": result}]
+    before = copy.deepcopy(session.results)
+    current = current_feedback({"bundle": [{"Inputs": {"case_id": "train"}, "Generated Outputs": result}]}, limit)
+    history = history_view(session, {**policy_for(session), "history_bytes": limit})
+    for view in [current, history]:
+        assert len(encoded(view).encode()) <= limit
+        assert view["omittedEntries"] == 0
+        projected = view["entries"][0]["measurements"]["atomic"]
+        assert projected["failed_checks"]
+        assert projected["failed_checks"][0]["template"] == "attribution"
+        assert unit.startswith(projected["failed_checks"][0]["unit"])
+        assert projected["failed_checks"][0]["unit"]
+        assert projected["failed_checks"][0]["probability"] is None
+        assert projected["omitted_failed_checks"] + len(projected["failed_checks"]) == 83
+        assert len(projected["failed_checks"]) <= 40
+        assert len(encoded(projected)) <= 8192
+    assert session.results == before
+
+
+def test_atomic_projection_reads_root_nested_and_live_public_feedback_only():
+    from .proposal_history import measurements, bounded_atomic, encoded
+    atomic = {"failed_check_count": 3, "omitted_failed_checks": 2,
+              "failed_checks": [{"template": "q", "unit": "failed", "probability": .2}]}
+    feedback = {"atomic": atomic, "live": [None, {"result": {"atomic": atomic, "children": "ignored"}}],
+                "evaluation": {"stages": [None, {"checks": [None, {"children": [{"atomic": atomic}]}]}]},
+                "protected": "SECRET"}
+    result = bounded_atomic(measurements(feedback)["atomic"], 8192)
+    assert result["failed_check_count"] == 9
+    assert result["omitted_failed_checks"] == 6
+    assert len(result["failed_checks"]) == 3
+    assert "SECRET" not in encoded(result)
+    assert bounded_atomic(measurements({"atomic": atomic})["atomic"], 128)["failed_checks"]
+    tiny = bounded_atomic(measurements({"atomic": atomic})["atomic"], 90)
+    assert tiny["omitted_failed_checks"] == 3 and tiny["failed_checks"] == []
+    assert measurements({"live": "ignored", "evaluation": {"stages": "ignored"}}).get("atomic") is None
+
+
+@pytest.mark.parametrize("atomic", [None, {}, {"failed_check_count": "three"},
+    {"failed_check_count": 1, "omitted_failed_checks": 0, "failed_checks": [None]},
+    {"failed_check_count": 1, "omitted_failed_checks": 0, "failed_checks": [
+        {"template": "q", "unit": "text", "probability": "unknown"}]},
+    {"failed_check_count": 1, "omitted_failed_checks": 0, "failed_checks": [
+        {"template": "q", "unit": "text"}]}])
+def test_untyped_atomic_fields_do_not_turn_feedback_into_an_optimizer_error(atomic):
+    from .proposal_history import measurements
+    assert "atomic" not in measurements({"atomic": atomic})
+
+
+@pytest.mark.parametrize("name,before,after", [
+    ("measurements", "atomic = atomic_feedback(feedback)", "atomic = None"),
+    ("bounded_atomic", "if len(encoded(result)) <= limit:\n            continue", "if True:\n            continue"),
+    ("bounded_atomic", 'result["omitted_failed_checks"] -= 1', 'result["omitted_failed_checks"] -= 2'),
+])
+def test_removing_atomic_retention_wire_cap_or_omission_accounting_is_killed(monkeypatch, name, before, after):
+    import inspect
+    from . import proposal_history
+    probe = lambda: test_atomic_diagnostics_reserve_wire_space_before_prose_and_count_omissions(1024)
+    probe()
+    source = inspect.getsource(getattr(proposal_history, name))
+    assert source.count(before) == 1
+    namespace = dict(vars(proposal_history))
+    exec(source.replace(before, after), namespace)
+    with monkeypatch.context() as patch:
+        patch.setattr(proposal_history, name, namespace[name])
+        with pytest.raises((AssertionError, KeyError)):
+            probe()
+    probe()

@@ -28,6 +28,14 @@ released DSPy GEPA integration. Inherit the bridge guide.
   proposal metadata into bounded reflection context. It never scores outputs or
   summarizes through another model. Preserve full source records and explicit
   omission/excerpt metadata; numerical criterion results take priority over prose.
+- Reserve public atomic diagnostics as `measurements.atomic` before prose in both
+  current feedback and history. Read only projected `atomic` envelopes (root,
+  evaluation children and live results); never inspect raw grader receipts.
+  Bound diagnostics by encoded bytes, 40 checks and unit excerpts; retain failure
+  and omission counts. Test the TypeScript-to-Python proposer path with large text.
+  Current-output compaction reserves each declared artifact before optional chat;
+  generic prefix truncation can discard file-based articles a second time.
+  Refuse unrepresentable artifact identifiers rather than silently dropping them.
 - Benign duplicate/novelty exhaustion uses GEPA's skip seam and stops the session;
   it must not latch a provider failure or launch duplicate native trials. Pair the
   upstream final state save too: GEPA omits the final state-saved callback.

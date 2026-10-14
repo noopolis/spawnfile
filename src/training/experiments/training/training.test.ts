@@ -242,3 +242,53 @@ it('keeps the pre-population training checkpoint identity when search is absent'
   });
   expect(saved.state.identity).toBe(legacyIdentity);
 });
+
+it('leases four slots for fresh sealed pairs only after selection freezes and never reselects from test scores', async () => {
+  const { options, events } = await fixture();
+  options.train = dataset('train', [['Alpha', 'a']]);
+  options.validation = dataset('validation', [['Beta', 'b']]);
+  options.test = dataset('test', [['Gamma', 'c'], ['Delta', 'd']]);
+  options.slots = Array.from({ length: 4 }, (_, index) => ({ index, workerUid: 1000 + index,
+    roots: { workspace: `/test/slots/${index}` }, ports: { base: 10000 + index * 100, count: 100 } }));
+  options.concurrency = 4;
+  const active = new Set<number>(), leased: number[] = [];
+  let release!: () => void, peak = 0;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const start = options.native.adapter.start;
+  options.native.adapter.start = async input => {
+    const handle = await start(input);
+    return { ...handle, async run(turn) {
+      const { token } = JSON.parse(turn.text) as { token: string };
+      if (!['Gamma', 'Delta'].includes(token)) return handle.run(turn);
+      expect(events.some(event => event.type === 'selection.frozen')).toBe(true);
+      expect(input.slot).toBeDefined();
+      expect(active.has(input.slot!.index)).toBe(false);
+      active.add(input.slot!.index); leased.push(input.slot!.index); peak = Math.max(peak, active.size);
+      if (active.size === 4) release();
+      await gate;
+      return { status: 'completed', text: input.instructions.includes('ack:') ? 'test failure' : `ack:${token.toLowerCase()}`,
+        usage: null, coverage: [{ channel: 'output', completeness: 'complete', ordering: 'source' }] };
+    }, async stop(reason) { const receipt = await handle.stop(reason); active.delete(input.slot!.index); return receipt; } };
+  };
+  vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    expect(request.trainCaseIds).toEqual(['Alpha']); expect(request.validationCaseIds).toEqual(['Beta']);
+    expect(JSON.stringify(request)).not.toMatch(/Gamma|Delta/);
+    const components = Object.fromEntries(Object.keys(request.components).map(id => [id, 'Reply ack: plus the lowercase token.']));
+    const signal = new AbortController().signal;
+    for (const current of [request.components, components]) {
+      await request.evaluate({ caseId: 'Alpha', split: 'train', components: current }, signal);
+      const result = await request.evaluate({ caseId: 'Beta', split: 'validation', components: current }, signal);
+      expect(result.feedback).toBe(''); expect(result.output).toBe('');
+    }
+    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components,
+      provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
+        evaluations: 4, proposals: 1, selectedCandidateIndex: 1, candidates: [], captures: [], generations: [] } };
+  });
+  const trained = await trainAgent(options);
+  expect(peak).toBe(4); expect(new Set(leased).size).toBe(4); expect(active.size).toBe(0);
+  expect(trained.selected.id).not.toBe(options.baseline.id);
+  expect(trained.heldOut.map(row => row.meanScore)).toEqual([1, 0]);
+  expect(trained.trials.filter(row => row.phase === 'test')).toHaveLength(4);
+  expect(new Set(trained.trials.map(row => row.id)).size).toBe(trained.trials.length);
+  expect(events.filter(event => event.type === 'selection.frozen')).toHaveLength(1);
+});

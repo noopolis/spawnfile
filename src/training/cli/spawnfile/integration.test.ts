@@ -17,6 +17,51 @@ import { prepareCliInputs } from '../native.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
+it('executes all three declared population rounds under the default trial budget', async () => {
+  const context = await contextFixture(), cli = await cliFixture(); roots.push(context.root, cli.root);
+  await writeFile(join(cli.root, 'train.yaml'), datasetText([{ id: 'a', group: 'a' }, { id: 'b', group: 'b' }]) +
+    '\ntraining: ' + JSON.stringify({ models: { reflect: { provider: 'ollama', model: 'fixture-model' } } }));
+  await writeFile(join(cli.root, 'validation.yaml'), datasetText([{ id: 'v', group: 'v' }]).replace('id: example', 'id: validation'));
+  await writeFile(join(cli.root, 'test.yaml'), datasetText([{ id: 'sealed', group: 'sealed' }]).replace('id: example', 'id: sealed'));
+  const concepts = ['Compare contrasting accounts', 'Require strict quotation attribution', 'Rank uncertainty categories',
+    'Check chronology dates', 'Explain economic tradeoffs', 'Quantify statistical denominators', 'Identify causal mechanisms',
+    'Trace institutional responsibility', 'Separate forecasts observations', 'Audit geographic coordinates',
+    'Evaluate sampling bias', 'Describe procedural safeguards'];
+  let next = 0;
+  const integration: SpawnfileCliIntegration = { id: 'population-fixture', version: '1',
+    createAdapter: () => {
+      const adapter = fixtureAdapter('population-subject', cli.observedInstructions);
+      return { ...adapter, capabilities: { ...adapter.capabilities, resources: ['instructions', 'supporting-files', 'native-skills'] } };
+    },
+    prepareEnvironment: async () => ({}), trainingOptimizer: async () => ({ method: 'gepa', model: 'fixture-model',
+      variants: 4, keep: 2, budget: { rounds: 3 } }) };
+  const code = await main(['train', '--spawnfile-context', context.path, '--train', 'train.yaml',
+    '--validation', 'validation.yaml', '--test', 'test.yaml', '--editable', 'AGENTS.md',
+    '--bridge-command', cli.bridge, '--out', 'out', '--timeout-ms', '15000'], cli.io, { spawnfile: integration,
+    modelInference: () => ({ id: 'population-reflection', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
+      async generate(request) {
+        const payload = JSON.parse(request.prompt);
+        const body = payload.phase === 'planning' ? { hypotheses: payload.strategies.map((strategy: string) => {
+          const hypothesis = concepts[next++]!;
+          return { strategy, hypothesis, targetedCriteria: ['correct'], plan: hypothesis };
+        }) } : { components: { [Object.keys(payload.currentComponents)[0]!]: payload.plannedHypothesis.hypothesis + '.\nIMPROVED\n' },
+          hypothesis: payload.plannedHypothesis.hypothesis, expectedImpact: [{ criterion: 'correct', effect: 'Improved answer.' }] };
+        return { text: JSON.stringify(body), model: 'fixture-model', route: 'population-reflection', usage: null };
+      } }),
+  });
+  expect(code, cli.stderr.join('')).toBe(0);
+  const index = JSON.parse(await readFile(join(cli.root, 'out', 'invocation.json'), 'utf8')) as InvocationIndex;
+  const store = await openExperimentStore(join(cli.root, 'out'));
+  const report = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId] })).toString());
+  expect(report.optimizer.provenance.stopReason).toBe('rounds');
+  expect(report.optimizer.provenance.rounds.map((round: { variants: unknown[] }) => round.variants.length)).toEqual([0, 4, 4, 4]);
+  expect(report.optimizer.provenance.candidates).toHaveLength(13);
+  expect(report.optimizer.provenance.evaluations).toBe(39);
+  expect(report.costPlan.budget).toMatchObject({ maxTrials: 41, metricCalls: 39 });
+  expect(cli.observedInstructions).toHaveLength(41);
+  expect(report.trials.filter((trial: { phase: string }) => trial.phase === 'test')).toHaveLength(2);
+});
+
 async function fixture() {
   const context = await contextFixture(), cli = await cliFixture();
   roots.push(context.root, cli.root);

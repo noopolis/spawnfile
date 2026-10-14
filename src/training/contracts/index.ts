@@ -8,5 +8,6 @@ export { trainingRoutePolicies, trainingInferencePolicies } from './inference-po
 export type * from './inference-grants.js';
 export { GrokGrantRefusal, grokGrantEnvKey, grokGrantModels, grokGrantPurposes, grokGrantReasoningEfforts, grokGrantRefusalCodes } from './inference-grants.js';
 export type * from './grading.js';
+export type { AtomicFeedback } from './atomic-feedback.js';
 
 export type { TrialSlot } from "./trial-slot.js";

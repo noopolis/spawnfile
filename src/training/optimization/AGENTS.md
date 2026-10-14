@@ -77,6 +77,12 @@ reconstructs state from settled host callbacks, with no Python pickle. Python's
 Defaults: Pareto selection, rewrite share 0.5, behavioral floor 0.08, hypothesis
 similarity 0.6, patience equal to rounds, and no declared boundaries.
 
+Every accepted population candidate must have complete train and validation
+captures, including final-round candidates never used as parents. The host rejects
+missing/duplicate/wrong-case train evidence. Reserve both split passes before
+realization so a cap cannot admit half-measured candidates. Unchanged parents reuse
+their development measurements; resume replays settled callbacks without new work.
+
 `boundaries.ts` validates preserve/require-text/forbid-text declarations and seed
 admission before bridge launch/checkpoint restoration. The host independently checks
 all candidate evaluations and returned candidates against the original seed. Unsupported
