@@ -176,6 +176,10 @@ it('a zero pass threshold cannot override a failing critical gate', async () => 
   const f = fixture(); f.runtime.grader.aggregation.pass_at = 0;
   vi.mocked(f.backend.score).mockImplementation(async requests => requests.map(request => ({ key: request.key, status: 'ok', probabilities: { true: 0.5, false: 0.5 } })));
   expect(await gradeAtomic(f.runtime, f.inputs)).toMatchObject({ status: 'fail', criticalGate: 0, score: 0, coverage: 1 });
+  f.runtime.grader.aggregation.method = 'coverage-times-quality';
+  const ranked = await gradeAtomic(f.runtime, f.inputs);
+  expect(ranked).toMatchObject({ status: 'fail', criticalGate: 0, coverage: 1 });
+  expect(ranked.score).toBeGreaterThan(0);
 });
 
 it.each(['fail', 'unknown'].flatMap(missing => ['spend-cap', 'request-rejected'].map(cause => ({ missing, cause }))) as
