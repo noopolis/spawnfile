@@ -45,6 +45,7 @@ const templateSchema = z.strictObject({
   when: z.strictObject({ field: z.enum(['actor', 'action', 'object', 'time', 'modality', 'quantity']),
     equals: z.string() }).optional(),
   locations: z.array(z.string().min(1)).min(1).optional(),
+  optional: z.boolean().optional(),
   traps: z.partialRecord(z.enum(trapKinds), z.union([answer,
     z.strictObject({ answer, known_answer: z.boolean() })])).optional(),
 });

@@ -70,7 +70,9 @@ never expected answers, criteria, traps or grading instructions. Verbatim span,
 citation and relational endpoint validation reuse the decomposition module.
 Rejected units remain missing checks, including their observed unit text in feedback.
 Empty/omitted template families remain missing rather than silently changing the
-grade's denominator. A family with verified units excluded by false when conditions
+grade's denominator, unless the template declares `optional: true` for kinds that a
+correct output may legitimately lack (forecasts, conflicts); the omission audit still
+reports skipped units of that kind. Location hints accept `a[1].b` and `a.1.b`. A family with verified units excluded by false when conditions
 or declared locations is inapplicable and does not create a synthetic missing check.
 Absent condition fields and rejected spans still produce missing checks.
 

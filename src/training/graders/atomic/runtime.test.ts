@@ -105,6 +105,8 @@ it.each(['fail', 'unknown'] as const)('excludes verified false conditions and lo
   expect((await gradeAtomic(f.runtime, f.inputs)).checks.find(score => score.check.id === 'bob-only@c')?.check.status).toBe('missing');
   f.doc.units = f.doc.units.filter(unit => unit.kind !== 'claim');
   expect((await gradeAtomic(f.runtime, f.inputs)).checks.find(score => score.check.id === 'bob-only@missing')?.check.status).toBe('missing');
+  f.runtime.templates.templates.forEach(template => { if (template.applies_to === 'claim') template.optional = true; });
+  expect((await gradeAtomic(f.runtime, f.inputs)).checks.some(score => score.check.id.endsWith('@missing'))).toBe(false);
 });
 
 it('binds declared obligation kinds before extraction and scoring without granting other kinds assignment access', async () => {
