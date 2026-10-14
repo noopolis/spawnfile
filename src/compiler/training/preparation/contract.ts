@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { trainingEvaluatorRoutesSchema, trainingEvaluatorSecretsSchema } from "../container/evaluators.js";
 import { trainingImageSchema } from "../container/contract.js";
 import { TRAINING_EXECUTION_VERSION } from "../contract.js";
 import { DAIMON_GROK_BROKER_MODELS, DAIMON_GROK_BROKER_REASONING_EFFORTS, DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
@@ -67,8 +68,14 @@ export const trainingPreparationSchema = z.object({
   }).strict()).min(1).max(64),
   output: z.object({ source: local, destination: z.literal("/run/training/output") }).strict(),
   auth: z.array(z.object({ source: local, provider: z.enum(["codex", "claude"]) }).strict()).max(2),
+  evaluatorRoutes: trainingEvaluatorRoutesSchema.optional(),
+  evaluatorSecrets: trainingEvaluatorSecretsSchema(local).optional(),
   broker: trainingBrokerSchema.optional()
 }).strict().superRefine((value, context) => {
+  if (value.evaluatorSecrets && !value.broker) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation" });
+  if (value.evaluatorSecrets && !value.evaluatorRoutes?.some(route => route.provider === "typesafe")) {
+    context.addIssue({ code: "custom", message: "TypeSafe secret requires a declared evaluator route" });
+  }
   if (value.version === "spawnfile.training-container.v3") context.addIssue({ code: "custom", message: "Training-container v3 is unsupported; migrate to v4 with slots: 1" });
   if ((value.version === "spawnfile.training-container.v4") !== (value.broker !== undefined)) {
     context.addIssue({ code: "custom", message: "Only spawnfile.training-container.v4 declares broker slots; migrate v3 by setting version to v4 and slots to 1" });

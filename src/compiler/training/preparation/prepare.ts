@@ -44,15 +44,25 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const launchVersion = config.version === "spawnfile.training-container.v4" ? config.version : "spawnfile.training-container.v1";
   const root = path.dirname(path.resolve(options.configPath));
   const auth = config.auth.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
+  const evaluatorSecrets = config.evaluatorSecrets?.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
+  const protectedLeaves = [...auth, ...evaluatorSecrets ?? []];
+  const evaluatorConfig = { ...(config.evaluatorRoutes ? { evaluatorRoutes: config.evaluatorRoutes } : {}),
+    ...(evaluatorSecrets ? { evaluatorSecrets } : {}) };
+  // Validate references before traversing image/input sources; aliases must never bypass secret exclusions.
+  for (const entry of options.dryRun ? evaluatorSecrets ?? [] : protectedLeaves) {
+    const source = await exactPath(entry.source), info = await lstat(source);
+    if (source !== entry.source || !info.isFile()) throw Error("Training auth must be a canonical regular leaf");
+    if (evaluatorSecrets?.includes(entry as NonNullable<typeof evaluatorSecrets>[number]) && info.nlink !== 1) throw Error("Evaluator secrets must not have hardlink aliases");
+  }
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
   for (let index = 0; index < options.args.length; index++) {
     if (options.args[index] !== "--out") continue;
     const declared = options.args[++index];
     if (declared === undefined || path.resolve(declared) !== output) throw Error("Training --out must match configured output");
   }
-  assertInputRoot(output, auth.map(entry => entry.source));
+  assertInputRoot(output, protectedLeaves.map(entry => entry.source));
   if (await realpath(parent) !== parent) throw Error("Training output parent must be canonical and already exist");
-  const inputs = await planInputs(config, root, auth.map(entry => entry.source));
+  const inputs = await planInputs(config, root, protectedLeaves.map(entry => entry.source));
   const canonicalPins = [...options.context.sources, ...options.execution?.datasetPins ?? []];
   const roots = inputs.map(input => input.source);
   for (let index = 0; index < inputs.length; index++) {
@@ -68,12 +78,12 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       within(input.destination, other.destination) || within(other.destination, input.destination)) throw Error("Training inputs overlap");
   }
   const imagePlan = "build" in config.image
-    ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot, path.resolve(options.configPath))
+    ? await planTrainingImage(config.image.build, root, protectedLeaves.map(entry => entry.source), options.packageRoot, path.resolve(options.configPath))
     : undefined;
   if (options.repairWitness && !options.repairMeasurements) throw Error("A repair witness requires --repair-measurements");
   if (options.repairMeasurements && !imagePlan) throw Error("Measurement repair requires a verifiable image build recipe");
   const repair = options.repairMeasurements ? await planMeasurementRepair({ parent: options.repairMeasurements,
-    witness: options.repairWitness, output, auth: auth.map(entry => entry.source), image: imagePlan!, inputs,
+    witness: options.repairWitness, output, auth: protectedLeaves.map(entry => entry.source), image: imagePlan!, inputs,
     context: options.context, resume: options.args.includes("--resume") }) : undefined;
   if (repair && hashJson(config.integration) !== hashJson(repair.witness.manifest.config.integration)) throw Error("Repair integration settings binding changed");
   const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
@@ -82,7 +92,6 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   if (config.broker) await prepareTrainingBroker(config.broker, root, path.dirname(path.resolve(options.configPath)), false, config.slots);
   if (options.dryRun) return { digest, dryRun: true };
   options.signal?.throwIfAborted();
-  for (const entry of auth) if (await exactPath(entry.source) !== entry.source || !(await lstat(entry.source)).isFile()) throw Error("Training auth must be a canonical regular leaf");
   const execute = (args: string[]) => options.process(args, { timeoutMs: options.timeoutMs, signal: options.signal });
   const endpoint = await execute(["context", "inspect", config.dockerContext, "--format", "{{json .Endpoints.docker.Host}}"]);
   if (endpoint.code !== 0 || !/^unix:\/\//u.test(JSON.parse(endpoint.stdout))) throw Error("Training preparation requires a local Unix Docker context");
@@ -123,7 +132,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       const mapped = mappedReceipt(digest, image, config);
       const preparedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, true, config.slots) : undefined;
       const launch = trainingContainerConfigSchema.parse({ version: launchVersion, slots: config.slots, dockerContext: config.dockerContext,
-        inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth,
+        inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth, ...evaluatorConfig,
         ...(preparedBroker ? { broker: preparedBroker.launch } : {}) });
       await writeFile(configPath, JSON.stringify(launch), { flag: "wx", mode: 0o600 });
       await writeFile(preparationPath, JSON.stringify(parseTrainingMappedPreparation(mapped)), { flag: "wx", mode: 0o400 });
@@ -136,7 +145,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   }
   const expectedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, false, config.slots) : undefined;
   const expectedLaunch = trainingContainerConfigSchema.parse({ version: launchVersion, slots: config.slots, dockerContext: config.dockerContext,
-    inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth,
+    inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth, ...evaluatorConfig,
     ...(expectedBroker ? { broker: expectedBroker.launch } : {}) });
   if (hashJson(await readBoundedJson(configPath)) !== hashJson(expectedLaunch) ||
     hashJson(await readBoundedJson(preparationPath)) !== hashJson(mappedReceipt(digest, image, config))) throw Error("Saved training launch or mapped receipt changed");

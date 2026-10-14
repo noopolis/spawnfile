@@ -6,6 +6,8 @@ project script or sibling implementation. Project fixture meaning stays in the
 installed integration. Credentials remain explicit runtime leaves, never image
 inputs. Dry-run performs reads only; resume validates the preserved preparation.
 
+Evaluator routes and TypeSafe secret references propagate unchanged to launch and bind exact resume identity. Evaluator secrets require brokered v4; validate canonical regular single-link leaves before traversing image/input sources, including dry-run. Treat them as auth for all input/output/image-source exclusions, including the compiler package; preparation never reads or seals key bytes.
+
 `contract.ts` declares authoring and runtime receipts; `files.ts` safely seals
 declared bytes; `image.ts` prepares/builds the recipe; `inputs.ts` snapshots Git;
 `contextModes.ts` normalizes staged build-context modes/times; `daimonParent.ts`
