@@ -59,6 +59,14 @@ async function repeatedAgent(
 }
 
 describe("training graph resolution", () => {
+  it("inherits experiment deadlines and locally overrides only the declared trial deadline", async () => {
+    const root = await project();
+    await manifest(root, ".", team("publication", [{ id: "author", ref: "author" }], {
+      deadlines: { experiment_ms: 60_000_000, trial_ms: 4_000_000 }
+    }));
+    await manifest(root, "author", agent("author", { deadlines: { trial_ms: 5_000_000 } }));
+    expect(findAgent(await buildCompilePlan(root)).training?.deadlines).toEqual({ experiment_ms: 60_000_000, trial_ms: 5_000_000 });
+  });
   it("merges fields and nested budgets, replaces arrays and shadows graders at their declaration base", async () => {
     const root = await project();
     await manifest(root, ".", team("publication", [{ id: "author", ref: "author" }], {

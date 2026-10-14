@@ -6,6 +6,7 @@
 - `load.targetSources.test.ts` preserves consumed-target diagnostics and compile/plan validation boundaries.
 - `load.compileOutput.test.ts` compares every emitted compile file and report byte with and without non-recording training declarations; recording reports are tested in the compiler.
 - `resolve.ts` selects a canonical agent by exact ID or unambiguous short name and builds a deterministic plan without I/O or a clock.
+- Plans declare a 12-hour experiment default and preserve independently authored trial deadlines.
 - `references.ts` resolves override and record-volume identities from the existing compiled graph;
   its pure record-volume selector also serves Daimon recording lowering (without importing I/O).
 - `targets.ts` validates ownership, consumer sets, graders, and datasets without I/O.

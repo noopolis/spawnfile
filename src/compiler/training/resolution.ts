@@ -11,6 +11,7 @@ export interface ResolvedTrainingGrader {
 }
 
 export interface ResolvedTraining {
+  deadlines?: TrainingDeclaration["deadlines"];
   preparation?: { hook: string; history?: string };
   record?: TrainingDeclaration["record"];
   optimizer?: TrainingDeclaration["optimizer"];
@@ -28,6 +29,7 @@ export const resolveTrainingDeclaration = (
   if (declaration === undefined) return undefined;
   const resolve = (value: string): string => path.resolve(path.dirname(manifestPath), value);
   return {
+    ...(declaration.deadlines === undefined ? {} : { deadlines: { ...declaration.deadlines } }),
     ...(declaration.preparation === undefined ? {} : { preparation: { ...declaration.preparation,
       ...(declaration.preparation.history === undefined ? {} : { history: resolve(declaration.preparation.history) }) } }),
     ...(declaration.record === undefined ? {} : { record: { ...declaration.record,
@@ -54,6 +56,8 @@ export const mergeTrainingDeclarations = (
   inherited: ResolvedTraining | undefined,
   local: ResolvedTraining | undefined
 ): ResolvedTraining | undefined => {
+  const deadlines = inherited?.deadlines === undefined && local?.deadlines === undefined
+    ? undefined : { ...inherited?.deadlines, ...local?.deadlines };
   const record = inherited?.record === undefined && local?.record === undefined
     ? undefined : { ...inherited?.record, ...local?.record };
   const budget = inherited?.optimizer?.budget === undefined && local?.optimizer?.budget === undefined
@@ -63,10 +67,11 @@ export const mergeTrainingDeclarations = (
   const graders = { ...inherited?.graders, ...local?.graders };
   const targets = local?.targets ?? [];
   const preparation = local?.preparation ?? inherited?.preparation;
-  if (preparation === undefined && record === undefined && optimizer === undefined && Object.keys(graders).length === 0 && targets.length === 0) {
+  if (deadlines === undefined && preparation === undefined && record === undefined && optimizer === undefined && Object.keys(graders).length === 0 && targets.length === 0) {
     return undefined;
   }
   return {
+    ...(deadlines === undefined ? {} : { deadlines }),
     ...(preparation === undefined ? {} : { preparation }),
     ...(record === undefined ? {} : { record }),
     ...(optimizer === undefined ? {} : { optimizer }),

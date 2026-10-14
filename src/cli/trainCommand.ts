@@ -4,7 +4,7 @@ import { SpawnfileError } from "../shared/index.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
 
 const forwarded = ["train", "validation", "test", "editable", "resource", "judge", "judge-citation-repairs", "validation-group", "optimizer-model",
-  "bridge-command", "out", "max-trials", "max-proposals", "seed", "timeout-ms", "view", "cost-config", "concurrency"] as const;
+  "bridge-command", "out", "max-trials", "max-proposals", "seed", "timeout-ms", "experiment-timeout-ms", "trial-timeout-ms", "view", "cost-config", "concurrency"] as const;
 const repeated = new Set(["editable", "resource", "judge", "judge-citation-repairs", "validation-group"]);
 const key = (name: string): string => name.replace(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
 
@@ -67,10 +67,11 @@ export const registerTrainCommand = (
       setExitCode(0);
       return;
     }
-    const timeout = options.timeoutMs === undefined ? 3_600_000 : Number(options.timeoutMs);
-    if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 3_600_000 ||
-      (options.timeoutMs !== undefined && !/^\d+$/u.test(String(options.timeoutMs)))) {
-      throw new SpawnfileError("validation_error", "--timeout-ms must be an integer from 1 to 3600000");
+    for (const name of ["timeout-ms", "experiment-timeout-ms", "trial-timeout-ms"]) {
+      const value = options[key(name)], maximum = name === "trial-timeout-ms" ? 86_400_000 : 604_800_000;
+      if (value !== undefined && (!/^\d+$/u.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) < 1 || Number(value) > maximum)) {
+        throw new SpawnfileError("validation_error", `--${name} must be an integer from 1 to ${maximum}`);
+      }
     }
     const args: string[] = [];
     for (const name of forwarded) {
@@ -82,6 +83,9 @@ export const registerTrainCommand = (
     if (options.resume === true) args.push("--resume");
     const project = await handlers.loadTrainingProject(inputPath);
     const plan = handlers.resolveTrainingPlan(project, options.agent as string | undefined, packageVersion);
+    const timeout = Number(options.experimentTimeoutMs ?? options.timeoutMs ?? plan.deadlines?.experiment_ms ?? 43_200_000);
+    if (options.experimentTimeoutMs === undefined && options.timeoutMs === undefined) args.push("--experiment-timeout-ms", String(timeout));
+    if (options.trialTimeoutMs === undefined && plan.deadlines?.trial_ms !== undefined) args.push("--trial-timeout-ms", String(plan.deadlines.trial_ms));
     const lowered = plan.targets.length > 0 ? await handlers.lowerTrainingExecution({ project, plan, args,
       trainingConfig: options.trainingConfig as string | undefined, trainingImage: options.trainingImage as string | undefined }) : undefined;
     if (lowered && options.dryRun === true) {
