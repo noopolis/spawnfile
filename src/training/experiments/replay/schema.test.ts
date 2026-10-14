@@ -124,3 +124,26 @@ test('replay preserves typed tool refusal on persisted grading calls', async () 
   expect(() => trialReportSchema.parse({ ...report, evaluation: { ...report.evaluation,
     judgeCalls: [{ ...refused, failureDetail: 'SECRET' }] } })).toThrow();
 });
+
+test('stored replay preserves atomic identities, decomposition receipts, probabilities and bounded feedback', async () => {
+  const digest = 'a'.repeat(64);
+  const atomicGrading: import('../../graders/atomic/index.js').AtomicGradeResult = {
+    schema: 'paideia.atomic-grade.v1', status: 'unknown', score: 0, coverage: 0, criticalGate: 0, obligationCoverage: 0, quality: 0,
+    identity: { definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest },
+    checks: [], extraction: { receipts: [{ failure: 'malformed', response_text: 'raw protected extraction' }], judgeCalls: [call] },
+    receipts: [{ billing: 'api', model: 'jev-1.0.0', endpoint: 'https://api.typesafe.ai', inputTokens: null, outputTokens: null,
+      usd: null, estimatedInputTokens: 100, estimatedUsd: 0.01, latencyMs: 1, status: 402 }],
+    feedback: { failed_check_count: 1, omitted_failed_checks: 0, failed_checks: [{ template: 'support', unit: 'Observed span', probability: null }] }, judgeCalls: [call],
+  };
+  const { store, options, report } = await fixture(report => {
+    const graded = { ...report.evaluation.checks.old!, atomicGrading };
+    report.evaluation.checks.old = graded; report.evaluation.stages[0]!.checks = [graded];
+    report.turns[0]!.checks = [graded]; report.live = [{ checkId: 'grader', boundary: 'artifact', result: graded }];
+  });
+  expect(capturedTrial(await store.readReplay(options.runId, options.access)).report).toEqual(report);
+  for (const invalid of [{ ...atomicGrading, coverage: -1 }, { ...atomicGrading, identity: { ...atomicGrading.identity, outputDigest: 'changed' } },
+    { ...atomicGrading, receipts: [{ ...atomicGrading.receipts[0], usd: -1 }] }]) {
+    expect(() => trialReportSchema.parse({ ...report, evaluation: { ...report.evaluation,
+      checks: { old: { ...report.evaluation.checks.old, atomicGrading: invalid } } } })).toThrow();
+  }
+});

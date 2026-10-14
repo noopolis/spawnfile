@@ -10,7 +10,7 @@ function width(text: string): number { return text.replace(/\s/gu, '').length; }
 
 export function locateUnit(unit: AtomicUnit, inputs: DecompositionInputs, templates?: CheckTemplates): LocatedSpan | string {
   const sources = textLeaves(inputs.output);
-  if (unit.kind === 'obligation') {
+  if ((inputs.obligationKinds ?? ['obligation']).includes(unit.kind)) {
     for (const [name, value] of Object.entries(inputs.context)) {
       if (name === 'assignment' || templates?.context[name]?.role === 'assignment') sources.push(...textLeaves(value, ['context', name]));
     }

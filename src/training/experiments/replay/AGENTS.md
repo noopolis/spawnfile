@@ -27,3 +27,6 @@ Replay preserves the complete typed grader result, calibration/scoring identity,
 coverage and measured judge billing/timing on every nested result surface. Validate
 those fields explicitly; object stripping must never erase grading evidence.
 Judge-call replay retains typed refused outcomes and tool-call failure details.
+
+Replay explicitly validates atomicGrading identities, probabilities, decomposition,
+extraction/audit diagnostics and invocation-owned API receipts; never strip them.

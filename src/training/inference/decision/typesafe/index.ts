@@ -35,7 +35,7 @@ export function createTypeSafeDecision(options: TypeSafeDecisionOptions): Decisi
         const response = await transport.send(payload(options.model, batch), estimatedTokens(options.model, batch), signal, receipts);
         const answers = (response.data as { answers?: Record<string, unknown> } | undefined)?.answers;
         for (const request of batch) results.set(request.key, response.reason
-          ? missing(request, response.reason) : decode(request, answers?.[request.key]));
+          ? missing(request, response.reason, response.failureCause) : decode(request, answers?.[request.key]));
       };
       const sendGroup = async (group: DecisionRequest[]) => {
         let batch: DecisionRequest[] = [];

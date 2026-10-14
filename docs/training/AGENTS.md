@@ -13,3 +13,11 @@ evidence stays in research/; user-facing pages belong in website/.
   focused AGENTS.md and CLAUDE.md pairs in new maintained subdirectories.
 - Check local links and examples against the actual source or proposal they cite.
   Prose edits need no synthetic evaluator or review-council machinery.
+
+atomic-graders.md is the canonical executable atomic grader-file specification.
+Distinguish uncalibrated probabilities, admission estimates and live-trial fidelity.
+Document applicability exclusions separately from missing extraction, and keep
+assignment evidence access aligned with authored obligation kinds.
+Keep backend preflight limits and terminal payment-error semantics explicit.
+
+Describe exhausted atomic spend caps as unscorable admission errors under either missing policy; retain typed reasons without inventing request receipts.

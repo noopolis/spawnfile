@@ -41,3 +41,9 @@ resources and nested gate resources serialize; gates without concurrency opt-in
 make the enclosing grader sequential. No inference or CLI imports belong here.
 Failed mechanical gates stop grader inference immediately, retaining gate evidence
 and calls; unknown gates continue grading with an unknown aggregate status.
+
+Atomic routes bind only accepted artifacts and declared observed context. Freeze
+the neutral route policy; match definition/template digests before extraction.
+Failed acceptance gates stop inference; atomicGrading retains receipts and probabilities.
+
+Atomic admission errors retain the spend-cap reason and omit the evaluator score; aggregation diagnostics are not measured behavioral scores.

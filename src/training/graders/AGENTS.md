@@ -23,3 +23,6 @@ Applicability combines all cited reads; missing evidence retains precedence. Reg
 shared question definition digest for calibration and all vote provenance.
 Opt-in rows.leading_citations moves leading cite runs within a paragraph before
 all sentence reads; sentence-only questions pin that policy and algorithm too.
+
+atomic/ owns the executable atomic-grader contract and fixed-budget aggregation.
+Calibrated legacy grading remains separate; atomic probabilities are uncalibrated.

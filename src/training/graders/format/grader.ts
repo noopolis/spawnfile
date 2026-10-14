@@ -43,7 +43,7 @@ export type Grader = z.infer<typeof graderSchema>;
 export type Gate = Grader['gates'][number];
 
 /** Check parameters remain opaque; inspect only logical children for gate binding. */
-function checkBinding(check: Record<string, unknown>, location: string): void {
+export function checkBinding(check: Record<string, unknown>, location: string): void {
   if (check.eval === 'tool-called' || check.eval === 'tool-count') throw new Error(`${location}.eval: unbound tool gate`);
   if (check.eval === 'tool-sequence' && (check.ending_at as { event?: unknown } | undefined)?.event !== 'accepted-call') {
     throw new Error(`${location}.ending_at.event: requires accepted-call`);

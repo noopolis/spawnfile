@@ -15,3 +15,9 @@ Evaluation contexts may carry injected neutral grader runtimes. Nested gate
 execution and the graded artifact are engine-owned capabilities; grader results
 retain calibration identity and coverage. Judge calls distinguish local billing
 and measured wall time without inventing usage.
+
+Evaluation routes and results also carry typed atomic runtimes/atomicGrading.
+Decision requests include true/false Noul separately from yes/no legacy questions;
+unknown usage is distinct from conservative admission estimates.
+
+DecisionResult.failureCause identifies spend-cap admission refusal independently of missing-content prose. Callers preserve it rather than applying a behavioral missing policy.

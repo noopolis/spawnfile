@@ -122,3 +122,11 @@ it('refuses v7 checkpoints before making new calls', async () => {
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('Stale decomposition checkpoint');
   expect(f.generate).toHaveBeenCalledTimes(2);
 });
+
+it('pins assignment obligation kinds in prompts and checkpoint identity', async () => {
+  const f = await fixture();
+  await runDecompose({ ...f.decompose, obligationKinds: ['requirement'] }, f.dependencies);
+  for (const [request] of f.generate.mock.calls) expect(JSON.parse(request.prompt).obligation_kinds).toEqual(['requirement']);
+  await expect(runDecompose({ ...f.decompose, obligationKinds: ['obligation'] }, f.dependencies)).rejects.toThrow('Stale decomposition checkpoint');
+  expect(f.generate).toHaveBeenCalledTimes(2);
+});

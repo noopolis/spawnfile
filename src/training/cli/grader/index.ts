@@ -15,7 +15,7 @@ export { runLabel, createGraderTeacher } from './label.js';
 export { runCalibrate } from './calibrate.js';
 export { runValidate } from './validate.js';
 export { runExpand, runGrade } from './grade.js';
-export { buildGradingRuntime } from './runtime.js';
+export { buildExecutableGradingRuntime, buildGradingRuntime } from './runtime.js';
 export type { GraderDependencies } from './backend.js';
 
 export async function runGraderCommand(args: CliArguments, io: CliIO, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<number> {

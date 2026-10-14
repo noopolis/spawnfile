@@ -38,3 +38,16 @@ Reference --batch-size defaults to 40 and bounds council questions per output ca
 --concurrency bounds output workers independently of concurrent teacher queues.
 Report per-teacher retained calls, known/unknown tokens and summed call wall time;
 resume preserves original receipts without counting reused calls twice.
+
+runtime.ts integrates the existing extraction/audit command into accepted-artifact
+trial grading. Snapshot templates in memory, default the shared extraction deadline
+to 900s, preserve checkpoint receipts in atomicGrading, and remove temporary files.
+Construct environment-only TypeSafe auth before consuming subscription calls.
+Pass authored obligation kinds through prompts, checkpoint identity and extraction/
+audit span validation; preserve standalone obligation defaults.
+Verify backend-incompatible files fail during dataset resolution and runtime
+construction without provider calls; payment errors stay errors under both
+missing policies and stop queued decision requests.
+
+A zero/exhausted spend cap is an admission error with null score and typed reason,
+not missing content. Verify the real constructed route without dispatching HTTP.

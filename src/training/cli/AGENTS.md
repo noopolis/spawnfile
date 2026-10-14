@@ -37,3 +37,6 @@ Owns explicit local commands, configuration selection and human diagnostics.
   points and adjacent parsing/behavior tests.
 - Test invalid inputs, cancel/error exit behavior and positive output artifacts,
   not just whether a child process launched.
+
+Native grader-file dispatch accepts both calibrated and atomic schemas. Atomic routes
+freeze definition/template digests and do not claim calibration exclusion evidence.

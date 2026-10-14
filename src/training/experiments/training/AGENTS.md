@@ -72,3 +72,9 @@ Slot descriptors and effective concurrency bind checkpoint identity.
 Population search controls pass unchanged to optimization and participate in the
 training checkpoint identity. Derive component editScope from the frozen baseline,
 not integration claims, so provenance reflects actual whole-file or heading edits.
+
+Atomic feedback includes only the runtime-bounded failed-check projection: unit text,
+template, probability and omitted count. Never forward decomposition/checkpoint
+responses to the optimizer; the protected original report retains them.
+
+trialScore refuses spend-cap admission failures anywhere in the final evaluation tree before a behavioral zero can be returned, even when a decisive sibling or explicit gate masks the error.

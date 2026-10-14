@@ -335,3 +335,6 @@ snapshots, and requires coverage of every cited row. No citations or incomplete
 coverage remains a missing check, never a passing check. Other check instances
 can still run. Pair reads combine the two endpoints' source requirements.
 The generic `context.source_snapshots` read retains its unscoped behavior.
+
+Executable training grading uses the [atomic grader-file contract](atomic-graders.md),
+which binds these templates to subscription extraction, JEV scoring and bounded feedback.

@@ -3,7 +3,7 @@ import type { JudgeCall } from './evaluation.js';
 /** Runtime-neutral option scoring; expectedOptions is bounds metadata, never prompt data. */
 export interface DecisionRequest {
   key: string;
-  type: 'yes-no' | 'choice' | 'score';
+  type: 'yes-no' | 'noul' | 'choice' | 'score';
   optionLabels: readonly (string | number)[];
   expectedOptions?: readonly (string | number)[];
   instructions: string;
@@ -15,6 +15,8 @@ export interface DecisionResult {
   probabilities: Record<string, number> | null;
   status: 'ok' | 'missing';
   reason?: string;
+  /** Admission refusal, distinct from missing behavioral evidence. */
+  failureCause?: 'spend-cap';
   bounded?: boolean;
   /** Provider probabilities have approximately 0.01 resolution, even when their sum is one. */
   providerRounded?: boolean;

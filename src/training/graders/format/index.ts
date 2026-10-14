@@ -1,4 +1,4 @@
-export { decisionModels, graderForModel, graderSchema, parseGrader, parseGraderYaml, validateGrader, loadGrader, allQuestions } from './grader.js';
+export { checkBinding, decisionModels, graderForModel, graderSchema, parseGrader, parseGraderYaml, validateGrader, loadGrader, allQuestions } from './grader.js';
 export type { Grader, DecisionModel, NamedDecisionModel, Gate } from './grader.js';
 export { optionsFor, expectedOptions, questionDefinitionDigest, applicabilityQuestion } from './questions.js';
 export type { Question, GateQuestion, DecisionQuestion, Option } from './questions.js';
