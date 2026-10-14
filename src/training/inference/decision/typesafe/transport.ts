@@ -1,4 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
+import { randomUUID } from 'node:crypto';
 import type { DecisionRequestReceipt, DecisionSpendBudget, DecisionResult } from '../../../contracts/grading.js';
 
 export interface TypeSafeTransportOptions {
@@ -60,7 +61,7 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
         for (let attempt = 0; attempt < attempts; attempt++) {
           check(signal);
           if (options.conservativeSpend && budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd > budget.maxUsd) return { reason: 'spend cap', failureCause: 'spend-cap' };
-          const receipt: DecisionRequestReceipt = { billing: 'api', model: options.model, endpoint: endpoint.href,
+          const receipt: DecisionRequestReceipt = { requestId: randomUUID(), billing: 'api', model: options.model, endpoint: endpoint.href,
             inputTokens: null, outputTokens: null, usd: null, estimatedInputTokens: tokens, estimatedUsd: estimate,
             latencyMs: 0, status: null };
           const start = performance.now();

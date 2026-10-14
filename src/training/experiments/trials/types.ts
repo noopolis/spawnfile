@@ -1,4 +1,5 @@
 import type { TrialSlot } from '../../contracts/trial-slot.js';
+import type { CandidateManifest } from '../../candidates/index.js';
 import type { ResolvedRecord, TaskInput } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, EvaluationSnapshot, PlanEvaluation, Verdict } from '../../contracts/evaluation.js';
 import type { FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectStartupDiagnostic, SubjectTurnResult } from '../../contracts/execution.js';
@@ -15,6 +16,8 @@ export interface TrialOptions {
   slot?: TrialSlot;
   id: string;
   phase: 'train' | 'validation' | 'test';
+  /** Optimizer search round; sealed tests and legacy trials have no round. */
+  round?: number;
   record: ResolvedRecord;
   candidateId: string;
   datasetDigest: string;
@@ -40,9 +43,16 @@ export interface TrialReport {
   id: string;
   phase: TrialOptions['phase'];
   candidateId: string;
+  /** Exact evaluated bundle, including proposals rejected by the optimizer. */
+  candidate?: CandidateManifest;
+  round?: number;
   datasetDigest: string;
   planDigest: string;
   recordId: string;
+  /** Host elapsed time through final evaluation/closure; absent in older captures. */
+  durationMs?: number;
+  /** Declared adapter isolation, not proof of historical reconstruction fidelity. */
+  subject?: { adapterId: string; requestedModel: string; isolation: string };
   paths: TrialPaths;
   status: Verdict;
   /**

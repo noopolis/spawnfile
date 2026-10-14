@@ -4,7 +4,7 @@ import type { CheckNode } from '../contracts/dataset.js';
 import type { EvaluationContext, JudgeCall } from '../contracts/evaluation.js';
 import type { DecisionBackend, DecisionRequest } from '../contracts/grading.js';
 import { parseDatasetYaml, resolveDataset } from '../cases/index.js';
-import { createCalibrationIdentity, decisionBackendIdentity, parseGrader, sha256, type GradingRuntime } from '../graders/index.js';
+import { createCalibrationIdentity, DecisionAccountingError, decisionBackendIdentity, summarizeDecisionAccounting, parseGrader, sha256, type GradingRuntime } from '../graders/index.js';
 import { artifact, evaluationContext, snapshot, observation } from '../testing/index.js';
 import { createEvaluationRegistry, evaluateNode, evaluatePlan } from './index.js';
 import { evaluateGrader } from './grader.js';
@@ -136,4 +136,22 @@ describe('grader builtin evaluation', () => {
     const result = await evaluatePlan([{ id: 's', checks: [{ ...check, id: 'a' }, { ...check, id: 'b' }] }], context, registry);
     expect(result.status).toBe('pass'); expect(maximum).toBe(1);
   });
+});
+
+
+it('retains gate evidence and paid receipts on grader failure while leaving ordinary errors with the engine', async () => {
+  const { context, check, backend } = await fixture([{ id: 'valid', check: { eval: 'project-gate' } }]);
+  const gate = { status: 'pass' as const, finality: 'final' as const, reason: 'Recorded gate',
+    evidence: [{ kind: 'event' as const, id: 'gate-evidence' }], judgeCalls: [{ id: 'gate-call', judge: 'gate', providerId: 'gate',
+      requestedModel: 'm', responseModel: 'm', responseRoute: 'gate', outcome: 'completed' as const, usage: null }] };
+  const registry = createEvaluationRegistry({ 'project-gate': { definition: { version: '1', kind: 'semantic', incremental: false,
+    stopProof: false, validate() {} }, async evaluate() { return gate; } } });
+  const accounting = summarizeDecisionAccounting([{ billing: 'api', model: 'jev-1.13.0', endpoint: 'https://example.test',
+    inputTokens: null, outputTokens: null, usd: null, estimatedInputTokens: 10, estimatedUsd: 0.001, latencyMs: 1, status: 503 }]);
+  vi.mocked(backend.score).mockRejectedValue(new DecisionAccountingError(new Error('Retry exhausted'), accounting));
+  const value = await evaluateNode(check, context, registry);
+  expect(value).toMatchObject({ status: 'error', decisionAccounting: accounting, children: [{ id: 'valid', ...gate }], judgeCalls: gate.judgeCalls });
+  expect(value.evidence).toContainEqual(gate.evidence[0]); expect(value.grading).toBeUndefined();
+  vi.mocked(backend.score).mockRejectedValue(new Error('Ordinary local failure'));
+  expect(await evaluateNode(check, context, registry)).toMatchObject({ status: 'error', reason: 'Ordinary local failure' });
 });

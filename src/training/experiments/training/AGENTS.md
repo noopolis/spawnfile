@@ -82,4 +82,12 @@ This includes atomicFailure from early acceptance-gate errors; genuine failing
 gate judgments remain behavioral zeros. atomic-gates.test.ts exercises resolved
 grader gates through real rubric evaluation with fake providers.
 
+Completed reports carry invocation elapsed host durationMs, including restoration
+and sealed tests. Do not sum parallel trial durations as invocation elapsed time.
+The CLI owns local operator report/bundle export; it never reselects from test.
+
+Forward actual optimizer callback round IDs to stored trials. Candidate manifests
+belong to native measurement persistence, independent of final optimizer selection;
+completed checkpoint resume must retain rejected evaluated proposals.
+
 resolveTrainingPartitions preserves explicit validation dataset identity and rejects competing group controls. Split checks still bind all three roles.

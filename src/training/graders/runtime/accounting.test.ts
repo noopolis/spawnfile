@@ -14,7 +14,7 @@ it('aggregates measured accounting, nearest-rank latency percentiles and unknown
 it('retains only current paid receipts and their allowed fields on failure', async () => {
   const { withDecisionFailureAccounting, DecisionAccountingError } = await import('./accounting.js');
   const { vi } = await import('vitest');
-  const receipt: DecisionRequestReceipt = { billing: 'api', model: 'm', endpoint: 'https://example.test',
+  const receipt: DecisionRequestReceipt = { requestId: 'failed-request', billing: 'api', model: 'm', endpoint: 'https://example.test',
     inputTokens: 100, outputTokens: 0, usd: 0.1, estimatedInputTokens: 80, estimatedUsd: 0.08, latencyMs: 10, status: 200 };
   const receipts: DecisionRequestReceipt[] = [];
   const backend = { capabilities: { billing: 'api' as const }, requestReceipts: () => receipts,
@@ -33,4 +33,16 @@ it('retains only current paid receipts and their allowed fields on failure', asy
   await expect(withDecisionFailureAccounting(new Set([backend]), [], async () => {
     throw 'untyped failure';
   })).rejects.toMatchObject({ message: 'Decision operation failed', decisionAccounting: { requests: 0 } });
+});
+
+it('assigns originating identities once for injected backends without merging identical requests', () => {
+  const receipt: DecisionRequestReceipt = { billing: 'api', model: 'm', endpoint: 'https://example.test',
+    inputTokens: 100, outputTokens: 0, usd: 0.1, estimatedInputTokens: 80, estimatedUsd: 0.08, latencyMs: 10, status: 200 };
+  const receipts = [{ ...receipt }, { ...receipt }];
+  const first = summarizeDecisionAccounting(receipts);
+  expect(first.receipts.every(value => typeof value.requestId === 'string' && value.requestId.length > 0)).toBe(true);
+  expect(new Set(first.receipts.map(value => value.requestId)).size).toBe(2);
+  expect(summarizeDecisionAccounting(receipts)).toEqual(first);
+  const persisted = structuredClone(first);
+  expect(summarizeDecisionAccounting(persisted.receipts)).toEqual(first);
 });

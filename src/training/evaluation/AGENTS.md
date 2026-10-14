@@ -49,3 +49,11 @@ Acceptance gates with nested errors emit atomicFailure with their gate ID and no
 extraction. Preserve gate children and actual judge calls; never fabricate a grade.
 
 Atomic admission errors retain the spend-cap reason and omit the evaluator score; aggregation diagnostics are not measured behavioral scores.
+
+Isolated grader backends retain billing capabilities so paid receipts survive
+the builtin route. Named passed references and selective repair preserve receipt
+requestId even when the enclosing check or measurement identity changes.
+
+The grader builtin catches DecisionAccountingError at its owning boundary and
+returns an error with allowlisted decisionAccounting, gate children and their calls.
+Never turn paid failure into a grade or discard receipts in the generic error path.

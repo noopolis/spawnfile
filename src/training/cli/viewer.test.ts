@@ -14,10 +14,10 @@ import { summarizeCosts } from '../experiments/costs/index.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
-async function evaluated() {
+async function evaluated(view = true) {
   const fixture = await cliFixture(); roots.push(fixture.root);
   fixture.dependencies.adapter = (id) => fixtureAdapter(id, fixture.observedInstructions, 'pass');
-  expect(await main(['evaluate', 'data.yaml', ...fixture.nativeArgs, '--view', '0'], fixture.io, fixture.dependencies)).toBe(0);
+  expect(await main(['evaluate', 'data.yaml', ...fixture.nativeArgs, ...(view ? ['--view', '0'] : [])], fixture.io, fixture.dependencies)).toBe(0);
   const out = join(fixture.root, 'out');
   const index = JSON.parse(await readFile(join(out, 'invocation.json'), 'utf8')) as InvocationIndex;
   const store = await openExperimentStore(out);
@@ -28,6 +28,23 @@ async function evaluated() {
 }
 
 describe('usable persisted viewer command', () => {
+  it('accepts optional export references without reading them and rejects malformed metadata', async () => {
+    const fixture = await evaluated(false);
+    const path = join(fixture.out, 'invocation.json');
+    const expected = await (await loadInvocationViewer(fixture.out))();
+    const trainingExport = { directory: 'missing-export', markdown: 'missing-export/REPORT.md', json: 'missing-export/REPORT.json' };
+    await writeFile(path, JSON.stringify({ ...fixture.index, trainingExport }));
+    expect(await (await loadInvocationViewer(fixture.out))()).toEqual(expected);
+    for (const invalid of [null, {}, { ...trainingExport, directory: '' }, { ...trainingExport, markdown: 1 },
+      { ...trainingExport, json: null }, { ...trainingExport, unknown: 'field' }]) {
+      await writeFile(path, JSON.stringify({ ...fixture.index, trainingExport: invalid }));
+      await expect(loadInvocationViewer(fixture.out)).rejects.toThrow();
+    }
+    await writeFile(path, JSON.stringify({ ...fixture.index, unknown: 'field' }));
+    await expect(loadInvocationViewer(fixture.out)).rejects.toThrow();
+    expect(fixture.observedInstructions).toHaveLength(1);
+  });
+
   it('serves actual stored reports, then closes on Ctrl+C without invoking any subject again', async () => {
     const fixture = await evaluated();
     const snapshot = await (await loadInvocationViewer(fixture.out))();

@@ -26,3 +26,6 @@ all sentence reads; sentence-only questions pin that policy and algorithm too.
 
 atomic/ owns the executable atomic-grader contract and fixed-budget aggregation.
 Calibrated legacy grading remains separate; atomic probabilities are uncalibrated.
+
+Export the strict decision-accounting schema for replay of both grades and
+failed evaluator results, keeping originating request identities intact.

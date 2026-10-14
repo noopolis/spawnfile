@@ -1,4 +1,5 @@
 import type { AtomicRuntime, AtomicGradeResult } from '../graders/atomic/index.js';
+import type { DecisionAccounting } from './grading.js';
 import type { GradingRuntime, GradeResult } from '../graders/index.js';
 import type { CheckNode, EvaluatorDefinition, DataMap } from './dataset.js';
 import type { Observation, ObservationCoverage, InferenceProvider, Usage, InferenceFailureKind, InferenceDiagnostic } from './execution.js';
@@ -139,6 +140,8 @@ export interface EvaluationResult {
   atomicGrading?: AtomicGradeResult;
   /** Infrastructure stopped atomic grading before extraction; no grade was produced. */
   atomicFailure?: { cause: 'acceptance-gate'; gateId: string };
+  /** Paid grader attempts retained even when no grade was produced. */
+  decisionAccounting?: DecisionAccounting;
   usage?: Usage[];
   judgeCalls?: JudgeCall[];
   cache?: { key: string; sourceCallId: string; sourceCalls?: JudgeCall[] };

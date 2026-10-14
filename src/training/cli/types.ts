@@ -72,4 +72,6 @@ export interface InvocationIndex {
   trialIds: string[];
   report: BlobReference;
   candidate: BlobReference;
+  /** Immutable completed operator export; never exposed through optimizer blob access. */
+  trainingExport?: { directory: string; markdown: string; json: string };
 }

@@ -46,6 +46,18 @@ describe('TypeSafe mapping and batching', () => {
     expect((await backend.score(requests)).map(r => r.key)).toEqual(requests.map(r => r.key));
     expect(fetch.mock.calls.map(([, init]) => Object.keys(JSON.parse(String(init!.body)).questions).length)).toEqual([1, 64, 1]);
   });
+  it('gives every dispatched attempt a distinct stable identity shared by collector and history', async () => {
+    const fetch = responder(), backend = createTypeSafeDecision({ model, env, fetch });
+    fetch.mockResolvedValueOnce(new Response('', { status: 503 }));
+    const receipts: import('../../../contracts/grading.js').DecisionRequestReceipt[] = [];
+    await backend.score([request()], undefined, receipts);
+    await backend.score([request()], undefined, receipts);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(receipts.every(receipt => typeof receipt.requestId === 'string' && receipt.requestId.length > 0)).toBe(true);
+    expect(new Set(receipts.map(receipt => receipt.requestId)).size).toBe(3);
+    expect(backend.requestReceipts!()).toEqual(receipts);
+    expect(JSON.parse(JSON.stringify(receipts))).toEqual(receipts);
+  });
   it('splits by configurable token estimates and refuses oversized state or question without sending', async () => {
     const fetch = responder(), backend = createTypeSafeDecision({ model, env, fetch, maxEstimatedTokens: 90 });
     expect((await backend.score([request('a'), request('b')])).every(r => r.status === 'ok')).toBe(true);

@@ -24,4 +24,14 @@ Describe exhausted atomic spend caps and rejected API requests as unscorable inf
 Acceptance-gate infrastructure errors remain unscorable before extraction, with
 their gate identity retained through replay and no fabricated atomic grade.
 
+The training-report-export spec owns local artifact layouts, evidence labels and
+uncertainty semantics. Keep reports operator-local and distinguish end-of-run
+round-grouped candidate summaries from measurements taken during a round.
+
+Training export documentation distinguishes original per-round measurements,
+prior captures, later rescores, sealed results and unattributed legacy trials.
+Rejected evaluated manifests and paid failure receipts survive completed resume.
+Failure-row identities follow the producing measurement: retained native evidence
+keeps its trial ID, while rescored final evidence uses the latest rescore ID.
+
 Training configuration documents explicit validation and the generic named moment preparation receipt; org state reconstruction remains integration-owned.

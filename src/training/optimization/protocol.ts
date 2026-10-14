@@ -77,6 +77,7 @@ export const inferenceSchema = z.object({ text: z.string().min(1), model: id, us
   attempts: z.array(inferenceAttemptSchema).optional() }).strict();
 export const evaluateParamsSchema = z.object({
   caseId: id, split: z.enum(['train', 'validation']), components: componentsSchema,
+  round: count.optional(),
 }).strict();
 export const generateParamsSchema = z.object({
   purpose: z.literal('reflection'),

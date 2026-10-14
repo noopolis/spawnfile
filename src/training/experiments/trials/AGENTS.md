@@ -69,3 +69,11 @@ Evaluation services preserve injected grader runtimes alongside judges and embed
 Preparation receives the caller's leased `slot` descriptor unchanged; SubjectStart
 receives the same identity. Runtime integrations own resource mapping. Never infer
 fixed worker identities, ports or paths in the experiment layer.
+
+Persist host durationMs through final evaluation/closure and subject adapter ID,
+requested model and declared isolation. These are host/declared receipts, not
+model-identity or historical-fidelity attestations. Old captures retain unknowns.
+
+Stored native reports retain a cloned evaluated candidate manifest and optional
+optimizer round before durable evaluation publication. Preserve rejected proposals
+and round attribution through replay; sealed tests have no search round.

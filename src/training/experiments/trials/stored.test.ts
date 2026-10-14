@@ -32,7 +32,7 @@ records: [{id: case, group: evidence, input: {prompt: complete it}}]
           coverage: [{ channel: 'output', completeness: 'complete', ordering: 'source' }] }; },
         async stop(reason) { return { state: 'acknowledged', scope: 'process-group', quiescence: 'confirmed', remoteWork: 'unknown', reason, detail: 'fixture' }; } };
       } };
-    const options: StoredTrialOptions = { id: 'run', phase: 'train', datasetId: 'suite', record, candidate, store, storeRoot,
+    const options: StoredTrialOptions = { id: 'run', phase: 'train', round: 3, datasetId: 'suite', record, candidate, store, storeRoot,
       datasetDigest: 'digest', planDigest: 'plan', adapter, model: 'model', root: join(root, 'trials'), timeoutMs: 2_000,
       registry: createEvaluationRegistry(), evaluation: { judges: {}, embeddings: {}, readText: async () => '' } };
     const costRecord = resolveDatasetForCost(parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id: 'cost',
@@ -47,8 +47,9 @@ records: [{id: case, group: evidence, input: {prompt: complete it}}]
       return {};
     } });
     expect(report.status).toBe('pass'); expect(paid).toBe(1);
+    expect(report.candidate).toEqual(candidate); expect(report.round).toBe(3);
     const replay = await store.readReplay('run', { audience: 'operator', phase: 'replay' });
-    expect(replay.completeness).toBe('complete'); expect(replay.evaluations[0]!.report).toMatchObject({ id: 'run', status: 'pass' });
+    expect(replay.completeness).toBe('complete'); expect(replay.evaluations[0]!.report).toMatchObject({ id: 'run', status: 'pass', candidate, round: 3 });
     expect(replay.events.some(event => (event.payload as { type: string }).type === 'candidate.installed')).toBe(true);
     expect((await store.readReplay('run', { audience: 'viewer', phase: 'replay' })).evaluations).toEqual([]);
     record.setup = { profile: 'native' };

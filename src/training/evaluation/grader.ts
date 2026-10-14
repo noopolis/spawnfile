@@ -2,7 +2,7 @@ import { evaluateAtomicGrader } from './atomic-grader.js';
 import type { CheckNode } from '../contracts/dataset.js';
 import type { EvaluationContext, EvaluationResult } from '../contracts/evaluation.js';
 import type { GraderBinding } from '../cases/index.js';
-import { allQuestions, gradeOutput, type GateOutcome } from '../graders/index.js';
+import { allQuestions, DecisionAccountingError, gradeOutput, type GateOutcome } from '../graders/index.js';
 import { collectJudgeCalls, result } from './logic/index.js';
 import { selectEvidence } from './selectors.js';
 
@@ -43,7 +43,15 @@ export async function evaluateGrader(check: CheckNode, context: EvaluationContex
     gateOutcomes[gate.id] = evaluated.status === 'skipped' ? 'unknown' : evaluated.status;
     if (evaluated.status === 'fail') break;
   }
-  const graded = await gradeOutput({ ...legacy, output: selected.value, context: bound, gateOutcomes, signal: context.signal });
+  let graded;
+  try { graded = await gradeOutput({ ...legacy, output: selected.value, context: bound, gateOutcomes, signal: context.signal }); }
+  catch (error) {
+    if (!(error instanceof DecisionAccountingError)) throw error;
+    const judgeCalls = collectJudgeCalls(children);
+    return { ...result('error', error.message, context.snapshot.closed), evidence, children, judgeCalls,
+      decisionAccounting: error.decisionAccounting,
+      usage: judgeCalls.flatMap(call => call.usage ? [call.usage] : []) };
+  }
   const judgeCalls = collectJudgeCalls([...children, { ...result(graded.status, 'Grader'), judgeCalls: graded.judgeCalls }]);
   return { ...result(graded.status, `Grader ${legacy.grader.id}; coverage ${graded.coverage}`, context.snapshot.closed),
     score: graded.score, grading: graded, evidence, children, judgeCalls,

@@ -362,6 +362,8 @@ with the frozen authored content identity and no `bridge` for this mode. Bind th
 explicit comparison identity into the environment receipt; do not require or invent
 a DSPy launch. Ordinary optimizer execution still supplies its actual bridge launch.
 
+Completed optimizer runs export [local training reports and candidate bundles](training-report-export.md).
+
 ## Explicit authored validation and historical cases
 
 `train --validation validation.paideia.yaml` selects a separate validation dataset;

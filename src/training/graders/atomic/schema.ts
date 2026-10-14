@@ -21,7 +21,7 @@ export function createAtomicGradeResultSchema(judgeCall: z.ZodType<JudgeCall>): 
       }).optional() })),
     extraction: z.strictObject({ decomposition: decompositionSchema.optional(), receipts: z.array(z.record(z.string(), z.unknown())),
       judgeCalls: z.array(judgeCall), error: z.string().optional() }),
-    receipts: z.array(z.strictObject({ billing: z.literal('api'), model: z.string(), endpoint: z.string(), inputTokens: count.nullable(),
+    receipts: z.array(z.strictObject({ requestId: z.string().min(1).optional(), billing: z.literal('api'), model: z.string(), endpoint: z.string(), inputTokens: count.nullable(),
       outputTokens: count.nullable(), usd: z.number().finite().nonnegative().nullable(), estimatedInputTokens: count,
       estimatedUsd: z.number().finite().nonnegative(), latencyMs: z.number().finite().nonnegative(), status: count.nullable() })),
     feedback: z.strictObject({ failed_check_count: count, omitted_failed_checks: count,
