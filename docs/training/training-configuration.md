@@ -65,7 +65,7 @@ records:
 The names under `models` are reusable references. Judges and the optimizer select
 a primary name and ordered fallback names. A fallback must differ from the primary
 and every referenced model must exist. Provider names currently accepted by this
-schema are `claude-subscription`, `grok-subscription`, `grok-broker` and `ollama`; only Ollama accepts
+schema are `claude-subscription`, `codex-subscription`, `grok-subscription`, `grok-broker` and `ollama`; only Ollama accepts
 an endpoint. Endpoints cannot contain credentials, queries or fragments. Model names
 are provider-specific strings, not a claim that a particular model is installed.
 

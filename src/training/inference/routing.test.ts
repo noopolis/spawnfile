@@ -5,6 +5,18 @@ import { InferenceFailure } from './failure.js';
 const result = { text: 'score: 0', model: 'actual', route: 'test', usage: null };
 const provider = (generate: InferenceProvider['generate']): InferenceProvider => ({ id: 'p', capabilities: { tools: 'disabled', billing: 'subscription', seed: false, temperature: false }, generate });
 const options = (providers: InferenceProvider[]) => ({ id: 'judge', routes: providers.map(p => ({ provider: p, model: 'm' })), maxAttempts: providers.length, timeoutMs: 100 });
+it('preserves containment for primary and fallback routes and rejects unisolated tools', async () => {
+  const contained = provider(async () => result); contained.capabilities.tools = 'contained';
+  for (const routes of [[contained], [contained, provider(async () => result)], [provider(async () => result), contained]]) {
+    const route = createRoutedInference(options(routes));
+    expect(route.capabilities.tools).toBe('contained');
+    expect((await route.generate({ prompt: 'task', model: 'ignored' })).text).toBe(result.text);
+  }
+  const unisolated = provider(vi.fn());
+  Object.assign(unisolated.capabilities, { tools: 'enabled' });
+  expect(() => createRoutedInference(options([unisolated]))).toThrow('tool-isolated');
+  expect(unisolated.generate).not.toHaveBeenCalled();
+});
 it('falls back only on declared infrastructure refusals and audits every settled attempt', async () => {
   const audit = vi.fn();
   const route = createRoutedInference({ ...options([provider(async () => { throw new InferenceFailure('quota', 'busy', { responseModel: 'old' }); }), provider(async () => result)]), observeAttempt: audit });

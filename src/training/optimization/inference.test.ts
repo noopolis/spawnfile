@@ -12,6 +12,12 @@ function request(): DspyGenerateParams {
 }
 
 describe('explicit DSPy subscription inference', () => {
+  it('accepts a contained subscription route without changing its isolation capability', async () => {
+    const selected = provider(); selected.capabilities.tools = 'contained';
+    expect((await createDspyGeneration(selected, 'model')(request(), new AbortController().signal)).text)
+      .toBe('observed text');
+    expect(selected.capabilities.tools).toBe('contained');
+  });
   it('maps system and user bytes exactly and retains observed identity/unknown usage', async () => {
     const selected = provider();
     const signal = new AbortController().signal;

@@ -17,6 +17,25 @@ const dataset = (training?: unknown) => ({ schema: 'paideia.dataset.v1', id: 'ex
   records: [{ id: 'one', input: { prompt: 'Write.' } }] });
 
 describe('dataset-authored training configuration', () => {
+  it('accepts Codex subscription models for YAML judges and optimizer routes', () => {
+    const training = { models: { codex: { provider: 'codex-subscription', model: 'chosen' } },
+      judges: { prose: { model: 'codex' } }, optimizer: { model: 'codex' } };
+    const parsed = parseDatasetYaml(stringify(dataset(training)));
+    expect(parsed.dataset.training).toEqual(training);
+    expect(resolveDataset(parsed, { registry: { judges: trainingJudgeVersions(parsed.dataset.training!) } }).training)
+      .toEqual(training);
+  });
+  it.each<[string, unknown, RegExp]>([
+    ['api_key', 'forbidden-test-value', /unknown field/],
+    ['endpoint', 'http://localhost:11434', /only supported for ollama/],
+    ['reasoning_effort', 'low', /only supported for grok-subscription or grok-broker/],
+    ...['think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'].map<[string, unknown, RegExp]>(field =>
+      [field, 1, /only supported for ollama/]),
+  ])('rejects unsupported Codex training control %s', (field, value, reason) => {
+    expect(() => validateTrainingConfiguration({ models: { codex: {
+      provider: 'codex-subscription', model: 'chosen', [field]: value,
+    } } })).toThrow(reason);
+  });
   it('preserves a standalone YAML configuration without sharing mutable objects', () => {
     const parsed = parseDatasetYaml(stringify(dataset(config)));
     const resolved = resolveDataset(parsed, { registry: { judges: trainingJudgeVersions(parsed.dataset.training!) } });

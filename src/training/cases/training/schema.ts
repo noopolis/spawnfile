@@ -17,7 +17,7 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     string(name, location);
     const model = object(value, location);
     fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort', 'think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'], location);
-    oneOf(model.provider, ['claude-subscription', 'grok-subscription', 'grok-broker', 'ollama'], `${location}.provider`);
+    oneOf(model.provider, ['claude-subscription', 'codex-subscription', 'grok-subscription', 'grok-broker', 'ollama'], `${location}.provider`);
     string(model.model, `${location}.model`);
     if (model.provider === 'grok-broker') {
       // Broker grants carry the declared model and effort to the broker; nothing is defaulted or inherited.
