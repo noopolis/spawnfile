@@ -7,6 +7,7 @@ import { SpawnfileError } from "../../shared/index.js";
 import { trainingPlanSchema, trainingPlanOptimizerSchema, type TrainingPlan } from "./plan/contract.js";
 import type { LoadedTrainingProject } from "./plan/types.js";
 import { trainingPreparationSchema } from "./preparation/contract.js";
+import { assertTrainingImageExcludesAssets } from "./preparation/assets.js";
 import { readBoundedJson } from "./preparation/inputs.js";
 import { trainingContainerConfigSchema, trainingImageSchema } from "./container/contract.js";
 
@@ -55,7 +56,11 @@ export const lowerTrainingExecution = async (options: LowerTrainingExecutionOpti
   const preparation = raw.version === "spawnfile.training-container.v2" ||
     (["spawnfile.training-container.v3", "spawnfile.training-container.v4"].includes(String(raw.version)) && raw.image !== undefined);
   const declaration = preparation ? trainingPreparationSchema.parse(raw) : trainingContainerConfigSchema.parse(raw);
+  if (plan.assets && !preparation) return invalid("Private training assets require a v2/v4 preparation declaration; direct launch bindings cannot stage the allowlist");
   const trainingImage = options.trainingImage === undefined ? undefined : trainingImageSchema.parse(options.trainingImage);
+  if (trainingImage === undefined && "image" in declaration && "build" in declaration.image) {
+    await assertTrainingImageExcludesAssets(declaration.image.build, path.dirname(trainingConfig), plan.assets?.root);
+  }
   if (!preparation && trainingImage === undefined) {
     return invalid("A lowered container launch configuration requires --training-image; use a v2/v4 preparation declaration for a declared image");
   }
@@ -114,6 +119,8 @@ export const mapTrainingExecution = (execution: TrainingExecution, map: (file: s
   }
   return trainingExecutionSchema.parse({ ...execution, datasetPins: execution.datasetPins.map(source), args, output: map(execution.output), authoring: {
     ...execution.authoring,
+    ...(execution.authoring.assets ? { assets: { root: map(execution.authoring.assets.root),
+      files: execution.authoring.assets.files.map(source) } } : {}),
     ...(execution.authoring.preparation ? { preparation: { ...execution.authoring.preparation,
       ...(execution.authoring.preparation.history ? { history: map(execution.authoring.preparation.history) } : {}) } } : {}),
     project: { root: map(execution.authoring.project.root), manifest: map(execution.authoring.project.manifest) },

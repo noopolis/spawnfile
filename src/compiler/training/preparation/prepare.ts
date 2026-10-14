@@ -10,6 +10,7 @@ import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./
 import { planTrainingImage, buildTrainingImage } from "./image.js";
 import { planMeasurementRepair, stageMeasurementRepair, writeTrainingWitness } from "../repair/index.js";
 import { prepareTrainingBroker } from "./broker.js";
+import { addTrainingAssetsInput } from "./assets.js";
 import { claimTrainingPreparationScratch } from "./scratch.js";
 
 function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
@@ -40,9 +41,12 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const config = trainingPreparationSchema.parse({ ...raw,
     ...(options.outputOverride ? { output: { source: options.outputOverride, destination: "/run/training/output" } } : {}),
     ...(options.imageOverride ? { image: { ref: options.imageOverride } } : {}) });
+  await addTrainingAssetsInput(config, options.execution?.authoring.assets);
+  trainingPreparationSchema.parse(config);
   // A v2 declaration still lowers to the unchanged v1 launch config; v4 carries the broker slots into Docker.
   const launchVersion = config.version === "spawnfile.training-container.v4" ? config.version : "spawnfile.training-container.v1";
   const root = path.dirname(path.resolve(options.configPath));
+  const privateAssets = options.execution?.authoring.assets;
   const auth = config.auth.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
   for (let index = 0; index < options.args.length; index++) {
@@ -52,8 +56,9 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   }
   assertInputRoot(output, auth.map(entry => entry.source));
   if (await realpath(parent) !== parent) throw Error("Training output parent must be canonical and already exist");
-  const inputs = await planInputs(config, root, auth.map(entry => entry.source));
-  const canonicalPins = [...options.context.sources, ...options.execution?.datasetPins ?? []];
+  const inputs = await planInputs(config, root, auth.map(entry => entry.source), privateAssets?.root);
+  const canonicalPins = [...options.context.sources, ...options.execution?.datasetPins ?? [],
+    ...options.execution?.authoring.assets?.files ?? []];
   const roots = inputs.map(input => input.source);
   for (let index = 0; index < inputs.length; index++) {
     const input = inputs[index]!;
@@ -67,8 +72,10 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
     for (const other of inputs.slice(index + 1)) if (within(input.source, other.source) || within(other.source, input.source) ||
       within(input.destination, other.destination) || within(other.destination, input.destination)) throw Error("Training inputs overlap");
   }
+  const staging = path.join(privateAssets ? path.dirname(privateAssets.root) : parent,
+    `.spawnfile-training-preparation-${hashJson(output).slice(7, 23)}`);
   const imagePlan = "build" in config.image
-    ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot, path.resolve(options.configPath))
+    ? await planTrainingImage(config.image.build, root, auth.map(entry => entry.source), options.packageRoot, path.resolve(options.configPath), privateAssets ? [privateAssets.root, staging] : undefined)
     : undefined;
   if (options.repairWitness && !options.repairMeasurements) throw Error("A repair witness requires --repair-measurements");
   if (options.repairMeasurements && !imagePlan) throw Error("Measurement repair requires a verifiable image build recipe");
@@ -92,7 +99,6 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
     const values = label.stdout.trim().split("\n").map(value => JSON.parse(value));
     if (label.code !== 0 || values[0] !== repair.witness.manifest.parentImage || values[1] !== repair.witness.manifest.imagePlanDigest) throw Error("Parent image recipe witness is unverified");
   }
-  const staging = path.join(parent, `.spawnfile-training-preparation-${hashJson(output).slice(7, 23)}`);
   const configPath = path.join(staging, "launch.json"), preparationPath = path.join(staging, "mapped.json"), statePath = path.join(staging, "state.json");
   const resume = options.args.includes("--resume");
   let image: string, staged: string[];

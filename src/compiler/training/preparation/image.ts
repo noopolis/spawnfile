@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import type { TrainingDockerProcess } from "../container/process.js";
 import { TRAINING_EXECUTION_CAPABILITY_LABEL } from "../contract.js";
 import type { TrainingImageBuild } from "./contract.js";
-import { assertInputRoot, copySealed, fileIdentity, hashJson, sealFile, sealTree, type SealedFile } from "./files.js";
+import { assertInputRoot, copySealed, fileIdentity, hashJson, sealFile, sealTree, within, type SealedFile } from "./files.js";
 import { bindDaimonParentVerification, resolveTrainingDaimonParent } from "./daimonParent.js";
+import { assertTrainingImageExcludesAssets } from "./assets.js";
 import { normalizeTrainingContext } from "./contextModes.js";
 
 const packageRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -24,17 +25,19 @@ async function packageFiles(root: string, target: string, withDist: boolean, loc
   })) throw Error(`Training package ${target} has unsupported local dependencies; provide a complete registry-locked distribution`);
   return [await sealFile(path.join(root, "package.json"), `${target}/package.json`),
     await sealFile(lockSource, `${target}/package-lock.json`),
-    ...withDist ? await sealTree(path.join(root, "dist"), `${target}/dist`, { ignoreDevelopment: true }) : []];
+    ...withDist ? await sealTree(path.join(root, "dist"), `${target}/dist`, { ignoreDevelopment: true, rejectEvaluatorStorage: true }) : []];
 }
 
 export async function planTrainingImage(build: TrainingImageBuild, root: string, auth: readonly string[], ownRoot = packageRoot,
-  declarationPath = root): Promise<TrainingImagePlan> {
+  declarationPath = root, privateAssetsRoot?: string | readonly string[]): Promise<TrainingImagePlan> {
   const resolve = (value: string) => path.resolve(root, value);
   // Before any Docker call, including --dry-run: the attested Daimon runtime identity
   // and the declared native parent must name one rebuild (see daimonParent.ts).
   const daimonParent = await resolveTrainingDaimonParent(build, declarationPath);
   for (const source of [build.paideia, build.bridge, build.claude, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
+  const protectedRoots = typeof privateAssetsRoot === "string" ? [privateAssetsRoot] : privateAssetsRoot ?? [];
+  await assertTrainingImageExcludesAssets(build, root, protectedRoots, ownRoot);
   const recipe = await readFile(path.join(assets, "Dockerfile"), "utf8");
   // Always override the parent's label: compatibility belongs to this installed integration.
   const capability = build.integration.execution ?? "";
@@ -47,14 +50,17 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
     ...await packageFiles(build.compiler ? resolve(build.compiler) : ownRoot, "compiler", true,
       build.compiler ? path.join(resolve(build.compiler), "package-lock.json") : ownLock),
     ...await packageFiles(resolve(build.claude), "claude", false),
-    ...await sealTree(resolve(build.bridge), "bridge", { ignoreDevelopment: true }),
-    ...await sealTree(resolve(build.integration.source), "integration", { ignoreDevelopment: true }),
-    ...build.bootstrap ? await sealTree(resolve(build.bootstrap), "bootstrap", { ignoreDevelopment: true }) : [],
+    ...await sealTree(resolve(build.bridge), "bridge", { ignoreDevelopment: true, rejectEvaluatorStorage: true }),
+    ...await sealTree(resolve(build.integration.source), "integration", { ignoreDevelopment: true, rejectEvaluatorStorage: true }),
+    ...build.bootstrap ? await sealTree(resolve(build.bootstrap), "bootstrap", { ignoreDevelopment: true, rejectEvaluatorStorage: true }) : [],
     await sealFile(path.join(ownRoot, "runtimes.yaml"), "spawnfile/runtimes.yaml"),
     await sealFile(path.join(ownRoot, "moltnet-releases.json"), "spawnfile/moltnet-releases.json"),
     ...await Promise.all(["runtimes.yaml", "moltnet-releases.json"].map(name =>
       sealFile(path.join(build.compiler ? resolve(build.compiler) : ownRoot, name), `compiler/${name}`)))
   ];
+  if (protectedRoots.some(protectedRoot => files.some(file => within(protectedRoot, file.source)))) {
+    throw Error("Private training assets must not enter image inputs");
+  }
   for (const required of [`integration/${build.integration.entry}`, "bridge/pyproject.toml", "bridge/requirements.lock", "bridge/paideia_dspy/__init__.py", "paideia/dist/src/cli/main.js", "spawnfile/dist/cli/index.js", "compiler/dist/cli/index.js"]) {
     if (!files.some(file => file.destination === required)) throw Error(`Training distribution is missing ${required}`);
   }

@@ -1,4 +1,5 @@
 import type { TrainingDataset, TrainingTarget } from "../../../manifest/index.js";
+import type { TrainingPlan } from "./contract.js";
 import type { CompilePlan, CompilePlanNode, ResolvedAgentNode } from "../../types.js";
 
 export interface TrainingFileSource {
@@ -35,6 +36,8 @@ export interface LoadedTrainingProject {
   targets: LoadedTrainingTarget[];
   datasets: Record<string, LoadedTrainingDataset>;
   graders: Record<string, TrainingFileSource>;
+  selectedAgentId?: string;
+  assets?: NonNullable<TrainingPlan["assets"]>;
 }
 
 export type TrainingAgentNode = CompilePlanNode & { value: ResolvedAgentNode };

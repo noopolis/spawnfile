@@ -46,3 +46,5 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 - `image.build.integration.execution` optionally declares the exact supported authored receipt version. Render and hash its label with the recipe; clear parent capability when absent. Verify the declared label on cache hits and completed builds. Image tests stop at the actual launch gate without fabricating training output; mutation tests live in sibling `execution.mutation.test.ts`.
 
 - Map explicit validation dataset argv alongside train/test before sealing the container handoff. Preparation hook history paths are mapped through the execution receipt, never resolved by a second declaration reader.
+
+- `assets.ts` adds the plan-selected private allowlist as a staged evaluator input, checks byte pins before Docker, and reserves its identity. Image planning rejects any sealed source under that private root.

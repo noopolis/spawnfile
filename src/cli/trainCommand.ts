@@ -22,6 +22,7 @@ export const registerTrainCommand = (
     .option("--agent <id>", "Canonical agent id or unambiguous short name (inferred for one agent)")
     .option("--paideia-command <executable>", "Installed Paideia executable; no shell or automatic install", "paideia")
     .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
+    .option("--training-root <directory>", "Private grader/dataset root mirroring project-relative references")
     .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
     .option("--plan", "Print the resolved training authoring plan without executing training")
     .option("--materialize <example>", "Rewind an authored example into --out without running training")
@@ -36,6 +37,8 @@ export const registerTrainCommand = (
     else command.option(flag, name === "out" ? "Output directory for training or moment materialization" : `Paideia ${name}`);
   }
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
+    const privateLoadOptions = options.trainingRoot === undefined ? undefined
+      : { trainingRoot: options.trainingRoot as string, agent: options.agent as string | undefined };
     if (typeof options.materialize === "string") {
       if (options.plan === true) {
         throw new SpawnfileError("validation_error", "--materialize and --plan are mutually exclusive");
@@ -43,7 +46,7 @@ export const registerTrainCommand = (
       if (typeof options.out !== "string") {
         throw new SpawnfileError("validation_error", "--materialize requires --out");
       }
-      const project = await handlers.loadTrainingProject(inputPath);
+      const project = await handlers.loadTrainingProject(inputPath, privateLoadOptions);
       const plan = handlers.resolveTrainingPlan(project, options.agent as string | undefined, packageVersion);
       const moment = await handlers.materializeTrainingMoment({ plan, project, example: options.materialize,
         historyDir: options.history as string | undefined, out: options.out });
@@ -61,7 +64,8 @@ export const registerTrainCommand = (
     }
     if (options.plan === true) {
       const plan = await handlers.createTrainingPlan(inputPath, {
-        agent: options.agent as string | undefined, packageVersion
+        agent: options.agent as string | undefined, packageVersion,
+        ...(options.trainingRoot === undefined ? {} : { trainingRoot: options.trainingRoot as string })
       });
       streams.stdout(JSON.stringify(plan, null, 2));
       setExitCode(0);
@@ -80,7 +84,7 @@ export const registerTrainCommand = (
     }
     if (options.dryRun === true) args.push("--dry-run");
     if (options.resume === true) args.push("--resume");
-    const project = await handlers.loadTrainingProject(inputPath);
+    const project = await handlers.loadTrainingProject(inputPath, privateLoadOptions);
     const plan = handlers.resolveTrainingPlan(project, options.agent as string | undefined, packageVersion);
     const lowered = plan.targets.length > 0 ? await handlers.lowerTrainingExecution({ project, plan, args,
       trainingConfig: options.trainingConfig as string | undefined, trainingImage: options.trainingImage as string | undefined }) : undefined;

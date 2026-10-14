@@ -12,6 +12,10 @@ const inside = (root: string, file: string): boolean => {
 export const trainingAgents = (project: LoadedTrainingProject): TrainingAgentNode[] =>
   project.compilePlan.nodes.filter((node): node is TrainingAgentNode => node.value.kind === "agent");
 
+/** Agent targets belong to their declaration; team targets apply to document/skill consumers. */
+export const trainingTargetApplies = (kind: "team" | "agent", declaredBy: string, files: readonly string[], agent: TrainingAgentNode): boolean =>
+  kind === "agent" ? declaredBy === agent.id : files.some(file => [...agent.value.docs, ...agent.value.skills].some(entry => entry.sourcePath === file));
+
 const targetFile = (
   file: TrainingTargetFile, target: LoadedTrainingTarget, agents: TrainingAgentNode[]
 ): TrainingPlan["targets"][number]["files"][number] => {
@@ -60,6 +64,8 @@ export const resolveTrainingTarget = (
   project: LoadedTrainingProject, target: LoadedTrainingTarget, selectedId: string
 ): { target: TrainingPlan["targets"][number]; grader: TrainingPlan["graders"][number] } | null => {
   const agents = trainingAgents(project);
+  if (project.selectedAgentId && !trainingTargetApplies(target.kind, target.declaredBy,
+    target.declaration.files, agents.find(agent => agent.id === selectedId)!)) return null;
   const files = target.files.map((file) => targetFile(file, target, agents)).sort((left, right) => lexical(left.path, right.path));
   const declaringNode = project.compilePlan.nodes.find((node) => node.id === target.declaredBy)
     ?? invalidTraining(`Unknown training declaring node ${target.declaredBy}`);
@@ -73,8 +79,8 @@ export const resolveTrainingTarget = (
     : agents.filter((agent) => agent.id === target.declaredBy);
   const { train, validation, test } = target.declaration.datasets;
   let selectedDatasets: TrainingPlan["targets"][number]["datasets"] | undefined;
-  // Resolve every consumer even when the caller selects a different one.
-  for (const agent of checkedAgents) {
+  // Default loads validate every consumer; scoped reloads validate the selected consumer.
+  for (const agent of checkedAgents.filter(agent => !project.selectedAgentId || agent.id === project.selectedAgentId)) {
     const datasets = {
       train: datasetFor(project, target, agent, train),
       validation: validation === undefined ? null : datasetFor(project, target, agent, validation),

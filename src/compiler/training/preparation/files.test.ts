@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, realpath, rm, symlink, truncate, writeFile } from "node
 import path from "node:path";
 import os from "node:os";
 import { afterEach, expect, it } from "vitest";
-import { assertInputRoot, copySealed, exactPath, sealFile, sealTree } from "./files.js";
+import { assertNotEvaluatorStorage, assertInputRoot, copySealed, exactPath, sealFile, sealTree } from "./files.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -37,4 +37,21 @@ it("omits only explicit generated Python test state, preserving dotfiles and exe
   for (const name of [".coverage", "coverage.json", ".pytest_cache/nodeids", ".runtime-policy", "optimizer.py"]) await writeFile(path.join(root, name), "data");
   const files = await sealTree(root, "bridge", { ignoreDevelopment: true });
   expect(files.map(file => file.destination)).toEqual(["bridge/.runtime-policy", "bridge/optimizer.py"]);
+});
+
+
+it.each([".spawnfile-training-preparation-0123456789abcdef", ".spawnfile-training-container-AbCdEf", ".spawn/training"])("rejects reserved %s storage as a public input", async name => {
+  const root = await fixture(), store = path.join(root, name); await mkdir(store, { recursive: true });
+  await writeFile(path.join(store, "execution.json"), "PRIVATE_WAKE_RECEIPT_SENTINEL");
+  expect(() => assertNotEvaluatorStorage(path.join(store, "execution.json"))).toThrow("retained evaluator storage");
+  await expect(sealTree(root, "public", { rejectEvaluatorStorage: true })).rejects.toThrow("retained evaluator storage");
+});
+
+it("keeps other compile outputs and similarly named public directories available", async () => {
+  const root = await fixture();
+  for (const name of [".spawn/container", ".spawn/training-guide", "training", ".spawn-training"]) {
+    await mkdir(path.join(root, name), { recursive: true });
+    await writeFile(path.join(root, name, "public.txt"), "public");
+  }
+  expect(await sealTree(root, "public", { rejectEvaluatorStorage: true })).toHaveLength(4);
 });

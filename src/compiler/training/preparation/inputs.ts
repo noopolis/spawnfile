@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import type { TrainingPreparationConfig } from "./contract.js";
-import { assertInputRoot, copySealed, exactPath, fileIdentity, hashJson, sealFile, sealTree, within, type SealedFile } from "./files.js";
+import { assertInputRoot, assertNotEvaluatorStorage, copySealed, exactPath, fileIdentity, hashJson, sealFile, sealTree, within, type SealedFile } from "./files.js";
 
 const execute = promisify(execFile);
 const git = async (cwd: string, args: string[]) => {
@@ -20,22 +20,28 @@ export interface PlannedInput {
   git?: { revision: string; tree: string; common: string; overlays: SealedFile[]; paths: string[] };
 }
 
-export async function planInputs(config: TrainingPreparationConfig, root: string, auth: string[]): Promise<PlannedInput[]> {
+export async function planInputs(config: TrainingPreparationConfig, root: string, auth: string[], privateAssetsRoot?: string): Promise<PlannedInput[]> {
   return Promise.all(config.inputs.map(async input => {
     const source = await exactPath(path.resolve(root, input.source));
     assertInputRoot(source, auth);
+    const evaluatorInput = input.id === "training-assets" && source === privateAssetsRoot;
+    if (!evaluatorInput) {
+      assertNotEvaluatorStorage(source);
+      if (privateAssetsRoot && (within(source, privateAssetsRoot) || within(privateAssetsRoot, source))) throw Error("Training inputs overlap private assets");
+    }
     if (input.include) {
       const files: SealedFile[] = [];
-      for (const selected of input.include) files.push(...await sealTree(path.join(source, selected), selected, { internalSymlinks: true }));
+      for (const selected of input.include) files.push(...await sealTree(path.join(source, selected), selected, { internalSymlinks: true, rejectEvaluatorStorage: !evaluatorInput }));
       if (new Set(files.map(file => file.destination)).size !== files.length) throw Error("Selected training input paths overlap");
       return { id: input.id, source, destination: input.destination, files, digest: hashJson(fileIdentity(files)) };
     }
-    if (!input.git) return { id: input.id, source, destination: input.destination, digest: hashJson(fileIdentity(await sealTree(source, "input", { ignoreGit: true, internalSymlinks: true }))) };
+    if (!input.git) return { id: input.id, source, destination: input.destination, digest: hashJson(fileIdentity(await sealTree(source, "input", { ignoreGit: true, internalSymlinks: true, rejectEvaluatorStorage: true }))) };
     if ((await git(source, ["rev-parse", "--show-prefix"])).trim()) throw Error("Pinned Git input source must be a repository root");
     const common = await exactPath((await git(source, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim());
     const tree = (await git(source, ["rev-parse", `${input.git.revision}^{tree}`])).trim();
     const entries = (await git(source, ["ls-tree", "-rz", "--full-tree", input.git.revision])).split("\0").filter(Boolean);
     if (!/^[a-f0-9]{40}$/u.test(tree) || entries.some(entry => !/^(100644|100755|120000) blob [a-f0-9]{40}\t/u.test(entry))) throw Error("Pinned Git inputs require regular files or confined links; submodules are unsupported");
+    for (const entry of entries) assertNotEvaluatorStorage(path.join(source, entry.slice(entry.indexOf("\t") + 1)));
     for (const entry of entries.filter(entry => entry.startsWith("120000"))) {
       const split = entry.indexOf("\t"), file = entry.slice(split + 1), object = entry.slice(0, split).split(" ")[2]!;
       const link = (await git(source, ["cat-file", "blob", object])).trim();
@@ -45,6 +51,8 @@ export async function planInputs(config: TrainingPreparationConfig, root: string
     const overlays: SealedFile[] = [];
     for (const overlay of input.git.overlays) {
       const overlaySource = path.resolve(root, overlay.source); assertInputRoot(overlaySource, auth);
+      assertNotEvaluatorStorage(overlaySource);
+      if (privateAssetsRoot && within(privateAssetsRoot, overlaySource)) throw Error("Private training assets must not enter Git overlays");
       const file = await sealFile(overlaySource, overlay.path);
       if (file.sha256 !== overlay.sha256 || overlays.some(previous => previous.destination === file.destination)) throw Error("Git overlay digest mismatch or duplicate destination");
       overlays.push(file);

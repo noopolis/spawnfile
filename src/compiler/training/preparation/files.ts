@@ -5,6 +5,14 @@ import os from "node:os";
 import path from "node:path";
 
 export const within = (root: string, file: string): boolean => file === root || file.startsWith(root + path.sep);
+/** Training outputs, preparations and launch receipts reserve evaluator storage across runs. */
+export function assertNotEvaluatorStorage(source: string): void {
+  const parts = path.resolve(source).split(path.sep);
+  const retainedOutput = parts.some((part, index) => part === ".spawn" && parts[index + 1] === "training");
+  if (retainedOutput || parts.some(part => /^\.spawnfile-training-(?:preparation-[a-f0-9]{16}$|container-)/u.test(part))) {
+    throw Error("Private training assets in retained evaluator storage must not enter image inputs or public inputs");
+  }
+}
 export const hashJson = (value: unknown): string => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 export interface SealedFile { source: string; destination: string; sha256: string; mode: number; size: number }
 const ignored = new Set(["node_modules", ".venv", ".git", "__pycache__", "coverage", "coverage.json", ".coverage", ".pytest_cache", ".runtime", "AGENTS.md", "CLAUDE.md"]);
@@ -38,11 +46,12 @@ export async function sealFile(source: string, destination: string): Promise<Sea
 }
 
 /** Only explicitly selected trees are traversed. Symlinks never enter Docker context. */
-export async function sealTree(source: string, destination: string, options: { ignoreDevelopment?: boolean; ignoreGit?: boolean; internalSymlinks?: boolean } = {}): Promise<SealedFile[]> {
+export async function trainingTreeFiles(source: string, destination: string, options: { ignoreDevelopment?: boolean; ignoreGit?: boolean; internalSymlinks?: boolean; rejectEvaluatorStorage?: boolean } = {}): Promise<{ source: string; destination: string }[]> {
   await exactPath(source);
-  const files: SealedFile[] = [];
+  const files: { source: string; destination: string }[] = [];
   const walk = async (root: string, target: string, depth: number): Promise<void> => {
     if (depth > 32 || files.length > 10000) throw Error("Training source tree exceeds bounds");
+    if (options.rejectEvaluatorStorage) assertNotEvaluatorStorage(root);
     let stat = await lstat(root);
     if (stat.isSymbolicLink()) {
       const actual = await realpath(root);
@@ -55,10 +64,17 @@ export async function sealTree(source: string, destination: string, options: { i
         if (options.ignoreDevelopment && (ignored.has(entry) || /(?:\.test\.[cm]?[jt]s|_test\.py|\.pyc)$/u.test(entry))) continue;
         await walk(path.join(root, entry), path.posix.join(target, entry), depth + 1);
       }
-    } else files.push(await sealFile(root, target));
+    } else files.push({ source: root, destination: target });
   };
   await walk(source, destination, 0);
-  if (files.length > 10000 || files.reduce((sum, file) => sum + file.size, 0) > 1_073_741_824) throw Error("Training source tree exceeds bounds");
+  if (files.length > 10000) throw Error("Training source tree exceeds bounds");
+  return files;
+}
+
+export async function sealTree(source: string, destination: string, options: Parameters<typeof trainingTreeFiles>[2] = {}): Promise<SealedFile[]> {
+  const files: SealedFile[] = [];
+  for (const file of await trainingTreeFiles(source, destination, options)) files.push(await sealFile(file.source, file.destination));
+  if (files.reduce((sum, file) => sum + file.size, 0) > 1_073_741_824) throw Error("Training source tree exceeds bounds");
   return files;
 }
 

@@ -30,6 +30,9 @@ export interface LaunchTrainingContainerOptions {
 const inspectFormat = "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}";
 export const launchTrainingContainer = async (options: LaunchTrainingContainerOptions): Promise<number> => {
   if (options.signal?.aborted) return 130;
+  if (options.execution?.authoring.assets && !options.preparationPath) {
+    throw Error("Private training assets require a staged preparation receipt");
+  }
   const image = trainingImageSchema.parse(options.image);
   const uid = process.getuid?.(), gid = process.getgid?.();
   if (uid === undefined || gid === undefined || uid === 0) throw Error("Training requires an explicit non-root local user");
@@ -47,7 +50,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     return path.posix.join(binding.destination, path.relative(binding.source, absolute).split(path.sep).join("/"));
   }) : undefined;
   if (options.execution) await verifyCanonicalPins(prepared.config.inputs.map((input, index) =>
-    ({ ...input, id: String(index), digest: "" })), options.execution.datasetPins, prepared.config.inputs.map(input => input.source));
+    ({ ...input, id: String(index), digest: "" })), [...options.execution.datasetPins, ...options.execution.authoring.assets?.files ?? []], prepared.config.inputs.map(input => input.source));
   // D2: the training Grok login is a dedicated one. Refuse the developer's desktop leaf before Docker ever sees it.
   if (prepared.config.broker) {
     assertNotDesktopGrokAuth(prepared.config.broker.bootstrap);
@@ -96,7 +99,9 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
         throw Error(`Authored training requires an image implementing --spawnfile-execution ${TRAINING_EXECUTION_FILE} and labelled ${TRAINING_EXECUTION_CAPABILITY_LABEL}=${TRAINING_EXECUTION_VERSION}; legacy Paideia datasets are incompatible`);
       }
     }
-    privateRoot = await realpath(await mkdtemp(path.join(path.dirname(prepared.config.output.source), ".spawnfile-training-container-")));
+    const receiptParent = options.execution?.authoring.assets
+      ? path.dirname(options.execution.authoring.assets.root) : path.dirname(prepared.config.output.source);
+    privateRoot = await realpath(await mkdtemp(path.join(receiptParent, ".spawnfile-training-container-")));
     await chmod(privateRoot, 0o700);
     const contextFile = path.join(privateRoot, "context.json");
     await writeFile(contextFile, JSON.stringify(prepared.context), { mode: 0o444, flag: "wx" });

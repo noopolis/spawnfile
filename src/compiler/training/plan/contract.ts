@@ -8,6 +8,10 @@ const text = z.string().min(1);
 const absolutePath = text.regex(/^(?:\/|[A-Za-z]:[\\/])/u);
 const relativePath = text.regex(/^(?!\/)[^\\]+$/u);
 const source = z.object({ sourcePath: absolutePath, path: relativePath }).strict();
+export const trainingAssetsSchema = z.object({
+  root: absolutePath,
+  files: z.array(source.extend({ sha256: text.regex(/^sha256:[a-f0-9]{64}$/u) }).strict()).min(1)
+}).strict();
 const reference = z.object({ id: text, declaredBy: text }).strict();
 
 export const trainingPlanDatasetSchema = source.extend({
@@ -29,6 +33,7 @@ export const trainingPlanSchema = z.object({
   producer: z.object({ package: z.literal("spawnfile"), version: text }).strict(),
   project: z.object({ root: absolutePath, manifest: absolutePath }).strict(),
   agent: z.object({ id: text, name: text }).strict(),
+  assets: trainingAssetsSchema.optional(),
   preparation: z.object({ hook: text, history: absolutePath.optional() }).strict().optional(),
   record: z.object({
     keep: text.regex(/^[1-9][0-9]*[mhd]$/u).nullable(),

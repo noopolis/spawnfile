@@ -12,6 +12,8 @@ import {
 import { parseManifest } from "../../../manifest/parseManifest.js";
 import { buildCompilePlan } from "../../buildCompilePlan.js";
 import { invalidTraining } from "./references.js";
+import { selectTrainingAgent } from "../selection.js";
+import { trainingAgents, trainingTargetApplies } from "./targets.js";
 import { resolveTrainingPlan } from "./resolve.js";
 import type { TrainingPlan } from "./contract.js";
 import type { LoadedTrainingProject, LoadedTrainingTarget, TrainingFileSource, TrainingTargetFile } from "./types.js";
@@ -117,26 +119,61 @@ const loadTargetFile = async (
   return result;
 };
 
-/** Local reads only. Loading preserves complete declarations; resolution projects public identities. */
-export const loadTrainingProject = async (inputPath: string): Promise<LoadedTrainingProject> => {
+/** Local reads only. An explicit private-root agent scope limits evaluator asset reads. */
+export interface LoadTrainingProjectOptions { trainingRoot?: string; agent?: string }
+
+export const loadTrainingProject = async (inputPath: string, options: LoadTrainingProjectOptions = {}): Promise<LoadedTrainingProject> => {
   let manifest: string;
   try { manifest = await realpath(getManifestPath(inputPath)); }
   catch (error) { return invalidTraining(`Unable to load training project ${inputPath}: ${reason(error)}`); }
+  const projectRoot = path.dirname(manifest);
+  let trainingRoot: string | undefined;
+  if (options.trainingRoot !== undefined) {
+    trainingRoot = path.resolve(options.trainingRoot);
+    const canonical = await realpath(trainingRoot).catch((error: unknown) =>
+      invalidTraining(`Invalid training assets root: ${reason(error)}`));
+    if (canonical !== trainingRoot || !(await lstat(trainingRoot)).isDirectory()) {
+      invalidTraining("Training assets root must be a canonical directory without symlink aliases");
+    }
+    if (projectRoot === trainingRoot || inside(projectRoot, trainingRoot) || inside(trainingRoot, projectRoot)) {
+      invalidTraining("Training assets root must be disjoint from the project root");
+    }
+  }
   await validateTrainingTargetSources(manifest);
   const compilePlan = await buildCompilePlan(manifest);
   const root = path.dirname(compilePlan.root);
   const project: LoadedTrainingProject = { root, manifest, compilePlan, targets: [], datasets: {}, graders: {} };
+  const selected = trainingRoot && options.agent !== undefined ? selectTrainingAgent(trainingAgents(project), options.agent) : undefined;
+  if (selected) project.selectedAgentId = selected.id;
+  const assets: NonNullable<LoadedTrainingProject["assets"]>["files"] = [];
+  const loadSource = async (file: string, declaredBy: string): Promise<TrainingFileSource> => {
+    if (!trainingRoot) return loadDataFileSource(root, file, declaredBy);
+    if (!inside(root, file)) invalidTraining(`Training asset reference must be inside project root: ${file}`);
+    const relative = path.relative(root, file);
+    const mapped = path.join(trainingRoot, relative);
+    const loaded = await loadDataFileSource(trainingRoot, mapped, declaredBy);
+    if (await realpath(mapped) !== mapped) invalidTraining(`Training asset must not use symlink aliases: ${mapped}`);
+    return loaded;
+  };
+  const pin = (file: TrainingFileSource, sha256: string): void => {
+    if (trainingRoot && !assets.some(asset => asset.sourcePath === file.sourcePath)) assets.push({ ...file, sha256 });
+  };
   for (const node of compilePlan.nodes) {
     const training = node.value.training;
     if (!training) continue;
     const manifestPath = node.value.kind === "agent" ? node.value.sourcePath ?? node.value.source : node.value.source;
     const directory = path.dirname(manifestPath);
     const realDirectory = await realpath(directory);
-    for (const grader of Object.values(training.graders)) {
+    const declarations = training.targets.filter(target => !selected || trainingTargetApplies(node.kind, node.id, target.files, selected));
+    const neededGraders = new Set(declarations.map(target => target.grader));
+    for (const [name, grader] of Object.entries(training.graders)) {
+      if (selected && node.id !== selected.id && !neededGraders.has(name)) continue;
       if (project.graders[grader.sourcePath]) continue;
-      project.graders[grader.sourcePath] = await loadDataFileSource(root, grader.sourcePath, grader.declaredBy);
+      const loaded = await loadSource(grader.sourcePath, grader.declaredBy);
+      project.graders[grader.sourcePath] = loaded;
+      if (trainingRoot) pin(loaded, `sha256:${createHash("sha256").update(await readFile(loaded.sourcePath)).digest("hex")}`);
     }
-    for (const declaration of training.targets) {
+    for (const declaration of declarations) {
       const target: LoadedTrainingTarget = {
         declaredBy: node.id, kind: node.kind, directory, realDirectory, declaration,
         files: await Promise.all(declaration.files.map((file) => loadTargetFile(root, directory, realDirectory, file)))
@@ -144,19 +181,22 @@ export const loadTrainingProject = async (inputPath: string): Promise<LoadedTrai
       project.targets.push(target);
       for (const file of Object.values(declaration.datasets)) {
         if (!file || project.datasets[file]) continue;
-        project.datasets[file] = {
-          ...await loadDataFileSource(root, file, node.id), ...await readYaml(file, trainingDatasetSchema, node.id)
-        };
+        const loaded = await loadSource(file, node.id);
+        const dataset = { ...loaded, ...await readYaml(loaded.sourcePath, trainingDatasetSchema, node.id) };
+        project.datasets[file] = dataset;
+        project.datasets[loaded.sourcePath] = dataset;
+        pin(loaded, dataset.sha256);
       }
     }
   }
+  if (trainingRoot && assets.length) project.assets = { root: trainingRoot, files: assets };
   return project;
 };
 
-export interface CreateTrainingPlanOptions {
+export interface CreateTrainingPlanOptions extends LoadTrainingProjectOptions {
   agent?: string;
   packageVersion: string;
 }
 
 export const createTrainingPlan = async (inputPath: string, options: CreateTrainingPlanOptions): Promise<TrainingPlan> =>
-  resolveTrainingPlan(await loadTrainingProject(inputPath), options.agent, options.packageVersion);
+  resolveTrainingPlan(await loadTrainingProject(inputPath, options), options.agent, options.packageVersion);

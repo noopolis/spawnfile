@@ -101,7 +101,8 @@ Target, dataset, and grader filesystem checks occur ONLY during training-plan lo
 ordinary compilation validates training structure without requiring those files to exist.
 
 Dataset and grader paths MUST name existing regular files whose lexical paths and realpaths
-are inside the project root (the compiled root manifest's directory).
+are inside the project root (the compiled root manifest's directory), unless
+an explicit local training-assets root is selected as described below.
 Dataset YAML MUST reject duplicate keys and unknown fields at every level.
 Dataset files use one strict YAML shape for all three roles:
 
@@ -132,7 +133,8 @@ reports the matching item's declaring node ID. Team-target datasets MUST resolve
 EVERY consumer; one consumer's failure rejects the plan. Per-agent plans report the
 selected consumer's resolved IDs. There is no dataset `files` field or environments file.
 
-The grader file's format is specified by the grader phase; this phase only requires that the path names an existing regular file inside the project.
+The grader file's format is specified by the grader phase. Default plan loading checks
+only that it names an existing contained regular file; private-root loading also pins its bytes.
 
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer --plan
@@ -260,6 +262,62 @@ native-parent label: the installed integration cannot inherit another entrypoint
 compatibility. This declaration is the author's assertion of implementation, not a
 runtime conformance test. Authored launch still checks the immutable image label.
 Dry-run reports the plan only and does not verify an image's capability.
+
+An explicit `spawnfile train <project> --training-root <directory>` selects a local,
+private grader/dataset root **before** loading the authoring plan. The exported
+`loadTrainingProject` and `createTrainingPlan` APIs accept the same `trainingRoot`
+option. The root MUST be a canonical directory disjoint from the public project;
+root aliases, file aliases and symlink escapes MUST fail. Each declared grader and
+train/validation/test reference maps from its resolved project-relative path to
+that same relative path under the private root. For example, an agent-declared
+`training/train.yaml` in `agents/writer` maps to
+`<training-root>/agents/writer/training/train.yaml`. References escaping the
+public project's logical tree MUST still fail. There is no public-file fallback.
+Editable target and canonical source containment MUST remain unchanged.
+
+The optional plan `assets: {root, files: [{sourcePath, path, sha256}]}` contains only
+selected declared graders/datasets. It pins the exact dataset bytes parsed and the
+opaque grader bytes read; undeclared files and grader sidecars are not admitted.
+With no root option, the plan shape and grader-read behavior remain unchanged.
+`--plan`, authored `--dry-run`, and `--materialize` accept this option and perform
+local reads only. The root option is not forwarded as an arbitrary Paideia flag.
+
+Actual private-asset execution MUST use a v2/v4 preparation declaration, which
+stages the allowlist as the reserved `training-assets` input at
+`/run/training/inputs/training-assets`. It MUST NOT bind or copy the whole private
+root. Private evaluator staging MUST be outside the public project tree, in a
+protected preparation directory beside the private root, so broad public-project
+bundle walks cannot include it. Its parent must be writable for actual execution.
+Launch context and execution receipts containing private examples MUST be staged
+inside that protected preparation directory, including when container closure
+cannot be verified and cleanup retains them.
+Image planning and authored dry-run MUST share retained-storage exclusion checks.
+The `.spawn/training`, `.spawnfile-training-preparation-<16 hex>` and
+`.spawnfile-training-container-` directory namespaces are reserved for evaluator
+storage, including retained moment lowering reports from all-refused runs; image walks and public
+input sources MUST reject them, including when no private root is supplied.
+Stage and launch MUST verify all asset hashes; execution path projection MUST
+retain them. Exact resume MUST bind both the allowlist and grader/dataset byte pins
+and verify persisted staged bytes. A direct v1/v4 launch declaration MUST reject
+private assets because it has no allowlist staging lifecycle. Other preparation
+input roots MUST NOT overlap the private root. Git overlay sources MUST NOT read
+from that root or retained evaluator storage. Image inputs, including integration,
+bootstrap, bridge and package distributions, MUST NOT contain that root or any of
+its files; reject overlaps before any image build, including on dry-run and resume.
+The evaluator storage sits under the existing sealed-input root denied to broker
+subjects. It is never a workspace resource or an image layer.
+
+Image integrations consume the mapped execution receipt's `assets` paths. When
+reloading the public project for moment lowering, they MUST pass
+`{trainingRoot: execution.authoring.assets.root, agent: execution.authoring.agent.id}` to `loadTrainingProject` and use
+the mapped authored plan. An explicit agent with a private root scopes grader and
+dataset reads to that agent's targets (including consumed shared targets), so the
+selected allowlist suffices; a differently selected resolver MUST reject that load.
+Loading without a private root or explicit selection keeps complete declaration
+loading. They MUST NOT copy grading assets into the subject tree.
+An existing image's contents and an integration's handling of evaluator storage
+remain its author's responsibility; the host does not inspect arbitrary image
+layers or execute its entrypoint during planning.
 
 `datasetPins` binds every authored train/validation/test source path to the SHA-256
 of the exact bytes parsed during plan loading, including full override declarations.
@@ -1372,6 +1430,51 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
       "required": [
         "id",
         "name"
+      ],
+      "additionalProperties": false
+    },
+    "assets": {
+      "type": "object",
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+        },
+        "files": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sourcePath": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^(?!\\/)[^\\\\]+$"
+              },
+              "sha256": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "sourcePath",
+              "path",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "root",
+        "files"
       ],
       "additionalProperties": false
     },

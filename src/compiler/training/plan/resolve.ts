@@ -50,6 +50,7 @@ export const resolveTrainingPlan = (
 ): TrainingPlan => {
   const agents = trainingAgents(project);
   const selected = selectTrainingAgent(agents, agentId);
+  if (project.selectedAgentId && project.selectedAgentId !== selected.id) invalidTraining("Loaded training asset scope does not match selected agent");
 
   const graders = Object.entries(selected.value.training?.graders ?? {})
     .map(([name, grader]) => planGrader(project, name, grader));
@@ -63,11 +64,16 @@ export const resolveTrainingPlan = (
   const uniqueGraders = [...new Map(graders.map((grader) => [JSON.stringify(sortKeys(grader)), grader])).values()];
   uniqueGraders.sort((left, right) => lexical(`${left.name}:${left.declaredBy}:${left.path}`, `${right.name}:${right.declaredBy}:${right.path}`));
   targets.sort((left, right) => lexical(JSON.stringify(sortKeys(left)), JSON.stringify(sortKeys(right))));
+  const selectedFiles = new Set([...uniqueGraders.map(grader => grader.sourcePath),
+    ...targets.flatMap(target => Object.values(target.datasets).flatMap(dataset => dataset ? [dataset.sourcePath] : []))]);
+  const assets = project.assets ? { root: project.assets.root,
+    files: project.assets.files.filter(file => selectedFiles.has(file.sourcePath)).sort((left, right) => lexical(left.path, right.path)) } : undefined;
   const plan = trainingPlanSchema.parse({
     version: TRAINING_PLAN_VERSION,
     producer: { package: "spawnfile", version: producerVersion },
     project: { root: project.root, manifest: project.manifest },
     agent: { id: selected.id, name: selected.value.name },
+    ...(assets?.files.length ? { assets } : {}),
     ...(selected.value.training?.preparation ? { preparation: selected.value.training.preparation } : {}),
     record: recordFor(project, selected), optimizer: optimizerFor(selected, targets.length > 0),
     graders: uniqueGraders, targets

@@ -2,7 +2,7 @@
 
 - `contract.ts` defines the strict public `spawnfile.training-plan.v1` contract and JSON Schema.
 - `types.ts` defines the loaded project, parsed datasets, grader file references, and filesystem facts.
-- `load.ts` is the only training-file I/O boundary: target preflight before compiler source reads, compile-graph resolution, dataset YAML reads, and ownership facts. Dataset and grader paths must be regular files lexically and physically inside the project root; grader contents are never read.
+- `load.ts` is the only training-file I/O boundary: target preflight before compiler source reads, compile-graph resolution, dataset YAML reads, and ownership facts. Dataset and grader paths must be regular files lexically and physically inside the project root; grader contents are never read by default. An explicit disjoint trainingRoot maps project-relative data references to a private allowlist and pins their bytes.
 - `load.targetSources.test.ts` preserves consumed-target diagnostics and compile/plan validation boundaries.
 - `load.compileOutput.test.ts` compares every emitted compile file and report byte with and without non-recording training declarations; recording reports are tested in the compiler.
 - `resolve.ts` selects a canonical agent by exact ID or unambiguous short name and builds a deterministic plan without I/O or a clock.
@@ -21,3 +21,5 @@ Keep modules below 400 lines, use named exports, and keep filesystem calls in `l
 - Dataset loading hashes the same buffer it parses; execution consumes these internal pins without changing the public authoring-plan schema.
 
 - Optional preparation hook names inherit through direct membership; declaration-relative history paths resolve once and remain optional in the public plan.
+
+- Optional plan assets carry only selected grader/dataset references and digests. Editable target containment remains project-only.

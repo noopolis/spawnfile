@@ -1,4 +1,4 @@
-import { readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
@@ -7,9 +7,13 @@ import { TRAINING_EXECUTION_CAPABILITY_LABEL, TRAINING_EXECUTION_VERSION } from 
 import { launchTrainingContainer } from "../container/launch.js";
 import { prepareTraining } from "./prepare.js";
 import type { TrainingExecution } from "../execution.js";
+import { lowerTrainingMoments } from "../moments.js";
+import { loadTrainingProject, resolveTrainingPlan } from "../plan/index.js";
+import { agentManifest, cleanTrainingProjects, dataFiles, example, trainingProject, writeTrainingFile } from "../plan/fixtures.test-helper.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(cleanTrainingProjects);
 async function fixture() { const f = await preparationFixture(); roots.push(f.root); if (!("build" in f.config.image)) throw Error("build expected");
   return { ...f, build: f.config.image.build, own: path.join(f.root, "own") }; }
 
@@ -135,4 +139,53 @@ it("carries the packaged build declaration through preparation to the authored l
     expect(failure?.message).toContain(declared ? "gate reached" : "requires an image implementing --spawnfile-execution");
     expect(docker.calls.filter(args => args[2] === "build")).toHaveLength(1);
   }
+});
+
+
+it.each(["bootstrap", "integration", "bridge", "paideia", "compiler", "own"])("rejects retained evaluator directories nested under the %s image tree without a current private root", async source => {
+  const f = await fixture();
+  const relative = source === "own" ? "own/dist" : source === "paideia" ? "paideia/dist" : source;
+  if (source === "compiler") {
+    f.build.compiler = "own";
+  }
+  const tree = source === "compiler" ? "own/dist" : relative;
+  await f.put(`${tree}/.spawnfile-training-preparation-0123456789abcdef/training-assets/grader.yaml`, "private retained bytes");
+  const refusal = await planTrainingImage(f.build, f.root, [], f.own).then(() => undefined, (error: Error) => error);
+  expect(refusal?.message, "nested retained evaluator exclusion guarantee").toContain("retained evaluator storage");
+});
+
+
+it("rejects a retained launch receipt nested in a broad image source without a private root", async () => {
+  const f = await fixture();
+  await f.put("bootstrap/.spawnfile-training-container-AbCdEf/execution.json", "PRIVATE_WAKE_RECEIPT_SENTINEL");
+  const refusal = await planTrainingImage(f.build, f.root, [], f.own).then(() => undefined, (error: Error) => error);
+  expect(refusal?.message, "launch receipt exclusion guarantee").toContain("retained evaluator storage");
+});
+
+it.each([false, true])("rejects retained lowered private examples with allRefused=%s", async allRefused => {
+  const f = await fixture(), sentinel = "PRIVATE_LOWERED_WAKE_SENTINEL";
+  const privateRoot = await trainingProject({ ...dataFiles,
+    "training/train.yaml": { examples: [{ ...example, wake: { ...example.wake, text: sentinel } }] },
+    "training/test.yaml": { examples: [{ ...example, id: "held-out", wake: { ...example.wake, text: sentinel } }] } });
+  const publicRoot = path.join(f.root, "bootstrap");
+  await writeTrainingFile(publicRoot, "Spawnfile", agentManifest());
+  await writeTrainingFile(publicRoot, "AGENTS.md", "Public editable instructions");
+  const project = await loadTrainingProject(publicRoot, { trainingRoot: privateRoot, agent: "writer" });
+  const plan = resolveTrainingPlan(project, "writer", "test");
+  const run = path.join(publicRoot, ".spawn/training", encodeURIComponent(plan.agent.id), "previous-run");
+  await mkdir(run, { recursive: true });
+  const out = path.join(run, "lowered");
+  const result = await lowerTrainingMoments({ project, plan, out, prepareCase: async () => {
+    if (allRefused) throw Error("Private case refused");
+    return { checks: [{ id: "accepted", eval: "json-schema", input: "output", schema: { type: "string" } }] };
+  } }).catch((error: Error) => error);
+  expect(result instanceof Error).toBe(allRefused);
+  if (result instanceof Error) expect(result.message).toContain("No executable train moments");
+  const report = JSON.parse(await readFile(path.join(out, "lowering.json"), "utf8"));
+  expect(report.entries).toHaveLength(2);
+  expect(report.entries.every((entry: { wake: { text: string }; status: string }) =>
+    entry.wake.text === sentinel && entry.status === (allRefused ? "refused" : "materialized"))).toBe(true);
+  // A later run has no current private-root hint; the retained output must protect itself.
+  const refusal = await planTrainingImage(f.build, f.root, [], f.own).then(() => undefined, (error: Error) => error);
+  expect(refusal?.message, "retained lowered output exclusion guarantee").toContain("retained evaluator storage");
 });
