@@ -7,3 +7,4 @@ export { createOllamaInference, type OllamaInferenceOptions } from './ollama/ind
 export { validateInferenceSchema, validateInferenceResponse } from './response-schema.js';
 export { captureInferenceDiagnostic } from './diagnostic.js';
 export { assertModelRequestAdmission } from './request-cap.js';
+export { budgetEvaluatorInference, typeSafeEvaluatorEnvironment } from './evaluator/index.js';

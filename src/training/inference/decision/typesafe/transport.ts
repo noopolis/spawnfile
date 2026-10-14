@@ -1,3 +1,5 @@
+import { assertModelRequestAdmission } from '../../request-cap.js';
+import { reserveEvaluatorRequest, typeSafeEvaluatorEnvironment } from '../../evaluator/index.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import type { DecisionRequestReceipt, DecisionSpendBudget, DecisionResult } from '../../../contracts/grading.js';
@@ -24,11 +26,16 @@ export function createDecisionSpendBudget(maxUsd?: number): DecisionSpendBudget 
 }
 
 export function typeSafeTransport(options: TypeSafeTransportOptions) {
-  const key = (options.env ?? process.env).TYPESAFE_API_KEY;
+  assertModelRequestAdmission('typesafe', 'decisions', { purpose: 'decisions', model: options.model });
+  const key = (typeSafeEvaluatorEnvironment() ?? options.env ?? process.env).TYPESAFE_API_KEY;
   if (!key?.trim()) throw new Error('TypeSafe requires TYPESAFE_API_KEY');
   let endpoint: URL;
   try { endpoint = new URL(options.endpoint ?? TYPESAFE_ENDPOINT); }
   catch { throw new Error('Invalid TypeSafe endpoint'); }
+  const evaluatorCapped = process.env.PAIDEIA_MODEL_REQUEST_CAP === 'broker' || process.env.PAIDEIA_EVALUATOR_ROUTES_FILE !== undefined;
+  if (evaluatorCapped && endpoint.href !== TYPESAFE_ENDPOINT) {
+    throw new Error('Capped TypeSafe evaluator requires the declared hosted endpoint');
+  }
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password ||
     endpoint.search || endpoint.hash || endpoint.href.includes(key)) throw new Error('Invalid TypeSafe endpoint');
   if (!/^jev-\d+\.\d+\.\d+$/.test(options.model) || options.model.includes(key)) throw new Error('TypeSafe requires a pinned versioned model');
@@ -61,7 +68,9 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
         for (let attempt = 0; attempt < attempts; attempt++) {
           check(signal);
           if (options.conservativeSpend && budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd > budget.maxUsd) return { reason: 'spend cap', failureCause: 'spend-cap' };
-          const receipt: DecisionRequestReceipt = { requestId: randomUUID(), billing: 'api', model: options.model, endpoint: endpoint.href,
+          const admission = evaluatorCapped
+            ? reserveEvaluatorRequest('typesafe', 'decisions', options.model, estimate) : undefined;
+          const receipt: DecisionRequestReceipt = { requestId: admission?.id ?? randomUUID(), billing: 'api', model: options.model, endpoint: endpoint.href,
             inputTokens: null, outputTokens: null, usd: null, estimatedInputTokens: tokens, estimatedUsd: estimate,
             latencyMs: 0, status: null };
           const start = performance.now();
@@ -109,6 +118,7 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
             receipt.latencyMs = performance.now() - start;
             receipts.push(receipt);
             collector?.push({ ...receipt });
+            admission?.finish(receipt.status !== null && receipt.status >= 200 && receipt.status < 300 ? 'completed' : 'failed', receipt);
           }
           if (attempt + 1 === attempts) throw new Error('TypeSafe infrastructure failure: retry attempts exhausted');
           try { await delay(base * 2 ** attempt * (1 + Math.random()), undefined, { signal }); }
