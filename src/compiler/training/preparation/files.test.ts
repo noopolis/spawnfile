@@ -16,12 +16,14 @@ it("rejects protected roots, credential containment and leaf aliases", async () 
   await expect(sealFile(root, "root")).rejects.toThrow("regular file");
   await truncate(path.join(root, "file"), 536870913); await expect(sealFile(path.join(root, "file"), "file")).rejects.toThrow("512 MiB");
 });
-it("preserves confined documentation links but rejects escaping, cyclic and deep trees", async () => {
+it("preserves confined documentation links without traversing directory cycles, and rejects escaping and deep trees", async () => {
   const root = await fixture(); await writeFile(path.join(root, "AGENTS.md"), "guide"); await symlink("AGENTS.md", path.join(root, "CLAUDE.md"));
   expect(await sealTree(root, "input", { internalSymlinks: true })).toHaveLength(2);
   await expect(sealTree(root, "image")).rejects.toThrow("symlinks");
   await symlink("../", path.join(root, "escape")); await expect(sealTree(root, "input", { internalSymlinks: true })).rejects.toThrow("symlinks"); await rm(path.join(root, "escape"));
-  await symlink(".", path.join(root, "cycle")); await expect(sealTree(root, "input", { internalSymlinks: true })).rejects.toThrow("bounds"); await rm(path.join(root, "cycle"));
+  await symlink(".", path.join(root, "cycle"));
+  expect(await sealTree(root, "input", { internalSymlinks: true })).toHaveLength(3);
+  await rm(path.join(root, "cycle"));
   let nested = root; for (let index = 0; index < 34; index++) { nested = path.join(nested, "nested"); await mkdir(nested); }
   await expect(sealTree(root, "input", { ignoreDevelopment: true })).rejects.toThrow("bounds");
 });
