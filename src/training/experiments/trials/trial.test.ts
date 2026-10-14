@@ -49,6 +49,8 @@ describe('native trial lifecycle', () => {
     task.options.record.outputs = { article: 'article.json' };
     const first = await runTrial(task.options); const second = await runTrial({ ...task.options, id: 'second' });
     expect(first.status).toBe('pass'); expect(first.execution).toBe('completed');
+    expect(first.durationMs).toBeGreaterThan(0);
+    expect(first.subject).toEqual({ adapterId: task.options.adapter.id, requestedModel: task.options.model, isolation: task.options.adapter.capabilities.isolation });
     expect(first.snapshot.events).toHaveLength(1); expect(first.snapshot.artifacts.article!.value).toEqual({ body: 'Filed' });
     expect(first.paths.workspace).not.toBe(second.paths.workspace);
     expect(task.journal.filter(row => row.type === 'trial.completed')).toHaveLength(2);

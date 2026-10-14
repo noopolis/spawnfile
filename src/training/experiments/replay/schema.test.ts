@@ -1,3 +1,6 @@
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { snapshotCandidate } from '../../candidates/index.js';
 import { expect, test } from 'vitest';
 import type { JudgeCall } from '../../contracts/evaluation.js';
 import type { Usage } from '../../contracts/execution.js';
@@ -123,4 +126,31 @@ test('replay preserves typed tool refusal on persisted grading calls', async () 
   expect(trialReportSchema.parse(JSON.parse(JSON.stringify(report))).evaluation.judgeCalls).toEqual([refused]);
   expect(() => trialReportSchema.parse({ ...report, evaluation: { ...report.evaluation,
     judgeCalls: [{ ...refused, failureDetail: 'SECRET' }] } })).toThrow();
+});
+
+
+test('replay retains host durations and declared subject isolation without inventing them in legacy reports', async () => {
+  const { report } = await fixture();
+  report.durationMs = 123.5;
+  report.subject = { adapterId: 'native', requestedModel: 'requested-alias', isolation: 'declared isolation' };
+  expect(trialReportSchema.parse(report)).toMatchObject({ durationMs: 123.5, subject: report.subject });
+  expect(() => trialReportSchema.parse({ ...report, durationMs: -1 })).toThrow();
+  delete report.durationMs; delete report.subject;
+  expect(trialReportSchema.parse(report).durationMs).toBeUndefined();
+  expect(trialReportSchema.parse(report).subject).toBeUndefined();
+});
+
+
+test('replay retains valid evaluated manifests and rounds, rejecting altered identities or sealed attribution', async () => {
+  const { report, runRoot } = await fixture();
+  await writeFile(join(runRoot, 'instructions.md'), 'Keep the original policy.');
+  const candidate = await snapshotCandidate({ sourceRoot: runRoot, resources: [{ id: 'instructions', sourcePath: 'instructions.md',
+    destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' }] });
+  report.candidateId = candidate.id; report.candidate = candidate; report.round = 2;
+  expect(trialReportSchema.parse(JSON.parse(JSON.stringify(report)))).toMatchObject({ candidate, round: 2 });
+  expect(() => trialReportSchema.parse({ ...report, candidateId: 'other' })).toThrow('identity mismatch');
+  expect(() => trialReportSchema.parse({ ...report, candidate: { ...candidate, id: 'corrupt' } })).toThrow('manifest');
+  expect(() => trialReportSchema.parse({ ...report, phase: 'test' })).toThrow('search round');
+  expect(() => trialReportSchema.parse({ ...report, round: -1 })).toThrow();
+  expect(() => trialReportSchema.parse({ ...report, round: 0.5 })).toThrow();
 });

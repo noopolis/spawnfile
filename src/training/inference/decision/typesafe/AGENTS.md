@@ -10,6 +10,8 @@ Shared budgets reserve once per send across retries and release on every exit.
 Measured usage adds spend; unknown usage remains null in receipts, not a held reservation.
 Scoring appends only its own requests to the caller collector before settling;
 backend history is diagnostic only, never invocation accounting.
+Mint a fresh requestId for each dispatched attempt, including retries. History
+and caller collectors retain the same ID; copies never mint new identities.
 Verify adjacent mocked tests, cancellation, model drift, batching, redaction and
 spend mutations; no live key or network required.
 

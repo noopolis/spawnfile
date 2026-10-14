@@ -33,7 +33,8 @@ function isolatedContext(context: EvaluationContext): EvaluationContext {
     })),
     ...(context.graders ? { graders: Object.fromEntries(Object.entries(context.graders).map(([id, route]) => [id, {
       ...route, grader: structuredClone(route.grader), calibration: structuredClone(route.calibration),
-      backend: { identity: route.backend.identity.bind(route.backend), score: route.backend.score.bind(route.backend) },
+      backend: { capabilities: structuredClone(route.backend.capabilities),
+        identity: route.backend.identity.bind(route.backend), score: route.backend.score.bind(route.backend) },
       ...(route.teacher ? { teacher: { model: route.teacher.model, provider: {
         id: route.teacher.provider.id, capabilities: structuredClone(route.teacher.provider.capabilities),
         generate: route.teacher.provider.generate.bind(route.teacher.provider),

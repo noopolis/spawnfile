@@ -19,5 +19,17 @@ No model calls, authentication, subprocesses, runtime construction or deployment
 - Accept only validated execution datasets or explicitly non-executable cost
   projections. Report preparation checks as unverified; never imply readiness.
   Cost projections preserve call counts and split identities without native inputs.
+- Retain grading decision receipts at originating requestId identity across
+  named references, plan copies and selective repairs. Legacy receipts fall back
+  to measurement/check/ordinal; their cross-measurement reuse is unknowable.
+  Identical amounts never identify a request. Retain conflicting copies as unknown costs.
+  Use recorded usage-priced USD, never admission estimates; retain unknown-price
+  attempts and every receipt. Backfill exports without repricing existing entries.
+  Adjacent decision tests must catch omission, named reference/repair duplication,
+  merged equal-price requests and estimate substitution; mutation-check these guards.
+
+Collect direct failure decisionAccounting as well as successful grade receipts.
+Failed attempts remain in original evaluations after repair/resume; origin IDs
+still deduplicate plan aliases and copied measurements.
 
 Cost planning shares explicit validation selection and evidence-lineage isolation with execution.

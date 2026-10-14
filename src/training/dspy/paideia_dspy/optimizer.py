@@ -37,7 +37,9 @@ def optimize(request: OptimizeRequest, host):
         track_stats=True,
         log_dir=str(checkpoint.work) if checkpoint else None,
         seed=request.seed,
-        gepa_kwargs={"stop_callbacks": [session.should_stop], **(checkpoint.kwargs() if checkpoint else {})},
+        gepa_kwargs={"stop_callbacks": [session.should_stop],
+                     **(checkpoint.kwargs() if checkpoint else {}),
+                     "callbacks": [session, *([checkpoint] if checkpoint else [])]},
     )
     # The only generation route is reflection_lm. Native Predict overrides its
     # adapter and LM in forward; no global DSPy model or teacher is consulted.

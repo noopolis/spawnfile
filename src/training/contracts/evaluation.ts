@@ -1,3 +1,4 @@
+import type { DecisionAccounting } from './grading.js';
 import type { GradingRuntime, GradeResult } from '../graders/index.js';
 import type { CheckNode, EvaluatorDefinition, DataMap } from './dataset.js';
 import type { Observation, ObservationCoverage, InferenceProvider, Usage, InferenceFailureKind, InferenceDiagnostic } from './execution.js';
@@ -135,6 +136,8 @@ export interface EvaluationResult {
   evidence: EvidenceReference[];
   children?: EvaluationResult[];
   grading?: GradeResult;
+  /** Paid grader attempts retained even when no grade was produced. */
+  decisionAccounting?: DecisionAccounting;
   usage?: Usage[];
   judgeCalls?: JudgeCall[];
   cache?: { key: string; sourceCallId: string; sourceCalls?: JudgeCall[] };

@@ -48,3 +48,7 @@ paired checkpoint, rather than deriving a sequence from completed-result count.
   or uncertain recovery offsets and population forks fail closed before callbacks.
   `Evaluator.evaluate_many` preserves request order and bounds active evaluations
   by request.concurrency for both training feedback and validation.
+
+Session evaluation callbacks carry round zero for the seed and GEPA's actual
+on_iteration_start iteration thereafter. Register the session alongside checkpoint
+callbacks; resumed upstream iteration IDs remain authoritative.
