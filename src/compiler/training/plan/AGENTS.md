@@ -19,3 +19,5 @@ Keep modules below 400 lines, use named exports, and keep filesystem calls in `l
 
 - Selection delegates to ../selection.ts; exact IDs take precedence over unambiguous authored names. Execution lowering remains outside this folder.
 - Dataset loading hashes the same buffer it parses; execution consumes these internal pins without changing the public authoring-plan schema.
+
+- Optional preparation hook names inherit through direct membership; declaration-relative history paths resolve once and remain optional in the public plan.

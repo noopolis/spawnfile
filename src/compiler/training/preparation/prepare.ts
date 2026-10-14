@@ -156,7 +156,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
     skills: options.context.skills.map(source => ({ ...source, sourcePath: map(source.sourcePath) })) };
   const args = [...options.args];
   for (let index = 0; index < args.length; index++) {
-    if (["--train", "--test", "--cost-config"].includes(args[index]!)) args[++index] = map(args[index]!);
+    if (["--train", "--validation", "--test", "--cost-config"].includes(args[index]!)) args[++index] = map(args[index]!);
     else if (args[index] === "--resource") { const value = args[++index]!, split = value.indexOf("="); args[index] = `${value.slice(0, split)}=${map(value.slice(split + 1))}`; }
   }
   if (repair) {

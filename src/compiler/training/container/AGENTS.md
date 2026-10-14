@@ -13,3 +13,5 @@
 - Optional authoring execution is mapped into container addresses and bound read-only at /run/paideia/execution.json. Preserve all dataset roles, graders and optimizer controls; never extend the legacy context with execution fields.
 - Fresh authored direct launches create private canonical output only after validating mounts and CLI paths. Resume requires existing output. Whole-project binds cannot contain output; use disjoint output or a preparation declaration with a selected snapshot.
 - Authored launches verify dataset bytes and the immutable image's explicit execution capability label before container creation, then pass --spawnfile-execution to its entrypoint. Never auto-label arbitrary integrations as compatible.
+
+- Explicit validation dataset paths receive the same mount coverage validation as train/test. The image consumer lowers moments inside the training container via the public moments API.

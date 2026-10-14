@@ -221,9 +221,11 @@ Fresh authored direct launches create canonical private output after validating 
 and CLI paths; resume requires existing output. A full project bind cannot contain the
 default project-local output: use disjoint `--out` or a selected preparation snapshot.
 The authoring receipt preserves the
-original declaration; `args` and `optimizer` carry the effective overrides. The current
-CLI can select one dataset per role: incompatible target dataset paths MUST fail unless
-an explicit `--train`/`--test` chooses that role. It MUST NOT silently use the first target.
+original declaration; `args` and `optimizer` carry the effective overrides. The
+argv holds one authoring locator per role, while the protected receipt carries all
+target datasets. Its consumer MUST lower every declared dataset into one executable
+dataset per role; the locator MUST NOT restrict lowering to the first target.
+An integration that does not support a dataset override MUST reject it explicitly.
 
 Authored `--dry-run` prints the lowered execution receipt plus the selected container
 configuration (and any image override), then exits 0. It reads local files only: no
@@ -1002,7 +1004,7 @@ declaration or replacement flattened prompt is authorized by this entrypoint. Pa
 exclusion, state isolation and single-agent preparation are not supplied by this handoff.
 
 Repeated options: `--editable`, `--resource`, `--judge`, `--judge-citation-repairs`, `--validation-group`. Other
-forwarded options: `--train`, `--test`, `--optimizer-model`, `--bridge-command`, `--out`,
+forwarded options: `--train`, `--validation`, `--test`, `--optimizer-model`, `--bridge-command`, `--out`,
 `--max-trials`, `--max-proposals`, `--seed`, `--timeout-ms`, `--view`, `--cost-config`.
 The canonical runtime/model/instruction selection cannot be replaced by generic CLI flags.
 
@@ -1370,6 +1372,24 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
       "required": [
         "id",
         "name"
+      ],
+      "additionalProperties": false
+    },
+    "preparation": {
+      "type": "object",
+      "properties": {
+        "hook": {
+          "type": "string",
+          "minLength": 1
+        },
+        "history": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+        }
+      },
+      "required": [
+        "hook"
       ],
       "additionalProperties": false
     },
@@ -2385,3 +2405,51 @@ The child deadline is Paideia's declared deadline plus five seconds for cleanup.
 }
 ```
 <!-- task-clock-schema:end -->
+
+## Executable moments and named preparation hooks
+
+`training.preparation: {hook: <registered-name>, history: <relative-directory>}`
+optionally names an integration preparation hook and retained local history. The
+complete declaration inherits through direct membership; a local declaration
+replaces it. Resolve history relative to its declaring Spawnfile and carry its
+absolute address through the protected execution receipt and container mapping.
+Never encode credentials or application semantics in the public declaration.
+
+An authored-execution image consumer calls `lowerTrainingMoments` with the loaded
+project, resolved plan, a fresh output root and optional case preparation callback.
+It invokes the existing rewind for each unique role/dataset/example; repeated
+target references do not create repeated cases. It writes explicit
+`train.paideia.json`, optional `validation.paideia.json`, and `test.paideia.json`,
+then passes their paths using `--train`, `--validation`, and `--test`. The
+case callback supplies application terminal checks or stages, setup, references
+and outputs; missing checks refuse the case. Each dataset names the declared
+hook as its preparation profile, which the evaluator integration must register. The compiler
+retains authority over case ID, group, lineage, wake, split and provenance.
+
+`lowering.json` records every attempted example, including its authored timestamp,
+wake, dataset, role, group, lineage, rewind report and refusal reason. Refused
+rewinds, timestamp normalization failures and failed hook preparations are skipped
+with no replacement. A timestamp that cannot be normalized retains its authored
+value and refusal reason, with null lineage; later examples are still processed. A role with
+no executable examples stops execution after persisting its report. IDs must be
+unique within a split; Paideia enforces disjoint IDs, groups and lineage across
+splits. Lineage binds agent, normalized historical instant and exact wake bytes,
+so renaming an example cannot hide the same historical moment in another split.
+
+Each executable case uses `setup.trainingMoment` version
+`spawnfile.training-moment-case.v1` with projectRoot, agent, example (`role:id`),
+role, dataset, at, effectiveAt, wake, group, lineage, momentRoot, optional historyDir
+and hook. `context.trainingMomentProvenance` carries the rewind report. Case input
+is the authored message envelope. The default hook name is `spawnfile/rewind`;
+the executing integration must register it or the explicitly declared name.
+
+Paideia dispatches the hook with fresh trial paths before native adapter startup.
+A hook calls `materializeTrainingCase` into that trial's control/moment root,
+then prepares runtime mounts, task clock, external responses and output collection
+from those fresh bytes. Never run from the lowering snapshot or reuse another
+trial's mutable state. The helper verifies declared wake/instant and historical
+startedAt still agree with the accepted lowering. Paideia requires a matching
+trial-bound preparation receipt and reads the moment/leak-check reports before
+starting the subject. Refusal prevents that trial from running. Application
+reconstruction, responders and accepted-output extraction belong in the named
+integration, outside the public compiler/evaluator.

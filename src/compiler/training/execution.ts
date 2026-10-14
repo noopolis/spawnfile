@@ -60,11 +60,11 @@ export const lowerTrainingExecution = async (options: LowerTrainingExecutionOpti
     return invalid("A lowered container launch configuration requires --training-image; use a v2/v4 preparation declaration for a declared image");
   }
   const args = [...options.args];
-  // The CLI has one dataset per role. Refuse incompatible target datasets rather than choosing silently.
-  for (const role of ["train", "test"] as const) {
+  // These are authoring locators. The receipt consumer lowers ALL target datasets into one file per role.
+  for (const role of ["train", "validation", "test"] as const) {
     if (option(args, `--${role}`) !== undefined) continue;
-    const sources = [...new Set(plan.targets.map(target => target.datasets[role].sourcePath))];
-    if (sources.length !== 1) return invalid(`Training targets have different ${role} datasets; use --${role} to select an execution dataset`);
+    const sources = [...new Set(plan.targets.flatMap(target => target.datasets[role] ? [target.datasets[role].sourcePath] : []))];
+    if (role === "validation" && sources.length === 0) continue;
     args.push(`--${role}`, sources[0]!);
   }
   if (!args.includes("--editable")) for (const file of [...new Set(plan.targets.flatMap(target => target.files.map(file => file.path)))]) {
@@ -106,7 +106,7 @@ export const mapTrainingExecution = (execution: TrainingExecution, map: (file: s
   const source = <T extends { sourcePath: string }>(value: T): T => ({ ...value, sourcePath: map(value.sourcePath) });
   const args = [...execution.args];
   for (let index = 0; index < args.length; index++) {
-    if (["--train", "--test", "--out", "--cost-config"].includes(args[index]!)) args[++index] = map(args[index]!);
+    if (["--train", "--validation", "--test", "--out", "--cost-config"].includes(args[index]!)) args[++index] = map(args[index]!);
     else if (args[index] === "--resource") {
       const value = args[++index]!, split = value.indexOf("=");
       args[index] = `${value.slice(0, split)}=${map(value.slice(split + 1))}`;
@@ -114,6 +114,8 @@ export const mapTrainingExecution = (execution: TrainingExecution, map: (file: s
   }
   return trainingExecutionSchema.parse({ ...execution, datasetPins: execution.datasetPins.map(source), args, output: map(execution.output), authoring: {
     ...execution.authoring,
+    ...(execution.authoring.preparation ? { preparation: { ...execution.authoring.preparation,
+      ...(execution.authoring.preparation.history ? { history: map(execution.authoring.preparation.history) } : {}) } } : {}),
     project: { root: map(execution.authoring.project.root), manifest: map(execution.authoring.project.manifest) },
     graders: execution.authoring.graders.map(source),
     targets: execution.authoring.targets.map(target => ({ ...target, files: target.files.map(source), datasets: {

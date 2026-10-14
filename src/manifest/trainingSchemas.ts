@@ -51,6 +51,7 @@ export const trainingTargetSchema = z.object({
 }).strict();
 
 export const trainingDeclarationSchema = z.object({
+  preparation: z.object({ hook: z.string().min(1), history: trainingRelativePathSchema.optional() }).strict().optional(),
   record: trainingRecordSchema.optional(),
   optimizer: trainingOptimizerSchema.optional(),
   graders: trainingNamedMapSchema(trainingRelativePathSchema).optional(),

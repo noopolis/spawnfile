@@ -42,3 +42,5 @@ Training declarations receive structural validation only; training-plan loading 
 - Keep authored manifest rendering and scaffold builders generic; runtime-specific choices stay outside this folder.
 - Validate enough here to produce good user errors before graph walking.
 - Reflect spec terminology directly in local type names.
+
+- `training.preparation` declares a named runtime hook and an optional declaration-relative history directory; schema parsing never executes hooks.

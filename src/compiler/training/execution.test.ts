@@ -19,7 +19,7 @@ it("lowers authored inputs and exact optimizer controls with a fresh contained o
   expect(result.execution.output).toMatch(new RegExp(`^${root}/.spawn/training/agent%3Awriter/`));
   expect(next.execution.output).not.toBe(result.execution.output);
   expect(result.execution.optimizer).toEqual(optimizer);
-  expect(result.execution.args).toEqual(["--train", path.join(root, "training/train.yaml"), "--test", path.join(root, "training/test.yaml"),
+  expect(result.execution.args, "validation CLI handoff guarantee").toEqual(["--train", path.join(root, "training/train.yaml"), "--validation", path.join(root, "training/validation.yaml"), "--test", path.join(root, "training/test.yaml"),
     "--editable", "AGENTS.md", "--optimizer-model", optimizer.model, "--out", result.execution.output]);
   expect(result.execution.authoring.targets[0]!.datasets.validation).toMatchObject({ path: "training/validation.yaml" });
   expect(result.execution.authoring.graders[0]!.sourcePath).toBe(path.join(root, "training/writing.grader.yaml"));
@@ -28,7 +28,7 @@ it("lowers authored inputs and exact optimizer controls with a fresh contained o
 });
 it("keeps all explicit execution flags as overrides without replacing the original authoring provenance", async () => {
   const root = await executionFixture();
-  const args = ["--train", "override.yaml", "--test", "held.yaml", "--editable", "OTHER.md", "--optimizer-model", "override-model",
+  const args = ["--train", "override.yaml", "--test", "held.yaml", "--validation", "validation-override.yaml", "--editable", "OTHER.md", "--optimizer-model", "override-model",
     "--max-proposals", "2", "--out", path.join(root, "chosen")];
   const result = await lower(root, args, { trainingConfig: path.join(root, "training/container.json"), trainingImage: executionImage });
   expect(result.execution.args).toEqual(args);
@@ -69,7 +69,7 @@ it("requires explicit output for resume and refuses missing or invalid container
   await writeTrainingFile(root, "training/container.json", '{"version":"unknown"}');
   await expect(lower(root)).rejects.toThrow();
 });
-it("falls back to root convention for a referenced agent and refuses conflicting target datasets", async () => {
+it("falls back to root convention for a referenced agent and carries every target dataset for lowering", async () => {
   const root = await trainingProject(teamFiles());
   await writeTrainingFile(root, "training/container.json", JSON.stringify({
     version: "spawnfile.training-container.v2", dockerContext: "local", image: { ref: executionImage },
@@ -80,7 +80,8 @@ it("falls back to root convention for a referenced agent and refuses conflicting
   expect((await lowerTrainingExecution({ project, plan, args: [] })).trainingConfig).toBe(path.join(root, "training/container.json"));
   const another = structuredClone(plan.targets[0]!); another.datasets.train.sourcePath += ".other";
   project.datasets[another.datasets.train.sourcePath] = project.datasets[plan.targets[0]!.datasets.train.sourcePath]!;
-  await expect(lowerTrainingExecution({ project, plan: { ...plan, targets: [...plan.targets, another] }, args: [] })).rejects.toThrow("different train datasets");
+  const combined = await lowerTrainingExecution({ project, plan: { ...plan, targets: [...plan.targets, another] }, args: [] });
+  expect(combined.execution.authoring.targets).toHaveLength(2);
   expect((await lowerTrainingExecution({ project, plan: { ...plan, targets: [...plan.targets, another] }, args: ["--train", "override"] })).execution.args).toContain("override");
   await expect(lowerTrainingExecution({ project, plan: { ...plan, targets: [] }, args: [] })).rejects.toThrow("no executable training targets");
 });

@@ -29,6 +29,7 @@ export const trainingPlanSchema = z.object({
   producer: z.object({ package: z.literal("spawnfile"), version: text }).strict(),
   project: z.object({ root: absolutePath, manifest: absolutePath }).strict(),
   agent: z.object({ id: text, name: text }).strict(),
+  preparation: z.object({ hook: text, history: absolutePath.optional() }).strict().optional(),
   record: z.object({
     keep: text.regex(/^[1-9][0-9]*[mhd]$/u).nullable(),
     volumes: z.array(reference)

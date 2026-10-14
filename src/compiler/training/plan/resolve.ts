@@ -68,6 +68,7 @@ export const resolveTrainingPlan = (
     producer: { package: "spawnfile", version: producerVersion },
     project: { root: project.root, manifest: project.manifest },
     agent: { id: selected.id, name: selected.value.name },
+    ...(selected.value.training?.preparation ? { preparation: selected.value.training.preparation } : {}),
     record: recordFor(project, selected), optimizer: optimizerFor(selected, targets.length > 0),
     graders: uniqueGraders, targets
   });
