@@ -59,6 +59,8 @@ export interface RecordFields {
 export interface DatasetRecord extends RecordFields {
   id: string;
   group?: string;
+  /** Evidence ancestors: no identity may appear in another split. */
+  lineage?: string[];
   use?: string[];
   turns?: Turn[];
   checks?: CheckNode[];

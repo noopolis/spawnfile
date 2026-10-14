@@ -23,3 +23,5 @@ Decision requests include true/false Noul separately from yes/no legacy question
 unknown usage is distinct from conservative admission estimates.
 
 DecisionResult.failureCause identifies spend-cap admission and request-rejected infrastructure refusals independently of missing-content prose. Callers preserve it rather than applying a behavioral missing policy.
+
+Dataset lineage names evidence ancestors across splits; authored validation paths remain dataset-relative controls.

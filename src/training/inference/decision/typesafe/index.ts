@@ -24,7 +24,7 @@ export function createTypeSafeDecision(options: TypeSafeDecisionOptions): Decisi
       for (const request of requests) {
         question(request);
         if (results.has(request.key)) throw new Error('Duplicate TypeSafe question key');
-        results.set(request.key, missing(request, 'TypeSafe token estimate limit'));
+        results.set(request.key, missing(request, 'TypeSafe token estimate limit', 'request-rejected'));
         // Independently enforce state + longest question <= 32k; never truncate.
         if (estimatedTokens(options.model, [request]) > Math.min(limit, 32_000)) continue;
         const state = JSON.stringify(request.projection);

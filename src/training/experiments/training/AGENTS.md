@@ -81,3 +81,5 @@ trialScore refuses every errored atomic measurement or typed atomic failure anyw
 This includes atomicFailure from early acceptance-gate errors; genuine failing
 gate judgments remain behavioral zeros. atomic-gates.test.ts exercises resolved
 grader gates through real rubric evaluation with fake providers.
+
+resolveTrainingPartitions preserves explicit validation dataset identity and rejects competing group controls. Split checks still bind all three roles.

@@ -50,9 +50,14 @@ describe('TypeSafe mapping and batching', () => {
     const fetch = responder(), backend = createTypeSafeDecision({ model, env, fetch, maxEstimatedTokens: 90 });
     expect((await backend.score([request('a'), request('b')])).every(r => r.status === 'ok')).toBe(true);
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(await backend.score([request('big', { text: 'x'.repeat(1000) })])).toMatchObject([{ status: 'missing', reason: 'TypeSafe token estimate limit' }]);
+    expect(await backend.score([request('big', { text: 'x'.repeat(1000) })])).toMatchObject([
+      { status: 'missing', reason: 'TypeSafe token estimate limit', failureCause: 'request-rejected' },
+    ]);
     const large = createTypeSafeDecision({ model, env, fetch });
-    expect(await large.score([request('big', { text: 'x'.repeat(96_000) })])).toMatchObject([{ status: 'missing' }]);
+    for (const input of [request('state', { text: 'x'.repeat(96_000) }), { ...request('question'), instructions: 'x'.repeat(96_000) }]) {
+      expect(await large.score([input])).toMatchObject([{ status: 'missing', probabilities: null, failureCause: 'request-rejected' }]);
+    }
+    expect(large.requestReceipts!()).toEqual([]);
     expect(fetch).toHaveBeenCalledTimes(2);
     await expect(large.score([request(), request()])).rejects.toThrow('Duplicate');
   });

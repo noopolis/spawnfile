@@ -54,6 +54,7 @@ export interface TrainingConfiguration {
   cache?: { mode: 'off' | 'exact' | 'persistent'; max_entries?: number; namespace?: string; directory?: string };
   recovery?: { max_attempts?: number };
   test?: string;
+  validation?: string;
   validation_groups?: string[];
   seed?: number;
 }

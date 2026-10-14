@@ -10,3 +10,9 @@ Dry-run may resolve candidates, cases and costs, but never compiles, authenticat
 or executes an agent. Native runs require their supported isolated preparation;
 do not route a compiled Daimon project through the generic Pi adapter.
 Test mutations, ambiguous mappings, unsupported execution and canonical identity.
+
+moments.ts owns named per-trial moment dispatch. Require frozen identity, fresh control/moment, successful rewind evidence and a bound receipt before native start. Domain reconstruction stays in registered integrations.
+Authored moment.role/example/dataset select rewind; trial.phase selects evaluation.
+Internal validation may execute an authored train moment without relabeling it.
+Reject every other cross-role execution; test automatic and group-selected holdouts
+through the CLI and bind rewind evidence to the authored role, not the trial phase.

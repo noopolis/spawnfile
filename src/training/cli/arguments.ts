@@ -22,7 +22,7 @@ const graderFlags: Record<string, readonly string[]> = {
 };
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
-  train: [...common, 'concurrency', 'slots-file', 'train', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
+  train: [...common, 'concurrency', 'slots-file', 'train', 'validation', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
 };
 
 export const helpText = `Paideia — explicit local native-agent experiments
@@ -39,7 +39,7 @@ grader expand --grader FILE --output FILE.json [--context NAME=FILE]... [--timeo
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
 evaluate DATASET --runtime codex|daimon --model MODEL --instructions FILE --out DIRECTORY
-train --train DATASET [--test DATASET] --runtime codex|daimon --model MODEL
+train --train DATASET [--validation DATASET] [--test DATASET] --runtime codex|daimon --model MODEL
       --instructions FILE --editable FILE --optimizer-model MODEL --bridge-command EXECUTABLE --out DIRECTORY
 
 Repeat --instructions FILE, --supporting FILE or --locked FILE to select Markdown resources.
@@ -53,7 +53,8 @@ Dataset training controls declare named models, focused judges, fallbacks, templ
 YAML test paths are relative to the training dataset; scalar CLI flags override authored defaults.
 Configured judge policies cannot be replaced by --judge or conflicting citation repair flags.
 The optimizer bridge defaults to the installed paideia-dspy executable for YAML-configured training.
-Train accepts repeated --validation-group GROUP, or freezes an internal group partition.
+Train accepts --validation DATASET, or repeated --validation-group GROUP, or freezes an internal group partition.
+Explicit validation and validation groups are mutually exclusive.
 --max-trials N (default 20, ceiling 10000) includes conservative reserved sealed-test trials.
 --concurrency N (1..8; defaults to provisioned slot count, otherwise 1); --slots-file FILE overrides /run/paideia/slots.json.
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).

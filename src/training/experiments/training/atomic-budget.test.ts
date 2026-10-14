@@ -7,7 +7,7 @@ import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
 import type { CheckNode } from '../../contracts/dataset.js';
 import { trialScore } from './scoring.js';
 
-function fixture(missing: 'fail' | 'unknown', httpStatus?: number) {
+function fixture(missing: 'fail' | 'unknown', httpStatus?: number, body = 'Alice joined.') {
   const model = 'jev-1.0.0';
   const grader = parseAtomicGrader({ schema: 'paideia.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
     extractor: { provider: 'codex', model: 'test' }, decision: { backend: 'typesafe', model, max_spend_usd: 1 }, missing,
@@ -31,7 +31,7 @@ function fixture(missing: 'fail' | 'unknown', httpStatus?: number) {
   const check = { id: 'quality', eval: 'grader', grader: '/grader.yaml', input: 'artifact:article', context: { assignment: 'artifact:assignment' },
     grader_binding: { kind: 'atomic', definitionDigest: runtime.definitionDigest, templatesDigest: runtime.templatesDigest, gates: [] } };
   const context = evaluationContext({ graders: { '/grader.yaml': runtime }, snapshot: snapshot({ artifacts: {
-    article: artifact({ body: ['Alice joined.'] }), assignment: { ...artifact('Cover Alice.'), name: 'assignment' },
+    article: artifact({ body: [body] }), assignment: { ...artifact('Cover Alice.'), name: 'assignment' },
   } }) });
   async function measure(extra: CheckNode[] = [], nested = false, gate?: CheckNode) {
     const quality = nested ? { id: 'quality', all: [check] } : check;
@@ -43,6 +43,22 @@ function fixture(missing: 'fail' | 'unknown', httpStatus?: number) {
   }
   return { measure, fetch, budget, runtime };
 }
+
+it.each(['fail', 'unknown'] as const)('keeps oversized grading requests unscorable without HTTP dispatch (%s)', async missing => {
+  const f = fixture(missing, undefined, 'x'.repeat(120_000));
+  const report = await f.measure();
+  const grade = report.evaluation.checks.quality!.atomicGrading!;
+  expect(report.status).toBe('error');
+  expect(grade).toMatchObject({ status: 'error', score: null, receipts: [],
+    failure: { cause: 'request-rejected', reason: 'TypeSafe token estimate limit' } });
+  expect(grade.checks[0]!.decision).toMatchObject({ status: 'missing', failureCause: 'request-rejected' });
+  expect(() => trialScore(report)).toThrow('unscorable');
+  const masked = await f.measure([{ id: 'other', eval: 'equals', input: 'output.text', value: 'different' }]);
+  expect(masked.status).toBe('fail');
+  expect(() => trialScore(masked)).toThrow('unscorable atomic grading measurement');
+  expect(f.fetch).not.toHaveBeenCalled();
+  expect(f.budget).toMatchObject({ spentUsd: 0, reservedUsd: 0 });
+});
 
 it.each(['fail', 'unknown'] as const)('never rewards identical input with zero after shared budget exhaustion (%s)', async missing => {
   const f = fixture(missing);

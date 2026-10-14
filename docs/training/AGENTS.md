@@ -23,3 +23,5 @@ Keep backend preflight limits and terminal payment-error semantics explicit.
 Describe exhausted atomic spend caps and rejected API requests as unscorable infrastructure errors under either missing policy; retain typed reasons without inventing request receipts.
 Acceptance-gate infrastructure errors remain unscorable before extraction, with
 their gate identity retained through replay and no fabricated atomic grade.
+
+Training configuration documents explicit validation and the generic named moment preparation receipt; org state reconstruction remains integration-owned.

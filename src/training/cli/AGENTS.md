@@ -40,3 +40,5 @@ Owns explicit local commands, configuration selection and human diagnostics.
 
 Native grader-file dispatch accepts both calibrated and atomic schemas. Atomic routes
 freeze definition/template digests and do not claim calibration exclusion evidence.
+
+Explicit --validation datasets flow through execution, costs and repair without repartitioning; groups and explicit validation cannot compete.

@@ -34,3 +34,5 @@ verbatim/in order when both sources declare them; otherwise use the declared sou
 Population search defaults are resolved by optimizer.ts; derived caps
 remain within the existing 1000-call ceiling. Dry-run displays each editable
 resource's whole-file or heading scope and the effective search controls.
+
+Resolve training.validation relative to its dataset and reject simultaneous validation group declarations before native construction.

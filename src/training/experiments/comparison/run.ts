@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { assertOriginalPolicy } from '../../candidates/index.js';
 import { validateDatasetSplit } from '../../cases/index.js';
 import type { ResolvedDataset } from '../../contracts/dataset.js';
-import { TrainingCheckpoint, partitionTraining, freezeCriteria, trialScore, recoverMeasurement, recoverStoredReport } from '../training/index.js';
+import { TrainingCheckpoint, resolveTrainingPartitions, freezeCriteria, trialScore, recoverMeasurement, recoverStoredReport } from '../training/index.js';
 import { runStoredTrial, type TrialReport } from '../trials/index.js';
 import type { ComparisonOptions, ComparisonReport } from './types.js';
 
@@ -11,8 +11,7 @@ export async function compareCandidates(options: ComparisonOptions): Promise<Com
   assertOriginalPolicy(options.baseline, options.candidate);
   if (options.candidate.id === options.baseline.id || options.candidate.parentId !== options.baseline.id) throw new Error('Comparison requires one authored child of the baseline');
   if (!options.name.trim() || options.name.length > 120) throw new Error('Invalid authored candidate name');
-  const partition = options.validation ? { train: options.train, validation: options.validation }
-    : partitionTraining(options.train, options.validationGroups);
+  const partition = resolveTrainingPartitions(options.train, options.validation, options.validationGroups);
   validateDatasetSplit(partition.train, options.test, partition.validation);
   const phases = [['train', partition.train], ['validation', partition.validation], ['test', options.test]] as const;
   const required = 2 * phases.reduce((sum, [, dataset]) => sum + dataset.records.length, 0);
