@@ -31,11 +31,17 @@ it('CLI dry-run uses the integration optimizer and shows whole-file scope withou
     editableResources: [{ resource: 'AGENTS.md', scope: 'whole-file' }] });
   expect(forbidden).not.toHaveBeenCalled();
   expect(authoredArguments(parseArguments(argv), f.io).training).toEqual({ models });
+  expect(plan.budget.maxTrials).toBe(28);
+  await writeFile(join(f.root, 'validation.yaml'), datasetText([{ id: 'v', group: 'v' }]).replace('id: example', 'id: validation'));
+  f.stdout.length = 0;
+  expect(await main([...argv, '--validation', 'validation.yaml'], f.io, { spawnfile: integration }), f.stderr.join('')).toBe(0);
+  expect(JSON.parse(f.stdout[0]!).budget.maxTrials).toBe(41);
   const text = datasetText([{ id: 'a', group: 'a' }, { id: 'b', group: 'b' }]);
-  await writeFile(join(f.root, 'train.yaml'), `${text}\ntraining: ${JSON.stringify({ models, budget: { max_proposals: 8 } })}\n`);
+  await writeFile(join(f.root, 'train.yaml'), `${text}\ntraining: ${JSON.stringify({ models, budget: { max_proposals: 8, max_trials: 20 } })}\n`);
   f.stdout.length = 0;
   expect(await main(argv, f.io, { spawnfile: integration }), f.stderr.join('')).toBe(0);
   expect(JSON.parse(f.stdout[0]!).budget.maxProposals).toBe(8);
+  expect(JSON.parse(f.stdout[0]!).budget.maxTrials).toBe(20);
   await writeFile(join(f.root, 'train.yaml'), `${text}\ntraining: ${JSON.stringify({ models, optimizer: { ...population, keep: 1 } })}\n`);
   expect(await main(argv, f.io, { spawnfile: integration })).toBe(2);
   expect(f.stderr.join('')).toContain('training.optimizer.keep conflicts');

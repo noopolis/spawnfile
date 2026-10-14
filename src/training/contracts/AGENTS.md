@@ -30,3 +30,8 @@ unknown usage is distinct from conservative admission estimates.
 DecisionResult.failureCause identifies spend-cap admission and request-rejected infrastructure refusals independently of missing-content prose. Callers preserve it rather than applying a behavioral missing policy.
 
 Dataset lineage names evidence ancestors across splits; authored validation paths remain dataset-relative controls.
+
+`AtomicFeedback` is the optimizer-safe wire projection shared with the atomic
+grader: failure/omission counts and template, unit text, nullable probability.
+Keep it structurally compatible with the grader's public feedback type; extraction,
+raw checks, identities and transport receipts never belong in this contract.

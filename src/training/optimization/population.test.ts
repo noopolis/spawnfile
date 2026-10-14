@@ -60,9 +60,35 @@ it('runs the real population bridge with complete host-verified validation and d
   expect(result.provenance.candidates[4]?.perCaseScores).toEqual({ 'validation-a': 1, 'validation-b': 1 });
   expect(result.provenance.editScope).toEqual(run.options.editScope);
   expect(run.generated).toHaveLength(6);
-  expect(run.evaluated).toHaveLength(12);
+  expect(run.evaluated).toHaveLength(15);
   expect(run.generated.every(call => JSON.parse(call.messages[1]!.content).boundaries.length === 0)).toBe(true);
   expect(await runDspyOptimization(populationOptions().options)).toEqual(result);
+});
+
+it('supplies public atomic failures and article excerpts to real-process proposers without held-out text', async () => {
+  const run = populationOptions();
+  run.options.search = { ...run.options.search!, variants: 1, keep: 1, rounds: 1 };
+  const evaluate = run.options.evaluate;
+  run.options.evaluate = async (...args) => {
+    const measured = await evaluate(...args);
+    if (args[0].split !== 'train') return measured;
+    return { ...measured, output: 'Article excerpt: the attribution is missing.', feedback: JSON.stringify({
+      evaluation: { stages: [{ id: 'writing', checks: [{ id: 'attribution', status: 'fail', score: 0.1,
+        atomic: { failed_check_count: 1, omitted_failed_checks: 0,
+          failed_checks: [{ template: 'named-source', unit: 'The source was not identified.', probability: 0.1 }] } }] }] },
+    }) };
+  };
+  const result = await runDspyOptimization(run.options);
+  expect(result.provenance.candidates).toHaveLength(2);
+  expect(run.generated).toHaveLength(2);
+  for (const request of run.generated) {
+    const payload = JSON.parse(request.messages[1]!.content);
+    expect(payload.trainingFeedback.entries[0].feedback.evaluation.stages[0].checks[0].atomic.failed_checks[0])
+      .toEqual({ template: 'named-source', unit: 'The source was not identified.', probability: 0.1 });
+    expect(payload.trainingFeedback.entries[0].output).toContain('Article excerpt:');
+    expect(request.messages[1]!.content).not.toMatch(/validation-a|validation-b/);
+    expect(Buffer.byteLength(JSON.stringify(payload.trainingFeedback))).toBeLessThanOrEqual(65536);
+  }
 });
 
 it('overlaps four real-process population callbacks and binds scores after reverse completion', async () => {
@@ -70,6 +96,7 @@ it('overlaps four real-process population callbacks and binds scores after rever
   run.options.concurrency = 4;
   run.options.trainCaseIds = ['t0', 't1', 't2', 't3'];
   run.options.validationCaseIds = ['v0', 'v1', 'v2', 'v3'];
+  run.options.budget.maxMetricCalls = 40;
   const evaluate = run.options.evaluate;
   const completed: string[] = [];
   const pending = new Map<number, () => void>();
@@ -94,7 +121,7 @@ it('overlaps four real-process population callbacks and binds scores after rever
   expect(peak).toBe(4);
   expect(active).toBe(0);
   expect(pending.size).toBe(0);
-  expect(run.evaluated).toHaveLength(28);
+  expect(run.evaluated).toHaveLength(40);
   expect(completed.slice(0, 4)).toEqual(['v3', 'v2', 'v1', 'v0']);
   expect(completed.slice(4, 8)).toEqual(['t3', 't2', 't1', 't0']);
   expect(result.provenance.candidates[0]?.perCaseScores).toEqual({ v0: 0, v1: 0.125, v2: 0.25, v3: 0.375 });
@@ -118,7 +145,7 @@ it('reconstructs mid-round population state from settled callbacks without extra
   run.options.checkpoint.resume = true;
   expect(await runDspyOptimization(run.options)).toEqual(expected);
   expect(run.generated).toHaveLength(6);
-  expect(run.evaluated).toHaveLength(12);
+  expect(run.evaluated).toHaveLength(15);
   const journal = JSON.parse(await readFile(join(directory, 'host.json'), 'utf8'));
   expect(journal.entries.every((entry: { attempts: number }) => entry.attempts === 1)).toBe(true);
   expect(new Set(run.evaluated).size).toBe(run.evaluated.length);
@@ -156,7 +183,7 @@ it('verifies seeded multi-parent rounds independently of parent visitation order
   expect(new Set(result.provenance.rounds?.[2]?.variants.map(slot => slot.parent)).size).toBe(2);
   expect(result.provenance.candidates).toHaveLength(5);
   expect(run.generated).toHaveLength(7);
-  expect(run.evaluated).toHaveLength(13);
+  expect(run.evaluated).toHaveLength(15);
 });
 
 it.each([
@@ -195,7 +222,7 @@ it.each([false, true])('enforces declared boundaries through the real bridge (vi
   };
   const result = await runDspyOptimization(run.options);
   expect(result.provenance.candidates).toHaveLength(violation ? 1 : 5);
-  expect(run.evaluated).toHaveLength(violation ? 3 : 12);
+  expect(run.evaluated).toHaveLength(violation ? 3 : 15);
   expect(result.provenance.rounds!.slice(1).flatMap(round => round.variants)
     .every(slot => slot.rejectionReason === (violation ? 'hard-boundary' : null))).toBe(true);
   expect(run.generated.every(call => JSON.parse(call.messages[1]!.content).boundaries
