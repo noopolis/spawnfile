@@ -20,7 +20,7 @@ export const probeTrainingSiblingClock = async (
     `blocked=$(mktemp -d ${quote(`${p.privateTmp}/clock-probe.XXXXXX`)})`,
     'trap \'chmod 700 "$blocked"; rmdir "$blocked"\' EXIT',
     'chmod 000 "$blocked"',
-    `bwrap --die-with-parent --cap-drop ALL --ro-bind / / --ro-bind "$blocked" ${quote(target)} -- /bin/sh -ceu ${quote(
+    `bwrap --die-with-parent --cap-drop ALL --ro-bind / / --dev /dev --ro-bind "$blocked" ${quote(target)} -- /bin/sh -ceu ${quote(
       `cat ${quote(p.clockFile)} >/dev/null; if ls -A ${quote(target)} >/dev/null 2>&1; then echo reachable; else echo denied; fi`
     )}`
   ].join("\n");

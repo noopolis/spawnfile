@@ -9,7 +9,7 @@ it("requires a positive sandbox denial and preserves access to the own clock", a
   expect(command).toBe("setpriv");
   expect(args).toContain("--reuid=2202");
   const script = args.at(-1);
-  expect(script).toContain('bwrap --die-with-parent --cap-drop ALL --ro-bind / / --ro-bind "$blocked"');
+  expect(script).toContain('bwrap --die-with-parent --cap-drop ALL --ro-bind / / --dev /dev --ro-bind "$blocked"');
   expect(script).toContain(trainingSlotPaths(1).clockDirectory);
   expect(script.match(new RegExp(trainingSlotPaths(2).clockFile, "g"))).toHaveLength(2);
   expect(script).toContain('chmod 000 "$blocked"');
