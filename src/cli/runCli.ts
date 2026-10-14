@@ -24,7 +24,7 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   createTrainingContext,
-  createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment,
+  createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, allocateTrainingOutputParent,
   initProject,
   listInitTemplates,
   preflightCompilePlan,
@@ -93,7 +93,6 @@ export interface CliRenderEnvironment {
   noColor: boolean;
   stdoutIsTty: boolean;
 }
-
 const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
   ci: process.env.CI !== undefined && process.env.CI !== "" && process.env.CI !== "0",
   noColor: process.env.NO_COLOR !== undefined && process.env.NO_COLOR !== "",
@@ -103,6 +102,7 @@ const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
 export interface CliHandlers {
   createTrainingContext: typeof createTrainingContext;
   createTrainingPlan: typeof createTrainingPlan;
+  lowerTrainingExecution: typeof lowerTrainingExecution; allocateTrainingOutputParent: typeof allocateTrainingOutputParent;
   loadTrainingProject: typeof loadTrainingProject; resolveTrainingPlan: typeof resolveTrainingPlan;
   materializeTrainingMoment: typeof materializeTrainingMoment;
   delegatePaideiaTraining: typeof delegatePaideiaTraining;
@@ -137,9 +137,8 @@ export interface CliHandlers {
   setProjectSurfaceAccess: typeof setProjectSurfaceAccess; showProjectSurfaces: typeof showProjectSurfaces;
   syncProjectAuth: typeof syncProjectAuth;
 }
-
 const createDefaultHandlers = (): CliHandlers => ({
-  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, delegatePaideiaTraining,
+  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, allocateTrainingOutputParent, delegatePaideiaTraining,
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,

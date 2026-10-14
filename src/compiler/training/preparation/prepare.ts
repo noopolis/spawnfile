@@ -1,5 +1,6 @@
 import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { mapTrainingExecution, trainingExecutionIdentity, type TrainingExecution } from "../execution.js";
 import type { TrainingContext } from "../contract.js";
 import { trainingContainerConfigSchema } from "../container/contract.js";
 import type { TrainingDockerProcess } from "../container/process.js";
@@ -20,6 +21,7 @@ function mappedReceipt(digest: string, image: string, config: ReturnType<typeof 
 }
 
 export interface PrepareTrainingOptions {
+  execution?: TrainingExecution; outputOverride?: string; imageOverride?: string;
   configPath: string; context: TrainingContext; args: readonly string[]; dryRun: boolean;
   process: TrainingDockerProcess; timeoutMs: number; signal?: AbortSignal;
   streams: { stdout(line: string): void; stderr(line: string): void };
@@ -28,12 +30,16 @@ export interface PrepareTrainingOptions {
   repairMeasurements?: string; repairWitness?: string;
 }
 export interface PreparedTraining {
+  execution?: TrainingExecution;
   digest: string; image: string; configPath: string; preparationPath: string; repairPath?: string; context: TrainingContext; args: string[];
 }
 
 /** Reads only until the explicit dry-run boundary; preparation never executes project code. */
 export async function prepareTraining(options: PrepareTrainingOptions): Promise<PreparedTraining | { digest: string; dryRun: true }> {
-  const config = trainingPreparationSchema.parse(await readBoundedJson(options.configPath));
+  const raw = await readBoundedJson(options.configPath) as Record<string, unknown>;
+  const config = trainingPreparationSchema.parse({ ...raw,
+    ...(options.outputOverride ? { output: { source: options.outputOverride, destination: "/run/training/output" } } : {}),
+    ...(options.imageOverride ? { image: { ref: options.imageOverride } } : {}) });
   // A v2 declaration still lowers to the unchanged v1 launch config; v4 carries the broker slots into Docker.
   const launchVersion = config.version === "spawnfile.training-container.v4" ? config.version : "spawnfile.training-container.v1";
   const root = path.dirname(path.resolve(options.configPath));
@@ -47,10 +53,17 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   assertInputRoot(output, auth.map(entry => entry.source));
   if (await realpath(parent) !== parent) throw Error("Training output parent must be canonical and already exist");
   const inputs = await planInputs(config, root, auth.map(entry => entry.source));
+  const canonicalPins = [...options.context.sources, ...options.execution?.datasetPins ?? []];
   const roots = inputs.map(input => input.source);
   for (let index = 0; index < inputs.length; index++) {
     const input = inputs[index]!;
-    if (within(input.source, output) || within(output, input.source)) throw Error("Training output overlaps readonly input");
+    // A selected/Git snapshot is staged before launch; never bind the source project over its own output.
+    const snapshotPaths = input.files?.map(file => path.join(input.source, file.destination))
+      ?? (input.git ? [...input.git.paths, ...input.git.overlays.map(file => file.destination)].map(file => path.join(input.source, file)) : undefined);
+    if (within(output, input.source) || (within(input.source, output) &&
+      (!snapshotPaths || snapshotPaths.some(file => within(output, file) || within(file, output))))) {
+      throw Error("Training output overlaps readonly input");
+    }
     for (const other of inputs.slice(index + 1)) if (within(input.source, other.source) || within(other.source, input.source) ||
       within(input.destination, other.destination) || within(other.destination, input.destination)) throw Error("Training inputs overlap");
   }
@@ -64,7 +77,8 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
     context: options.context, resume: options.args.includes("--resume") }) : undefined;
   if (repair && hashJson(config.integration) !== hashJson(repair.witness.manifest.config.integration)) throw Error("Repair integration settings binding changed");
   const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
-    canonical: options.context.project.sourceDigest, ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
+    canonical: options.context.project.sourceDigest,
+    ...(options.execution ? { execution: trainingExecutionIdentity(options.execution) } : {}), ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
   if (config.broker) await prepareTrainingBroker(config.broker, root, path.dirname(path.resolve(options.configPath)), false, config.slots);
   if (options.dryRun) return { digest, dryRun: true };
   options.signal?.throwIfAborted();
@@ -91,7 +105,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
     if (JSON.stringify(previous.snapshots) !== JSON.stringify(snapshots)) throw Error("Persisted training input snapshot changed");
     const mapped = parseTrainingMappedPreparation(await readBoundedJson(preparationPath));
     if (mapped.preparationDigest !== digest || mapped.imageId !== image) throw Error("Persisted training preparation identity mismatch");
-    await verifyCanonicalPins(inputs, options.context.sources, staged);
+    await verifyCanonicalPins(inputs, canonicalPins, staged);
   } else {
     let owned = false;
     try {
@@ -99,7 +113,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       try { await mkdir(output, { mode: 0o700 }); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await lstat(output)).isDirectory() || await realpath(output) !== output) throw error; }
       staged = await Promise.all(inputs.map(input => stageInput(input, path.join(staging, input.id))));
-      await verifyCanonicalPins(inputs, options.context.sources, staged);
+      await verifyCanonicalPins(inputs, canonicalPins, staged);
       image = imagePlan ? (await buildTrainingImage(imagePlan, { parent, dockerContext: config.dockerContext, process: options.process,
         timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams })).imageId : "ref" in config.image ? config.image.ref : "";
       if (!image.startsWith("sha256:")) {
@@ -130,6 +144,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   if (inspected.code !== 0 || inspected.stdout.trim() !== image) throw Error("Saved training image is missing or changed");
   const map = (file: string): string => {
     const absolute = path.resolve(file);
+    if (within(output, absolute)) return absolute;
     const index = roots.findIndex(source => within(source, absolute));
     return index < 0 ? absolute : path.join(staged[index]!, path.relative(roots[index]!, absolute));
   };
@@ -153,7 +168,9 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       if (hashJson(await readBoundedJson(repairConfig)) !== hashJson(repairLaunch)) throw Error("Saved repair launch changed");
     } else await writeFile(repairConfig, JSON.stringify(repairLaunch), { flag: "wx", mode: 0o600 });
     return { digest, image, configPath: repairConfig, preparationPath, repairPath: projected.repairPath, context,
+      ...(options.execution ? { execution: mapTrainingExecution(options.execution, map) } : {}),
       args: [...args, "--repair-measurements", "/run/training/inputs/repair-parent", "--repair-context", "/run/paideia/repair.json"] };
   }
-  return { digest, image, configPath, preparationPath, context, args };
+  return { digest, image, configPath, preparationPath, context, args,
+    ...(options.execution ? { execution: mapTrainingExecution(options.execution, map) } : {}) };
 }

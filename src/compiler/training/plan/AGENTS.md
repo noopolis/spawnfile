@@ -5,7 +5,7 @@
 - `load.ts` is the only training-file I/O boundary: target preflight before compiler source reads, compile-graph resolution, dataset YAML reads, and ownership facts. Dataset and grader paths must be regular files lexically and physically inside the project root; grader contents are never read.
 - `load.targetSources.test.ts` preserves consumed-target diagnostics and compile/plan validation boundaries.
 - `load.compileOutput.test.ts` compares every emitted compile file and report byte with and without non-recording training declarations; recording reports are tested in the compiler.
-- `resolve.ts` selects an exact agent and builds a deterministic plan without I/O or a clock.
+- `resolve.ts` selects a canonical agent by exact ID or unambiguous short name and builds a deterministic plan without I/O or a clock.
 - `references.ts` resolves override and record-volume identities from the existing compiled graph;
   its pure record-volume selector also serves Daimon recording lowering (without importing I/O).
 - `targets.ts` validates ownership, consumer sets, graders, and datasets without I/O.
@@ -16,3 +16,6 @@ Keep runtime execution, source rewriting, recording, and Paideia delegation outs
 Reuse existing manifest schemas and compiled access decisions; overrides cannot add resources.
 Every target file belongs to its declaring manifest's tree, excluding nested Spawnfile trees.
 Keep modules below 400 lines, use named exports, and keep filesystem calls in `load.ts`.
+
+- Selection delegates to ../selection.ts; exact IDs take precedence over unambiguous authored names. Execution lowering remains outside this folder.
+- Dataset loading hashes the same buffer it parses; execution consumes these internal pins without changing the public authoring-plan schema.

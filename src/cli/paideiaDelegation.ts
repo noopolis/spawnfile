@@ -5,7 +5,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { trainingContextSchema, type TrainingContext } from "../compiler/training/index.js";
+import { trainingContextSchema, type TrainingContext, type TrainingExecution } from "../compiler/training/index.js";
 import { launchTrainingContainer } from "../compiler/training/container/index.js";
 import { runTrainingDocker } from "../compiler/training/container/process.js";
 import { prepareTraining } from "../compiler/training/preparation/index.js";
@@ -16,6 +16,7 @@ import type { CliStreams } from "./runCli.js";
 
 export interface DelegatePaideiaTrainingOptions {
   context: TrainingContext;
+  execution?: TrainingExecution;
   command: string;
   args: readonly string[];
   dryRun: boolean;
@@ -139,9 +140,10 @@ export const delegatePaideiaTraining = async (options: DelegatePaideiaTrainingOp
     const config = await readBoundedJson(options.trainingConfig) as { version?: unknown; image?: unknown };
     // Image declarations go through preparation; lowered launch configurations go straight to Docker.
     if (config.version === "spawnfile.training-container.v2" || (["spawnfile.training-container.v3", "spawnfile.training-container.v4"].includes(String(config.version)) && config.image !== undefined)) {
-      if (options.trainingImage) throw failure("V2 owns its image declaration; --training-image is only for v1");
+      if (options.trainingImage && !options.execution) throw failure("V2 owns its image declaration; --training-image is only for v1");
       const prepared = await prepareTraining({ configPath: options.trainingConfig, context: options.context, args: options.args,
         repairMeasurements: options.repairMeasurements, repairWitness: options.repairWitness,
+        execution: options.execution, outputOverride: options.execution?.output, imageOverride: options.execution ? options.trainingImage : undefined,
         dryRun: options.dryRun, process: runTrainingDocker, timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams });
       if (!("dryRun" in prepared)) return launchTrainingContainer({ ...prepared,
         timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams });
@@ -153,7 +155,7 @@ export const delegatePaideiaTraining = async (options: DelegatePaideiaTrainingOp
   if (!options.dryRun) {
     if (!options.trainingImage || !options.trainingConfig) throw failure("Actual training requires --training-image and --training-config; host execution is disabled");
     return launchTrainingContainer({ image: options.trainingImage, configPath: options.trainingConfig,
-      context: options.context, args: options.args, timeoutMs: options.timeoutMs, streams: options.streams, signal: options.signal });
+      context: options.context, args: options.args, execution: options.execution, timeoutMs: options.timeoutMs, streams: options.streams, signal: options.signal });
   }
   if (process.platform === "win32") throw failure("Paideia delegation requires POSIX process-group supervision");
   const bytes = JSON.stringify(trainingContextSchema.parse(options.context));

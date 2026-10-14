@@ -1,3 +1,4 @@
+import { selectTrainingAgent } from "../selection.js";
 import { TRAINING_PLAN_VERSION, trainingPlanSchema, type TrainingPlan } from "./contract.js";
 import { invalidTraining, lexical, resolveTrainingRecordVolumes, resolveTrainingResource } from "./references.js";
 import { planGrader, resolveTrainingTarget, trainingAgents } from "./targets.js";
@@ -48,12 +49,7 @@ export const resolveTrainingPlan = (
   project: LoadedTrainingProject, agentId: string | undefined, producerVersion: string
 ): TrainingPlan => {
   const agents = trainingAgents(project);
-  const selected = agentId === undefined
-    ? agents.length === 1 ? agents[0] : undefined
-    : agents.find((agent) => agent.id === agentId);
-  if (!selected) return invalidTraining(agentId === undefined
-    ? "Training requires --agent with an exact node id when the project does not contain exactly one agent"
-    : `No canonical agent matches ${agentId}`);
+  const selected = selectTrainingAgent(agents, agentId);
 
   const graders = Object.entries(selected.value.training?.graders ?? {})
     .map(([name, grader]) => planGrader(project, name, grader));

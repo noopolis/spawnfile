@@ -125,7 +125,7 @@ describe("spawnfile train --materialize", () => {
     ["--history", "history", "--plan"]
   ])("rejects incomplete or conflicting local mode options %j before reads", async (...flags) => {
     const forbidden = vi.fn(async () => { throw Error("must not read project"); });
-    expect(await runCli(["train", "/missing", ...flags], {
+    expect(await runCli(["train", await project(), ...flags], {
       handlers: { loadTrainingProject: forbidden, createTrainingPlan: forbidden, materializeTrainingMoment: forbidden,
         createTrainingContext: forbidden, delegatePaideiaTraining: forbidden }, streams: { stdout() {}, stderr() {} }
     })).toBe(2);
@@ -194,15 +194,15 @@ describe("spawnfile train --plan", () => {
     }
   });
 
-  it.each([false, true])("requires --train before context extraction without --plan with dryRun=%s", async (dryRun) => {
+  it.each([false, true])("requires authored targets or --train before context extraction with dryRun=%s", async (dryRun) => {
     const flags = dryRun ? ["--dry-run"] : [];
     const forbidden = vi.fn(async () => { throw Error("must not read the project"); });
     const stderr: string[] = [];
-    expect(await runCli(["train", "/missing", ...flags], {
+    expect(await runCli(["train", await project(), ...flags], {
       handlers: { createTrainingPlan: forbidden, createTrainingContext: forbidden, delegatePaideiaTraining: forbidden },
       streams: { stdout() {}, stderr: (value) => stderr.push(value) }
     })).toBe(2);
-    expect(stderr).toEqual(["error: required option '--train <value>' not specified"]);
+    expect(stderr).toEqual(["error: Agent agent:author has no executable training targets; supply --train"]);
     expect(forbidden).not.toHaveBeenCalled();
   });
 });

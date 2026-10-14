@@ -1,4 +1,5 @@
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { z } from "zod";
@@ -59,9 +60,11 @@ const validateTrainingTargetSources = async (manifestPath: string, visited = new
   }
 };
 
-const readYaml = async <T>(file: string, schema: z.ZodType<T>, declaredBy: string): Promise<T> => {
+const readYaml = async <T>(file: string, schema: z.ZodType<T>, declaredBy: string): Promise<{ value: T; sha256: string }> => {
   try {
-    return schema.parse(parseYaml(await readFile(file, "utf8"), { strict: true, uniqueKeys: true }));
+    const bytes = await readFile(file);
+    return { value: schema.parse(parseYaml(bytes.toString("utf8"), { strict: true, uniqueKeys: true })),
+      sha256: `sha256:${createHash("sha256").update(bytes).digest("hex")}` };
   } catch (error) {
     return invalidTraining(`Invalid training file ${file} declared by ${declaredBy}: ${reason(error)}`);
   }
@@ -142,7 +145,7 @@ export const loadTrainingProject = async (inputPath: string): Promise<LoadedTrai
       for (const file of Object.values(declaration.datasets)) {
         if (!file || project.datasets[file]) continue;
         project.datasets[file] = {
-          ...await loadDataFileSource(root, file, node.id), value: await readYaml(file, trainingDatasetSchema, node.id)
+          ...await loadDataFileSource(root, file, node.id), ...await readYaml(file, trainingDatasetSchema, node.id)
         };
       }
     }

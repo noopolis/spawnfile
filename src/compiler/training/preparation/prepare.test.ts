@@ -167,3 +167,31 @@ it("reclaims the preparation scratch an aborted launch left behind, and refuses 
   await rm(path.join(staging, "state.json"));
   await expect(prepareTraining(f.options)).rejects.toThrow(/never recorded its identity; remove it to retry: rm -rf/u);
 });
+
+it("binds optimizer shape into exact resume independently of source/argv/model changes", async () => {
+  const f = await fixture();
+  const optimizer = { method: "gepa", model: "same-model", variants: 4, keep: 2, budget: { rounds: 3 } };
+  const execution = { version: "spawnfile.training-execution.v1" as const, optimizer, args: f.args, datasetPins: [],
+    output: path.join(f.root, "output"), authoring: {
+      version: "spawnfile.training-plan.v1" as const, producer: { package: "spawnfile" as const, version: "test" },
+      project: { root: f.context.project.root, manifest: f.context.project.manifest },
+      agent: { id: f.context.agent.id, name: f.context.agent.name }, optimizer, record: null, graders: [], targets: []
+    } };
+  await prepareTraining({ ...f.options, execution });
+  const refusal = await prepareTraining({ ...f.options, args: [...f.args, "--resume"],
+    execution: { ...execution, optimizer: { ...optimizer, keep: 1 } } }).then(() => undefined, (error: Error) => error);
+  expect(refusal, "optimizer resume guarantee").toBeInstanceOf(Error);
+  expect(refusal?.message).toContain("exact resume rejected");
+  // Reordering scalar flags and adding resume leaves the effective experiment unchanged.
+  await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"],
+    execution: { ...execution, args: ["--resume", "--out", execution.output, "--train", f.args[1]!] } })).resolves.toMatchObject({ image });
+});
+
+it("permits only disjoint selected snapshots when output sits below the source project", async () => {
+  const f = await fixture(); f.config.inputs[0]!.include = ["Spawnfile", "train.yaml"];
+  f.config.output.source = "project/output"; await f.save();
+  const options = { ...f.options, args: ["--train", f.args[1]!, "--out", path.join(f.root, "project/output")] };
+  await expect(prepareTraining(options)).resolves.toMatchObject({ image });
+  f.config.inputs[0]!.include.push("output"); await f.put("project/output/future.txt"); await f.save();
+  await expect(prepareTraining(options)).rejects.toThrow("overlaps readonly input");
+});

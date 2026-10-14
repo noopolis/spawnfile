@@ -1,30 +1,41 @@
-import { lstat, realpath } from "node:fs/promises";
+import { lstat, mkdir, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { trainingContextSchema, type TrainingContext } from "../contract.js";
 import { trainingContainerConfigSchema, type TrainingContainerConfig } from "./contract.js";
+import { allocateTrainingOutputParent } from "../execution.js";
 
 const inside = (root: string, value: string): boolean => value === root || value.startsWith(`${root}/`);
-export const prepareTrainingContainer = async (raw: unknown, context: TrainingContext, args: readonly string[]): Promise<{
+export const prepareTrainingContainer = async (raw: unknown, context: TrainingContext, args: readonly string[],
+  options: { createOutput?: boolean } = {}): Promise<{
   config: TrainingContainerConfig; context: TrainingContext; args: string[]; viewerPort?: number;
 }> => {
   const config = trainingContainerConfigSchema.parse(raw);
   const entries = [...config.inputs, config.output];
   const home = path.resolve(os.homedir());
   const globalConfigRoots = [".codex", ".claude", ".grok", ".ssh", ".config"].map((name) => path.join(home, name));
+  let missingOutput = false;
   for (const entry of [...entries, ...config.auth]) {
-    const canonical = await realpath(entry.source);
+    let canonical: string;
+    try { canonical = await realpath(entry.source); }
+    catch (error) {
+      if (entry !== config.output || !options.createOutput || (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      canonical = path.resolve(entry.source);
+      missingOutput = true;
+    }
     if (canonical !== entry.source) throw Error("Training bind sources must be canonical, without symlink aliases");
-    const stat = await lstat(canonical);
-    if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) throw Error("Training binds require regular files or directories");
-    if (config.auth.includes(entry as TrainingContainerConfig["auth"][number]) && !stat.isFile()) throw Error("Auth must be a single regular leaf file");
+    if (entry !== config.output || !missingOutput) {
+      const stat = await lstat(canonical);
+      if (stat.isSymbolicLink() || (!stat.isFile() && !stat.isDirectory())) throw Error("Training binds require regular files or directories");
+      if (config.auth.includes(entry as TrainingContainerConfig["auth"][number]) && !stat.isFile()) throw Error("Auth must be a single regular leaf file");
+    }
     if (entries.includes(entry as TrainingContainerConfig["output"])) {
       if (["/", "/etc", "/var", "/run", "/tmp", "/opt", "/usr", "/Users", "/home", home].includes(canonical) || globalConfigRoots.some((root) => inside(root, canonical))) throw Error("Host homes, configuration and system roots cannot be training inputs");
       if (config.auth.some((auth) => inside(canonical, auth.source))) throw Error("Auth must not be exposed through input or output mounts");
     }
   }
   if (config.inputs.some((entry, index) => config.inputs.some((other, otherIndex) => index !== otherIndex && inside(entry.source, other.source)))) throw Error("Training input source roots must not overlap");
-  if (!(await lstat(config.output.source)).isDirectory()) throw Error("Training output must be an existing directory");
+  if (!missingOutput && !(await lstat(config.output.source)).isDirectory()) throw Error("Training output must be an existing directory");
   if (config.inputs.some((entry) => inside(entry.source, config.output.source) || inside(config.output.source, entry.source))) throw Error("Training output and inputs must not overlap");
   const map = (value: string): string => {
     const absolute = path.resolve(value);
@@ -72,6 +83,14 @@ export const prepareTrainingContainer = async (raw: unknown, context: TrainingCo
         throw Error("Training concurrency must fit the provisioned slots");
       }
       if (flag !== "--concurrency") mappedArgs.splice(mappedArgs.indexOf(flag), 1, "--concurrency", value);
+    }
+  }
+  if (missingOutput) {
+    await allocateTrainingOutputParent(config.output.source);
+    try { await mkdir(config.output.source, { mode: 0o700 }); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+    if (await realpath(config.output.source) !== config.output.source || !(await lstat(config.output.source)).isDirectory()) {
+      throw Error("Training output must be a canonical directory");
     }
   }
   return { config, context: mapped, args: mappedArgs, ...(viewerPort === undefined ? {} : { viewerPort }) };

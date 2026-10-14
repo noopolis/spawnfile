@@ -19,7 +19,7 @@ export const registerTrainCommand = (
   const command = program.command("train")
     .description("Plan, rewind, or train one canonical agent through its declared training inputs")
     .argument("[path]", "Canonical project directory or Spawnfile path", process.cwd())
-    .option("--agent <id>", "Exact canonical agent node id (inferred only for a single-agent project)")
+    .option("--agent <id>", "Canonical agent id or unambiguous short name (inferred for one agent)")
     .option("--paideia-command <executable>", "Installed Paideia executable; no shell or automatic install", "paideia")
     .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
     .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
@@ -67,23 +67,11 @@ export const registerTrainCommand = (
       setExitCode(0);
       return;
     }
-    if (typeof options.train !== "string") {
-      throw new SpawnfileError("validation_error", "required option '--train <value>' not specified");
-    }
-    if (options.dryRun !== true && typeof options.out !== "string") {
-      throw new SpawnfileError("validation_error", "Actual training requires --out; dry-run does not write an output directory");
-    }
-    if (options.dryRun !== true && typeof options.trainingConfig !== "string") {
-      throw new SpawnfileError("validation_error", "Actual training requires --training-config; v1 additionally requires --training-image; host execution is disabled");
-    }
     const timeout = options.timeoutMs === undefined ? 3_600_000 : Number(options.timeoutMs);
     if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 3_600_000 ||
       (options.timeoutMs !== undefined && !/^\d+$/u.test(String(options.timeoutMs)))) {
       throw new SpawnfileError("validation_error", "--timeout-ms must be an integer from 1 to 3600000");
     }
-    const context = await handlers.createTrainingContext(inputPath, {
-      agent: options.agent as string | undefined, packageVersion
-    });
     const args: string[] = [];
     for (const name of forwarded) {
       const value = options[key(name)];
@@ -92,9 +80,31 @@ export const registerTrainCommand = (
     }
     if (options.dryRun === true) args.push("--dry-run");
     if (options.resume === true) args.push("--resume");
-    setExitCode(await handlers.delegatePaideiaTraining({ context, args,
+    const project = await handlers.loadTrainingProject(inputPath);
+    const plan = handlers.resolveTrainingPlan(project, options.agent as string | undefined, packageVersion);
+    const lowered = plan.targets.length > 0 ? await handlers.lowerTrainingExecution({ project, plan, args,
+      trainingConfig: options.trainingConfig as string | undefined, trainingImage: options.trainingImage as string | undefined }) : undefined;
+    if (lowered && options.dryRun === true) {
+      streams.stdout(JSON.stringify({ ...lowered.execution, container: { configPath: lowered.trainingConfig,
+        declaration: lowered.declaration, ...(lowered.trainingImage ? { imageOverride: lowered.trainingImage } : {}) } }, null, 2));
+      setExitCode(0);
+      return;
+    }
+    if (!lowered && typeof options.train !== "string") {
+      throw new SpawnfileError("validation_error", `Agent ${plan.agent.id} has no executable training targets; supply --train`);
+    }
+    if (!lowered && options.dryRun !== true && typeof options.out !== "string") {
+      throw new SpawnfileError("validation_error", "Actual training requires --out when no training targets are declared");
+    }
+    if (!lowered && options.dryRun !== true && typeof options.trainingConfig !== "string") {
+      throw new SpawnfileError("validation_error", "Actual training requires --training-config when no training targets are declared; host execution is disabled");
+    }
+    const context = await handlers.createTrainingContext(inputPath, { agent: plan.agent.id, packageVersion });
+    if (lowered) await handlers.allocateTrainingOutputParent(lowered.execution.output);
+    setExitCode(await handlers.delegatePaideiaTraining({ context, args: lowered?.execution.args ?? args, execution: lowered?.execution,
       repairMeasurements: options.repairMeasurements as string | undefined, repairWitness: options.repairWitness as string | undefined,
-      trainingImage: options.trainingImage as string | undefined, trainingConfig: options.trainingConfig as string | undefined,
+      trainingImage: lowered?.trainingImage ?? options.trainingImage as string | undefined,
+      trainingConfig: lowered?.trainingConfig ?? options.trainingConfig as string | undefined,
       command: options.paideiaCommand as string, dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));
   });

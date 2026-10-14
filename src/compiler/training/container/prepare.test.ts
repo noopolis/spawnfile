@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
@@ -16,6 +16,25 @@ it("maps canonical sources and CLI paths, leaving installed bridge and project-r
   expect(result.context.documents[0]?.sourcePath).toBe("/run/training/inputs/project/Spawnfile");
   expect(result.context.skills[0]?.sourcePath).toBe("/run/training/inputs/project/Spawnfile");
   expect(result.args).toEqual(["--train", "/run/training/inputs/project/train.yaml", "--out", "/run/training/output", "--resource", "archive=/run/training/inputs/project", "--bridge-command", "/opt/training/bin/bridge", "--editable", "a.md"]);
+});
+it("creates only validated fresh output, preserving canonical and overlap checks", async () => {
+  const f = await setup(), output = path.join(f.root, "fresh/nested/run");
+  const config = { ...f.config, output: { ...f.config.output, source: output } };
+  const args = ["--train", path.join(f.project, "train.yaml"), "--out", output];
+  await expect(prepareTrainingContainer(config, f.context, args)).rejects.toThrow("ENOENT");
+  await expect(prepareTrainingContainer(config, f.context, ["--train", "/missing"], { createOutput: true })).rejects.toThrow("not covered");
+  await expect(lstat(path.dirname(output))).rejects.toThrow("ENOENT");
+  await prepareTrainingContainer(config, f.context, args, { createOutput: true });
+  expect((await lstat(output)).mode & 0o777).toBe(0o700);
+  await prepareTrainingContainer(config, f.context, args, { createOutput: true });
+  const overlapping = path.join(f.project, "new-output");
+  await expect(prepareTrainingContainer({ ...config, output: { ...config.output, source: overlapping } }, f.context,
+    [], { createOutput: true })).rejects.toThrow("output and inputs must not overlap");
+  await expect(lstat(overlapping)).rejects.toThrow("ENOENT");
+  await mkdir(path.join(f.root, "real")); await symlink(path.join(f.root, "real"), path.join(f.root, "alias"));
+  await expect(prepareTrainingContainer({ ...config, output: { ...config.output, source: path.join(f.root, "alias/new/run") } }, f.context,
+    [], { createOutput: true })).rejects.toThrow("canonical directory");
+  expect(await readdir(path.join(f.root, "real"))).toEqual([]);
 });
 it("rejects mutable images, extra authority and overlapping destinations", async () => {
   const f = await setup();

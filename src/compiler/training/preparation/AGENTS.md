@@ -38,3 +38,9 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
   `src/runtime/container.ts` verifies the same receipt for a compiled
   organization image. The recipe text is part of the plan digest, so a rotated
   identity can never be served from an existing training image.
+
+- Authoring execution may override output/image and contributes optimizer/plan identity to exact resume. Selected or pinned Git snapshots may contain the output source only when their sealed paths are disjoint; output never maps into a read-only staged project.
+- The optimizer-resume assertion is labelled so the isolated mutation runner proves that changing optimizer controls independently refuses resume.
+- Verify execution dataset pins alongside canonical context pins against staged bytes on fresh runs and resume, before building an image or mapping paths.
+- Pin verification resolves confined staged symlinks before hashing; a link escaping its declared staged input is rejected.
+- `image.build.integration.execution` optionally declares the exact supported authored receipt version. Render and hash its label with the recipe; clear parent capability when absent. Verify the declared label on cache hits and completed builds. Image tests stop at the actual launch gate without fabricating training output; mutation tests live in sibling `execution.mutation.test.ts`.

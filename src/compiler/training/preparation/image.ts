@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TrainingDockerProcess } from "../container/process.js";
+import { TRAINING_EXECUTION_CAPABILITY_LABEL } from "../contract.js";
 import type { TrainingImageBuild } from "./contract.js";
 import { assertInputRoot, copySealed, fileIdentity, hashJson, sealFile, sealTree, type SealedFile } from "./files.js";
 import { bindDaimonParentVerification, resolveTrainingDaimonParent } from "./daimonParent.js";
@@ -35,7 +36,9 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
   for (const source of [build.paideia, build.bridge, build.claude, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
   const recipe = await readFile(path.join(assets, "Dockerfile"), "utf8");
-  const dockerfile = daimonParent ? bindDaimonParentVerification(recipe, daimonParent) : recipe;
+  // Always override the parent's label: compatibility belongs to this installed integration.
+  const capability = build.integration.execution ?? "";
+  const dockerfile = `${daimonParent ? bindDaimonParentVerification(recipe, daimonParent) : recipe}\nLABEL ${TRAINING_EXECUTION_CAPABILITY_LABEL}=${JSON.stringify(capability)}\n`;
   const ownLock = path.extname(fileURLToPath(import.meta.url)) === ".ts" || ownRoot !== packageRoot
     ? path.join(ownRoot, "package-lock.json") : path.join(assets, "package-lock.json");
   const files = [
@@ -73,10 +76,10 @@ export async function buildTrainingImage(plan: TrainingImagePlan, options: {
     timeoutMs: options.timeoutMs, signal: options.signal, ...stream ? options.streams : {}
   });
   const inspect = async (): Promise<string | undefined> => {
-    const result = await call(["image", "inspect", tag, "--format", '{{json .Id}}\n{{json (index .Config.Labels "com.spawnfile.training.recipe")}}']);
+    const result = await call(["image", "inspect", tag, "--format", `{{json .Id}}\n{{json (index .Config.Labels "com.spawnfile.training.recipe")}}\n{{json (index .Config.Labels "${TRAINING_EXECUTION_CAPABILITY_LABEL}")}}`]);
     if (result.code !== 0) return undefined;
-    try { const [id, digest] = result.stdout.trim().split("\n").map(line => JSON.parse(line));
-      return /^sha256:[a-f0-9]{64}$/u.test(id) && digest === plan.digest ? id : undefined;
+    try { const [id, digest, capability] = result.stdout.trim().split("\n").map(line => JSON.parse(line));
+      return /^sha256:[a-f0-9]{64}$/u.test(id) && digest === plan.digest && capability === (plan.build.integration.execution ?? "") ? id : undefined;
     } catch { return undefined; }
   };
   const cached = await inspect(); if (cached) return { imageId: cached, cached: true };

@@ -7,6 +7,8 @@ import { trainingSlotsDocument, TRAINING_SLOTS_FILE } from "../broker/paths.js";
 import { assertNotDesktopGrokAuth } from "../broker/entrypoint.js";
 import { TRAINING_BROKER_ENTRYPOINT, trainingBrokerMounts, trainingBrokerSecurityArgs, trainingBrokerTmpfsTargets, trainingRunRequestMount } from "./security.js";
 import { parseDetachedContainerInspect } from "../../runProjectDocker.js";
+import { mapTrainingExecution, trainingExecutionSchema, TRAINING_EXECUTION_FILE, TRAINING_EXECUTION_CAPABILITY_LABEL, TRAINING_EXECUTION_VERSION, type TrainingExecution } from "../execution.js";
+import { verifyCanonicalPins } from "../preparation/inputs.js";
 import type { TrainingContext } from "../contract.js";
 import { trainingImageSchema } from "./contract.js";
 import { prepareTrainingContainer } from "./prepare.js";
@@ -21,6 +23,7 @@ export interface LaunchTrainingContainerOptions {
   timeoutMs: number; signal?: AbortSignal;
   streams: { stdout(line: string): void; stderr(line: string): void };
   process?: TrainingDockerProcess;
+  execution?: TrainingExecution;
   preparationPath?: string;
   repairPath?: string;
 }
@@ -32,7 +35,19 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
   if (uid === undefined || gid === undefined || uid === 0) throw Error("Training requires an explicit non-root local user");
   const configBytes = await readFile(options.configPath, "utf8");
   if (Buffer.byteLength(configBytes) > 1024 * 1024) throw Error("Training launch config exceeds 1 MiB");
-  const prepared = await prepareTrainingContainer(JSON.parse(configBytes), options.context, options.args);
+  const raw = JSON.parse(configBytes);
+  const prepared = await prepareTrainingContainer(options.execution
+    ? { ...raw, output: { ...raw.output, source: options.execution.output } } : raw, options.context, options.args,
+    { createOutput: options.execution !== undefined && !options.args.includes("--resume") });
+  const execution = options.execution ? mapTrainingExecution(options.execution, file => {
+    const absolute = path.resolve(file);
+    const binding = [...prepared.config.inputs, prepared.config.output].find(entry =>
+      absolute === entry.source || absolute.startsWith(entry.source + path.sep));
+    if (!binding) throw Error(`Training execution path is not covered by a declared mount: ${file}`);
+    return path.posix.join(binding.destination, path.relative(binding.source, absolute).split(path.sep).join("/"));
+  }) : undefined;
+  if (options.execution) await verifyCanonicalPins(prepared.config.inputs.map((input, index) =>
+    ({ ...input, id: String(index), digest: "" })), options.execution.datasetPins, prepared.config.inputs.map(input => input.source));
   // D2: the training Grok login is a dedicated one. Refuse the developer's desktop leaf before Docker ever sees it.
   if (prepared.config.broker) {
     assertNotDesktopGrokAuth(prepared.config.broker.bootstrap);
@@ -75,13 +90,22 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const inspected = await call(["image", "inspect", image, "--format", "{{.Id}}"]);
     expectedImage = inspected.stdout.trim();
     if (inspected.code !== 0 || !/^sha256:[a-f0-9]{64}$/u.test(expectedImage) || (image.startsWith("sha256:") && image !== expectedImage)) throw Error("Training image must be locally available with an immutable identity");
+    if (execution) {
+      const capability = await call(["image", "inspect", expectedImage, "--format", `{{json (index .Config.Labels "${TRAINING_EXECUTION_CAPABILITY_LABEL}")}}`]);
+      if (capability.code !== 0 || capability.stdout.trim() !== JSON.stringify(TRAINING_EXECUTION_VERSION)) {
+        throw Error(`Authored training requires an image implementing --spawnfile-execution ${TRAINING_EXECUTION_FILE} and labelled ${TRAINING_EXECUTION_CAPABILITY_LABEL}=${TRAINING_EXECUTION_VERSION}; legacy Paideia datasets are incompatible`);
+      }
+    }
     privateRoot = await realpath(await mkdtemp(path.join(path.dirname(prepared.config.output.source), ".spawnfile-training-container-")));
     await chmod(privateRoot, 0o700);
     const contextFile = path.join(privateRoot, "context.json");
     await writeFile(contextFile, JSON.stringify(prepared.context), { mode: 0o444, flag: "wx" });
+    const executionFile = path.join(privateRoot, "execution.json");
+    if (execution) await writeFile(executionFile, JSON.stringify(trainingExecutionSchema.parse(execution)), { mode: 0o444, flag: "wx" });
     const mounts = [...prepared.config.inputs.map((entry) => `type=bind,src=${entry.source},dst=${entry.destination},readonly`),
       `type=bind,src=${prepared.config.output.source},dst=/run/training/output`,
       `type=bind,src=${contextFile},dst=/run/paideia/context.json,readonly`,
+      ...execution ? [`type=bind,src=${executionFile},dst=${TRAINING_EXECUTION_FILE},readonly`] : [],
       ...options.preparationPath ? [`type=bind,src=${options.preparationPath},dst=/run/paideia/preparation.json,readonly`] : [],
       ...options.repairPath ? [`type=bind,src=${options.repairPath},dst=/run/paideia/repair.json,readonly`] : [],
       ...prepared.config.auth.map((entry) => `type=bind,src=${entry.source},dst=/run/paideia-auth/${entry.provider},readonly`)];
@@ -107,7 +131,8 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
       ...(broker ? ["--env", "PAIDEIA_MODEL_REQUEST_CAP=broker"] : []),
       ...[...mounts, ...(broker ? trainingBrokerMounts(broker) : [])].flatMap((mount) => ["--mount", mount]),
       ...(prepared.viewerPort === undefined ? [] : ["--publish", `127.0.0.1:${prepared.viewerPort}:${prepared.viewerPort}`]), expectedImage,
-      "train", "--spawnfile-context", "/run/paideia/context.json", ...prepared.args];
+      "train", "--spawnfile-context", "/run/paideia/context.json",
+      ...(execution ? ["--spawnfile-execution", TRAINING_EXECUTION_FILE] : []), ...prepared.args];
     creationAttempted = true;
     const created = await call(args);
     containerId = created.stdout.trim();

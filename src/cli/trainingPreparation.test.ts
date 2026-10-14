@@ -29,10 +29,10 @@ it("runs cold, warm and exact-resume through the actual public command and exist
   const errors: string[] = [];
   const args = () => ["train", f.context.project.root, "--training-config", f.configPath, "--train", f.args[1]!, "--out", path.join(f.root, f.config.output.source)];
   const run = (extra: string[] = []) => runCli([...args(), ...extra], { streams: { stdout() {}, stderr: value => errors.push(value) } });
-  expect(await run()).toBe(0); expect(errors).toEqual([]);
+  expect(await run(), errors.join("\n")).toBe(0); expect(errors).toEqual([]);
   expect(JSON.parse(await readFile(preparation, "utf8")).imageId).toBe(image);
   expect(await run(["--resume"])).toBe(0);
-  f.config.output.source = "warm"; await f.save(); expect(await run()).toBe(0);
+  f.config.output.source = "warm"; await f.save(); expect(await run(), errors.join("\n")).toBe(0);
   expect(calls.filter(args => args[2] === "build")).toHaveLength(1);
   expect(calls.filter(args => args[2] === "create")).toHaveLength(3);
 // Three whole cold/warm/resume preparations, each sealing and hashing the complete installed distribution:
