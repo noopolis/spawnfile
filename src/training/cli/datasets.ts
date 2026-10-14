@@ -59,9 +59,9 @@ export class CliDatasets {
   async buildGraders(dependencies: GraderDependencies = {}, requireExclusions = false): Promise<Record<string, GradingRuntime | AtomicRuntime>> {
     const graders: Record<string, GradingRuntime | AtomicRuntime> = {};
     for (const dataset of this.loaded.values()) for (const check of graderChecks(dataset)) {
-      assertModelRequestAdmission('native-grader', 'grader');
       const filename = check.grader as string;
       const binding = check.grader_binding as GraderBinding;
+      if (binding.kind !== 'atomic') assertModelRequestAdmission('native-grader', 'grader');
       const runtime = graders[filename] ?? await buildExecutableGradingRuntime(filename, dependencies);
       if (runtime.definitionDigest !== binding.definitionDigest || ('kind' in runtime ? runtime.templatesDigest !== binding.templatesDigest || binding.kind !== 'atomic' : runtime.calibrationDigest !== binding.calibrationDigest)) {
         throw new Error(`Grader or calibration changed after dataset resolution: ${filename}`);
