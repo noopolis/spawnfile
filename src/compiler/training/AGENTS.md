@@ -19,3 +19,6 @@
 - `execution.mutation.test.ts` deletes one key property at a time in an isolated source copy, restores it before the next runner, and requires that mutant's labelled assertion to fail; it never rewrites the working tree.
 - Execution carries dataset byte pins captured with parsed moments; path mapping preserves hashes. Compatible images explicitly advertise the execution contract; mounting a receipt alone never establishes compatibility.
 - `contract.ts` also owns shared execution version/capability constants so image authoring and launch share one wire identity without a preparation/execution import cycle; `execution.ts` preserves their public exports.
+
+- `moments.ts` lowers every unique authored role/dataset/example through rewind, persists refusal reports and explicit Paideia datasets, and exposes fresh trial rewind with identity checks. Preparation hooks are declared names; org semantics stay in registered private integrations.
+- Register each lowering entry before timestamp normalization; normalization failures are per-example refusals with null lineage, and later examples must still run.

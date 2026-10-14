@@ -42,3 +42,6 @@ Documents in `research/` are informative — they inform decisions but are not b
 - Direct launch output rules preserve canonical paths and disjoint mounts; preparation declarations and lowered launch configurations have distinct shapes.
 - Authored execution requires an explicit image consumer capability and dataset byte pins; dry-run never implies runtime compatibility.
 - Packaged builds declare receipt support on `image.build.integration.execution`; absent support clears inherited image capability, and declared support participates in recipe/cache verification.
+
+- TRAINING.md defines named moment hooks, explicit dataset lowering, per-trial rewind and refusal/lineage guarantees.
+- Timestamp normalization refusals retain authored evidence and null lineage in the lowering report without aborting later examples.

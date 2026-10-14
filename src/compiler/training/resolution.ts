@@ -11,6 +11,7 @@ export interface ResolvedTrainingGrader {
 }
 
 export interface ResolvedTraining {
+  preparation?: { hook: string; history?: string };
   record?: TrainingDeclaration["record"];
   optimizer?: TrainingDeclaration["optimizer"];
   graders: Record<string, ResolvedTrainingGrader>;
@@ -27,6 +28,8 @@ export const resolveTrainingDeclaration = (
   if (declaration === undefined) return undefined;
   const resolve = (value: string): string => path.resolve(path.dirname(manifestPath), value);
   return {
+    ...(declaration.preparation === undefined ? {} : { preparation: { ...declaration.preparation,
+      ...(declaration.preparation.history === undefined ? {} : { history: resolve(declaration.preparation.history) }) } }),
     ...(declaration.record === undefined ? {} : { record: { ...declaration.record,
       ...(declaration.record.volumes === undefined ? {} : { volumes: [...declaration.record.volumes] }) } }),
     ...(declaration.optimizer === undefined ? {} : { optimizer: { ...declaration.optimizer,
@@ -59,10 +62,12 @@ export const mergeTrainingDeclarations = (
     ? undefined : { ...inherited?.optimizer, ...local?.optimizer, ...(budget === undefined ? {} : { budget }) };
   const graders = { ...inherited?.graders, ...local?.graders };
   const targets = local?.targets ?? [];
-  if (record === undefined && optimizer === undefined && Object.keys(graders).length === 0 && targets.length === 0) {
+  const preparation = local?.preparation ?? inherited?.preparation;
+  if (preparation === undefined && record === undefined && optimizer === undefined && Object.keys(graders).length === 0 && targets.length === 0) {
     return undefined;
   }
   return {
+    ...(preparation === undefined ? {} : { preparation }),
     ...(record === undefined ? {} : { record }),
     ...(optimizer === undefined ? {} : { optimizer }),
     graders: Object.fromEntries(Object.entries(graders).sort(([left], [right]) => left.localeCompare(right))),

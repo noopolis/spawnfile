@@ -53,7 +53,7 @@ export const prepareTrainingContainer = async (raw: unknown, context: TrainingCo
   let viewerPort: number | undefined;
   for (let index = 0; index < mappedArgs.length; index++) {
     const flag = mappedArgs[index];
-    if (["--train", "--test", "--out", "--cost-config"].includes(flag!)) {
+    if (["--train", "--validation", "--test", "--out", "--cost-config"].includes(flag!)) {
       const value = mappedArgs[++index];
       if (!value) throw Error(`Missing ${flag} path`);
       mappedArgs[index] = map(value);

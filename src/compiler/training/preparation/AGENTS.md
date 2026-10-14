@@ -44,3 +44,5 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 - Verify execution dataset pins alongside canonical context pins against staged bytes on fresh runs and resume, before building an image or mapping paths.
 - Pin verification resolves confined staged symlinks before hashing; a link escaping its declared staged input is rejected.
 - `image.build.integration.execution` optionally declares the exact supported authored receipt version. Render and hash its label with the recipe; clear parent capability when absent. Verify the declared label on cache hits and completed builds. Image tests stop at the actual launch gate without fabricating training output; mutation tests live in sibling `execution.mutation.test.ts`.
+
+- Map explicit validation dataset argv alongside train/test before sealing the container handoff. Preparation hook history paths are mapped through the execution receipt, never resolved by a second declaration reader.
