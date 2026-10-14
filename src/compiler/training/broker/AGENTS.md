@@ -33,6 +33,7 @@ container that runs a brokered Grok subject beside the evaluator.
   worker uid may even attempt a namespace escape — the only honest way to say
   `seccomp` rather than `kernel` when a route is unavailable.
 - `entrypoint.ts`/`main.ts` are the image's root entrypoint.
+- `evaluatorSecrets.ts` boundedly copies readonly TypeSafe ingress into `/run/paideia` tmpfs before provisioning transfers ownership. Ingress stays root-only; the final directory/file are `2000:2000 0700/0600`. Never chmod/chown the host-bound leaf or put its bytes in the global environment/logs. The subject deny mask covers both paths.
 
 Local constraints:
 
