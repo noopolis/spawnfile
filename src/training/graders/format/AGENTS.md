@@ -42,3 +42,6 @@ External AI reviews and weak editor verdicts use signal, never human/editor auth
 
 TypeSafe models require HTTPS endpoints and positive price estimates. Their
 concurrency defaults to eight and accepts only integers 1–32.
+
+checkBinding is a public validation seam reused by both grader-file formats;
+resolved rulesets must also pass its accepted-call/argument-binding guards.

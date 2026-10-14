@@ -1,12 +1,17 @@
 import path from 'node:path';
 import type { CheckNode } from '../contracts/dataset.js';
 import { allQuestions, parseCalibrationJson, parseGraderYaml, sha256, validateGrader } from '../graders/index.js';
+import { checkBinding, parseYaml } from '../graders/format/index.js';
+import { parseAtomicGrader, validateAtomicTemplates } from '../graders/atomic/index.js';
+import { parseCheckTemplatesYaml } from '../graders/decomposition/index.js';
 import type { PlanResolution } from './plans.js';
 import { fail, fields, object, safePath, string } from './validation.js';
 
 export interface GraderBinding {
   definitionDigest: string;
-  calibrationDigest: string;
+  calibrationDigest?: string;
+  kind?: 'atomic';
+  templatesDigest?: string;
   gates: { id: string; check: CheckNode }[];
 }
 
@@ -17,8 +22,9 @@ export function validateGraderParameters(parameters: Readonly<Record<string, unk
   else {
     string(parameters.grader, `${location}.grader`);
     const binding = object(parameters.grader_binding, `${location}.grader_binding`);
-    fields(binding, ['definitionDigest', 'calibrationDigest', 'gates'], `${location}.grader_binding`);
-    for (const key of ['definitionDigest', 'calibrationDigest']) {
+    fields(binding, ['definitionDigest', 'calibrationDigest', 'kind', 'templatesDigest', 'gates'], `${location}.grader_binding`);
+    if (binding.kind !== undefined && binding.kind !== 'atomic') fail(location, 'invalid grader binding kind');
+    for (const key of ['definitionDigest', binding.kind === 'atomic' ? 'templatesDigest' : 'calibrationDigest']) {
       if (!/^[a-f0-9]{64}$/.test(string(binding[key], location))) fail(location, `invalid ${key}`);
     }
     if (!Array.isArray(binding.gates)) fail(location, 'grader binding gates must be an array');
@@ -56,15 +62,23 @@ function resolveGraderFile(node: CheckNode, context: PlanResolution, location: s
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   };
   const source = read(filename);
-  const grader = validateGrader(parseGraderYaml(source));
-  const calibrationPath = safePath(path.posix.join(path.posix.dirname(filename), grader.calibration), `${location}.calibration`);
-  const calibrationSource = read(calibrationPath);
-  parseCalibrationJson(calibrationSource);
+  const parsed = parseYaml(source) as { schema?: string };
+  const atomic = parsed?.schema === 'paideia.atomic-grader.v1' ? parseAtomicGrader(parsed) : undefined;
+  const legacy = atomic ? undefined : validateGrader(parseGraderYaml(source));
+  const resourcePath = safePath(path.posix.join(path.posix.dirname(filename), atomic?.templates ?? legacy!.calibration), `${location}.resource`);
+  const resourceSource = read(resourcePath);
+  const templates = atomic ? parseCheckTemplatesYaml(resourceSource) : undefined;
+  if (atomic) validateAtomicTemplates(atomic, templates!);
+  else parseCalibrationJson(resourceSource);
+  const grader = legacy ?? { context: templates!.context, gates: atomic!.gates };
   const bindings = object(node.context ?? {}, `${location}.context`);
   for (const name of Object.keys(bindings)) {
     if (!Object.hasOwn(grader.context, name)) fail(location, `unknown grader context ${name}`);
   }
-  for (const question of allQuestions(grader)) {
+  if (atomic) for (const name of Object.keys(templates!.context)) {
+    if (!Object.hasOwn(bindings, name)) fail(location, `unbound grader context ${name}`);
+  }
+  for (const question of legacy ? allQuestions(legacy) : []) {
     for (const selector of [...question.reads, ...(typeof question.when === 'object' ? [question.when.field] : [])]) {
       if (selector.startsWith('context.') && !Object.hasOwn(bindings, selector.slice(8))) {
         fail(location, `unbound grader context ${selector.slice(8)} in question ${question.id}`);
@@ -72,9 +86,10 @@ function resolveGraderFile(node: CheckNode, context: PlanResolution, location: s
     }
   }
   const gates = grader.gates.flatMap(gate => 'check' in gate
-    ? [{ id: gate.id, check: resolveGate(gate.check, `${location}.gates.${gate.id}`) }] : []);
+    ? [{ id: gate.id, check: resolveGate(gate.check as CheckNode, `${location}.gates.${gate.id}`) }] : []);
   // Rulesets must not hide unbound tool gates from the grader format validator.
-  validateGrader({ ...grader, gates: grader.gates.map(gate => 'check' in gate ? gates.find(resolved => resolved.id === gate.id)! : gate) });
+  if (legacy) validateGrader({ ...legacy, gates: legacy.gates.map(gate => 'check' in gate ? gates.find(resolved => resolved.id === gate.id)! : gate) });
+  if (atomic) gates.forEach(gate => checkBinding(gate.check, `${location}.gates.${gate.id}`));
   const artifact = (node.input as string).slice(9).split('#')[0]!;
   function assertBinding(check: CheckNode): void {
     if (check.eval && isBuiltin(check.eval) && typeof check.input === 'string' &&
@@ -88,7 +103,8 @@ function resolveGraderFile(node: CheckNode, context: PlanResolution, location: s
   }
   gates.forEach(gate => assertBinding(gate.check));
   const grader_binding: GraderBinding = { definitionDigest: context.criterionFileDigests![filename]!.slice(7),
-    calibrationDigest: context.criterionFileDigests![calibrationPath]!.slice(7), gates };
-  context.versions[`grader:${filename}`] = `${grader_binding.definitionDigest}:${grader_binding.calibrationDigest}`;
+    ...(atomic ? { kind: 'atomic' as const, templatesDigest: context.criterionFileDigests![resourcePath]!.slice(7) }
+      : { calibrationDigest: context.criterionFileDigests![resourcePath]!.slice(7) }), gates };
+  context.versions[`grader:${filename}`] = `${grader_binding.definitionDigest}:${grader_binding.templatesDigest ?? grader_binding.calibrationDigest}`;
   return { ...structuredClone(node), grader: path.resolve(path.dirname(context.sourceName ?? 'dataset.yaml'), filename), grader_binding };
 }

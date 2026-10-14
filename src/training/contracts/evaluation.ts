@@ -1,3 +1,4 @@
+import type { AtomicRuntime, AtomicGradeResult } from '../graders/atomic/index.js';
 import type { DecisionAccounting } from './grading.js';
 import type { GradingRuntime, GradeResult } from '../graders/index.js';
 import type { CheckNode, EvaluatorDefinition, DataMap } from './dataset.js';
@@ -136,6 +137,9 @@ export interface EvaluationResult {
   evidence: EvidenceReference[];
   children?: EvaluationResult[];
   grading?: GradeResult;
+  atomicGrading?: AtomicGradeResult;
+  /** Infrastructure stopped atomic grading before extraction; no grade was produced. */
+  atomicFailure?: { cause: 'acceptance-gate'; gateId: string };
   /** Paid grader attempts retained even when no grade was produced. */
   decisionAccounting?: DecisionAccounting;
   usage?: Usage[];
@@ -180,7 +184,7 @@ export interface EvaluationContext {
   judges: Readonly<Record<string, JudgeRoute>>;
   embeddings: Readonly<Record<string, EmbeddingProvider>>;
   /** Host-built grader routes keyed by resolved grader filename. */
-  graders?: Readonly<Record<string, GradingRuntime>>;
+  graders?: Readonly<Record<string, GradingRuntime | AtomicRuntime>>;
   /** Engine-owned nested gate execution against the same immutable trial snapshot. */
   evaluateCheck?: (check: CheckNode, artifact?: ArtifactSnapshot) => Promise<EvaluationResult>;
   /** Artifact whose acceptance a nested grader gate must establish. */

@@ -75,7 +75,10 @@ export function instantiateChecksReport(templates: CheckTemplates, document: Dec
     if (template.when) {
       const field = unit.fields?.[template.when.field];
       if (field === undefined) reasons.push(`missing condition field ${template.when.field}`);
-      else if (field !== template.when.equals && !reasons.length) return [];
+      else if (field !== template.when.equals && !reasons.length) {
+        skipped.push({ template_id: template.id, unit_id: unit.id, location: unit.location!, reason: 'condition is false' });
+        return [];
+      }
     }
     const projection: Record<string, unknown> = {};
     for (const state of template.state) {

@@ -11,7 +11,9 @@ occurrences require consistent hints. The public locateUnit resolver also return
 the raw source character offset for occurrence identity; offsets are recomputed,
 not extractor hints or persisted unit fields. Body citations derive from runtime segments
 under declared row patterns and leading-citation policy; disagreements are reported.
-Location-scoped templates report exclusions through instantiateChecksReport. Source spans must occur in cited rows; drop and report invalid hints without rejecting verified units.
+Location-scoped templates and verified false conditions report exclusions through
+instantiateChecksReport. Rejected spans and absent condition fields remain missing.
+Source spans must occur in cited rows; drop and report invalid hints without rejecting verified units.
 Drop and report fields absent from unit text; missing applicability fields create
 missing checks. Extraction accepts strict JSON, optionally one surrounding json
 fence, and exports the strict provider response schema.
@@ -19,7 +21,9 @@ Optional ordered pair endpoints are strict verbatim spans verified independently
 against output only, even for obligations. Derive each endpoint address and cites;
 unit.pair.cited_rows isolates left/right rows and absent declared pair state is missing.
 Assignment obligations read contexts explicitly marked role: assignment (the name
-assignment also works). Template criteria are answer-to-description maps; score
+assignment also works). DecompositionInputs.obligationKinds selects eligible kinds;
+standalone callers default to obligation. Other kinds and pair endpoints cannot
+gain assignment span access. Template criteria are answer-to-description maps; score
 keys are integer strings; noul keys are true and false. Trap intent is operator
 configuration under template.traps; no question wording is interpreted as truth.
 Mappings accept a label or { answer, known_answer }; shorthand declares known-answer

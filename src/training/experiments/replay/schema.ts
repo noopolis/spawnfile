@@ -1,3 +1,4 @@
+import { createAtomicGradeResultSchema } from '../../graders/atomic/index.js';
 import { validateCandidate, type CandidateManifest } from '../../candidates/index.js';
 import { z } from 'zod';
 import { decisionAccountingSchema, createGradeResultSchema } from '../../graders/index.js';
@@ -61,6 +62,8 @@ const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   grading: createGradeResultSchema(judgeCall).optional(),
+  atomicGrading: createAtomicGradeResultSchema(judgeCall).optional(),
+  atomicFailure: z.object({ cause: z.literal('acceptance-gate'), gateId: identity }).optional(),
   decisionAccounting: decisionAccountingSchema.optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));
 const weighted = z.object({ finality: z.enum(['provisional', 'final']), lower: z.number(), upper: z.number(),

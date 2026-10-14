@@ -10,7 +10,8 @@ export function decisionCostEntries(trials: readonly TrialReport[], rescores: re
   const receipts = new Map<string, { trialId: string; versions: DecisionRequestReceipt[] }>();
   const visit = (value: EvaluationResult, measurement: string, trialId: string, path: string, plan?: PlanEvaluation) => {
     const canonical = value.id && plan?.checks[value.id] ? `check/${value.id}` : path;
-    [...value.decisionAccounting?.receipts ?? [], ...value.grading?.decisionAccounting?.receipts ?? []].forEach((receipt, index) => {
+    [...value.decisionAccounting?.receipts ?? [], ...value.grading?.decisionAccounting?.receipts ?? [],
+      ...value.atomicGrading?.receipts ?? []].forEach((receipt, index) => {
       const id = receipt.requestId === undefined
         ? JSON.stringify(['decision', measurement, canonical, index]) // Legacy captures have no origin identity.
         : JSON.stringify(['decision', receipt.requestId]);

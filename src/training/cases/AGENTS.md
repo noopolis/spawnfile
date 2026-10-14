@@ -55,4 +55,8 @@ Resolved grader paths are absolute route keys; runtime construction remains with
 host. Gate checks expand through the same evaluator/ruleset registry. Recursive
 graders are refused. Never load native inference providers during case resolution.
 
+Atomic grader files freeze definition/template digests (no calibration file). Validate
+all declared context bindings, dimension budgets and resolved acceptance gates before
+native work; keep runtime/provider construction out of resolution.
+
 Optional record.lineage is a unique nonempty ancestor list preserved in execution and cost projections; reject any ancestor crossing train/validation/test roles.

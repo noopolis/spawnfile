@@ -164,3 +164,21 @@ it('keeps criterion failures and subject cost once, excluding duplicated gates a
   expect(feedback.live[0].result.children[0].reason).toBe('Useful nested failure.');
   expect(JSON.stringify(feedback)).not.toContain('999999');
 });
+
+it('passes only compact atomic failures to optimization, preserving protected receipts in the report', () => {
+  const captured = report();
+  const feedback = { failed_check_count: 1, omitted_failed_checks: 0,
+    failed_checks: [{ template: 'supported', unit: 'An observed claim.', probability: 0.2 }] };
+  const atomicGrading: import('../../graders/atomic/index.js').AtomicGradeResult = {
+    schema: 'paideia.atomic-grade.v1', status: 'fail', score: 0, coverage: 1, criticalGate: 0, obligationCoverage: 1, quality: 0.2,
+    identity: { definitionDigest: 'a'.repeat(64), templatesDigest: 'a'.repeat(64), outputDigest: 'a'.repeat(64), contextDigest: 'a'.repeat(64) },
+    checks: [], extraction: { receipts: [{ response_text: 'PROTECTED RECEIPT'.repeat(200_000) }], judgeCalls: [] }, receipts: [], feedback, judgeCalls: [],
+  };
+  captured.evaluation.stages = [{ id: 'terminal', checks: [{ id: 'quality', status: 'fail', finality: 'final', reason: 'Failed', evidence: [], atomicGrading }],
+    gate: { status: 'fail', finality: 'final', reason: 'Failed', evidence: [] } }];
+  const result = trainingFeedback(record(), captured);
+  expect(JSON.parse(result.feedback).evaluation.stages[0].checks[0].atomic).toEqual(feedback);
+  expect(Buffer.byteLength(result.feedback)).toBeLessThan(2000);
+  expect(result.feedback).not.toContain('PROTECTED RECEIPT');
+  expect(captured.evaluation.stages[0]!.checks[0]!.atomicGrading!.extraction.receipts).toEqual(atomicGrading.extraction.receipts);
+});

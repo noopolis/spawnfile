@@ -31,7 +31,10 @@ function isolatedContext(context: EvaluationContext): EvaluationContext {
           generate: provider.generate.bind(provider) },
       }];
     })),
-    ...(context.graders ? { graders: Object.fromEntries(Object.entries(context.graders).map(([id, route]) => [id, {
+    ...(context.graders ? { graders: Object.fromEntries(Object.entries(context.graders).map(([id, route]) => [id, 'kind' in route ? {
+      ...route, grader: structuredClone(route.grader), templates: structuredClone(route.templates), extract: route.extract.bind(route),
+      backend: { identity: route.backend.identity.bind(route.backend), score: route.backend.score.bind(route.backend) },
+    } : {
       ...route, grader: structuredClone(route.grader), calibration: structuredClone(route.calibration),
       backend: { capabilities: structuredClone(route.backend.capabilities),
         identity: route.backend.identity.bind(route.backend), score: route.backend.score.bind(route.backend) },

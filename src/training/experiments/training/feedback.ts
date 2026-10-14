@@ -17,6 +17,7 @@ function taskOutput(record: ResolvedRecord, report: TrialReport): string {
 
 function checkFeedback(check: EvaluationResult): unknown {
   return { id: check.id, status: check.status, score: check.score, finality: check.finality, reason: check.reason,
+    ...(check.atomicGrading ? { atomic: check.atomicGrading.feedback } : {}),
     ...(check.children?.length ? { children: check.children.map(checkFeedback) } : {}) };
 }
 

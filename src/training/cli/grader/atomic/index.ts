@@ -5,6 +5,7 @@ import type { GraderDependencies } from '../backend.js';
 import { runDecompose } from './decompose.js';
 import { runTraps } from './traps.js';
 import { runReference } from './reference.js';
+export { buildAtomicRuntime } from './runtime.js';
 export { runDecompose } from './decompose.js';
 export { runTraps } from './traps.js';
 export { runReference } from './reference.js';

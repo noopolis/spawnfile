@@ -6,6 +6,8 @@ import { createOllamaDecision, createJevDecision, createTeacherDecision, createT
 import { createGraderTeacher } from './label.js';
 
 export interface GraderDependencies {
+  /** Explicit transport injection for atomic graders; tests never call live JEV. */
+  atomicFetch?: typeof fetch;
   decisionBudget?: DecisionSpendBudget;
   maxSpendUsd?: number;
   backend?: (grader: Grader) => DecisionBackend;

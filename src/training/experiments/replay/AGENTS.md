@@ -28,6 +28,11 @@ coverage and measured judge billing/timing on every nested result surface. Valid
 those fields explicitly; object stripping must never erase grading evidence.
 Judge-call replay retains typed refused outcomes and tool-call failure details.
 
+Replay explicitly validates atomicGrading identities, probabilities, decomposition,
+extraction/audit diagnostics and invocation-owned API receipts; never strip them.
+Retain and validate atomicFailure on nested results when an errored acceptance
+gate stopped grading before atomicGrading existed; replay must stay unscorable.
+
 Retain optional host durationMs and declared subject isolation/model metadata.
 Validate finite nonnegative durations and preserve absent legacy fields as unknown;
 rescoring cannot invent a new native execution duration.
