@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { mapTrainingExecution, trainingExecutionIdentity, type TrainingExecution } from "../execution.js";
 import type { TrainingContext } from "../contract.js";
@@ -10,7 +10,7 @@ import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./
 import { planTrainingImage, buildTrainingImage } from "./image.js";
 import { planMeasurementRepair, stageMeasurementRepair, validateMeasurementRepairOutput, writeTrainingWitness } from "../repair/index.js";
 import { prepareTrainingBroker } from "./broker.js";
-import { claimTrainingPreparationScratch } from "./scratch.js";
+import { claimTrainingPreparationScratch, removeTrainingPreparationScratch } from "./scratch.js";
 
 function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
   return parseTrainingMappedPreparation({ version: "spawnfile.training-preparation.v1", preparationDigest: digest, imageId: image,
@@ -109,6 +109,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const resume = options.args.includes("--resume");
   let image: string, staged: string[];
   if (resume) {
+    await claimTrainingPreparationScratch(staging, digest, options.streams.stderr, "resume");
     const previous = JSON.parse(await readFile(statePath, "utf8")) as { digest: string; image: string; staged: string[]; snapshots: (string | null)[] };
     if (previous.digest !== digest || !/^sha256:[a-f0-9]{64}$/u.test(previous.image) ||
       JSON.stringify(previous.staged) !== JSON.stringify(inputs.map(input => input.git || input.files ? path.join(staging, input.id) : input.source))) throw Error("Training preparation changed; exact resume rejected");
@@ -124,7 +125,11 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       await claimTrainingPreparationScratch(staging, digest, options.streams.stderr); owned = true;
       try { await mkdir(output, { mode: 0o700 }); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await lstat(output)).isDirectory() || await realpath(output) !== output) throw error; }
-      staged = await Promise.all(inputs.map(input => stageInput(input, path.join(staging, input.id))));
+      // Do not remove owned staging while sibling input jobs can still write into it.
+      const results = await Promise.allSettled(inputs.map(input => stageInput(input, path.join(staging, input.id))));
+      const failure = results.find(result => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+      staged = results.map(result => (result as PromiseFulfilledResult<string>).value);
       await verifyCanonicalPins(inputs, canonicalPins, staged);
       image = imagePlan ? (await buildTrainingImage(imagePlan, { parent, dockerContext: config.dockerContext, process: options.process,
         timeoutMs: options.timeoutMs, signal: options.signal, streams: options.streams })).imageId : "ref" in config.image ? config.image.ref : "";
@@ -144,7 +149,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       if (imagePlan) await writeTrainingWitness({ directory: staging, digest, image, config, context: options.context,
         args: options.args, inputs, staged, snapshots, plan: imagePlan,
         ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
-    } catch (error) { if (owned) await rm(staging, { recursive: true, force: true }); throw error; }
+    } catch (error) { if (owned) await removeTrainingPreparationScratch(staging); throw error; }
   }
   const expectedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, false, config.slots) : undefined;
   const expectedLaunch = trainingContainerConfigSchema.parse({ version: launchVersion, slots: config.slots, dockerContext: config.dockerContext,

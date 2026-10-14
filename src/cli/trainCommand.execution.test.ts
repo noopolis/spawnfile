@@ -1,3 +1,4 @@
+import { defaultTrainingOutputRoot } from "../compiler/training/output.js";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -50,7 +51,7 @@ it("runs and resumes the no-flag authoring path through preparation and the actu
   expect(receiptMounted, "execution receipt mount guarantee").toBe(true);
   expect(consumerHandoff, "execution consumer handoff guarantee").toBe(true);
   expect(stderr).toEqual([]);
-  expect(output).toContain(path.join(root, ".spawn/training/agent%3Awriter"));
+  expect(output).toContain(path.join(defaultTrainingOutputRoot(root), "agent%3Awriter"));
   expect(receipt).toMatchObject({ optimizer, output: "/run/training/output", authoring: {
     agent: { id: "agent:writer" }, graders: [{ sourcePath: "/run/training/inputs/project/training/writing.grader.yaml" }],
     targets: [{ datasets: { validation: { sourcePath: "/run/training/inputs/project/training/validation.yaml", examples: [{ id: "validation" }] } } }]
@@ -124,25 +125,27 @@ it("rejects a dataset changed after lowering on a direct launch before any Docke
   expect(stderr.at(-1)).toContain("snapshot differs");
   expect(docker.calls).toEqual([]);
 });
-it("creates fresh direct-launch output and rejects incompatible default mounts before Docker", async () => {
+it("creates fresh direct-launch output with explicit and disjoint defaults", async () => {
   const root = await executionFixture(), outside = await executionFixture(), stderr: string[] = [];
   const config = { version: "spawnfile.training-container.v1", dockerContext: "local",
     inputs: [{ source: root, destination: "/run/training/inputs/project" }],
     output: { source: path.join(outside, "unused"), destination: "/run/training/output" }, auth: [] };
   await writeTrainingFile(root, "launch.json", JSON.stringify(config));
   const args = ["train", root, "--training-config", path.join(root, "launch.json"), "--training-image", executionImage];
+  let output = "";
   const docker = dockerFixture(async args => {
-    if (args[2] === "start") await writeFile(path.join(outside, "fresh/index.json"), "{}");
+    if (args[2] === "create") output = args.find(arg => arg.endsWith("dst=/run/training/output"))!.split(",").find(part => part.startsWith("src="))!.slice(4);
+    if (args[2] === "start") await writeFile(path.join(output, "index.json"), "{}");
     return undefined;
   }); state.run = docker.process;
   const streams = { stdout() {}, stderr: (value: string) => stderr.push(value) };
   expect(await runCli([...args, "--out", path.join(outside, "fresh")], { streams }), "fresh output launch guarantee").toBe(0);
   expect(docker.calls.filter(args => args[2] === "create")).toHaveLength(1);
   docker.calls.length = 0;
-  expect(await runCli(args, { streams })).toBe(1);
-  expect(stderr.at(-1)).toContain("output and inputs must not overlap");
-  expect(docker.calls).toEqual([]);
-  expect(await readdir(path.join(root, ".spawn/training/agent%3Awriter"))).toEqual([]);
+  expect(await runCli(args, { streams }), "direct default output guarantee").toBe(0);
+  expect(output.startsWith(path.join(defaultTrainingOutputRoot(root), "agent%3Awriter") + path.sep), "direct default output guarantee").toBe(true);
+  expect(docker.calls.filter(args => args[2] === "create")).toHaveLength(1);
+  docker.calls.length = 0;
   expect(await runCli([...args, "--resume", "--out", path.join(outside, "missing")], { streams })).toBe(1);
   expect(stderr.at(-1)).toContain("ENOENT");
   expect(docker.calls).toEqual([]);

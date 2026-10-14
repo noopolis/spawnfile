@@ -20,10 +20,12 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
   compiler distribution; the current package still owns launch/auth operations.
 - Exclude explicit generated Python coverage/cache files, not arbitrary dotfiles.
 - `scratch.ts` claims the private preparation directory. A launch that aborts
-  past staging leaves it behind; a leftover from the *same* preparation digest
+  past staging leaves it behind; `owner.json` records identity and host/PID before input writes. Recovery requires the same digest and ESRCH for that local PID, under an exclusive sibling recovery guard. Unknown ownership and stranded guards require manual inspection. Cleanup waits for all input jobs and makes sealed directories writable without following links; a provably stopped leftover from the *same* preparation digest
   is reclaimed and re-staged, anything else is left untouched and reported by
   name with the command that clears it. It must never delete a directory it
   cannot prove is a leftover of this exact preparation.
+- Resume claims preserved scratch under that same guard and refreshes the local
+  owner receipt before reading snapshots; another live owner cannot resume or reclaim it.
 - Repair transport/compatibility lives in sibling `repair/`; it never changes
   candidate, criteria or checkpoint semantics owned by Paideia.
 - `daimonParent.ts` closes the two-pointer hole between `image.build.nativeImage`
@@ -44,6 +46,7 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 - Authoring execution may override output/image and contributes optimizer/plan identity to exact resume. Selected or pinned Git snapshots may contain the output source only when their sealed paths are disjoint; output never maps into a read-only staged project.
 - The optimizer-resume assertion is labelled so the isolated mutation runner proves that changing optimizer controls independently refuses resume.
 - Verify execution dataset pins alongside canonical context pins against staged bytes on fresh runs and resume, before building an image or mapping paths.
+- Git snapshots populate only base paths not owned by overlays, then seal each overlay once; tracked file/link destinations are replaced without following their old links.
 - Pin verification resolves confined staged symlinks before hashing; a link escaping its declared staged input is rejected.
 - `image.build.integration.execution` optionally declares the exact supported authored receipt version. Render and hash its label with the recipe; clear parent capability when absent. Verify the declared label on cache hits and completed builds. Image tests stop at the actual launch gate without fabricating training output; mutation tests live in sibling `execution.mutation.test.ts`.
 

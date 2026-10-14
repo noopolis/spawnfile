@@ -7,12 +7,14 @@ import type { TrainingPreparationConfig } from "./contract.js";
 import { assertInputRoot, copySealed, exactPath, fileIdentity, hashJson, sealFile, sealTree, within, type SealedFile } from "./files.js";
 
 const execute = promisify(execFile);
-const git = async (cwd: string, args: string[]) => {
+const git = async (cwd: string, args: string[], input?: string) => {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("GIT_")));
-  return (await execute("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args], {
+  const operation = execute("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args], {
     cwd, env: { ...env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_ATTR_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0" },
     timeout: 120000, maxBuffer: 8 * 1024 * 1024
-  })).stdout;
+  });
+  operation.child.stdin?.end(input);
+  return (await operation).stdout;
 };
 export interface PlannedInput {
   id: string; source: string; destination: string; digest: string;
@@ -61,7 +63,12 @@ export async function stageInput(input: PlannedInput, target: string): Promise<s
   await mkdir(target, { mode: 0o700 });
   await git(target, ["init", "--quiet", "--template="]);
   await git(target, ["-c", "protocol.file.allow=always", "fetch", "--quiet", "--depth=1", pathToFileURL(input.git.common).href, input.git.revision]);
-  await git(target, ["-c", "advice.detachedHead=false", "checkout", "--quiet", "--detach", input.git.revision]);
+  // Populate the index/HEAD without writing paths that the overlay owns.
+  await git(target, ["update-ref", "--no-deref", "HEAD", input.git.revision]);
+  await git(target, ["read-tree", input.git.revision]);
+  const overlayPaths = new Set(input.git.overlays.map(file => file.destination));
+  const basePaths = input.git.paths.filter(file => !overlayPaths.has(file));
+  await git(target, ["checkout-index", "--stdin", "-z"], basePaths.map(file => `${file}\0`).join(""));
   if ((await git(target, ["rev-parse", "HEAD^{tree}"])).trim() !== input.git.tree ||
     (await git(target, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim() !== path.join(target, ".git")) throw Error("Git training snapshot identity mismatch");
   await git(target, ["fsck", "--full", "--no-dangling"]);

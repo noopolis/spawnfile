@@ -173,7 +173,9 @@ Spawnfile lowers `spawnfile.training-plan.v1` to `spawnfile.training-execution.v
 - Every grader reference and every train/validation/test example, timestamp, wake,
   override identity, target consumer and declaring node remains in `authoring`.
 - A fresh output defaults to
-  `<project>/.spawn/training/<URI-encoded canonical agent ID>/<UTC timestamp>-<nonce>`.
+  `<ancestor>/.spawn-training/<project-name>-<project-path-hash>/<URI-encoded canonical agent ID>/<UTC timestamp>-<nonce>`.
+  The nearest project ancestor with a namespace disjoint from every declared input
+  is selected, so neither output nor sibling preparation scratch enters the input tree.
   Parents are private canonical directories; symlink aliases fail before allocation.
   `--resume` MUST supply `--out` for the exact prior experiment, never select "latest".
 

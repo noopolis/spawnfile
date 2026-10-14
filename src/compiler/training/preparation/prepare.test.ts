@@ -6,6 +6,7 @@ import { afterEach, expect, it } from "vitest";
 import { prepareTraining } from "./prepare.js";
 import { preparationFixture, imageDocker, image } from "./fixtures.test-helper.js";
 import { parseTrainingMappedPreparation } from "./contract.js";
+import { leaveAbandonedScratch } from "./scratch.test-helper.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -173,8 +174,14 @@ it("reclaims the preparation scratch an aborted launch left behind, and refuses 
   const f = await fixture();
   const first = await prepareTraining(f.options); if ("dryRun" in first) throw Error("actual preparation expected");
   const staging = path.dirname(first.configPath);
-  // A launch that reached the container and aborted there leaves exactly this behind.
+  // A completed preparation still belongs to this live process and is protected.
   expect((await lstat(path.join(staging, "state.json"))).isFile()).toBe(true);
+  await expect(prepareTraining(f.options)).rejects.toThrow("active or unverifiable owner");
+  // Model a reaped earlier launch, retaining its matching completed state.
+  await rm(path.join(staging, "owner.json"));
+  const abandoned = path.join(f.root, "abandoned");
+  await leaveAbandonedScratch(abandoned, first.digest);
+  await writeFile(path.join(staging, "owner.json"), await readFile(path.join(abandoned, "owner.json")));
   const notices: string[] = [];
   const again = await prepareTraining({ ...f.options, streams: { stdout() {}, stderr: line => notices.push(line) } });
   if ("dryRun" in again) throw Error("actual preparation expected");
@@ -184,6 +191,7 @@ it("reclaims the preparation scratch an aborted launch left behind, and refuses 
   await writeFile(path.join(staging, "state.json"), JSON.stringify({ digest: `sha256:${"f".repeat(64)}` }));
   await expect(prepareTraining(f.options)).rejects.toThrow(/belongs to a different preparation .*; remove it to retry: rm -rf/u);
   await rm(path.join(staging, "state.json"));
+  await rm(path.join(staging, "owner.json"));
   await expect(prepareTraining(f.options)).rejects.toThrow(/never recorded its identity; remove it to retry: rm -rf/u);
 });
 

@@ -72,7 +72,7 @@ src/cli/
   `../../specs/ECOSYSTEM_RUNTIME_BOUNDARIES.md`.
 
 - Authored train execution loads the plan, lowers defaults in compiler/training/execution.ts, prints lowered dry-run without delegation, and passes the execution receipt to the existing launcher. Legacy explicit datasets remain supported.
-- Direct-launch regression tests exercise fresh disjoint output through the launcher and retain the default-output overlap refusal before Docker.
+- Direct-launch regression tests exercise fresh explicit and disjoint default output through the launcher; readonly input overlap remains rejected before Docker.
 - Authored execution regression tests reject incompatible image capabilities and stale Git datasets for train, validation and test before container creation; mocked completion is only a transport assertion.
 
 - Training forwards an explicit `--validation` dataset through the same contained mapping boundary as train/test; `--validation-group` remains a legacy partition option.

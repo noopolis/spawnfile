@@ -14,6 +14,7 @@
 - Keep files below 400 lines and tests adjacent. Test real graph resolution and negative source/selection cases.
 
 - `selection.ts` shares exact-ID/unambiguous-short-name selection across context and authoring.
+- `output.ts` chooses a durable default namespace outside every declared input; it ascends past project ancestors and keeps projects distinct.
 - `execution.ts` lowers authored inputs, convention-based container declarations and explicit overrides; allocates canonical output parents separately; defines/maps the protected execution receipt. It never executes hooks or reads auth contents.
 - Lowering distinguishes preparation declarations by version and image shape; lowered v1/v4 launch configs require an explicit immutable image.
 - `execution.mutation.test.ts` deletes one key property at a time in an isolated source copy, restores it before the next runner, and requires that mutant's labelled assertion to fail; it never rewrites the working tree.

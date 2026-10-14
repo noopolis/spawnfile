@@ -1,3 +1,4 @@
+import { defaultTrainingOutputRoot } from "./output.js";
 import { mkdir, readdir, realpath, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -12,11 +13,11 @@ const lower = async (root: string, args: string[] = [], extra = {}) => {
   const project = await loadTrainingProject(root);
   return lowerTrainingExecution({ project, plan: resolveTrainingPlan(project, "writer", "test"), args, ...extra });
 };
-it("lowers authored inputs and exact optimizer controls with a fresh contained output, without writes", async () => {
+it("lowers authored inputs and exact optimizer controls with a fresh disjoint output, without writes", async () => {
   const root = await executionFixture(), before = await readdir(root);
   const result = await lower(root), next = await lower(root);
   expect(result.trainingConfig).toBe(path.join(root, "training/container.json"));
-  expect(result.execution.output).toMatch(new RegExp(`^${root}/.spawn/training/agent%3Awriter/`));
+  expect(result.execution.output.startsWith(path.join(defaultTrainingOutputRoot(root), "agent%3Awriter") + path.sep), "lowered default output guarantee").toBe(true);
   expect(next.execution.output).not.toBe(result.execution.output);
   expect(result.execution.optimizer).toEqual(optimizer);
   expect(result.execution.args, "validation CLI handoff guarantee").toEqual(["--experiment-timeout-ms", "43200000", "--train", path.join(root, "training/train.yaml"), "--validation", path.join(root, "training/validation.yaml"), "--test", path.join(root, "training/test.yaml"),
