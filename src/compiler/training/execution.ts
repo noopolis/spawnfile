@@ -3,6 +3,7 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
+import { defaultTrainingOutputRoot } from "./output.js";
 import { SpawnfileError } from "../../shared/index.js";
 import { trainingPlanSchema, trainingPlanOptimizerSchema, type TrainingPlan } from "./plan/contract.js";
 import type { LoadedTrainingProject } from "./plan/types.js";
@@ -78,7 +79,8 @@ export const lowerTrainingExecution = async (options: LowerTrainingExecutionOpti
   }
   if (!args.includes("--optimizer-model")) args.push("--optimizer-model", plan.optimizer.model);
   if (args.includes("--resume") && option(args, "--out") === undefined) return invalid("--resume requires --out identifying the exact prior experiment");
-  const output = path.resolve(option(args, "--out") ?? path.join(project.root, ".spawn/training",
+  const output = path.resolve(option(args, "--out") ?? path.join(defaultTrainingOutputRoot(project.root, declaration.inputs.map(input =>
+    path.resolve(path.dirname(trainingConfig), input.source))),
     encodeURIComponent(plan.agent.id), `${new Date().toISOString().replace(/[:.]/gu, "-")}-${randomUUID().slice(0, 8)}`));
   if (!args.includes("--out")) args.push("--out", output);
   else args[args.indexOf("--out") + 1] = output;

@@ -69,3 +69,22 @@ it("does not execute ambient Git filters while checking out a pinned repository"
   await expect(access(marker)).rejects.toThrow();
   expect(await readFile(path.join(f.root, "isolated/train.yaml"), "utf8")).toBe("fixture");
 });
+
+it("stages tracked overlay destinations once and replaces a tracked link without touching its target", async () => {
+  const f = await fixture(), cwd = f.context.project.root, execute = promisify(execFile);
+  const git = (args: string[]) => execute("git", args, { cwd });
+  await f.put("project/base.txt", "base"); await symlink("base.txt", path.join(cwd, "linked.txt"));
+  await git(["init", "-q"]); await git(["add", "."]);
+  await git(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "seed"]);
+  await f.put("replacement", "overlay");
+  f.config.inputs[0]!.git = { revision: (await git(["rev-parse", "HEAD"])).stdout.trim(), overlays: [
+    { source: "replacement", path: "Spawnfile", sha256: sha("overlay") },
+    { source: "replacement", path: "linked.txt", sha256: sha("overlay") }
+  ] };
+  const inputs = await planInputs(f.config, f.root, []), target = path.join(f.root, "snapshot");
+  const result = await stageInput(inputs[0]!, target).then(value => ({ value }), error => ({ error }));
+  expect(result, "single overlay staging guarantee").toEqual({ value: target });
+  expect(await readFile(path.join(target, "Spawnfile"), "utf8")).toBe("overlay");
+  expect(await readFile(path.join(target, "linked.txt"), "utf8")).toBe("overlay");
+  expect(await readFile(path.join(target, "base.txt"), "utf8")).toBe("base");
+});

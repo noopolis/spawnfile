@@ -1,3 +1,4 @@
+import { defaultTrainingOutputRoot } from "../output.js";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,7 +7,7 @@ import { stringify } from "yaml";
 // Test-only fixture I/O; excluded from the emitted package by tsconfig.build.json.
 const roots: string[] = [];
 export const cleanTrainingProjects = async (): Promise<void> => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).flatMap(root => [root, defaultTrainingOutputRoot(root)].map(directory => rm(directory, { recursive: true, force: true }))));
 };
 export const writeTrainingFile = async (root: string, name: string, value: unknown): Promise<void> => {
   const file = path.join(root, name);
