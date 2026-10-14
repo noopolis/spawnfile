@@ -8,12 +8,12 @@ export function selectedFiles(record: ResolvedRecord): FileSelector[] {
 export interface SplitProjection {
   subject?: string;
   structureDigest: string;
-  records: Array<{ id: string; group?: string; selectedFiles: FileSelector[] }>;
+  records: Array<{ id: string; group?: string; lineage?: string[]; selectedFiles: FileSelector[] }>;
 }
 export function validateDatasetSplit(train: ResolvedDataset, test: ResolvedDataset, validation?: ResolvedDataset): void {
   const project = (dataset: ResolvedDataset): SplitProjection => ({ subject: dataset.subject,
     structureDigest: dataset.sharedPlanDigest, records: dataset.records.map(record => ({
-      id: record.id, group: record.group, selectedFiles: selectedFiles(record) })) });
+      id: record.id, group: record.group, lineage: record.lineage, selectedFiles: selectedFiles(record) })) });
   validateCostDatasetSplit(project(train), project(test), validation ? project(validation) : undefined);
 }
 
@@ -23,6 +23,7 @@ export function validateCostDatasetSplit(train: SplitProjection, test: SplitProj
     { name: 'test', dataset: test }];
   const records = new Map<string, string>();
   const groups = new Map<string, string>();
+  const ancestors = new Map<string, string>();
   const files = new Map<string, string>();
   for (const { name, dataset } of roles) {
     if (dataset.subject !== train.subject) fail(name, 'native subject identity differs between roles');
@@ -34,6 +35,11 @@ export function validateCostDatasetSplit(train: SplitProjection, test: SplitProj
       const previousGroup = groups.get(record.group);
       if (previousGroup && previousGroup !== name) fail(name, `evidence-family leakage: ${record.group}`);
       groups.set(record.group, name);
+      for (const ancestor of record.lineage ?? []) {
+        const previous = ancestors.get(ancestor);
+        if (previous && previous !== name) fail(name, `evidence-lineage leakage: ${ancestor}`);
+        ancestors.set(ancestor, name);
+      }
       for (const file of record.selectedFiles) {
         // Catch same source through changed hashes and identical bytes through renamed selectors.
         for (const identity of [`path:${file.resource}:${file.path}`, `bytes:${file.sha256}`]) {

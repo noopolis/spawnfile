@@ -9,7 +9,7 @@ function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_IN
 /** Validate controls without executing templates or contacting declared providers. */
 export function validateTrainingConfiguration(value: unknown, path = '$.training'): TrainingConfiguration {
   const config = object(value, path);
-  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'test', 'validation_groups', 'seed'], path);
+  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'test', 'validation', 'validation_groups', 'seed'], path);
   const models = object(config.models, `${path}.models`);
   if (!Object.keys(models).length) fail(`${path}.models`, 'requires a named model');
   for (const [name, value] of Object.entries(models)) {
@@ -169,6 +169,8 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     if (recovery.max_attempts !== undefined) integer(recovery.max_attempts, `${path}.recovery.max_attempts`, 0, 10);
   }
   if (config.test !== undefined) safePath(config.test, `${path}.test`);
+  if (config.validation !== undefined) safePath(config.validation, `${path}.validation`);
+  if (config.validation !== undefined && config.validation_groups !== undefined) fail(path, 'validation and validation_groups are mutually exclusive');
   if (config.validation_groups !== undefined) uniqueStrings(config.validation_groups, `${path}.validation_groups`);
   if (config.seed !== undefined) integer(config.seed, `${path}.seed`, 0);
   return structuredClone(config) as unknown as TrainingConfiguration;

@@ -37,3 +37,5 @@ Owns explicit local commands, configuration selection and human diagnostics.
   points and adjacent parsing/behavior tests.
 - Test invalid inputs, cancel/error exit behavior and positive output artifacts,
   not just whether a child process launched.
+
+Explicit --validation datasets flow through execution, costs and repair without repartitioning; groups and explicit validation cannot compete.

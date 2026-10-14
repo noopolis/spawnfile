@@ -54,3 +54,5 @@ validates context bindings and gate checks, and freezes both digests into the pl
 Resolved grader paths are absolute route keys; runtime construction remains with the
 host. Gate checks expand through the same evaluator/ruleset registry. Recursive
 graders are refused. Never load native inference providers during case resolution.
+
+Optional record.lineage is a unique nonempty ancestor list preserved in execution and cost projections; reject any ancestor crossing train/validation/test roles.

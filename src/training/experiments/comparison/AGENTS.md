@@ -11,3 +11,5 @@ A pending native execution without verified closure is an error, never permissio
 to repeat the subject. Valid failed grades remain measurements. Comparison forks
 are unsupported until explicitly implemented. Files stay small with adjacent tests
 and at least 90% coverage per file and dimension.
+
+Authored explicit validation uses the shared training partition selector, including mutually exclusive group controls.

@@ -20,10 +20,11 @@ export function readCostConfig(args: CliArguments, io: CliIO) {
 export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies: CliDependencies = {}): Promise<number> {
   const native = args.flags['spawnfile-context'] ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity);
   const train = native.datasets.loadForCost(one(args, 'train'), true);
+  const validation = args.flags.validation ? native.datasets.loadForCost(one(args, 'validation'), true) : undefined;
   const test = native.datasets.loadForCost(one(args, 'test'), true);
   if (!candidateComponents(native.candidate).length) throw new Error('No declared editable components');
   const comparison = prepareComparison(args, io, native.candidate);
-  const plan = planTrainingCost({ train, test, validationGroups: args.flags['validation-group'],
+  const plan = planTrainingCost({ train, validation, test, validationGroups: args.flags['validation-group'],
     subjectModel: native.model, ...(comparison ? { mode: 'comparison' as const } : { optimizerModel: one(args, 'optimizer-model') }),
     ...configuredCostRoutes(args, native.judges, native.citationRepairs),
     maxTrials: native.maxTrials, maxProposals: comparison ? 0 : count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });

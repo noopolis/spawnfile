@@ -53,9 +53,10 @@ export function recordFields(value: unknown, path: string, partial = true): Reco
 }
 export function validateRecord(value: unknown, path: string, expanded = false): DatasetRecord {
   const record = object(value, path);
-  fields(record, ['id', 'group', 'use', 'context', 'setup', 'input', 'reference', 'outputs',
+  fields(record, ['id', 'group', 'lineage', 'use', 'context', 'setup', 'input', 'reference', 'outputs',
     'turns', 'checks', 'stages'], path);
   string(record.id, `${path}.id`);
+  if (record.lineage !== undefined) uniqueStrings(record.lineage, `${path}.lineage`);
   if (record.group !== undefined) string(record.group, `${path}.group`);
   if (record.use !== undefined) uniqueStrings(record.use, `${path}.use`);
   exclusive(record, ['input', 'turns'], path, expanded);
