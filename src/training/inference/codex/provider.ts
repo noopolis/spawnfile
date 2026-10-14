@@ -75,7 +75,9 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         const auth = await execute({ command, args: ['login', 'status'], cwd, env, stdin: '',
           timeoutMs: 15_000, signal: request.signal, onLine: line => { authText += `${line}\n`; } }).completion;
         interrupted(auth, request.signal);
-        const signedIn = auth.exitCode === 0 && /^Logged in using ChatGPT\s*$/u.test(`${authText}${auth.stderr}`.trim());
+        // Codex prints advisory `WARNING:` lines (e.g. a temporary CODEX_HOME); anything else must be the exact sign-in line.
+        const status = `${authText}${auth.stderr}`.split('\n').filter(line => !/^WARNING: /u.test(line)).join('\n').trim();
+        const signedIn = auth.exitCode === 0 && /^Logged in using ChatGPT$/u.test(status);
         authText = '';
         if (!signedIn) throw new InferenceFailure('authentication', 'Codex requires a saved ChatGPT subscription sign-in');
         const schemaFile = schema === undefined ? undefined : path.join(cwd, 'response-schema.json');
