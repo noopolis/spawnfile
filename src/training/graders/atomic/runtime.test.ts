@@ -56,6 +56,10 @@ it('fails critical checks, never dilutes penalties with easy facts and deduplica
   const f = fixture(), grade = await gradeAtomic(f.runtime, f.inputs);
   const failing = grade.checks.map(score => ({ ...score, probability: score.kind === 'claim' ? 0.5 : 1 }));
   expect(aggregateAtomic(f.runtime.grader, failing)).toMatchObject({ score: 0, criticalGate: 0, coverage: 1 });
+  const penalty = aggregateAtomic({ ...f.runtime.grader, aggregation: { ...f.runtime.grader.aggregation, method: 'coverage-times-quality' } }, failing);
+  expect(penalty.criticalGate).toBe(0);
+  expect(penalty.score).toBeGreaterThan(0);
+  expect(penalty.score).toBeCloseTo(penalty.obligationCoverage * penalty.quality);
   const quality = aggregateAtomic(f.runtime.grader, failing).quality;
   const easy = { ...failing[0]!, probability: 1, occurrence: 'new', severity: 'minor' as const };
   expect(aggregateAtomic(f.runtime.grader, [...failing, ...Array.from({ length: 100 }, () => easy)]).quality).toBe(quality);
@@ -172,6 +176,10 @@ it('a zero pass threshold cannot override a failing critical gate', async () => 
   const f = fixture(); f.runtime.grader.aggregation.pass_at = 0;
   vi.mocked(f.backend.score).mockImplementation(async requests => requests.map(request => ({ key: request.key, status: 'ok', probabilities: { true: 0.5, false: 0.5 } })));
   expect(await gradeAtomic(f.runtime, f.inputs)).toMatchObject({ status: 'fail', criticalGate: 0, score: 0, coverage: 1 });
+  f.runtime.grader.aggregation.method = 'coverage-times-quality';
+  const ranked = await gradeAtomic(f.runtime, f.inputs);
+  expect(ranked).toMatchObject({ status: 'fail', criticalGate: 0, coverage: 1 });
+  expect(ranked.score).toBeGreaterThan(0);
 });
 
 it.each(['fail', 'unknown'].flatMap(missing => ['spend-cap', 'request-rejected'].map(cause => ({ missing, cause }))) as

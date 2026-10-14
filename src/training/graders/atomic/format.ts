@@ -13,7 +13,7 @@ export const atomicGraderSchema = z.strictObject({
     max_spend_usd: z.number().finite().nonnegative(), price_per_mtok_usd: z.number().finite().positive().default(0.042) }),
   missing: z.enum(['fail', 'unknown']),
   gates: z.array(z.strictObject({ id: identifier, check: z.record(z.string(), z.unknown()) })).default([]),
-  aggregation: z.strictObject({ method: z.literal('gates-times-coverage-times-quality'),
+  aggregation: z.strictObject({ method: z.enum(['gates-times-coverage-times-quality', 'coverage-times-quality']),
     critical_pass_at: probability, pass_at: probability,
     obligation_kinds: z.array(identifier).min(1),
     dimensions: z.record(identifier, z.strictObject({ weight: z.number().finite().positive(), budget: z.number().finite().positive() })),

@@ -26,5 +26,7 @@ export function aggregateAtomic(grader: AtomicGrader, checks: AtomicCheckScore[]
   }
   const quality = weighted / weights;
   const coverage = checks.length ? checks.filter(check => check.probability !== null).length / checks.length : 0;
-  return { criticalGate, obligationCoverage, quality, coverage, score: criticalGate * obligationCoverage * quality };
+  // `coverage-times-quality` keeps critical failures as penalties so optimizers can rank failing candidates; pass still needs the gate.
+  const gate = policy.method === 'gates-times-coverage-times-quality' ? criticalGate : 1;
+  return { criticalGate, obligationCoverage, quality, coverage, score: gate * obligationCoverage * quality };
 }

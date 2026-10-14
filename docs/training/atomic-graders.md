@@ -97,6 +97,11 @@ a behavioral score of zero.
 
 - Critical gate is zero if any critical probability is missing or below
   `critical_pass_at`; otherwise it is one. No quality score offsets a failed gate.
+- `method: coverage-times-quality` drops the gate factor from the score so an
+  optimizer can rank candidates that all fail a critical check; critical failures
+  still cost their severity penalty, and `pass` still requires the gate. Training
+  scores a failed trial as zero, so the ranking reaches the optimizer only when the
+  stage gates on other checks and uses this grader as its `score`.
 - Obligation coverage averages the minimum expected-answer probability across checks
   for each distinct obligation occurrence. Missing probabilities contribute zero.
   No observed obligations means zero coverage.
