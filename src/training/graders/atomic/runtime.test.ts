@@ -135,7 +135,9 @@ it('refuses missing audit and backend drift, retains failure receipts and reject
       usd: null, estimatedInputTokens: 100, estimatedUsd: 0.1, latencyMs: 1, status: 402 });
     throw new Error('Failed');
   });
-  expect((await gradeAtomic(f.runtime, f.inputs)).receipts[0]!.status).toBe(402);
+  const failed = await gradeAtomic(f.runtime, f.inputs);
+  expect(failed).toMatchObject({ status: 'error', score: null, receipts: [{ status: 402 }] });
+  expect(createAtomicGradeResultSchema(z.custom<JudgeCall>()).parse(failed)).toEqual(failed);
   for (const result of [undefined, { key: 'wrong', status: 'ok', probabilities: { true: 1, false: 0 } },
     { status: 'missing', probabilities: null }, { status: 'ok', probabilities: null },
     { status: 'ok', probabilities: { true: 0.5 } }, { status: 'ok', probabilities: { true: NaN, false: 0 } },
@@ -169,14 +171,17 @@ it('a zero pass threshold cannot override a failing critical gate', async () => 
   expect(await gradeAtomic(f.runtime, f.inputs)).toMatchObject({ status: 'fail', criticalGate: 0, score: 0, coverage: 1 });
 });
 
-it.each(['fail', 'unknown'] as const)('keeps partial spend-cap exhaustion unscorable under missing: %s', async missing => {
+it.each(['fail', 'unknown'].flatMap(missing => ['spend-cap', 'request-rejected'].map(cause => ({ missing, cause }))) as
+  { missing: 'fail' | 'unknown'; cause: NonNullable<DecisionResult['failureCause']> }[])(
+  'keeps partial $cause refusal unscorable under missing: $missing', async ({ missing, cause }) => {
   const f = fixture(); f.runtime.grader.missing = missing;
+  const reason = cause === 'spend-cap' ? 'spend cap' : 'TypeSafe HTTP 422: request rejected';
   vi.mocked(f.backend.score).mockImplementation(async requests => requests.map((request, index) => index === 0
     ? { key: request.key, status: 'ok', probabilities: { true: 1, false: 0 } }
-    : { key: request.key, status: 'missing', probabilities: null, reason: 'spend cap', failureCause: 'spend-cap' }));
+    : { key: request.key, status: 'missing', probabilities: null, reason, failureCause: cause }));
   const grade = await gradeAtomic(f.runtime, f.inputs);
-  expect(grade).toMatchObject({ status: 'error', score: null, coverage: 0.5, failure: { cause: 'spend-cap', reason: 'spend cap' } });
-  expect(grade.checks[1]!.decision).toMatchObject({ status: 'missing', reason: 'spend cap', failureCause: 'spend-cap' });
+  expect(grade).toMatchObject({ status: 'error', score: null, coverage: 0.5, failure: { cause, reason } });
+  expect(grade.checks[1]!.decision).toMatchObject({ status: 'missing', reason, failureCause: cause });
   const schema = createAtomicGradeResultSchema(z.custom<JudgeCall>());
   expect(schema.parse(JSON.parse(JSON.stringify(grade)))).toEqual(grade);
   expect(schema.safeParse({ ...grade, failure: { cause: 'invented', reason: 'spend cap' } }).success).toBe(false);

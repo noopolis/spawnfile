@@ -30,9 +30,9 @@ export interface AtomicFeedback {
 }
 export interface AtomicGradeResult {
   schema: 'paideia.atomic-grade.v1'; status: 'pass' | 'fail' | 'unknown' | 'error';
-  /** Null when admission prevented a measurement; aggregate components remain diagnostic. */
+  /** Null when infrastructure prevented a measurement; aggregate components remain diagnostic. */
   score: number | null; coverage: number; criticalGate: number; obligationCoverage: number; quality: number;
-  failure?: { cause: 'spend-cap'; reason: string };
+  failure?: { cause: NonNullable<DecisionResult['failureCause']>; reason: string };
   identity: { definitionDigest: string; templatesDigest: string; outputDigest: string; contextDigest: string };
   checks: AtomicCheckScore[]; extraction: AtomicExtraction; receipts: DecisionRequestReceipt[];
   feedback: AtomicFeedback; judgeCalls: JudgeCall[];

@@ -30,3 +30,5 @@ Judge-call replay retains typed refused outcomes and tool-call failure details.
 
 Replay explicitly validates atomicGrading identities, probabilities, decomposition,
 extraction/audit diagnostics and invocation-owned API receipts; never strip them.
+Retain and validate atomicFailure on nested results when an errored acceptance
+gate stopped grading before atomicGrading existed; replay must stay unscorable.

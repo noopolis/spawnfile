@@ -5,6 +5,28 @@ import type { GradeResult } from '../../graders/index.js';
 import { capturedTrial } from './source.js';
 import { fixture } from './fixture.js';
 import { trialReportSchema } from './schema.js';
+import { trialScore } from '../training/index.js';
+
+test('replay preserves atomic acceptance-gate failures without fabricating a grade', async () => {
+  const { store, options, report } = await fixture(report => {
+    const atomic = { status: 'error' as const, finality: 'final' as const, reason: 'Gate failed', evidence: [],
+      atomicFailure: { cause: 'acceptance-gate' as const, gateId: 'accepted' } };
+    const masked = { ...report.evaluation.checks.old!, children: [atomic] };
+    report.evaluation.checks.old = masked;
+    report.evaluation.stages[0]!.checks = [masked];
+    report.evaluation.stages[0]!.gate = masked;
+    report.turns[0]!.checks = [masked];
+    report.live = [{ checkId: 'quality', boundary: 'event', result: masked }];
+  });
+  const captured = capturedTrial(await store.readReplay(options.runId, options.access));
+  expect(captured.report).toEqual(report);
+  expect(() => trialScore(captured.report)).toThrow('unscorable atomic grading measurement');
+  for (const atomicFailure of [{ cause: 'invented', gateId: 'accepted' }, { cause: 'acceptance-gate', gateId: '' }, { cause: 'acceptance-gate' }]) {
+    const malformed = { ...report, evaluation: { ...report.evaluation,
+      checks: { old: { ...report.evaluation.checks.old!, atomicFailure } } } };
+    expect(() => trialReportSchema.parse(malformed)).toThrow();
+  }
+});
 
 const usage: Usage = { inputTokens: 40, cachedInputTokens: 10, cacheWriteInputTokens: 6,
   cacheWrite5mInputTokens: 2, cacheWrite1hInputTokens: 4,

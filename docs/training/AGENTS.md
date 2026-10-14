@@ -20,4 +20,6 @@ Document applicability exclusions separately from missing extraction, and keep
 assignment evidence access aligned with authored obligation kinds.
 Keep backend preflight limits and terminal payment-error semantics explicit.
 
-Describe exhausted atomic spend caps as unscorable admission errors under either missing policy; retain typed reasons without inventing request receipts.
+Describe exhausted atomic spend caps and rejected API requests as unscorable infrastructure errors under either missing policy; retain typed reasons without inventing request receipts.
+Acceptance-gate infrastructure errors remain unscorable before extraction, with
+their gate identity retained through replay and no fabricated atomic grade.

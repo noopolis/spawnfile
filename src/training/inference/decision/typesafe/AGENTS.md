@@ -28,4 +28,8 @@ Atomic routes opt into conservativeSpend: every dispatched attempt charges at
 least its estimate in the admission ledger, including unknown usage and retries.
 Actual receipt usd stays null when usage is unknown. Typed Noul uses true/false labels.
 
+Nonretryable HTTP rejections other than the thrown 401/402 failures return typed
+failureCause: request-rejected with status-only reasons. Atomic grading must treat
+them as infrastructure errors, never authored missing-content failures.
+
 Spend-cap admission returns typed failureCause: spend-cap with its sanitized reason, including zero caps and capped retries. No receipt is invented for an undispatched request.

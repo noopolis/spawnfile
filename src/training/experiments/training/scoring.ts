@@ -1,8 +1,9 @@
 import type { EvaluationResult } from '../../contracts/evaluation.js';
 import type { TrialReport } from '../trials/index.js';
 
-function admissionFailed(check: EvaluationResult): boolean {
-  return check.atomicGrading?.failure?.cause === 'spend-cap' || Boolean(check.children?.some(admissionFailed));
+function atomicMeasurementFailed(check: EvaluationResult): boolean {
+  return Boolean(check.atomicFailure) || check.atomicGrading?.status === 'error' || Boolean(check.atomicGrading?.failure) ||
+    Boolean(check.children?.some(atomicMeasurementFailed));
 }
 
 /** A missing or interrupted measurement is not a cheap zero-quality observation. */
@@ -17,10 +18,10 @@ export function trialScore(report: Pick<TrialReport, 'id' | 'execution' | 'hostW
   if (report.execution !== 'completed' && !decisive && !deferred) throw new Error(`Trial ${report.id} has incomplete native execution`);
   if (report.status !== 'pass' && report.status !== 'fail') throw new Error(`Trial ${report.id} has unscorable ${report.status} evidence`);
   if (deferred && report.status !== 'fail') throw new Error(`Trial ${report.id} cannot pass on a deferred delivery`);
-  // Logical gates can be decisive despite an errored sibling; admission still has no behavioral score.
+  // Logical gates may mask errors; failed atomic measurements still have no behavioral score.
   const checks = [...Object.values(report.evaluation.checks ?? {}),
     ...report.evaluation.stages.flatMap(stage => [...stage.checks, stage.gate])];
-  if (checks.some(admissionFailed)) throw new Error(`Trial ${report.id} has unscorable grading admission: spend cap`);
+  if (checks.some(atomicMeasurementFailed)) throw new Error(`Trial ${report.id} has unscorable atomic grading measurement`);
   if (report.status === 'fail') return 0;
   const score = report.evaluation.stages.at(-1)?.score;
   if (score && score.missingWeight > 1e-9) throw new Error('Trial scoring coverage is incomplete');

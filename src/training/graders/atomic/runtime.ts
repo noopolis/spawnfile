@@ -57,8 +57,9 @@ export async function gradeAtomic(runtime: AtomicRuntime, inputs: DecompositionI
     const decisions = ready.length ? await runtime.backend.score(ready.map(({ check }) => ({ key: check.id,
       type: check.type, optionLabels: check.options, expectedOptions: check.expected,
       instructions: `${check.instructions}\nCriteria: ${JSON.stringify(check.criteria)}`, projection: check.projection })), signal, receipts) : [];
-    if (decisions.some(decision => decision.status === 'missing' && decision.failureCause === 'spend-cap')) {
-      failure = { cause: 'spend-cap', reason: 'spend cap' };
+    const refused = decisions.find(decision => decision.failureCause);
+    if (refused?.failureCause) {
+      failure = { cause: refused.failureCause, reason: refused.reason ?? 'Decision request refused' };
     }
     for (const score of ready) {
       const matches = decisions.filter(decision => decision.key === score.check.id);
@@ -75,7 +76,8 @@ export async function gradeAtomic(runtime: AtomicRuntime, inputs: DecompositionI
   const missing = scores.some(score => score.probability === null);
   const status = failed || failure ? 'error' : missing ? runtime.grader.missing : aggregate.criticalGate === 1 && aggregate.score >= runtime.grader.aggregation.pass_at ? 'pass' : 'fail';
   return { schema: 'paideia.atomic-grade.v1', status, ...aggregate,
-    ...(failure ? { failure, score: null } : {}),
+    ...(failed || failure ? { score: null } : {}),
+    ...(failure ? { failure } : {}),
     identity: { definitionDigest: runtime.definitionDigest, templatesDigest: runtime.templatesDigest,
       outputDigest: stableDigest(inputs.output), contextDigest: stableDigest(inputs.context) },
     checks: scores, extraction, receipts, feedback: atomicFeedback(scores, runtime.grader.feedback), judgeCalls: extraction.judgeCalls };

@@ -60,14 +60,20 @@ it('evaluates acceptance gates against the same artifact and stops inference on 
   const check = { ...f.check, grader_binding: { ...f.check.grader_binding, gates: [{ id: 'accepted', check: { eval: 'equals', input: 'artifact:article', value: 'wrong' } }] } };
   const result = await evaluateNode(check, f.context, createEvaluationRegistry());
   expect(result).toMatchObject({ status: 'fail', score: 0, children: [{ id: 'accepted', status: 'fail' }] });
+  expect(result.atomicFailure).toBeUndefined();
   expect(f.runtime.extract).not.toHaveBeenCalled();
   await expect(evaluateAtomicGrader(check, f.context, f.runtime)).rejects.toThrow('evaluation engine');
   const evaluateCheck = vi.fn(async () => ({ status: 'error' as const, finality: 'final' as const, reason: 'Failed', evidence: [] }));
-  expect((await evaluateAtomicGrader(check, { ...f.context, evaluateCheck }, f.runtime)).status).toBe('error');
+  const errored = await evaluateAtomicGrader(check, { ...f.context, evaluateCheck }, f.runtime);
+  expect(errored).toMatchObject({ status: 'error', atomicFailure: { cause: 'acceptance-gate', gateId: 'accepted' } });
+  expect(errored.score).toBeUndefined();
+  expect(errored.atomicGrading).toBeUndefined();
+  expect(f.runtime.extract).not.toHaveBeenCalled();
   expect(evaluateCheck.mock.calls[0]).toEqual([check.grader_binding.gates[0]!.check, f.context.snapshot.artifacts.article]);
   for (const status of ['unknown', 'skipped', 'pass'] as const) {
     const result = await evaluateAtomicGrader(check, { ...f.context, evaluateCheck: async () => ({ status, finality: 'final', reason: 'Gate', evidence: [{ kind: 'event', id: 'gate' }] }) }, f.runtime);
     expect(result.status).toBe(status === 'pass' ? 'pass' : 'unknown');
+    expect(result.atomicFailure).toBeUndefined();
     expect(result.evidence).toContainEqual({ kind: 'event', id: 'gate' });
   }
   vi.mocked(f.runtime.extract).mockResolvedValue({ receipts: [], judgeCalls: [], error: 'Infrastructure' });

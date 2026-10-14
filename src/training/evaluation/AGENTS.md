@@ -45,5 +45,7 @@ and calls; unknown gates continue grading with an unknown aggregate status.
 Atomic routes bind only accepted artifacts and declared observed context. Freeze
 the neutral route policy; match definition/template digests before extraction.
 Failed acceptance gates stop inference; atomicGrading retains receipts and probabilities.
+Acceptance gates with nested errors emit atomicFailure with their gate ID and no score before
+extraction. Preserve gate children and actual judge calls; never fabricate a grade.
 
 Atomic admission errors retain the spend-cap reason and omit the evaluator score; aggregation diagnostics are not measured behavioral scores.

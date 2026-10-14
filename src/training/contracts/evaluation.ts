@@ -137,6 +137,8 @@ export interface EvaluationResult {
   children?: EvaluationResult[];
   grading?: GradeResult;
   atomicGrading?: AtomicGradeResult;
+  /** Infrastructure stopped atomic grading before extraction; no grade was produced. */
+  atomicFailure?: { cause: 'acceptance-gate'; gateId: string };
   usage?: Usage[];
   judgeCalls?: JudgeCall[];
   cache?: { key: string; sourceCallId: string; sourceCalls?: JudgeCall[] };

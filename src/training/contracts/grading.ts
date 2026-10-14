@@ -15,8 +15,8 @@ export interface DecisionResult {
   probabilities: Record<string, number> | null;
   status: 'ok' | 'missing';
   reason?: string;
-  /** Admission refusal, distinct from missing behavioral evidence. */
-  failureCause?: 'spend-cap';
+  /** Infrastructure refusal, distinct from missing behavioral evidence. */
+  failureCause?: 'spend-cap' | 'request-rejected';
   bounded?: boolean;
   /** Provider probabilities have approximately 0.01 resolution, even when their sum is one. */
   providerRounded?: boolean;

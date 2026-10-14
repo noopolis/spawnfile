@@ -17,7 +17,9 @@ retain calibration identity and coverage. Judge calls distinguish local billing
 and measured wall time without inventing usage.
 
 Evaluation routes and results also carry typed atomic runtimes/atomicGrading.
+EvaluationResult.atomicFailure identifies acceptance-gate infrastructure errors
+that stopped inference before an atomic grade existed.
 Decision requests include true/false Noul separately from yes/no legacy questions;
 unknown usage is distinct from conservative admission estimates.
 
-DecisionResult.failureCause identifies spend-cap admission refusal independently of missing-content prose. Callers preserve it rather than applying a behavioral missing policy.
+DecisionResult.failureCause identifies spend-cap admission and request-rejected infrastructure refusals independently of missing-content prose. Callers preserve it rather than applying a behavioral missing policy.

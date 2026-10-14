@@ -79,6 +79,13 @@ against the same captured artifact. Recursive graders and unbound tool gates are
 refused. Tool sequences must end at an accepted call and require argument equality
 to an earlier validation binding. Failed/errored gates stop atomic inference;
 unknown gates preserve an unknown evaluation even when atomic scoring completes.
+An acceptance gate with an error anywhere in its result tree emits
+`atomicFailure: {cause: acceptance-gate, gateId}`
+and omits the evaluator score. Its children and actual judge calls remain attached;
+no `atomicGrading` result is fabricated before extraction. Replay preserves this
+classification, and training rejects it even when an `all`/`any` gate composition,
+sibling or stage gate masks the error. A genuine failing gate judgment remains
+a behavioral score of zero.
 
 ## Aggregation
 
@@ -99,10 +106,16 @@ Noul, Choice and anchored Score templates use the typed TypeSafe transport; the
 expected-option probability is summed in code. Malformed/incomplete probability
 sets remain missing. `missing` never permits a pass; missing-policy unknowns retain
 the conservative numeric score. Extraction/audit, backend identity and transport
-failures produce error grades, with available receipts retained.
+failures produce error grades with null score and available receipts retained.
 HTTP 402 payment failures are terminal transport errors under either missing policy.
 They stop queued scoring requests, drain already-started work and retain receipts;
 they never become missing-content results or zero-quality training observations.
+Other nonretryable HTTP rejections (for example 400, 403, 404, 413 and 422)
+retain `failureCause: request-rejected` through transport and become an error grade
+with `score: null` and typed `failure.cause: request-rejected` under either missing
+policy. Reasons contain only the HTTP status; response bodies never enter diagnostics.
+Training rejects every errored atomic measurement, including extraction and payment
+errors without a typed failure, even when a sibling or explicit gate masks the error.
 
 `max_spend_usd` is one shared route admission cap across its training trials, not a
 fresh allowance for each artifact. A host override can only lower it. Atomic routes

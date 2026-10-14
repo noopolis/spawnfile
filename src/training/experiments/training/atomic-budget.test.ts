@@ -7,7 +7,7 @@ import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
 import type { CheckNode } from '../../contracts/dataset.js';
 import { trialScore } from './scoring.js';
 
-function fixture(missing: 'fail' | 'unknown') {
+function fixture(missing: 'fail' | 'unknown', httpStatus?: number) {
   const model = 'jev-1.0.0';
   const grader = parseAtomicGrader({ schema: 'paideia.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
     extractor: { provider: 'codex', model: 'test' }, decision: { backend: 'typesafe', model, max_spend_usd: 1 }, missing,
@@ -18,6 +18,7 @@ function fixture(missing: 'fail' | 'unknown') {
       expected: [true], state: ['unit', 'output.body'], dimension: 'coverage', severity: 'major' }] });
   const budget = createDecisionSpendBudget();
   const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+    if (httpStatus) return new Response('untrusted response body', { status: httpStatus });
     const body = JSON.parse(init!.body as string);
     return Response.json({ model, answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { type: 'noul', noul: 1 }])) });
   });
@@ -62,11 +63,42 @@ it.each(['fail', 'unknown'] as const)('never rewards identical input with zero a
   const sibling = { id: 'other', eval: 'equals', input: 'output.text', value: 'different' };
   const failed = await f.measure([sibling]);
   expect(failed.status).toBe('fail');
-  expect(() => trialScore(failed)).toThrow('grading admission: spend cap');
+  expect(() => trialScore(failed)).toThrow('unscorable atomic grading measurement');
   // Explicitly decisive gate: the original criterion remains unscorable even if aggregate verdict is pass.
   const hidden = await f.measure([], true, { eval: 'equals', input: 'output.text', value: '4' });
   expect(hidden.status).toBe('pass');
   expect(hidden.evaluation.checks.quality!.atomicGrading).toBeUndefined();
   expect(hidden.evaluation.checks.quality!.children![0]!.atomicGrading!.failure!.cause).toBe('spend-cap');
-  expect(() => trialScore(hidden)).toThrow('grading admission: spend cap');
+  expect(() => trialScore(hidden)).toThrow('unscorable atomic grading measurement');
+});
+
+
+it.each(['fail', 'unknown'] as const)('rejects payment errors masked by sibling failures or passing gates (%s)', async missing => {
+  const f = fixture(missing, 402);
+  const sibling = { id: 'other', eval: 'equals', input: 'output.text', value: 'different' };
+  const failed = await f.measure([sibling]);
+  expect(failed.status).toBe('fail');
+  expect(failed.evaluation.checks.quality!.atomicGrading).toMatchObject({ status: 'error', score: null, receipts: [{ status: 402 }] });
+  expect(() => trialScore(failed)).toThrow('unscorable atomic grading measurement');
+  const hidden = await f.measure([], true, { eval: 'equals', input: 'output.text', value: '4' });
+  expect(hidden.status).toBe('pass');
+  expect(hidden.evaluation.checks.quality!.children![0]!.atomicGrading!.status).toBe('error');
+  expect(() => trialScore(hidden)).toThrow('unscorable atomic grading measurement');
+  expect(f.fetch).toHaveBeenCalledTimes(2);
+});
+
+it.each([400, 403, 404, 413, 422])('preserves HTTP %i as infrastructure through real grading and scoring', async status => {
+  for (const missing of ['fail', 'unknown'] as const) {
+    const f = fixture(missing, status);
+    const report = await f.measure();
+    const grade = report.evaluation.checks.quality!.atomicGrading!;
+    expect(report.status).toBe('error');
+    expect(grade).toMatchObject({ status: 'error', score: null,
+      failure: { cause: 'request-rejected', reason: `TypeSafe HTTP ${status}: request rejected` }, receipts: [{ status }] });
+    expect(grade.checks[0]!.decision).toMatchObject({ status: 'missing', failureCause: 'request-rejected' });
+    expect(report.evaluation.checks.quality!.score).toBeUndefined();
+    expect(() => trialScore(report)).toThrow('unscorable');
+    expect(f.fetch).toHaveBeenCalledTimes(1);
+    expect(f.budget.reservedUsd).toBe(0);
+  }
 });

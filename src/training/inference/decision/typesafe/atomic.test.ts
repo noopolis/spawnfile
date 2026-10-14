@@ -52,3 +52,16 @@ it('retains typed admission refusal at a zero cap without a dispatched receipt',
   ]);
   expect(fetch).not.toHaveBeenCalled(); expect(receipts).toEqual([]);
 });
+
+
+it.each([400, 403, 404, 413, 422])('retains a typed sanitized HTTP %i refusal without retrying', async status => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(env.TYPESAFE_API_KEY, { status }));
+  const budget = createDecisionSpendBudget(1);
+  const backend = createTypeSafeDecision({ model, env, fetch, budget });
+  expect(await backend.score([request])).toEqual([{ key: 'q', status: 'missing', probabilities: null,
+    reason: `TypeSafe HTTP ${status}: request rejected`, failureCause: 'request-rejected' }]);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(budget.reservedUsd).toBe(0);
+  expect(backend.requestReceipts!()).toMatchObject([{ status, usd: null }]);
+  expect(JSON.stringify(backend.requestReceipts!())).not.toContain(env.TYPESAFE_API_KEY);
+});

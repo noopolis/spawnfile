@@ -1,5 +1,5 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import type { DecisionRequestReceipt, DecisionSpendBudget } from '../../../contracts/grading.js';
+import type { DecisionRequestReceipt, DecisionSpendBudget, DecisionResult } from '../../../contracts/grading.js';
 
 export interface TypeSafeTransportOptions {
   model: string;
@@ -51,7 +51,7 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
       check(signal);
       return { backend: 'typesafe', model: options.model, endpoint: endpoint.href };
     },
-    async send(body: unknown, tokens: number, signal?: AbortSignal, collector?: DecisionRequestReceipt[]): Promise<{ data?: unknown; reason?: string; failureCause?: 'spend-cap' }> {
+    async send(body: unknown, tokens: number, signal?: AbortSignal, collector?: DecisionRequestReceipt[]): Promise<{ data?: unknown; reason?: string; failureCause?: DecisionResult['failureCause'] }> {
       check(signal);
       const estimate = tokens * price / 1e6;
       if (budget.maxUsd === 0 || (budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd + estimate > budget.maxUsd)) return { reason: 'spend cap', failureCause: 'spend-cap' };
@@ -77,7 +77,7 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
             if (response.status === 401) throw new Error('TypeSafe authentication failed (401)');
             if (response.status === 402) throw new Error('TypeSafe payment failed (402)');
             const retry = response.status === 429 || response.status >= 500;
-            if (!retry && !response.ok) return { reason: `TypeSafe HTTP ${response.status}: request rejected` };
+            if (!retry && !response.ok) return { reason: `TypeSafe HTTP ${response.status}: request rejected`, failureCause: 'request-rejected' };
             if (!retry) {
               const raw: unknown = await response.json();
               attemptSignal.throwIfAborted();

@@ -62,6 +62,7 @@ const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   grading: createGradeResultSchema(judgeCall).optional(),
   atomicGrading: createAtomicGradeResultSchema(judgeCall).optional(),
+  atomicFailure: z.object({ cause: z.literal('acceptance-gate'), gateId: identity }).optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));
 const weighted = z.object({ finality: z.enum(['provisional', 'final']), lower: z.number(), upper: z.number(),
   assessedWeight: z.number(), missingWeight: z.number() });

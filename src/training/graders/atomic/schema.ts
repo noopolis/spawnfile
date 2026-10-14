@@ -12,12 +12,12 @@ export function createAtomicGradeResultSchema(judgeCall: z.ZodType<JudgeCall>): 
     projection: z.record(z.string(), z.unknown()), digest, status: z.enum(['ready', 'missing']), reasons: z.array(z.string()) });
   return z.strictObject({ schema: z.literal('paideia.atomic-grade.v1'), status: z.enum(['pass', 'fail', 'unknown', 'error']),
     score: probability.nullable(), coverage: probability, criticalGate: probability, obligationCoverage: probability, quality: probability,
-    failure: z.strictObject({ cause: z.literal('spend-cap'), reason: z.string() }).optional(),
+    failure: z.strictObject({ cause: z.enum(['spend-cap', 'request-rejected']), reason: z.string() }).optional(),
     identity: z.strictObject({ definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest }),
     checks: z.array(z.strictObject({ check, occurrence: z.string(), unit: z.string(), kind: z.string(), dimension: z.string(),
       severity: z.enum(['critical', 'major', 'minor']), probability: probability.nullable(),
       decision: z.strictObject({ key: z.string(),
-        status: z.enum(['ok', 'missing']), reason: z.string().optional(), failureCause: z.literal('spend-cap').optional(),
+        status: z.enum(['ok', 'missing']), reason: z.string().optional(), failureCause: z.enum(['spend-cap', 'request-rejected']).optional(),
       }).optional() })),
     extraction: z.strictObject({ decomposition: decompositionSchema.optional(), receipts: z.array(z.record(z.string(), z.unknown())),
       judgeCalls: z.array(judgeCall), error: z.string().optional() }),
@@ -28,10 +28,10 @@ export function createAtomicGradeResultSchema(judgeCall: z.ZodType<JudgeCall>): 
       failed_checks: z.array(z.strictObject({ template: z.string(), unit: z.string(), probability: probability.nullable() })) }),
     judgeCalls: z.array(judgeCall),
   }).superRefine((grade, context) => {
-    const refused = grade.checks.some(score => score.decision?.failureCause === 'spend-cap');
-    if (refused && !grade.failure) context.addIssue({ code: 'custom', message: 'Spend-cap outcome requires admission failure' });
-    if (grade.failure ? grade.status !== 'error' || grade.score !== null : grade.score === null) {
-      context.addIssue({ code: 'custom', message: 'Admission failure requires an error with no score' });
+    const refused = grade.checks.some(score => score.decision?.failureCause);
+    if (refused && !grade.failure) context.addIssue({ code: 'custom', message: 'Refused decision requires infrastructure failure' });
+    if ((grade.failure && (grade.status !== 'error' || grade.score !== null)) || (grade.score === null && grade.status !== 'error')) {
+      context.addIssue({ code: 'custom', message: 'Infrastructure failure requires an error with no score' });
     }
   });
 }

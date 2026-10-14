@@ -5,6 +5,10 @@ import { gradeAtomic, type AtomicRuntime } from '../graders/atomic/index.js';
 import { collectJudgeCalls, result } from './logic/index.js';
 import { selectEvidence } from './selectors.js';
 
+function gateHasError(value: EvaluationResult): boolean {
+  return value.status === 'error' || Boolean(value.children?.some(gateHasError));
+}
+
 /** Bind only host-captured accepted artifacts; final chat output is never a fallback. */
 export async function evaluateAtomicGrader(check: CheckNode, context: EvaluationContext, runtime: AtomicRuntime): Promise<EvaluationResult> {
   const binding = check.grader_binding as GraderBinding | undefined;
@@ -33,8 +37,10 @@ export async function evaluateAtomicGrader(check: CheckNode, context: Evaluation
     if (!context.evaluateCheck) throw new Error('Grader gates require the evaluation engine');
     const evaluated = await context.evaluateCheck(gate.check, artifact);
     children.push({ ...evaluated, id: gate.id }); evidence.push(...evaluated.evidence);
-    if (evaluated.status === 'fail' || evaluated.status === 'error') {
-      return { ...result(evaluated.status, 'Atomic grader acceptance gate failed', context.snapshot.closed), score: 0,
+    const gateError = gateHasError(evaluated);
+    if (evaluated.status === 'fail' || gateError) {
+      return { ...result(gateError ? 'error' : 'fail', 'Atomic grader acceptance gate failed', context.snapshot.closed),
+        ...(gateError ? { atomicFailure: { cause: 'acceptance-gate' as const, gateId: gate.id } } : { score: 0 }),
         evidence, children, judgeCalls: collectJudgeCalls(children) };
     }
     if (evaluated.status !== 'pass') gateUnknown = true;
