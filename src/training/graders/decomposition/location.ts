@@ -58,9 +58,12 @@ function locateSpan(unit: AtomicSpan, sources: ReturnType<typeof textLeaves>, in
   }
   if (!matches.length) return 'text is not a verbatim source span';
   if (matches.length === 1) return matches[0]!;
-  const hinted = matches.filter(match => (unit.location === undefined || unit.location === match.location)
+  const hintedBy = (location?: string) => matches.filter(match => (location === undefined || location === match.location)
     && (unit.paragraph === undefined || unit.paragraph === match.paragraph)
     && (unit.sentence === undefined || unit.sentence === match.sentence));
+  // Extractors may address array leaves as `a[1].b`; a literal key match wins over the resolved `a.1.b` path.
+  let hinted = hintedBy(unit.location);
+  if (!hinted.length && unit.location) hinted = hintedBy(unit.location.replace(/\[(\d+)\]/gu, '.$1'));
   return hinted.length === 1 ? hinted[0]! : 'ambiguous source span';
 }
 

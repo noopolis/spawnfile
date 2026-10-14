@@ -50,6 +50,11 @@ it('rejects invented and ambiguous occurrences; only consistent hints break ties
   }
   expect(check({ paragraph: 0, sentence: 1 }).decomposition.units[0]).toMatchObject({ location: 'body', paragraph: 0, sentence: 1 });
   expect(check({ location: 'headline' }).decomposition.units[0]).toMatchObject({ location: 'headline', cites: [] });
+  inputs.output = { headline: 'Same words', key_numbers: [{ value: 'Same words' }, { value: 'Same words' }] };
+  expect(check({ location: 'key_numbers[1].value' }).decomposition.units[0]).toMatchObject({ location: 'key_numbers.1.value' });
+  inputs.output = { 'a[1]': { b: 'Same words' }, a: [{ b: 'Other' }, { b: 'Same words' }] };
+  expect(check({ location: 'a[1].b' }).decomposition.units[0]).toMatchObject({ location: 'a[1].b' });
+  inputs.output = { headline: 'Same words', body: ['Same words. Same words.', 'Same words.'] };
   expect(check({ paragraph: 1 }).decomposition.units[0]).toMatchObject({ paragraph: 1, sentence: 0 });
   expect(check({ text: 'Invented' }).rejected[0]!.reasons).toContain('text is not a verbatim source span');
   inputs.output = { body: ['Same words and Same words.'] };

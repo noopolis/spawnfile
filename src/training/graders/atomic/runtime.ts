@@ -40,8 +40,9 @@ export async function gradeAtomic(runtime: AtomicRuntime, inputs: DecompositionI
       scores.push({ check, occurrence: typeof location === 'string' ? unit.id : stableDigest({ location, pair: unit.pair }), unit: unit.text, kind: unit.kind, dimension: template?.dimension ?? Object.keys(runtime.grader.aggregation.dimensions)[0]!,
       severity: template?.severity ?? 'critical', probability: null });
     }
-    // Absent families remain missing; validated applicability exclusions do not invent failures.
+    // Absent families remain missing unless declared optional; validated applicability exclusions do not invent failures.
     for (const template of runtime.templates.templates) {
+      if (template.optional) continue;
       if (report.checks.some(check => check.template_id === template.id)) continue;
       if (report.skipped.some(skip => skip.template_id === template.id)) continue;
       const check: CheckInstance = { id: `${template.id}@missing`, template_id: template.id, unit_id: `missing-${template.id}`,
