@@ -33,8 +33,10 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
   // Before any Docker call, including --dry-run: the attested Daimon runtime identity
   // and the declared native parent must name one rebuild (see daimonParent.ts).
   const daimonParent = await resolveTrainingDaimonParent(build, declarationPath);
+  assertInputRoot(ownRoot, auth);
   for (const source of [build.paideia, build.bridge, build.claude, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
+  assertInputRoot(assets, auth);
   const recipe = await readFile(path.join(assets, "Dockerfile"), "utf8");
   // Always override the parent's label: compatibility belongs to this installed integration.
   const capability = build.integration.execution ?? "";

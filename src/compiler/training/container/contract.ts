@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { trainingEvaluatorRoutesSchema, trainingEvaluatorSecretsSchema } from "./evaluators.js";
 
 const hostPath = z.string().min(1).refine((value) => path.isAbsolute(value) && !/[,\r\n\0]/u.test(value), "Expected an absolute bind path");
 const inputPath = z.string().regex(/^\/run\/training\/inputs\/[A-Za-z0-9._/-]+$/u).refine((value) => path.posix.normalize(value) === value && !value.endsWith("/"));
@@ -21,9 +22,15 @@ export const trainingContainerConfigSchema = z.object({
   inputs: z.array(z.object({ source: hostPath, destination: inputPath }).strict()).min(1).max(64),
   output: z.object({ source: hostPath, destination: z.literal("/run/training/output") }).strict(),
   auth: z.array(z.object({ source: hostPath, provider: z.enum(["codex", "claude"]) }).strict()).max(2),
+  evaluatorRoutes: trainingEvaluatorRoutesSchema.optional(),
+  evaluatorSecrets: trainingEvaluatorSecretsSchema(hostPath).optional(),
   /** Present only on `spawnfile.training-container.v4`: the brokered Grok slot this container runs as root. */
   broker: brokerLaunchSchema.optional()
 }).strict().superRefine((value, context) => {
+  if (value.evaluatorSecrets && !value.broker) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation" });
+  if (value.evaluatorSecrets && !value.evaluatorRoutes?.some(route => route.provider === "typesafe")) {
+    context.addIssue({ code: "custom", message: "TypeSafe secret requires a declared evaluator route" });
+  }
   if (value.version === "spawnfile.training-container.v3") context.addIssue({ code: "custom", message: "Training-container v3 is unsupported; migrate to v4 with slots: 1" });
   const destinations = value.inputs.map((entry) => entry.destination);
   if (destinations.some((entry, index) => destinations.some((other, otherIndex) => otherIndex !== index && (entry === other || entry.startsWith(`${other}/`))))) {

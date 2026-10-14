@@ -4,6 +4,7 @@ import { lstat, readFile } from "node:fs/promises";
 import os from "node:os";
 import { promisify } from "node:util";
 import { renderTrainingBrokerProvisioning } from "./provisioning.js";
+import { stageTrainingEvaluatorSecret } from "./evaluatorSecrets.js";
 import { startBrokerProcesses, stopBrokerProcesses } from "./processes.js";
 import { resetTrainingBrokerSlotAsOrganization } from "./reset.js";
 import path from "node:path";
@@ -92,6 +93,7 @@ export const runTrainingBrokerEntrypoint = async (options: TrainingEntrypointOpt
     const { projectionSha256 } = await resolveTrainingGrokProjection(declaration, registration, daimon);
     return createTrainingSlotRuntime({ declaration, registration, projectionSha256, reset });
   }));
+  await stageTrainingEvaluatorSecret();
   await promisify(execFile)("/bin/bash", ["--noprofile", "--norc", "-ceu", renderTrainingBrokerProvisioning(registrations, declaration.maxRunRequests).join("\n")], { maxBuffer: 8 * 1024 * 1024 });
   const children = await startBrokerProcesses({ log });
   let server: ReturnType<typeof serveTrainingSlotSupervisor> | undefined;

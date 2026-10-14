@@ -11,6 +11,7 @@ import { mapTrainingExecution, trainingExecutionSchema, TRAINING_EXECUTION_FILE,
 import { verifyCanonicalPins } from "../preparation/inputs.js";
 import type { TrainingContext } from "../contract.js";
 import { trainingImageSchema } from "./contract.js";
+import { prepareTrainingEvaluators } from "./evaluators.js";
 import { prepareTrainingContainer } from "./prepare.js";
 import { runTrainingDocker, type TrainingDockerProcess } from "./process.js";
 import { repairEnvelopeSchema } from "../repair/contract.js";
@@ -102,7 +103,8 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     await writeFile(contextFile, JSON.stringify(prepared.context), { mode: 0o444, flag: "wx" });
     const executionFile = path.join(privateRoot, "execution.json");
     if (execution) await writeFile(executionFile, JSON.stringify(trainingExecutionSchema.parse(execution)), { mode: 0o444, flag: "wx" });
-    const mounts = [...prepared.config.inputs.map((entry) => `type=bind,src=${entry.source},dst=${entry.destination},readonly`),
+    const evaluators = await prepareTrainingEvaluators(privateRoot, prepared.config, prepared.args);
+    const mounts = [...evaluators.mounts, ...prepared.config.inputs.map((entry) => `type=bind,src=${entry.source},dst=${entry.destination},readonly`),
       `type=bind,src=${prepared.config.output.source},dst=/run/training/output`,
       `type=bind,src=${contextFile},dst=/run/paideia/context.json,readonly`,
       ...execution ? [`type=bind,src=${executionFile},dst=${TRAINING_EXECUTION_FILE},readonly`] : [],
@@ -129,6 +131,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
       "--init", "--read-only", ...privilege,
       "--env", "HOME=/home/training", "--workdir", "/work", "--entrypoint", broker ? TRAINING_BROKER_ENTRYPOINT : "/opt/training/bin/train",
       ...(broker ? ["--env", "PAIDEIA_MODEL_REQUEST_CAP=broker"] : []),
+      ...evaluators.env.flatMap(value => ["--env", value]),
       ...[...mounts, ...(broker ? trainingBrokerMounts(broker) : [])].flatMap((mount) => ["--mount", mount]),
       ...(prepared.viewerPort === undefined ? [] : ["--publish", `127.0.0.1:${prepared.viewerPort}:${prepared.viewerPort}`]), expectedImage,
       "train", "--spawnfile-context", "/run/paideia/context.json",
@@ -138,7 +141,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     containerId = created.stdout.trim();
     if (created.code !== 0 || !/^[a-f0-9]{64}$/u.test(containerId)) {
       let diagnostic = created.stderr;
-      for (const auth of prepared.config.auth) diagnostic = diagnostic.replaceAll(auth.source, "[auth source]");
+      for (const auth of [...prepared.config.auth, ...prepared.config.evaluatorSecrets ?? []]) diagnostic = diagnostic.replaceAll(auth.source, "[auth source]");
       diagnostic = diagnostic.replace(/\p{Cc}/gu, " ").trim().slice(0, 2048);
       throw Error(`Docker did not return a valid training container identity${diagnostic ? `: ${diagnostic}` : ""}`);
     }
