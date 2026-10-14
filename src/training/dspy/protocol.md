@@ -74,6 +74,16 @@ Validation supplies a selection scalar and capture reference only. Training outp
 and feedback reach reflection. Repeated predictor traces refer to one whole-bundle
 native trial; they do not establish per-file causal attribution or observed loading.
 
+Current and historical proposer views reserve public atomic failures under
+`measurements.atomic` before optional prose. They read root `atomic` envelopes,
+evaluation checks/children and live results only. Per-row atomic JSON is capped at
+8 KiB, 40 checks and half the available row allowance, with template/unit prefix
+excerpts capped at 256/1000 characters and further shortened for wire size.
+Nullable probabilities remain exact; `failed_check_count` and
+`omitted_failed_checks` account for upstream and bridge omissions. Numerical
+summaries and minimum diagnostic/detail space determine row retention; under
+small budgets oldest rows may be omitted with explicit `omittedEntries`.
+
 ## Reflection: bridge → host
 
 ```json

@@ -3,7 +3,7 @@ import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 import type { InferenceProvider } from '../../contracts/index.js';
 import type { TrainingModel, TrainingRoute } from '../../contracts/training-config.js';
-import { assertModelRequestAdmission, createClaudeInference, createCodexInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
+import { assertModelRequestAdmission, budgetEvaluatorInference, createClaudeInference, createCodexInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
 import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from '../../adapters/daimon-native/index.js';
 import { createJudgeCache } from '../../evaluation/index.js';
 import { judgeVersions } from './configuration.js';
@@ -20,7 +20,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   const admit = (policy: TrainingRoute | undefined, purpose: string) => {
     if (!policy) return assertModelRequestAdmission('claude-subscription', `${purpose} legacy default`);
     for (const name of [policy.model, ...(policy.fallbacks ?? [])]) {
-      assertModelRequestAdmission(config!.models[name]!.provider, `${purpose} model ${name}`);
+      assertModelRequestAdmission(config!.models[name]!.provider, `${purpose} model ${name}`, purpose === 'optimizer' ? { purpose: 'proposals', model: config!.models[name]!.model } : undefined);
     }
   };
   for (const name of Object.keys(judges)) admit(config?.judges?.[name], `judge ${name}`);
@@ -30,8 +30,9 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   let grants: GrokGrantPool | undefined;
   function provider(name: string, purpose: 'judge' | 'optimizer', routeTimeoutMs: number): InferenceProvider {
     const model = config!.models[name]!;
-    // Broker grants record their purpose, so a broker model gets one provider per purpose.
-    const key = `${name}\0${model.provider === 'grok-broker' ? purpose : ''}\0${routeTimeoutMs}`;
+    // Broker grants and evaluator budgets attach to purpose-specific providers; each route timeout gets its own provider.
+    const purposeKeyed = model.provider === 'grok-broker' || process.env.PAIDEIA_MODEL_REQUEST_CAP === 'broker' || process.env.PAIDEIA_EVALUATOR_ROUTES_FILE !== undefined;
+    const key = `${name}\0${purposeKeyed ? purpose : ''}\0${routeTimeoutMs}`;
     if (providers.has(key)) return providers.get(key)!;
     const timeoutMs = routeTimeoutMs;
     const selected = dependencies.modelInference?.(model, timeoutMs) ?? (model.provider === 'claude-subscription'
@@ -41,8 +42,9 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
         : model.provider === 'grok-broker' ? createGrokBrokerInference({ pool: grants ??= grokGrantPool(dependencies), homeRoot: brokerHomeRoot(), purpose, timeoutMs,
           reasoningEffort: model.reasoning_effort as 'low' | 'medium' | 'high' })
           : createOllamaInference({ baseUrl: model.endpoint ?? 'http://127.0.0.1:11434', timeoutMs, think: model.think, keepAliveSeconds: model.keep_alive_seconds, maxOutputTokens: model.max_output_tokens, contextWindowTokens: model.context_window }));
-    providers.set(key, selected);
-    return selected;
+    const admitted = purpose === 'optimizer' ? budgetEvaluatorInference(selected, model.provider, 'proposals', model.model) : selected;
+    providers.set(key, admitted);
+    return admitted;
   }
   function route(policy: TrainingRoute, id: string, purpose: 'judge' | 'optimizer'): InferenceProvider {
     const names = [policy.model, ...(policy.fallbacks ?? [])];

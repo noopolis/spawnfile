@@ -19,7 +19,8 @@ are a separate provider contract and are not supplied by this text-generation ro
 - Test incomplete output, process cancellation, route selection and unavailable
   capabilities. Separate measured tokens, unknown values and price estimates.
 - `request-cap.ts` validates the trusted container admission policy. Capped runs
-  reject routes outside the shared broker before model construction.
+  reject undeclared routes before model construction. evaluator/ owns exact
+  purpose/provider/model grants with durable independent budgets and receipts.
 
 Routed deadlines cover all attempts and audit writes. Reserve each remaining
 route an equal share of remaining time; an attempt timeout may use the next

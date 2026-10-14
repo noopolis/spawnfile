@@ -1,5 +1,5 @@
 import { readSpawnfileContext } from './spawnfile/index.js';
-import { resolveTrainingOptimizer, populationSearch, bridgeProposal } from './training/index.js';
+import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
 import { resolveTrainingPartitions } from '../experiments/training/index.js';
@@ -41,10 +41,11 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   if (args.training?.comparison && (args.flags.concurrency || args.flags['slots-file'])) throw new Error('Comparison does not support trial concurrency controls');
   if (args.command === 'train' && args.flags['dry-run']) return dryRunTraining(args, io, dependencies);
   if (args.flags['spawnfile-context'] && !dependencies.spawnfile) throw new Error('Spawnfile native training requires a supported isolated preparation integration; no native trial was started');
-  const inputs = await prepareCliInputs(args, io, dependencies);
-  const dataset = inputs.datasets.load(args.command === 'train' ? one(args, 'train') : args.dataset!, args.command === 'train');
-  const validation = args.command === 'train' && args.flags.validation ? inputs.datasets.load(one(args, 'validation'), true) : undefined;
-  const test = args.command === 'train' ? inputs.datasets.load(one(args, 'test'), true) : undefined;
+  const prepared = await prepareCliInputs(args, io, dependencies);
+  const dataset = prepared.datasets.load(args.command === 'train' ? one(args, 'train') : args.dataset!, args.command === 'train');
+  const validation = args.command === 'train' && args.flags.validation ? prepared.datasets.load(one(args, 'validation'), true) : undefined;
+  const test = args.command === 'train' ? prepared.datasets.load(one(args, 'test'), true) : undefined;
+  const inputs = { ...prepared, maxTrials: trainingTrialBudget(args, dataset.records.length, validation?.records.length, test?.records.length) };
   if (args.command === 'evaluate' && dataset.records.length > inputs.maxTrials) throw new Error('Dataset exceeds --max-trials; no records are silently dropped');
   const comparison = prepareComparison(args, io, inputs.candidate);
   const metricCalls = inputs.maxTrials - (test === undefined ? 0 : 2 * test.records.length);

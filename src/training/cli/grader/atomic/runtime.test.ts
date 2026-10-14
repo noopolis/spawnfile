@@ -230,3 +230,30 @@ it('retains native inference attempt identities and per-attempt usage without co
     attempts: [{ ...base, id: 'malformed-attempt', outcome: 'completed', failureKind: null }] });
   expect((await gradeAtomic(runtime, f.inputs)).judgeCalls[0]).toMatchObject({ id: 'malformed-attempt', outcome: 'invalid-response' });
 });
+
+
+it('executes broker-capped atomic grading only through declared extraction and decision budgets', async () => {
+  const f = await fixture(), policy = join(f.root, 'evaluator.json'), receiptPath = join(f.root, 'evaluator.jsonl');
+  const routes = [
+    { purpose: 'extraction', provider: 'codex-subscription', model: 'test-codex', maxRequests: 2 },
+    { purpose: 'decisions', provider: 'typesafe', model: 'jev-1.0.0', maxRequests: 10, maxSpendUsd: 1 },
+  ];
+  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', routes, receiptPath }));
+  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', policy);
+  const loader = new CliDatasets({}, f.root); loader.load('dataset.yaml', true);
+  const runtime = (await loader.buildGraders(f.dependencies))[f.file] as AtomicRuntime;
+  const grade = await gradeAtomic(runtime, f.inputs);
+  expect(grade.status, 'declared atomic routes execute').toBe('pass');
+  const { readFile } = await import('node:fs/promises');
+  const receipts = (await readFile(receiptPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  expect(receipts.filter(item => item.event === 'admitted' && item.route.startsWith('extraction:')), 'extraction and audit share budget').toHaveLength(2);
+  expect(receipts.filter(item => item.event === 'admitted' && item.route.startsWith('decisions:'))).toHaveLength(3);
+  f.generate.mockClear(); f.atomicFetch.mockClear();
+  expect((await gradeAtomic(await buildAtomicRuntime(f.file, f.dependencies), f.inputs)).status).toBe('error');
+  expect(f.generate, 'extraction budget survives runtime reconstruction').not.toHaveBeenCalled();
+  expect(f.atomicFetch).not.toHaveBeenCalled();
+  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', routes: routes.slice(1), receiptPath }));
+  await expect(loader.buildGraders(f.dependencies), 'undeclared extraction refuses construction').rejects.toThrow('unsupported codex-subscription');
+  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', routes: routes.slice(0, 1), receiptPath }));
+  await expect(loader.buildGraders(f.dependencies)).rejects.toThrow('unsupported typesafe');
+});

@@ -116,6 +116,13 @@ malformed-protocol failures retain their failure classification.
 Full prompt bodies, raw train outputs and callback results remain in protected
 checkpoints and original trial reports. Reflection receives recent chronological
 entries, with per-criterion scores/status and native usage before optional prose.
+Public atomic failures are reserved in `measurements.atomic` in current feedback
+and history before allocating prose space. This includes the host's oversized
+root envelope and nested/live check projections. Each retained row gets at most
+half its remaining allowance for atomic JSON, capped at 8 KiB and 40 checks;
+templates/units are prefix excerpts of at most 256/1000 characters, shortened
+further when escaping exceeds the wire budget. Probabilities (including null)
+remain exact; failure/omission counts include upstream and bridge omissions.
 Large prompt/reason/output fields carry explicit excerpts, original byte counts
 and SHA-256 references; historical outputs reference the original callback rather
 than repeat articles. The current training batch is separately bounded by the

@@ -35,3 +35,10 @@ Failure-row identities follow the producing measurement: retained native evidenc
 keeps its trial ID, while rescored final evidence uses the latest rescore ID.
 
 Training configuration documents explicit validation and the generic named moment preparation receipt; org state reconstruction remains integration-owned.
+
+Population search documents complete candidate development measurements, reuse of
+unchanged parents, frozen sealed comparison and bounded public atomic feedback.
+Keep real-bridge/fake-subject verification distinct from live native acceptance.
+Document case-derived default trial budgets and explicit cap precedence. Feedback
+compaction must preserve declared article excerpts and numerical measurements
+through both host projection and Python proposal context.

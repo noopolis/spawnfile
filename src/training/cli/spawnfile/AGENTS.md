@@ -10,6 +10,9 @@ Dry-run may resolve candidates, cases and costs, but never compiles, authenticat
 or executes an agent. Native runs require their supported isolated preparation;
 do not route a compiled Daimon project through the generic Pi adapter.
 Test mutations, ambiguous mappings, unsupported execution and canonical identity.
+Population trial sizing belongs to the shared training budget resolver after
+datasets are loaded. Integration optimizer settings must reach the same resolver
+in dry-run and execution; test a complete declared search with a fake native host.
 
 moments.ts owns named per-trial moment dispatch. Require frozen identity, fresh control/moment, successful rewind evidence and a bound receipt before native start. Domain reconstruction stays in registered integrations.
 Authored moment.role/example/dataset select rewind; trial.phase selects evaluation.

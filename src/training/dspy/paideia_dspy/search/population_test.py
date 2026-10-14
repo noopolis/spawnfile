@@ -81,9 +81,11 @@ def test_rounds_slots_keep_seed_drop_determinism_and_train_cache():
     assert len(p["candidates"]) == 5
     assert p["proposals"] == 6  # one planning + two realization calls per round
     evaluations = [params for method, params in first.calls if method == "evaluate"]
-    assert [row["round"] for row in evaluations] == [0, 0, 1, 1, 2, 2, 2]
-    assert len(evaluations) == 7  # five validation + seed and retained parent's train
-    assert len({(row["caseId"], json.dumps(row["components"])) for row in evaluations}) == 7
+    assert [row["round"] for row in evaluations] == [0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
+    assert len(evaluations) == 10  # complete train and validation for every candidate
+    assert len({(row["caseId"], json.dumps(row["components"])) for row in evaluations}) == 10
+    for candidate in p["candidates"]:
+        assert sorted(row["split"] for row in evaluations if row["components"] == candidate["components"]) == ["train", "validation"]
     assert p["editScope"] == {"guide": "whole-file"}
 
 
@@ -95,7 +97,7 @@ def test_formatting_rejected_structural_accepted_without_spending_trial():
     assert row["attempts"][0]["rejectionReason"] == "below-min-change"
     assert row["attempts"][0]["behavioralChange"] == 0
     assert row["attempts"][1]["behavioralChange"] >= 0.08
-    assert result["provenance"]["evaluations"] == 3
+    assert result["provenance"]["evaluations"] == 4
 
 
 def test_duplicate_hypotheses_never_evaluated():
@@ -105,7 +107,7 @@ def test_duplicate_hypotheses_never_evaluated():
     rows = result["provenance"]["rounds"][1]["variants"]
     assert [row["status"] for row in rows] == ["accepted", "rejected"]
     assert rows[1]["rejectionReason"] == "hypothesis-duplicate"
-    assert result["provenance"]["evaluations"] == 3
+    assert result["provenance"]["evaluations"] == 4
 
 
 @pytest.mark.parametrize("share,expected", [(0, ["refine"] * 3), (0.5, ["rewrite", "rewrite", "refine"]), (1, ["rewrite"] * 3)])
@@ -129,8 +131,8 @@ def test_strategy_mix_boundaries_scope_and_train_only_prompts(share, expected):
 
 def test_metric_cap_and_proposal_cap_stop_cleanly():
     for budget, evaluations, proposals in [({"maxMetricCalls": 2, "maxProposals": 3}, 2, 0),
-                                          ({"maxMetricCalls": 100, "maxProposals": 3}, 4, 3),
-                                          ({"maxMetricCalls": 3, "maxProposals": 100}, 3, 2)]:
+                                          ({"maxMetricCalls": 100, "maxProposals": 3}, 6, 3),
+                                          ({"maxMetricCalls": 3, "maxProposals": 100}, 2, 0)]:
         result = optimize(population_request(budget=budget), Host())["provenance"]
         assert result["stopReason"] == "budget"
         assert result["evaluations"] == evaluations
@@ -151,7 +153,7 @@ def test_duplicate_and_sibling_gates():
     rows = result["rounds"][1]["variants"]
     assert rows[0]["attempts"][0]["rejectionReason"] == "duplicate"
     assert rows[1]["attempts"][0]["rejectionReason"] == "sibling-similarity"
-    assert result["evaluations"] == 3
+    assert result["evaluations"] == 4
 
 
 def test_component_set_and_targeted_criteria_rejection():
@@ -225,7 +227,7 @@ def test_duplicate_plans_cannot_evade_dedupe_by_changing_realization_words():
     result = optimize(population_request(search={"variants": 2, "keep": 1, "rounds": 1},
                                          proposal={"max_attempts": 1}), callback)["provenance"]
     assert result["rounds"][1]["variants"][1]["rejectionReason"] == "hypothesis-duplicate"
-    assert result["evaluations"] == 3
+    assert result["evaluations"] == 4
 
 
 @pytest.mark.parametrize('before,after', [
@@ -302,7 +304,7 @@ def test_similar_hypothesis_can_repair_min_change_rejection():
     assert row['attempts'][0]['rejectionReason'] == 'below-min-change'
     assert row['attempts'][1]['status'] == 'accepted'
     assert row['hypothesis'] == HYPOTHESES[0] + ' explicitly'
-    assert result['evaluations'] == 3
+    assert result['evaluations'] == 4
 
 
 @pytest.mark.parametrize('before,after', [
@@ -319,8 +321,8 @@ def test_directive_reversal_passes_default_floor(before, after):
     assert row['status'] == 'accepted'
     assert row['behavioralChange'] > 0.08
     assert result['candidates'][1]['components'] == {'guide': after}
-    assert result['evaluations'] == 3
-    assert len([call for call in host.calls if call[0] == 'evaluate']) == 3
+    assert result['evaluations'] == 4
+    assert len([call for call in host.calls if call[0] == 'evaluate']) == 4
 
 
 @pytest.mark.parametrize('floor', [0, 0.08])
@@ -382,6 +384,6 @@ def test_evaluator_factory_receives_ordered_batches_and_preserves_result_identit
     start = population_request(validationCaseIds=['validation-a', 'validation-b'])
     expected = optimize(start, Host())
     assert optimize_population(start, Host(), evaluator_factory=Evaluator) == expected
-    assert len(batches) == 7
+    assert len(batches) == 10
     assert [row['caseId'] for row in batches[0]] == ['validation-a', 'validation-b']
     assert [row['caseId'] for row in batches[1]] == start.trainCaseIds

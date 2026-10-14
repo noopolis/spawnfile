@@ -18,6 +18,9 @@ Owns explicit local commands, configuration selection and human diagnostics.
   `--experiment-timeout-ms` (legacy `--timeout-ms`) bounds the command, separately
   from `--trial-timeout-ms`, inference routes, broker turns and extraction. A training report is stored under a test-role summary
   manifest bound to the frozen selected candidate, never an optimizer-readable run.
+- Resolve population trial defaults after dataset loading, identically in dry-run
+  and execution. Count baseline plus every round's variants on train/validation,
+  and two test passes. Explicit CLI/YAML caps override this derived default.
 - The local invocation index contains references and identities only. Blob/report
   access still uses storage authorization. Failed attempts publish a failure index
   bound to the baseline and a development-only viewer projection. Raw partial

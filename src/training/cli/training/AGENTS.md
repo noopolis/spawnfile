@@ -26,10 +26,15 @@ fail every call closed. The home root must be owned by the training uid with mod
 `close()` on the grant pool on every exit path (completion, failure, SIGINT/SIGTERM),
 so grants are handed back instead of waiting out their ten-minute TTL.
 
+Provider caches include purpose whenever evaluator grants are supplied, even without
+the broker cap, so a shared judge model cannot bypass optimizer proposal budgets.
+
 
 Capped containers set `PAIDEIA_MODEL_REQUEST_CAP=broker`. Reject all reachable
-non-broker routes, fallbacks and legacy defaults before constructing providers;
-native grader routes also lack shared admission and are refused.
+non-broker routes, fallbacks and legacy defaults before constructing providers,
+except exact declared Codex proposal grants wrapped in durable evaluator budgets.
+Atomic grading separately admits declared extraction/decision routes; other native
+graders remain refused. Grants never authorize generic judges or subject requests.
 Resolve the optional public integration trainingOptimizer receipt against declared
 model keys first, then exactly one model value. Conflicting YAML fields fail before
 execution. Optional integration boundaries use the YAML limits and must match
@@ -37,5 +42,9 @@ verbatim/in order when both sources declare them; otherwise use the declared sou
 Population search defaults are resolved by optimizer.ts; derived caps
 remain within the existing 1000-call ceiling. Dry-run displays each editable
 resource's whole-file or heading scope and the effective search controls.
+`trainingTrialBudget` derives `(1 + variants * rounds) * (train + validation) +
+2 * test` after dataset resolution; internal holdouts preserve the input case total.
+Keep explicit caps and the 10000-trial ceiling. Verify the actual CLI/bridge run,
+not just dry-run arithmetic; legacy GEPA and frozen comparisons retain defaults.
 
 Resolve training.validation relative to its dataset and reject simultaneous validation group declarations before native construction.

@@ -58,7 +58,7 @@ def test_optimizer_dispatch_overlaps_train_and_validation_and_preserves_scores()
         trainCaseIds=[f"t{index}" for index in range(4)],
         validationCaseIds=[f"v{index}" for index in range(4)],
         search={"variants": 1, "keep": 1, "rounds": 1},
-        budget={"maxMetricCalls": 12, "maxProposals": 2})
+        budget={"maxMetricCalls": 16, "maxProposals": 2})
     scripted = Host()
     barrier = threading.Barrier(4, timeout=5)
     # Each batch completes in reverse case order, without relying on sleeps.
@@ -82,9 +82,9 @@ def test_optimizer_dispatch_overlaps_train_and_validation_and_preserves_scores()
 
     result = optimize(request, host)["provenance"]
     assert completed == ["v3", "v2", "v1", "v0", "t3", "t2", "t1", "t0",
-                         "v3", "v2", "v1", "v0"]
+                         "v3", "v2", "v1", "v0", "t3", "t2", "t1", "t0"]
     assert result["optimizer"] == "paideia.population"
-    assert result["evaluations"] == 12
+    assert result["evaluations"] == 16
     assert result["proposals"] == 2
     assert len(result["candidates"]) == 2
     assert all(candidate["perCaseScores"] == {f"v{i}": i / 4 for i in range(4)}

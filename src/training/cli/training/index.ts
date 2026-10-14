@@ -7,4 +7,4 @@ export { reserveOutput } from './output-lock.js';
 
 export { prepareComparison } from './comparison.js';
 
-export { resolveTrainingOptimizer, populationSearch, bridgeProposal, editableResources } from './optimizer.js';
+export { resolveTrainingOptimizer, populationSearch, bridgeProposal, editableResources, trainingTrialBudget } from './optimizer.js';
