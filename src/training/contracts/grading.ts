@@ -25,6 +25,8 @@ export interface DecisionResult {
 export interface DecisionIdentity { backend: string; model: string; digest?: string; fingerprint?: string; endpoint?: string }
 export interface DecisionSpendBudget { maxUsd?: number; spentUsd: number; reservedUsd: number }
 export interface DecisionRequestReceipt {
+  /** Originating dispatched attempt; retained across references and repairs. Absent in legacy captures. */
+  requestId?: string;
   billing: 'api'; model: string; endpoint: string;
   inputTokens: number | null; outputTokens: number | null; usd: number | null;
   estimatedInputTokens: number; estimatedUsd: number; latencyMs: number; status: number | null;

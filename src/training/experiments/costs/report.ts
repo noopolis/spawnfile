@@ -1,9 +1,11 @@
 import type { EvaluationResult, JudgeCall } from '../../contracts/evaluation.js';
+import type { DecisionRequestReceipt } from '../../contracts/grading.js';
 import type { InferenceAttempt, InferenceModelBasis, ObservationCoverage, Usage } from '../../contracts/execution.js';
 import type { TrialReport } from '../trials/index.js';
 import type { RescoreReport } from '../replay/index.js';
 import type { CostValuation, ModelPrice, Range } from './types.js';
 import { valueUsage } from './valuation.js';
+import { decisionCostEntries } from './decisions.js';
 
 export interface OptimizerGeneration {
   text?: string;
@@ -37,6 +39,8 @@ export interface CostEntry {
   /** Evidence reports, not an inferred list of distinct calls or summable deltas. */
   observedUsageReports?: { location: string; usage: Usage[] }[];
   judgeCallVersions?: JudgeCall[];
+  decisionReceipt?: DecisionRequestReceipt;
+  decisionReceiptVersions?: DecisionRequestReceipt[];
 }
 export interface CostGroup {
   role: CostEntry['role'];
@@ -234,6 +238,10 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
       usageCoverage = 'incomplete';
     } else append(entry);
   }
+  for (const entry of decisionCostEntries(trials, options.rescores)) {
+    append(entry, entry.valuation);
+    if (entry.decisionReceiptVersions) usageCoverage = 'incomplete';
+  }
   const optimizerCalls = new Map<string, InferenceAttempt[]>();
   for (const [index, generation] of (options.optimizerGenerations ?? []).entries()) {
     if (generation.attempts?.length) {
@@ -277,4 +285,25 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
   if (usageCoverage === 'incomplete') { total.apiEquivalentUsd = null; total.completeness = 'incomplete'; }
   return { schema: 'paideia.cost-report.v1', currency: 'USD', ...total, usageCoverage,
     entries, groups, subscriptionChargeUsd: null, warnings: [...warnings] };
+}
+
+/** Backfill recorded grader receipts in older report envelopes without repricing other entries. */
+export function includeDecisionCosts(costs: CostReport | null, trials: readonly TrialReport[], rescores?: readonly RescoreReport[]): CostReport | null {
+  const decisions = decisionCostEntries(trials, rescores);
+  const added = decisions.filter(entry => !costs?.entries.some(existing => existing.id === entry.id));
+  if (!added.length) return costs;
+  const entries = [...costs?.entries ?? [], ...added];
+  const grouped = new Map<string, CostEntry[]>();
+  for (const entry of entries) {
+    const key = JSON.stringify([entry.role, entry.name]);
+    grouped.set(key, [...grouped.get(key) ?? [], entry]);
+  }
+  const total = totals(entries);
+  if (!costs || costs.completeness === 'incomplete') { total.apiEquivalentUsd = null; total.completeness = 'incomplete'; }
+  return { schema: 'paideia.cost-report.v1', currency: 'USD', ...total,
+    usageCoverage: costs?.usageCoverage ?? 'incomplete', entries,
+    groups: [...grouped.values()].map(group => ({ role: group[0]!.role, name: group[0]!.name,
+      entryCount: group.length, models: [...new Set(group.map(entry => entry.model))], ...totals(group) })),
+    subscriptionChargeUsd: null, warnings: [...costs?.warnings ?? ['Only decision receipts are available; other request counts and usage coverage are unknown.'],
+      'Decision receipts retain recorded usage-priced costs; estimates and actual invoices remain separate.'] };
 }

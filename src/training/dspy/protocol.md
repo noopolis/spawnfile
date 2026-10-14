@@ -57,6 +57,13 @@ proposals means baseline-only selection, not demonstrated optimization.
 {"schema":"paideia.dspy.v2","kind":"response","id":"call-1","result":{"score":0.5,"feedback":"The filing lacked evidence.","output":"Observed native output","captureId":"capture-1"}}
 ```
 
+Evaluation params may include `round`, a nonnegative integer. The current bridge
+always records seed round zero, then GEPA's upstream iteration-start ID or the
+population's declared round. The host persists attribution with the native report;
+round is part of callback identity. Legacy callbacks may omit it and remain
+unattributed. Interrupted checkpoints made before round attribution require their
+original bridge; adding params changes content-based callback IDs.
+
 All four result fields are required. `score` is a finite number in [0,1]; the host
 owns how gates, unknown/error states and coverage affect that scalar. Infrastructure
 failure must use an error response, never a fabricated subject score. `captureId`

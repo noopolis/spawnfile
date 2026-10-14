@@ -31,6 +31,7 @@ def test_real_dspy_gepa_optimizes_two_files_through_host_callbacks(fenced):
     for path, text in original.components.items():
         assert result["components"][path] == text + "Revision 1.\nRevision 2.\n"
     evaluations = [params for method, params in host.calls if method == "evaluate"]
+    assert [row["round"] for row in evaluations] == [0, 1, 1, 1, 2, 2, 2]
     assert len(evaluations) == 7  # one complete trial, not one trial per component
     assert evaluations[0]["components"] == original.components
     assert evaluations[-1]["components"] == result["components"]

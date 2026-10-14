@@ -72,3 +72,11 @@ Slot descriptors and effective concurrency bind checkpoint identity.
 Population search controls pass unchanged to optimization and participate in the
 training checkpoint identity. Derive component editScope from the frozen baseline,
 not integration claims, so provenance reflects actual whole-file or heading edits.
+
+Completed reports carry invocation elapsed host durationMs, including restoration
+and sealed tests. Do not sum parallel trial durations as invocation elapsed time.
+The CLI owns local operator report/bundle export; it never reselects from test.
+
+Forward actual optimizer callback round IDs to stored trials. Candidate manifests
+belong to native measurement persistence, independent of final optimizer selection;
+completed checkpoint resume must retain rejected evaluated proposals.

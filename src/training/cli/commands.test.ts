@@ -55,6 +55,11 @@ describe('CLI through actual cases/candidates/experiments/storage', () => {
     expect(report.heldOut.map((entry) => entry.meanScore)).toEqual([0, 1]);
     expect(fixture.observedInstructions.filter((instructions) => instructions.includes('IMPROVED'))).toHaveLength(3);
     expect(report.selected.resources[0]!.content).toContain('IMPROVED');
+    const exported = JSON.parse(await readFile(join(fixture.root, 'out', 'REPORT.json'), 'utf8'));
+    expect(exported.selectedCandidateId).toBe(report.selected.id);
+    expect(exported.candidates).toHaveLength(report.optimizer.provenance.candidates.length);
+    expect(await readFile(join(fixture.root, 'out', 'REPORT.md'), 'utf8')).toContain('Held-out comparison and uncertainty');
+    expect(index.trainingExport).toBeDefined();
     await expect(store.readBlob(index.report, { audience: 'optimizer', phase: 'training' })).rejects.toThrow();
     const data = await (await loadInvocationViewer(join(fixture.root, 'out')))();
     expect(data.optimizer).toMatchObject({ evaluations: 4, proposals: 1, maxMetricCalls: 4 });
@@ -101,4 +106,68 @@ it('validates concurrency bounds before dry-run can ignore them', async () => {
   expect(await main(['train', '--train', 'data.yaml', '--dry-run', '--concurrency', '9'], fixture.io, fixture.dependencies)).toBe(2);
   expect(fixture.stderr.join('')).toContain('integer');
   expect(fixture.observedInstructions).toEqual([]);
+});
+
+it('exports a real DSPy training command without a viewer or external reporting script', async () => {
+  const fixture = await cliFixture(); roots.push(fixture.root);
+  await writeFile(join(fixture.root, 'train.yaml'), datasetText([{ id: 'train', group: 'a' }, { id: 'selection', group: 'b' }]));
+  await writeFile(join(fixture.root, 'test.yaml'), datasetText([{ id: 'test', group: 'sealed' }]));
+  expect(await main(['train', '--train', 'train.yaml', '--test', 'test.yaml', ...fixture.nativeArgs,
+    '--editable', 'AGENTS.md', '--optimizer-model', 'explicit-reflection', '--bridge-command', fixture.bridge,
+    '--validation-group', 'b', '--max-trials', '6', '--max-proposals', '1', '--timeout-ms', '15000'], fixture.io, fixture.dependencies)).toBe(0);
+  expect(fixture.stderr).toEqual([]);
+  const root = join(fixture.root, 'out');
+  const index = JSON.parse(await readFile(join(root, 'invocation.json'), 'utf8')) as InvocationIndex;
+  expect(index.trainingExport).toBeDefined();
+  const report = JSON.parse(await readFile(join(root, 'REPORT.json'), 'utf8'));
+  expect(report.heldOut).toMatchObject({ complete: true, meanDelta: 1, standardError: null });
+  expect(report.candidates).toHaveLength(2);
+  expect(report.durationMs).toBeGreaterThan(0);
+  expect(report.candidates[1].splits.test.examples[0].measurements[0].durationMs).toBeGreaterThan(0);
+  expect(await readFile(join(root, index.trainingExport!.directory, 'candidates', 'candidate-1', 'files', 'AGENTS.md'), 'utf8')).toContain('IMPROVED');
+});
+
+
+it('exports rejected real GEPA proposals and preserves manifests/rounds on completed resume', async () => {
+  const f = await cliFixture(); roots.push(f.root);
+  const data = (records: { id: string; group: string }[]) => JSON.stringify({ schema: 'paideia.dataset.v1', id: 'example',
+    stages: [{ id: 'quality', checks: [
+      { id: 'correct', eval: 'equals', input: 'output.text', value: 'OK' },
+      { id: 'ceiling', eval: 'equals', input: 'output.text', value: 'UNREACHABLE' }],
+      score: { linear: { correct: 1, ceiling: 1 } },
+      gate: { eval: 'contains-any', input: 'output.text', values: ['OK', 'BAD'] } }],
+    records: records.map(record => ({ ...record, input: { prompt: 'Reply OK.' } })) });
+  await writeFile(join(f.root, 'train.yaml'), data([{ id: 'train', group: 'a' }, { id: 'selection', group: 'b' }]));
+  await writeFile(join(f.root, 'test.yaml'), data([{ id: 'test', group: 'sealed' }]));
+  f.dependencies.adapter = id => {
+    const base = fixtureAdapter(id, f.observedInstructions, 'pass');
+    return { ...base, async start(input) {
+      const text = input.instructions.includes('IMPROVED') ? 'BAD' : 'OK';
+      const native = await base.start({ ...input, onObservation: value => input.onObservation({ ...value, text }) });
+      return { ...native, async run(turn, signal) { return { ...await native.run(turn, signal), text }; } };
+    } };
+  };
+  const argv = ['train', '--train', 'train.yaml', '--test', 'test.yaml', ...f.nativeArgs,
+    '--editable', 'AGENTS.md', '--optimizer-model', 'explicit-reflection', '--bridge-command', f.bridge,
+    '--validation-group', 'b', '--max-trials', '6', '--max-proposals', '1', '--timeout-ms', '15000'];
+  expect(await main(argv, f.io, f.dependencies)).toBe(0); expect(f.stderr).toEqual([]);
+  const out = join(f.root, 'out'), store = await openExperimentStore(out);
+  const index = JSON.parse(await readFile(join(out, 'invocation.json'), 'utf8')) as InvocationIndex;
+  const original = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test',
+    frozenCandidateIds: [index.candidateId] })).toString()) as TrainingReport;
+  expect(original.optimizer.provenance).toMatchObject({ evaluations: 3, candidates: [expect.anything()] });
+  expect(original.optimizer.provenance.candidates).toHaveLength(1);
+  expect(original.trials.filter(trial => trial.phase !== 'test').map(trial => trial.round)).toEqual([0, 1, 1]);
+  const rejected = original.trials.find(trial => trial.candidateId !== original.baseline.id)!;
+  expect(rejected.candidate!.resources[0]!.content).toContain('IMPROVED');
+  const exported = JSON.parse(await readFile(join(out, 'REPORT.json'), 'utf8'));
+  expect(exported.candidates).toHaveLength(2); expect(exported.selectedCandidateId).toBe(original.baseline.id);
+  expect(exported.roundScores[1].candidates[1]).toMatchObject({ train: 0, validation: null, test: null });
+  expect(await readFile(join(out, index.trainingExport!.directory, 'candidates/candidate-1/files/AGENTS.md'), 'utf8')).toContain('IMPROVED');
+  expect(await readFile(join(out, index.trainingExport!.directory, 'candidates/candidate-1/baseline.diff'), 'utf8')).toContain('+IMPROVED');
+  const nativeCount = f.observedInstructions.length;
+  expect(await main([...argv, '--resume'], f.io, f.dependencies)).toBe(0); expect(f.stderr).toEqual([]);
+  expect(f.observedInstructions).toHaveLength(nativeCount);
+  const resumed = JSON.parse(await readFile(join(out, 'REPORT.json'), 'utf8'));
+  expect(resumed.candidates).toEqual(exported.candidates); expect(resumed.roundScores).toEqual(exported.roundScores);
 });

@@ -23,3 +23,7 @@ Owns the minimal Python boundary to released DSPy 3.3.1 and GEPA 0.1.4.
   the process package. Planning and realization use only declared boundaries and
   train evidence; no implicit role/interface preservation prompt. Follow exact
   defaults and resume limits in README/protocol. P6 concurrency is a separate owner.
+
+The evaluate protocol carries optional nonnegative round attribution. Current
+bridge callbacks always emit actual GEPA/population round IDs; legacy omission
+remains explicit and older interrupted journals require their original bridge.

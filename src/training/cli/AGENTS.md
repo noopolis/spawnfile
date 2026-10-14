@@ -37,3 +37,11 @@ Owns explicit local commands, configuration selection and human diagnostics.
   points and adjacent parsing/behavior tests.
 - Test invalid inputs, cancel/error exit behavior and positive output artifacts,
   not just whether a child process launched.
+
+Completed optimizer training exports REPORT.md/REPORT.json and immutable candidate
+bundles through report/index.ts after sealed completion. The invocation index
+references the immutable snapshot. Never export failed or in-progress held-out
+evidence; export errors prevent completion. Comparison keeps its existing report.
+
+Real GEPA regression coverage must verify rejected candidate files/patches,
+round attribution and successful completed resume without new native trials.

@@ -1,5 +1,6 @@
+import { validateCandidate, type CandidateManifest } from '../../candidates/index.js';
 import { z } from 'zod';
-import { createGradeResultSchema } from '../../graders/index.js';
+import { decisionAccountingSchema, createGradeResultSchema } from '../../graders/index.js';
 import { subjectUsageMatchesNative } from './subject-usage.js';
 import { judgeFailureCauses, type EvaluationResult } from '../../contracts/evaluation.js';
 
@@ -60,6 +61,7 @@ const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   grading: createGradeResultSchema(judgeCall).optional(),
+  decisionAccounting: decisionAccountingSchema.optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));
 const weighted = z.object({ finality: z.enum(['provisional', 'final']), lower: z.number(), upper: z.number(),
   assessedWeight: z.number(), missingWeight: z.number() });
@@ -80,6 +82,12 @@ const snapshot = z.object({ trialId: identity, recordId: identity, closed: z.lit
 export const trialReportSchema = z.object({
   schema: z.literal('paideia.trial.v1'), id: identity, phase: z.enum(['train', 'validation', 'test']), candidateId: identity,
   datasetDigest: identity, planDigest: identity, recordId: identity,
+  candidate: z.custom<CandidateManifest>(value => {
+    try { validateCandidate(value as CandidateManifest); return true; } catch { return false; }
+  }, 'Invalid evaluated candidate manifest').optional(),
+  round: z.number().int().nonnegative().optional(),
+  durationMs: z.number().finite().nonnegative().optional(),
+  subject: z.object({ adapterId: identity, requestedModel: identity, isolation: z.string() }).optional(),
   paths: z.object({ root: z.string(), workspace: z.string(), control: z.string(), runtimeHome: z.string() }),
   status: verdict, execution: z.enum(['completed', 'deferred', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
   expectedTurns: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
@@ -90,6 +98,12 @@ export const trialReportSchema = z.object({
   evaluation: plan, live: z.array(z.object({ checkId: z.string(), boundary: z.string(), result })),
   decisiveFailure: result.optional(), stop: stop.optional(), error: z.string().optional(),
 }).superRefine((report, context) => {
+  if (report.candidate && report.candidate.id !== report.candidateId) {
+    context.addIssue({ code: 'custom', path: ['candidate'], message: 'Evaluated candidate identity mismatch' });
+  }
+  if (report.phase === 'test' && report.round !== undefined) {
+    context.addIssue({ code: 'custom', path: ['round'], message: 'Sealed tests have no search round' });
+  }
   if (!subjectUsageMatchesNative(report)) {
     context.addIssue({ code: 'custom', path: ['snapshot', 'subjectUsage'], message: 'Subject usage does not match authoritative native totals and closure' });
   }

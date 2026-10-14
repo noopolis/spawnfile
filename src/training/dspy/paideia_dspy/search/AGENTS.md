@@ -31,3 +31,6 @@ seeds before callbacks and reject violations before evaluation. Free-form prose 
 unsupported. Never replace exact enforcement with proposer attestations or imply
 semantic compliance. `instruction_text.py` excludes Markdown metadata before unit
 segmentation without discarding fenced examples.
+
+Set the session round before parent feedback and variant validation. Cached
+feedback is a prior capture, never a fresh measurement in the current round.

@@ -5,6 +5,7 @@ import type { CandidateManifest } from '../candidates/index.js';
 import { openExperimentStore, type ExperimentStore } from '../storage/index.js';
 import type { InvocationIndex } from './types.js';
 import { reserveOutput } from './training/index.js';
+import { exportTrainingReport, isTrainingReport } from './report/index.js';
 
 export async function withOutput<T>(root: string, operation: (store: ExperimentStore) => Promise<T>, resume = false): Promise<T> {
   const store = await openExperimentStore(root);
@@ -32,9 +33,15 @@ export async function persistResult(options: {
     ...(options.optimizerBudget ? { metadata: { optimizerBudget: options.optimizerBudget } } : {}) });
   const report = await options.store.putBlob(options.id, JSON.stringify(options.report), 'evaluator');
   const candidate = await options.store.putBlob(options.id, JSON.stringify(options.candidate), 'evaluator');
+  if (isTrainingReport(options.report) && options.report.selected.id !== options.candidate.id) {
+    throw new Error('Training export selection does not match the frozen summary candidate');
+  }
+  const trainingExport = options.command === 'train' && options.outcome !== 'failed' && isTrainingReport(options.report)
+    ? await exportTrainingReport(options.root, options.report) : undefined;
   const index: InvocationIndex = { schema: 'paideia.invocation.v1', command: options.command,
     ...(options.outcome === undefined ? {} : { outcome: options.outcome }),
-    summaryRunId: options.id, phase, candidateId: options.candidate.id, trialIds: options.trialIds, report, candidate };
+    summaryRunId: options.id, phase, candidateId: options.candidate.id, trialIds: options.trialIds, report, candidate,
+    ...(trainingExport ? { trainingExport } : {}) };
   const bytes = `${JSON.stringify(index, null, 2)}\n`;
   const path = join(options.root, 'invocation.json');
   const writtenPath = `${path}.${randomUUID()}.tmp`;
