@@ -244,10 +244,14 @@ name or compatibility assertion is insufficient. Image-reference-only declaratio
 cannot establish this compatibility and reject repair.
 
 The `daimon-dspy.v1` recipe supports optional `image.build.compiler`, a complete
-registry-locked Spawnfile distribution used only for native compilation under
+registry-locked Spawnfile distribution used for native compilation and declared-session activation under
 `/opt/training/compiler`. Omission uses the current installed compiler. Repair may
 pin the parent's original compiler while using corrected evaluation/launch code.
 The mapped preparation receipt supplies that exact compiler executable path.
+Paideia's own package-resolution directory MUST link `spawnfile` to this paired
+compiler so `spawnfile/training` resolves from Paideia. An integration-directory
+link alone is insufficient. Registered private native transport/continuation
+callbacks do not transfer public compilation, lease, reset or freshness ownership.
 
 `spawnfile.daimon-dspy-compatibility.v1` requires unchanged native/Python images,
 platform, compiler closure, installed integration, native adapter/trial code,
@@ -572,3 +576,56 @@ datasets had never been probed — executed on no worker-uid denial evidence at
 all, and a refusal surfaced only after that trial's spend. The start-up receipt
 carries the container's own nonce and generation 1..N, in the same shape a
 recycle publishes and from the same canaries.
+
+### Built-in leased training session
+
+One `spawnfile.training-container.v4` declaration provisions N slots (1–8) for
+one experiment, with one broker and one credential realm. The protected authored
+execution receipt carries `session: {version: "spawnfile.training-session.v1",
+slots: N}`. Mapping and resume identity retain that count. An image integration
+registers Paideia's `trainingSession` configuration and the declared named moment
+hooks; it does not stage a candidate queue, launch a container per trial, or copy
+credentials into candidates.
+
+The public `spawnfile/training` entry point exports:
+
+- `compileTrainingCandidate`: check the canonical context/source pins, snapshot
+  the explicitly supplied source root into evaluator scratch, apply only pinned
+  native document/skill candidate resources, then invoke the real compiler. Locked
+  resources and, when supplied, unauthored editable paths cannot change. Persist
+  the compilation receipt, exact overlay hashes and selected native config digest.
+  Standalone calls default the source root to the project. Declared sessions
+  bind it to the execution receipt's enclosing input root, preserving the nested
+  project path and sibling bundle inputs. The bundle cache defaults to evaluator
+  scratch so compilation needs no writable image home. Git identity stays self-contained; no new agent definition or candidate
+  commit is created. Credential paths are refused.
+- `prepareTrainingSessionSlot`: verify the lease against the deterministic v4
+  descriptor and shared broker declaration, recycle through the root supervisor,
+  then verify the fresh nonce/generation and complete preflight against the native
+  projection, worker identity, executable pin and denied canaries. A caller can
+  supply its persisted freshness nonce and minimum generation. No caller-provided
+  path or command reaches the supervisor.
+
+Paideia owns admission, exclusive leases, candidate preparation, native child
+execution and finalization. Before every trial it resets the leased slot, binds
+its allocated workspace/home to that slot, compiles the candidate and invokes the
+named private hook. The hook receives the compilation and reset projection; it
+owns domain materialization/transport and writes the native launch with the
+materialized moment's task clock. Existing moment and native adapter gates
+validate rewind provenance, candidate bytes, launch ownership and clock evidence.
+
+After output/evidence collection and confirmed native quiescence, Paideia resets
+again, persists the advanced generation and closure evidence, and only then
+publishes the completed trial/checkpoint and returns the lease. Uncertain native
+closure or failed recycle quarantines the slot; no alternate realm or host trial
+is used. Candidate source/compiler scratch and sealed evaluation data remain
+outside subject-writable paths. The existing container launcher verifies owned
+container closure and credential writeback once for the entire experiment.
+
+Fake tests verify compilation, protocol binding, scheduling, isolation, reset and
+closure; key gates have isolated mutation checks. These checks do not establish
+live model behavior or domain fidelity, which require the declared private hook
+and a real native end-to-end run.
+
+The paired compiler must install the same native Daimon `/runtime` peer as the
+launcher. Slot preparation resolves this peer lazily from the compiler location.

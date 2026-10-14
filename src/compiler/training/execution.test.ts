@@ -46,11 +46,13 @@ it("accepts lowered v4 launch configurations without preparation-only fields and
   const result = await lower(root, [], { trainingConfig: path.join(root, "launch.json"), trainingImage: executionImage })
     .catch((error: Error) => ({ error }));
   expect(result, "lowered v4 dispatch guarantee").toMatchObject({ declaration: config });
+  expect(result, "v4 session handoff guarantee").toMatchObject({ execution: { session: { version: "spawnfile.training-session.v1", slots: 1 } } });
   await expect(lower(root, [], { trainingConfig: path.join(root, "launch.json") })).rejects.toThrow("requires --training-image");
 });
 it("maps graders, validation moments, source identities, and execution paths without changing roles or controls", async () => {
   const root = await executionFixture(), { execution } = await lower(root);
   const mapped = mapTrainingExecution(execution, file => file.replace(root, "/run/training/inputs/project"));
+  expect(mapped.sourceRoot, "mapped enclosing source guarantee").toBe("/run/training/inputs/project");
   expect(mapped.authoring.project.root).toBe("/run/training/inputs/project");
   expect(mapped.authoring.targets[0]!.datasets.validation, "validation projection guarantee").toEqual({ ...execution.authoring.targets[0]!.datasets.validation,
     sourcePath: "/run/training/inputs/project/training/validation.yaml" });
@@ -58,6 +60,8 @@ it("maps graders, validation moments, source identities, and execution paths wit
   expect(mapped.authoring.targets[0]!.files[0]!.sourcePath).toBe("/run/training/inputs/project/AGENTS.md");
   expect(mapped.optimizer).toEqual(optimizer);
   expect(trainingExecutionSchema.safeParse({ ...mapped, optimizer: undefined }).success).toBe(false);
+  const session = { version: "spawnfile.training-session.v1" as const, slots: 4 };
+  expect(mapTrainingExecution({ ...execution, session }, file => file.replace(root, "/run/training/inputs/project")).session).toEqual(session);
 });
 it("requires explicit output for resume and refuses missing or invalid container declarations", async () => {
   const root = await executionFixture();

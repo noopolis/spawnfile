@@ -17,6 +17,8 @@ export interface BundleBuildContext {
   platform: string;
   /** Private scratch space for installs and generated output. */
   workRoot: string;
+  /** Training receipts can name generated inputs relative to their canonical project. */
+  identityRoot?: string;
 }
 
 /** A bundle whose key is known; `write` builds its archive only on a cache miss. */

@@ -44,4 +44,13 @@ Documents in `research/` are informative — they inform decisions but are not b
 - Packaged builds declare receipt support on `image.build.integration.execution`; absent support clears inherited image capability, and declared support participates in recipe/cache verification.
 
 - TRAINING.md defines named moment hooks, explicit dataset lowering, per-trial rewind and refusal/lineage guarantees.
+- TRAINING_CONTAINERS.md defines the public candidate compilation and leased-slot session seams; v4 execution receipts carry the declared slot count. Scheduling and closure remain Paideia-owned.
 - Timestamp normalization refusals retain authored evidence and null lineage in the lowering report without aborting later examples.
+
+- TRAINING.md defines the public execution activation receiver, canonical identity/dataset pin admission, bound compiler operations and immutable lowered-case resume receipts.
+- Resource scope and generated training pin paths are project-relative identities;
+  container mounting must not invalidate canonical receiver admission.
+
+- Declared session execution carries its enclosing source input through lowering,
+  mount mapping and activation. Candidate bundles and their cache remain inside
+  evaluator scratch; the paired compiler resolves the native parent's runtime peer.

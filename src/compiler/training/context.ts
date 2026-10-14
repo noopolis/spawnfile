@@ -90,8 +90,10 @@ export const createTrainingContext = async (
     sources, documents, skills,
     resources: await Promise.all((agent.workspaceResources ?? []).map(async (resource) => ({
       id: resource.id, kind: resource.kind, mount: resource.mount, mode: resource.mode, sharing: resource.sharing,
-      definitionDigest: sha256(stableStringify(resource)),
-      pin: resource.kind === "bundle" ? await pinWorkspaceBundle(resource) : resource.kind === "git" ? resource.ref ?? null : null
+      definitionDigest: sha256(stableStringify({ ...resource,
+        scope: { ...resource.scope, key: path.relative(root, resource.scope.key).split(path.sep).join("/") }
+      })),
+      pin: resource.kind === "bundle" ? await pinWorkspaceBundle(resource, { identityRoot: root }) : resource.kind === "git" ? resource.ref ?? null : null
     }))),
     requirements: { nativeCompilation: true, isolatedPreparation: true }
   });
