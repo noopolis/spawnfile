@@ -234,7 +234,14 @@ execution:
 Both fields are required together, target-level, with no fallback; they lower
 to Daimon's `engine.model`/`engine.reasoningEffort`. `grok` auth is only valid
 for provider `xai` and is Daimon-owned (never a host import or an api-key
-secret); `reasoning_effort` is only valid with it. Codex and AGY are unchanged.
+secret). Grok's `reasoning_effort` remains limited to `low`, `medium`, or `high`.
+
+For a Daimon `engine: codex` agent, an OpenAI primary model with target-level
+`auth.method: codex` may optionally declare `reasoning_effort`: `none`,
+`minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`, or `persistent`.
+These are Daimon's accepted Codex values and lower unchanged to
+`engine.reasoningEffort`; omission emits no effort and injects no default.
+Other auth methods refuse `reasoning_effort`. AGY still owns its model selection.
 
 The worker `config.toml` is Daimon's own renderer output for that model x
 effort, vendored and refused unless it hashes to the contract manifest pin the

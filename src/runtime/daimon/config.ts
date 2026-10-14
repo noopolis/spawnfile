@@ -125,12 +125,14 @@ const resolveDaimonEngineConfig = (
     return { kind, model: declared.model, reasoningEffort: declared.reasoningEffort };
   }
   const model = kind === "codex" ? node.execution?.model?.primary?.name : undefined;
+  const reasoningEffort = kind === "codex" ? node.execution?.model?.primary?.reasoning_effort : undefined;
   const codexSandbox = kind === "codex" && node.runtime.options.codex_policy === "workspace-no-network"
     ? DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY
     : undefined;
   return {
     kind,
     ...(model === undefined ? {} : { model }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...(codexSandbox === undefined ? {} : { codexSandbox })
   };
 };

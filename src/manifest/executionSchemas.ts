@@ -7,6 +7,8 @@ const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "grok",
  * declares `auth.method: grok` itself; it is never inherited.
  */
 export const MODEL_REASONING_EFFORTS = ["low", "medium", "high"] as const;
+/** Mirrors Daimon's ORGANIZATION_RUNTIME_CODEX_REASONING_EFFORTS contract. */
+export const CODEX_MODEL_REASONING_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "persistent"] as const;
 const modelEndpointCompatibilitySchema = z.enum(["anthropic", "openai"]);
 
 const modelAuthSchema = z
@@ -73,7 +75,7 @@ export const modelTargetSchema = z
     endpoint: modelEndpointSchema.optional(),
     name: z.string(),
     provider: z.string(),
-    reasoning_effort: z.enum(MODEL_REASONING_EFFORTS).optional()
+    reasoning_effort: z.enum(CODEX_MODEL_REASONING_EFFORTS).optional()
   })
   .strict()
   .superRefine((value, context) => {
@@ -84,10 +86,19 @@ export const modelTargetSchema = z
       });
     }
 
-    if (value.reasoning_effort !== undefined && value.auth?.method !== "grok") {
+    if (value.reasoning_effort !== undefined && value.auth?.method === "grok") {
+      const effort = z.enum(MODEL_REASONING_EFFORTS).safeParse(value.reasoning_effort);
+      if (!effort.success) {
+        for (const issue of effort.error.issues) {
+          context.addIssue({ ...issue, path: ["reasoning_effort"] });
+        }
+      }
+    }
+
+    if (value.reasoning_effort !== undefined && value.auth?.method !== "grok" && value.auth?.method !== "codex") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "reasoning_effort is only valid on a model that declares auth.method grok"
+        message: "reasoning_effort is only valid on a model that declares auth.method grok or codex"
       });
     }
 

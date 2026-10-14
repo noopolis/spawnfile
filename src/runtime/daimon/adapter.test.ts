@@ -437,7 +437,7 @@ describe("daimonAdapter", () => {
     await expect(daimonAdapter.compileAgent({ ...codex, execution: { ...codex.execution!, model: { primary: declared } } } as typeof codex))
       .rejects.toThrow("cannot declare Grok model auth");
     expect(() => daimonAdapter.assertSupportedModelTarget?.({ auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoningEffort: "low" })).not.toThrow();
-    expect(() => daimonAdapter.assertSupportedModelTarget?.({ auth: { method: "codex" }, name: "gpt", provider: "openai", reasoningEffort: "low" })).toThrow(/brokered xAI Grok/u);
+    expect(() => daimonAdapter.assertSupportedModelTarget?.({ auth: { method: "codex" }, name: "gpt", provider: "openai", reasoningEffort: "low" })).not.toThrow();
     expect(() => daimonAdapter.assertSupportedModelTarget?.({ auth: { method: "grok" }, name: "grok-4.6", provider: "openai" })).toThrow(/brokered xAI Grok/u);
   });
 
