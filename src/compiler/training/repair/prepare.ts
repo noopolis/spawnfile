@@ -13,15 +13,20 @@ const commandSchema = z.object({ schema: z.literal("paideia.command-checkpoint.v
   identity: z.string().regex(/^[a-f0-9]{64}$/u),
   lineage: z.object({ parentId: z.string().uuid(), parentIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
     receiptDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u) }).strict().optional() }).strict();
-export async function planMeasurementRepair(options: { parent: string; witness?: string; output: string;
-  auth: string[]; image: TrainingImagePlan; inputs: PlannedInput[]; context: TrainingContext; resume: boolean }) {
+export async function validateMeasurementRepairOutput(options: { parent: string; output: string; resume: boolean }): Promise<string> {
   const parent = await exactPath(options.parent);
-  assertInputRoot(parent, options.auth);
   if (within(parent, options.output) || within(options.output, parent)) throw Error("Repair output must be disjoint from parent");
   if (!options.resume) {
     try { await lstat(options.output); throw Error("Measurement repair requires a fresh output directory"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
+  return parent;
+}
+
+export async function planMeasurementRepair(options: { parent: string; witness?: string; output: string;
+  auth: string[]; image: TrainingImagePlan; inputs: PlannedInput[]; context: TrainingContext; resume: boolean }) {
+  const parent = await validateMeasurementRepairOutput(options);
+  assertInputRoot(parent, options.auth);
   const staging = path.join(path.dirname(parent), `.spawnfile-training-preparation-${hashJson(parent).slice(7, 23)}`);
   const witness = await readTrainingWitness(options.witness ?? path.join(staging, "witness/manifest.json"));
   const state = JSON.parse(await readFile(path.join(staging, "state.json"), "utf8")) as { digest: string; image: string };

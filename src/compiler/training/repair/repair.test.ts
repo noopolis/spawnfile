@@ -97,6 +97,33 @@ it("validates repair dry-run without Docker, auth reads, projection or output an
   await mkdir(path.join(f.root, "child"));
   await expect(prepareTraining({ ...f.options, dryRun: true })).rejects.toThrow("fresh output");
   await expect(prepareTraining({ ...f.options, repairMeasurements: path.join(f.root, "child") })).rejects.toThrow("disjoint");
+  await expect(prepareTraining({ ...f.options, dryRun: true, repairMeasurements: path.join(f.root, "child") })).rejects.toThrow("disjoint");
+});
+
+it.each([true, false])("checks repair output before auth, evaluator secrets, inputs, image or witness (dry-run: %s)", async dryRun => {
+  const f = await fixture(), calls = f.docker.calls.length;
+  f.config.version = "spawnfile.training-container.v4";
+  f.config.broker = { engine: "grok", maxRunRequests: 50, agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low",
+    architecture: "arm64", limits: { maxRequests: 4, maxTokens: 100, timeoutMs: 1000 }, realmVolume: "realm", bootstrap: "missing-broker-auth" };
+  f.config.evaluatorRoutes = [{ purpose: "decisions", provider: "typesafe", model: "judge-model", maxRequests: 20, maxSpendUsd: 1 }];
+  f.config.evaluatorSecrets = [{ provider: "typesafe", source: "missing-evaluator-key" }];
+  f.config.auth[0]!.source = "missing-auth"; await f.save();
+  await Promise.all(["project", "paideia", f.witnessPath].map(source => rm(path.resolve(f.root, source), { recursive: true, force: true })));
+  await mkdir(path.join(f.root, "child"));
+  const options = { ...f.options, dryRun };
+  await expect(prepareTraining(options)).rejects.toThrow("fresh output");
+  for (const parent of [path.join(f.root, "child"), f.root]) {
+    await expect(prepareTraining({ ...options, repairMeasurements: parent })).rejects.toThrow("disjoint");
+    await expect(prepareTraining({ ...options, repairMeasurements: parent, args: [...options.args, "--resume"] })).rejects.toThrow("disjoint");
+  }
+  await rm(path.join(f.root, "child"), { recursive: true });
+  const nestedOutput = path.join(f.parent, "child");
+  await expect(prepareTraining({ ...options, outputOverride: nestedOutput,
+    args: ["--train", f.args[1]!, "--out", nestedOutput] })).rejects.toThrow("disjoint");
+  // Once the destination is valid, protected-leaf validation still runs before input/image traversal.
+  await expect(prepareTraining(options)).rejects.toThrow(dryRun ? "missing-evaluator-key" : "missing-auth");
+  expect(f.docker.calls).toHaveLength(calls);
+  await expect(readFile(path.join(f.root, "child/checkpoint/command.json"))).rejects.toThrow();
 });
 
 it("rejects parent symlinks and changed preparation binding", async () => {

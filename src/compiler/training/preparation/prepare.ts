@@ -8,7 +8,7 @@ import { trainingPreparationSchema, parseTrainingMappedPreparation, type Trainin
 import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } from "./files.js";
 import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
-import { planMeasurementRepair, stageMeasurementRepair, writeTrainingWitness } from "../repair/index.js";
+import { planMeasurementRepair, stageMeasurementRepair, validateMeasurementRepairOutput, writeTrainingWitness } from "../repair/index.js";
 import { prepareTrainingBroker } from "./broker.js";
 import { claimTrainingPreparationScratch } from "./scratch.js";
 
@@ -48,17 +48,20 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const protectedLeaves = [...auth, ...evaluatorSecrets ?? []];
   const evaluatorConfig = { ...(config.evaluatorRoutes ? { evaluatorRoutes: config.evaluatorRoutes } : {}),
     ...(evaluatorSecrets ? { evaluatorSecrets } : {}) };
-  // Validate references before traversing image/input sources; aliases must never bypass secret exclusions.
-  for (const entry of options.dryRun ? evaluatorSecrets ?? [] : protectedLeaves) {
-    const source = await exactPath(entry.source), info = await lstat(source);
-    if (source !== entry.source || !info.isFile()) throw Error("Training auth must be a canonical regular leaf");
-    if (evaluatorSecrets?.includes(entry as NonNullable<typeof evaluatorSecrets>[number]) && info.nlink !== 1) throw Error("Evaluator secrets must not have hardlink aliases");
-  }
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
   for (let index = 0; index < options.args.length; index++) {
     if (options.args[index] !== "--out") continue;
     const declared = options.args[++index];
     if (declared === undefined || path.resolve(declared) !== output) throw Error("Training --out must match configured output");
+  }
+  // Refuse invalid repair destinations before auth validation or source/witness reads.
+  if (options.repairMeasurements) await validateMeasurementRepairOutput({ parent: options.repairMeasurements,
+    output, resume: options.args.includes("--resume") });
+  // Validate references before traversing image/input sources; aliases must never bypass secret exclusions.
+  for (const entry of options.dryRun ? evaluatorSecrets ?? [] : protectedLeaves) {
+    const source = await exactPath(entry.source), info = await lstat(source);
+    if (source !== entry.source || !info.isFile()) throw Error("Training auth must be a canonical regular leaf");
+    if (evaluatorSecrets?.includes(entry as NonNullable<typeof evaluatorSecrets>[number]) && info.nlink !== 1) throw Error("Evaluator secrets must not have hardlink aliases");
   }
   assertInputRoot(output, protectedLeaves.map(entry => entry.source));
   if (await realpath(parent) !== parent) throw Error("Training output parent must be canonical and already exist");
