@@ -120,7 +120,7 @@ it.each(['extract', 'audit'])('binds custom obligation kinds through the %s phas
   expect(f.generate).toHaveBeenCalledTimes(2);
 });
 
-it('retains failed extraction/audit responses and cancellation receipts without leaking diagnostic errors', async () => {
+it('retains failed extraction responses without leaking diagnostic errors', async () => {
   const f = await fixture(), runtime = await buildAtomicRuntime(f.file, f.dependencies);
   f.generate.mockResolvedValueOnce({ text: 'malformed', model: 'test-codex', route: 'subscription', usage: null });
   const malformed = await gradeAtomic(runtime, f.inputs);
@@ -130,14 +130,28 @@ it('retains failed extraction/audit responses and cancellation receipts without 
   const failure = await gradeAtomic(runtime, f.inputs);
   expect(failure.extraction.judgeCalls[0]!.outcome).toBe('generation-error');
   expect(JSON.stringify(failure)).not.toContain('SECRET DIAGNOSTIC');
+  expect(f.atomicFetch).not.toHaveBeenCalled();
+});
+
+it.each(['extract', 'audit'])('retains cancellation receipts when the shared deadline expires during %s inference', async phase => {
+  const f = await fixture(), deadline = new AbortController();
+  // Expire the deadline after dispatch; filesystem setup may exceed a real 10 ms timer.
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValueOnce(deadline.signal);
+  if (phase === 'audit') f.generate.mockImplementationOnce(f.generate.getMockImplementation()!);
   f.generate.mockImplementationOnce(async request => {
-    await new Promise(resolve => request.signal!.addEventListener('abort', resolve, { once: true }));
+    deadline.abort(new DOMException('Extraction deadline expired', 'TimeoutError'));
     request.signal!.throwIfAborted(); throw new Error('unreachable');
   });
   await writeFile(f.file, stringify({ ...f.grader, extractor: { ...f.grader.extractor, deadline_ms: 10 } }));
   const timed = await buildAtomicRuntime(f.file, f.dependencies);
   const cancelled = await gradeAtomic(timed, f.inputs);
-  expect(cancelled.extraction.receipts[0]).toMatchObject({ receipts: [{ outcome: 'cancelled' }] });
+  expect(timeout).toHaveBeenCalledExactlyOnceWith(10);
+  expect(cancelled.status).toBe('error');
+  expect(f.generate).toHaveBeenCalledTimes(phase === 'extract' ? 1 : 2);
+  for (const [request] of f.generate.mock.calls) expect(request.signal).toBe(deadline.signal);
+  expect(cancelled.extraction.receipts[0]).toMatchObject({ receipts: phase === 'extract'
+    ? [{ phase: 'extract', outcome: 'cancelled' }]
+    : [{ phase: 'extract', outcome: 'completed' }, { phase: 'audit', outcome: 'cancelled' }] });
   expect(f.atomicFetch).not.toHaveBeenCalled();
 });
 
