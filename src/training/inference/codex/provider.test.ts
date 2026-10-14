@@ -83,7 +83,13 @@ it.each(['command_execution', 'file_change', 'web_search', 'mcp_tool_call', 'unk
   await expect(stat(calls[0]!.cwd)).rejects.toThrow();
 });
 
-it.each(['Logged in using an API key', 'Not logged in', 'Logged in using ChatGPT\nUnexpected account'])('rejects non-subscription/ambiguous preflight %s', async auth => {
+it('accepts the subscription sign-in alongside an advisory Codex warning', async () => {
+  const warning = 'WARNING: proceeding, even though we could not create PATH aliases: Refusing to create helper binaries under temporary dir "/tmp"';
+  await expect(createCodexInference({ process: runner(frames, {}, `${warning}\nLogged in using ChatGPT`) }).generate(request)).resolves.toBeDefined();
+});
+
+it.each(['Logged in using an API key', 'Not logged in', 'Logged in using ChatGPT\nUnexpected account',
+  'WARNING: advisory\nLogged in using an API key', 'WARNING: advisory'])('rejects non-subscription/ambiguous preflight %s', async auth => {
   let calls = 0;
   await expect(createCodexInference({ process: options => { calls++; return runner([], {}, auth)(options); } }).generate(request))
     .rejects.toMatchObject({ kind: 'authentication' });
