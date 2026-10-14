@@ -1,4 +1,5 @@
 import { mkdir, readFile, readdir, rm, symlink } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -30,6 +31,9 @@ describe("training authoring loader", () => {
     const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest() });
     const graderPath = path.join(root, "training/writing.grader.yaml");
     const project = await loadTrainingProject(root);
+    const datasetPath = path.join(root, "training/train.yaml");
+    expect(project.datasets[datasetPath]!.sha256, "dataset capture guarantee").toBe(
+      `sha256:${createHash("sha256").update(await readFile(datasetPath)).digest("hex")}`);
     expect(project.graders[graderPath]).toEqual({ sourcePath: graderPath, path: "training/writing.grader.yaml" });
     const plan = await createTrainingPlan(path.join(root, "Spawnfile"), options);
     expect(trainingPlanSchema.parse(plan)).toEqual(plan);

@@ -1,9 +1,21 @@
 import { expect, it } from "vitest";
-import { parseTrainingMappedPreparation, trainingPreparationSchema } from "./contract.js";
+import { parseTrainingMappedPreparation, trainingPreparationSchema, trainingBuildSchema } from "./contract.js";
 
 const config = () => ({ version: "spawnfile.training-container.v2", dockerContext: "local", image: { ref: `sha256:${"a".repeat(64)}` },
   integration: { settings: { input: "project", path: "." } }, inputs: [{ id: "project", source: "project", destination: "/run/training/inputs/project" }],
   output: { source: "out", destination: "/run/training/output" }, auth: [] });
+it("accepts only an explicit supported integration execution declaration", () => {
+  const build = { recipe: "daimon-dspy.v1", nativeImage: config().image.ref, pythonImage: config().image.ref,
+    platform: "linux/arm64", paideia: "paideia", bridge: "bridge", claude: "claude", integration: { source: "integration", entry: "entry.ts" } };
+  expect(trainingBuildSchema.parse(build).integration).toEqual(build.integration);
+  const declared = { ...build, integration: { ...build.integration, execution: "spawnfile.training-execution.v1" } };
+  expect(trainingPreparationSchema.parse({ ...config(), image: { build: declared } }).image).toEqual({ build: declared });
+  for (const execution of [true, "", "spawnfile.training-execution.v0", "spawnfile.training-execution.v2", ["spawnfile.training-execution.v1"]]) {
+    expect(trainingBuildSchema.safeParse({ ...build, integration: { ...build.integration, execution } }).success,
+      "execution declaration validation guarantee").toBe(false);
+  }
+  expect(trainingBuildSchema.safeParse({ ...build, integration: { ...declared.integration, arbitrary: true } }).success).toBe(false);
+});
 it("keeps authoring strict and rejects ambiguous input and settings references", () => {
   const base = config(); expect(trainingPreparationSchema.parse(base)).toEqual({ ...base, slots: 4 });
   expect(() => trainingPreparationSchema.parse({ ...base, inputs: [...base.inputs, ...base.inputs] })).toThrow("unique");

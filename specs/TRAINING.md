@@ -30,7 +30,9 @@ Paideia supplies the cost-config format and training options. Dataset roles are 
 unchanged canonical inputs, the isolated integration's execution identity and
 cumulative budgets before restoring its optimizer and native evidence. Spawnfile
 does not interpret checkpoints, repeat trials or deploy the optimized candidate.
-`--agent` is an exact resolved node ID; omission is allowed only for one-agent projects.
+`--agent` accepts an exact resolved node ID or an unambiguous short authored name;
+omission is allowed only for one-agent projects. Exact IDs take precedence; ambiguous
+short names fail with a list of exact IDs. Prefix/fuzzy matching is forbidden.
 `--paideia-command` selects an installed executable, default `paideia`; no shell,
 automatic installation, model-provider fallback or production launch is involved.
 
@@ -138,11 +140,11 @@ spawnfile train ./Spawnfile --agent agent:writer --plan
 
 `--plan` prints `spawnfile.training-plan.v1` as JSON with two-space indentation and a
 trailing newline, then exits 0. `--train` is not required with `--plan`; `--dry-run`
-does not change plan behavior. Selection requires the exact compiled agent ID unless
-the project has exactly one agent. Planning reads local sources and builds the resolved
+does not change plan behavior. Selection accepts an exact compiled agent ID or an unambiguous short name; omission
+requires exactly one agent. Planning reads local sources and builds the resolved
 graph; it MUST NOT create a training context, invoke Paideia, emit compiled artifacts,
-build images, use Docker/auth, or execute training. Existing delegated training still
-requires `--train`; the authoring surface does not change that execution path.
+build images, use Docker/auth, or execute training. Execution consumes this authoring plan when the selected agent has targets.
+Projects without targets retain the explicit delegated `--train` path.
 
 The plan's file entries carry absolute `sourcePath` and project-relative POSIX `path`.
 `record.volumes` MUST uniquely resolve to effective unfed volume resources; git/bundle
@@ -152,6 +154,122 @@ Graders include the selected agent's effective registry plus graders used by inc
 team targets, retaining provenance when names overlap. Keys and arrays are sorted; pure
 resolution MUST be deterministic and perform no I/O or clock reads. The generated schema
 appears between the `training-plan-schema` markers below.
+
+## Authoring-to-execution lowering
+
+```sh
+spawnfile train ./project --agent writer --dry-run
+spawnfile train ./project --agent writer
+```
+
+With authored targets, `--train`, `--out`, and `--training-config` are OPTIONAL.
+Spawnfile lowers `spawnfile.training-plan.v1` to `spawnfile.training-execution.v1`:
+
+- `--train` and `--test` default to the target's absolute dataset paths.
+- `--editable` defaults to all target files, deduplicated and project-relative.
+- `--optimizer-model` defaults to the effective optimizer model. The receipt retains
+  the exact effective `method`, `model`, `variants`, `keep`, and `budget.rounds`;
+  rounds MUST NOT be approximated as a proposal/trial budget.
+- Every grader reference and every train/validation/test example, timestamp, wake,
+  override identity, target consumer and declaring node remains in `authoring`.
+- A fresh output defaults to
+  `<project>/.spawn/training/<URI-encoded canonical agent ID>/<UTC timestamp>-<nonce>`.
+  Parents are private canonical directories; symlink aliases fail before allocation.
+  `--resume` MUST supply `--out` for the exact prior experiment, never select "latest".
+
+The container declaration is selected at `training/container.json` beside the selected
+agent's declaring Spawnfile, then at `<project>/training/container.json`. The first
+existing declaration wins; an invalid local declaration MUST NOT fall back to the root.
+Inline members use their parent manifest's directory. No new training-block fields
+are introduced. The existing v2/v4 declaration supplies the image reference/build,
+auth leaf references, history/input bindings, and integration settings/build entry.
+Org-specific reconstruction, accepted-output extraction and grader semantics belong to
+that declared integration. For history, use an input with `id: history`; it remains a
+read-only binding in the mapped preparation receipt. No auth bytes enter the authoring
+or execution receipt, image or per-trial inputs.
+
+For example, a declaration for an already-built immutable training image:
+
+```json
+{
+  "version": "spawnfile.training-container.v2",
+  "dockerContext": "local",
+  "image": { "ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+  "inputs": [{ "id": "project", "source": "..", "destination": "/run/training/inputs/project",
+    "include": ["Spawnfile", "AGENTS.md", "training"] }],
+  "integration": { "settings": { "input": "project", "path": "training/settings.json" } },
+  "output": { "source": "output-template", "destination": "/run/training/output" },
+  "auth": []
+}
+```
+
+Paths in the container declaration resolve from its directory. Use the actual image,
+required auth references and integration settings. The output source is a template:
+authoring-driven execution replaces it with allocated `--out`. When the source project
+contains the output, the project input MUST use selected `include` paths or a pinned Git
+snapshot, disjoint from output. The source root is never bound over its own output;
+preparation stages the read-only snapshot. All canonical sources, datasets, graders and
+integration settings MUST be covered by declared inputs. Full directory binds that
+overlap output remain forbidden.
+
+Explicit scalar flags override lowered defaults; repeated `--editable` replaces the
+default editable set. `--training-config` replaces convention lookup; `--training-image`
+replaces a v2/v4 image recipe/reference with that immutable image. Advanced v1 bindings
+remain supported with explicit `--training-image`, as do lowered v4 launch configurations
+without `image`. Preparation dispatch uses both version and declaration shape.
+Fresh authored direct launches create canonical private output after validating mounts
+and CLI paths; resume requires existing output. A full project bind cannot contain the
+default project-local output: use disjoint `--out` or a selected preparation snapshot.
+The authoring receipt preserves the
+original declaration; `args` and `optimizer` carry the effective overrides. The current
+CLI can select one dataset per role: incompatible target dataset paths MUST fail unless
+an explicit `--train`/`--test` chooses that role. It MUST NOT silently use the first target.
+
+Authored `--dry-run` prints the lowered execution receipt plus the selected container
+configuration (and any image override), then exits 0. It reads local files only: no
+context capture, Paideia estimator, auth contents, Docker, hooks, output allocation or
+writes. `--plan` continues printing only the deterministic authoring plan. Without
+any authored targets the existing explicit dataset dry-run remains the Paideia estimator.
+
+Actual training follows the existing preparation and container launcher. A protected,
+read-only JSON receipt at `/run/paideia/execution.json` contains `version`, `authoring`, `datasetPins`,
+`optimizer`, `args`, and `output`; all filesystem addresses are mapped into declared
+container mounts. `trainingExecutionSchema` validates the strict public shape, and
+`TRAINING_EXECUTION_FILE` exposes its conventional location. Integration consumes this
+receipt for moment/case lowering, validation dataset handoff and population search;
+these controls are not invented Paideia CLI flags. The legacy context contract is unchanged.
+Authored execution MUST inspect the resolved immutable image before container creation
+and require the label `com.spawnfile.training.execution=spawnfile.training-execution.v1`.
+This label declares that `/opt/training/bin/train` accepts
+`--spawnfile-execution /run/paideia/execution.json`, validates the receipt, lowers
+authored examples into executable cases, hands off validation data and graders, and
+applies effective optimizer controls and explicit argv overrides. It MUST reject
+unsupported controls instead of ignoring them. Spawnfile passes this argument to the
+entrypoint. Existing Paideia consumers without this contract MUST fail explicitly;
+the packaged recipe MUST NOT automatically claim compatibility for an arbitrary
+integration. Integration/image authors own the implementation and capability label.
+For packaged `image.build`, the integration author explicitly declares support with
+`image.build.integration.execution: "spawnfile.training-execution.v1"` alongside
+`source` and `entry`. This optional field accepts only that exact version; omission
+preserves legacy integration behavior. The builder emits the corresponding image
+label, binds it into the recipe digest, and verifies it on cache hits and after a
+build. Without the declaration it sets the label to an empty value, overriding any
+native-parent label: the installed integration cannot inherit another entrypoint's
+compatibility. This declaration is the author's assertion of implementation, not a
+runtime conformance test. Authored launch still checks the immutable image label.
+Dry-run reports the plan only and does not verify an image's capability.
+
+`datasetPins` binds every authored train/validation/test source path to the SHA-256
+of the exact bytes parsed during plan loading, including full override declarations.
+Preparation MUST verify these pins against staged Git/selected snapshot bytes on
+fresh runs and resume; missing files and mismatches MUST fail before image building.
+Direct launches MUST verify the mounted dataset bytes before Docker. Path projection
+preserves hashes. Explicit dataset overrides remain in `args`; they do not erase
+the original authoring provenance or its pins.
+Exact resume binds the execution receipt (including optimizer shape) into preparation
+identity, independently of source/model/argv changes, ignoring only `--resume` and
+scalar-option ordering. This lowering does not itself materialize trials, grade them,
+select candidates, or publish outputs.
 
 ## Moment record
 

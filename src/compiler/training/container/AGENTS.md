@@ -9,3 +9,7 @@
 - Dry-run stays in the existing host estimator. Actual training must never fall back to host execution.
 - Docker bind mounts currently require an explicitly selected local Unix-socket context. Remote daemon staging is unsupported.
 - Keep files under 400 lines; adjacent negative tests must prove ownership, cancellation and final receipt checks.
+
+- Optional authoring execution is mapped into container addresses and bound read-only at /run/paideia/execution.json. Preserve all dataset roles, graders and optimizer controls; never extend the legacy context with execution fields.
+- Fresh authored direct launches create private canonical output only after validating mounts and CLI paths. Resume requires existing output. Whole-project binds cannot contain output; use disjoint output or a preparation declaration with a selected snapshot.
+- Authored launches verify dataset bytes and the immutable image's explicit execution capability label before container creation, then pass --spawnfile-execution to its entrypoint. Never auto-label arbitrary integrations as compatible.

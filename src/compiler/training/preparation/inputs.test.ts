@@ -33,6 +33,13 @@ it("accepts confined tracked links and rejects escaping Git links and overlay dr
   f.config.inputs[0]!.git = { revision: await commit(), overlays: [] };
   const inputs = await planInputs(f.config, f.root, []), target = path.join(f.root, "snapshot");
   await stageInput(inputs[0]!, target); expect(await readFile(path.join(target, "CLAUDE.md"), "utf8")).toBe("guide");
+  const pin = { sourcePath: path.join(cwd, "CLAUDE.md"), sha256: sha("guide") };
+  await expect(verifyCanonicalPins(inputs, [pin], [target, "unused"])).resolves.toBeUndefined();
+  await f.put("outside.md", "guide");
+  await rm(path.join(target, "CLAUDE.md")); await symlink(path.join(f.root, "outside.md"), path.join(target, "CLAUDE.md"));
+  const refusal = await verifyCanonicalPins(inputs, [pin], [target, "unused"]).then(() => undefined, (error: Error) => error);
+  expect(refusal, "staged pin confinement guarantee").toBeInstanceOf(Error);
+  expect(refusal?.message).toContain("escapes its staged input");
   await symlink("../../auth", path.join(cwd, "escape")); await git(["add", "."]); f.config.inputs[0]!.git!.revision = await commit();
   await expect(planInputs(f.config, f.root, [])).rejects.toThrow("symlink escapes");
   await git(["rm", "escape"]); f.config.inputs[0]!.git!.revision = await commit();

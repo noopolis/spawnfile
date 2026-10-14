@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const TRAINING_CONTEXT_VERSION = "spawnfile.training-context.v1" as const;
+export const TRAINING_EXECUTION_CAPABILITY_LABEL = "com.spawnfile.training.execution";
+export const TRAINING_EXECUTION_VERSION = "spawnfile.training-execution.v1";
 
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const absolutePath = z.string().min(1).regex(/^(?:\/|[A-Za-z]:[\\/])/u);

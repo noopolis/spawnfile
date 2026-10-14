@@ -1,6 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
 import { trainingImageSchema } from "../container/contract.js";
+import { TRAINING_EXECUTION_VERSION } from "../contract.js";
 import { DAIMON_GROK_BROKER_MODELS, DAIMON_GROK_BROKER_REASONING_EFFORTS, DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
 
 const local = z.string().min(1).refine(value => !/[,\r\n\0]/u.test(value));
@@ -19,7 +20,8 @@ export const trainingBuildSchema = z.object({
    * could only ever be a different, unattested build.
    */
   grok: z.object({ source: local, sha256: sha }).strict().optional(),
-  integration: z.object({ source: local, entry: relative.refine(value => /^[A-Za-z0-9._/-]+$/u.test(value)) }).strict(), bootstrap: local.optional()
+  integration: z.object({ source: local, entry: relative.refine(value => /^[A-Za-z0-9._/-]+$/u.test(value)),
+    execution: z.literal(TRAINING_EXECUTION_VERSION).optional() }).strict(), bootstrap: local.optional()
 }).strict();
 const bounds = DAIMON_GROK_ENGINE_BROKER.turnLimits.bounds;
 /**

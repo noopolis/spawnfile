@@ -25,6 +25,7 @@ export interface LoadedTrainingTarget {
 
 export interface LoadedTrainingDataset extends TrainingFileSource {
   value: TrainingDataset;
+  sha256: string;
 }
 
 export interface LoadedTrainingProject {

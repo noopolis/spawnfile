@@ -34,7 +34,8 @@ export const dockerFixture = (override?: (args: readonly string[], options: Para
     const result = (stdout: string, code = 0) => ({ stdout, code, stderr: "" });
     if (args[0] === "context") return result(JSON.stringify("unix:///var/run/docker.sock"));
     const command = args[2];
-    if (command === "image") return result(image);
+    if (command === "image") return result(args.at(-1)?.includes("com.spawnfile.training.execution")
+      ? JSON.stringify("spawnfile.training-execution.v1") : image);
     if (command === "create") { name = args[args.indexOf("--name") + 1]!; return result(id); }
     if (command === "inspect") {
       if (args[4] === "{{json .State}}") return result(JSON.stringify({ Running: false, ExitCode: 0 }));

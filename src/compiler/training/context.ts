@@ -9,6 +9,7 @@ import { stableStringify } from "../helpers.js";
 import { resolveEffectiveModelTarget } from "../modelEnv.js";
 import type { CompilePlanNode, ResolvedAgentNode } from "../types.js";
 import { pinWorkspaceBundle } from "../workspaceBundleResolve.js";
+import { selectTrainingAgent } from "./selection.js";
 import { TRAINING_CONTEXT_VERSION, trainingContextSchema, type TrainingContext, type TrainingSource } from "./contract.js";
 
 const sha256 = (value: string | Buffer): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -30,12 +31,7 @@ export const createTrainingContext = async (
 ): Promise<TrainingContext> => {
   const plan = await buildCompilePlan(await realpath(getManifestPath(inputPath)));
   const agents = plan.nodes.filter((node): node is CompilePlanNode & { value: ResolvedAgentNode } => node.kind === "agent");
-  const selected = options.agent === undefined
-    ? agents.length === 1 ? agents[0] : undefined
-    : agents.find((node) => node.id === options.agent);
-  if (!selected) invalid(options.agent === undefined
-    ? "Training requires --agent with an exact node id when the project does not contain exactly one agent"
-    : `No canonical agent matches ${options.agent}`);
+  const selected = selectTrainingAgent(agents, options.agent);
   const agent = selected!.value;
   const manifest = await realpath(plan.root);
   const root = path.dirname(manifest);

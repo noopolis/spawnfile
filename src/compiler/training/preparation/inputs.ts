@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 import type { TrainingPreparationConfig } from "./contract.js";
-import { assertInputRoot, copySealed, exactPath, fileIdentity, hashJson, sealFile, sealTree, type SealedFile } from "./files.js";
+import { assertInputRoot, copySealed, exactPath, fileIdentity, hashJson, sealFile, sealTree, within, type SealedFile } from "./files.js";
 
 const execute = promisify(execFile);
 const git = async (cwd: string, args: string[]) => {
@@ -17,7 +17,7 @@ const git = async (cwd: string, args: string[]) => {
 export interface PlannedInput {
   id: string; source: string; destination: string; digest: string;
   files?: SealedFile[];
-  git?: { revision: string; tree: string; common: string; overlays: SealedFile[] };
+  git?: { revision: string; tree: string; common: string; overlays: SealedFile[]; paths: string[] };
 }
 
 export async function planInputs(config: TrainingPreparationConfig, root: string, auth: string[]): Promise<PlannedInput[]> {
@@ -49,7 +49,7 @@ export async function planInputs(config: TrainingPreparationConfig, root: string
       if (file.sha256 !== overlay.sha256 || overlays.some(previous => previous.destination === file.destination)) throw Error("Git overlay digest mismatch or duplicate destination");
       overlays.push(file);
     }
-    return { id: input.id, source, destination: input.destination, git: { revision: input.git.revision, tree, common, overlays },
+    return { id: input.id, source, destination: input.destination, git: { revision: input.git.revision, tree, common, overlays, paths: entries.map(entry => entry.slice(entry.indexOf("\t") + 1)) },
       digest: hashJson({ revision: input.git.revision, tree, overlays: fileIdentity(overlays) }) };
   }));
 }
@@ -73,9 +73,10 @@ export async function verifyCanonicalPins(inputs: PlannedInput[], sources: reado
   for (const source of sources) {
     const index = inputs.findIndex(input => source.sourcePath === input.source || source.sourcePath.startsWith(input.source + path.sep));
     if (index < 0) throw Error("Canonical training source is outside declared inputs");
-    if (!inputs[index]!.git && !inputs[index]!.files) continue;
     const file = path.join(staged[index]!, path.relative(inputs[index]!.source, source.sourcePath));
-    if ((await sealFile(file, "pin")).sha256 !== source.sha256) throw Error("Pinned Git snapshot differs from the selected canonical agent");
+    const canonicalFile = await realpath(file);
+    if (!within(staged[index]!, canonicalFile)) throw Error("Canonical training source escapes its staged input");
+    if ((await sealFile(canonicalFile, "pin")).sha256 !== source.sha256) throw Error("Pinned Git snapshot differs from the selected canonical agent");
   }
 }
 

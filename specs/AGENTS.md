@@ -37,3 +37,8 @@ Documents in `research/` are informative — they inform decisions but are not b
   commit point-in-time audit dumps, execution logs, or task trackers as specs.
 - Do not let retained research documents drift from the implemented compiler.
 - Update cross-references when files are renamed or moved.
+
+- TRAINING.md specifies both authoring plans and their execution lowering, including conventional declarations, override precedence and the protected integration receipt.
+- Direct launch output rules preserve canonical paths and disjoint mounts; preparation declarations and lowered launch configurations have distinct shapes.
+- Authored execution requires an explicit image consumer capability and dataset byte pins; dry-run never implies runtime compatibility.
+- Packaged builds declare receipt support on `image.build.integration.execution`; absent support clears inherited image capability, and declared support participates in recipe/cache verification.

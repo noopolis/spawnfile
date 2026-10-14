@@ -85,6 +85,11 @@ describe("canonical training context", () => {
     expect(trainingContextSchema.safeParse({ ...context, sources: [{ ...context.sources[0], destinationPath: "../escape" }] }).success).toBe(false);
   });
 
+  it("selects an unambiguous short name through the canonical graph", async () => {
+    const root = await project(true);
+    expect((await createTrainingContext(root, { agent: "author", packageVersion: "test" })).agent.id).toBe("agent:author");
+  });
+
   it("selects an inline member through its actual parent manifest", async () => {
     const root = await project(true);
     const context = await createTrainingContext(root, { agent: "agent:reviewer", packageVersion: "0.1.17" });
@@ -95,7 +100,7 @@ describe("canonical training context", () => {
 
   it("rejects omitted, fuzzy, team and unknown selections in a multi-agent graph", async () => {
     const root = await project(true);
-    for (const agent of [undefined, "author", "team:publication", "agent:missing"]) {
+    for (const agent of [undefined, "auth", "team:publication", "agent:missing"]) {
       await expect(createTrainingContext(root, { agent, packageVersion: "0.1.17" })).rejects.toThrow(/--agent|No canonical agent/u);
     }
   });

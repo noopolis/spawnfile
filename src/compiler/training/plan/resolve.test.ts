@@ -58,12 +58,13 @@ describe("pure training plan resolution", () => {
     checkKeys(plan);
   });
 
-  it("requires exact IDs and infers only a one-agent graph", async () => {
+  it("accepts unambiguous short names and infers only a one-agent graph", async () => {
     const root = await trainingProject(teamFiles());
     const project = await loadTrainingProject(root);
-    for (const id of [undefined, "a", "team:publication", "agent:missing"]) {
+    for (const id of [undefined, "unknown", "team:publication", "agent:missing"]) {
       expect(() => resolveTrainingPlan(project, id, options.packageVersion)).toThrow(/--agent|No canonical agent/u);
     }
+    expect(resolveTrainingPlan(project, "a", options.packageVersion).agent.id).toBe("agent:a");
     expect(resolveTrainingPlan(project, "agent:a", options.packageVersion).agent.id).toBe("agent:a");
   });
 

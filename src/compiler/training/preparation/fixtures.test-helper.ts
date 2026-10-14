@@ -43,8 +43,8 @@ export async function preparationFixture() {
     args: ["--train", path.join(root, "project/train.yaml"), "--out", path.join(root, "output")] };
 }
 
-export function imageDocker() {
-  const calls: string[][] = []; const images = new Map<string, string>(); let builtContext: string | undefined;
+export function imageDocker(parentExecution: string | null = null) {
+  const calls: string[][] = []; const images = new Map<string, string>(), capabilities = new Map<string, string | null>(); let builtContext: string | undefined;
   const process: TrainingDockerProcess = async args => {
     calls.push([...args]);
     if (args[0] === "context") return { code: 0, stdout: JSON.stringify("unix:///socket"), stderr: "" };
@@ -52,13 +52,20 @@ export function imageDocker() {
       builtContext = args.at(-1)!;
       const dockerfile = await readFile(path.join(builtContext, "Dockerfile"), "utf8");
       const digest = JSON.parse(dockerfile.split("LABEL com.spawnfile.training.recipe=")[1]!.trim());
-      images.set(args[args.indexOf("--tag") + 1]!, digest);
+      const label = dockerfile.match(/^LABEL com\.spawnfile\.training\.execution=(.*)$/mu)?.[1];
+      const capability = label === undefined ? parentExecution : JSON.parse(label) as string;
+      const tag = args[args.indexOf("--tag") + 1]!;
+      images.set(tag, digest); capabilities.set(tag, capability); capabilities.set(image, capability);
       return { code: 0, stdout: "built", stderr: "" };
     }
     const target = args[4]!;
+    const format = args.at(-1)!;
+    if (format.includes("com.spawnfile.training.execution") && !format.includes(".Id")) {
+      return { code: 0, stdout: JSON.stringify(capabilities.get(target) ?? null), stderr: "" };
+    }
     if (target === image) return { code: 0, stdout: image, stderr: "" };
     const digest = images.get(target);
-    return digest ? { code: 0, stdout: `${JSON.stringify(image)}\n${JSON.stringify(digest)}`, stderr: "" } : { code: 1, stdout: "", stderr: "missing" };
+    return digest ? { code: 0, stdout: [image, digest, ...format.includes("com.spawnfile.training.execution") ? [capabilities.get(target) ?? null] : []].map(value => JSON.stringify(value)).join("\n"), stderr: "" } : { code: 1, stdout: "", stderr: "missing" };
   };
-  return { calls, images, process, get builtContext() { return builtContext; } };
+  return { calls, images, capabilities, process, get builtContext() { return builtContext; } };
 }
