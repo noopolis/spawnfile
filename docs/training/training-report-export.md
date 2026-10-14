@@ -83,7 +83,9 @@ does not retroactively invent identities for historical captures.
 Failure rows also traverse `grading.gates`, retaining each non-pass gate's authored
 ID and verdict under `<check>/grading/gate/<id>`. Semantic gates are independent of
 evaluation children. Latest rescores supply final gates; live/turn gates remain
-the original measurements.
+the original measurements. Failure rows use the native trial ID as `evaluationId`
+for original turn/live/decisive evidence, including children and grader gates.
+Rescored final checks/stages and the current outcome use the latest rescore ID.
 
 Costs retain existing call-level usage, API-equivalent ranges, known subtotals,
 price/coverage completeness and warnings. Unknown prices remain unknown; actual

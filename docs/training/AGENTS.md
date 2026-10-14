@@ -21,3 +21,5 @@ round-grouped candidate summaries from measurements taken during a round.
 Training export documentation distinguishes original per-round measurements,
 prior captures, later rescores, sealed results and unattributed legacy trials.
 Rejected evaluated manifests and paid failure receipts survive completed resume.
+Failure-row identities follow the producing measurement: retained native evidence
+keeps its trial ID, while rescored final evidence uses the latest rescore ID.

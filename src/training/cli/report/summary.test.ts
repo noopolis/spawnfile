@@ -97,6 +97,17 @@ it('uses the latest rescore once, preserving original live/turn failures and det
   expect(summary.failureSummary.every(value => value.trials === 1)).toBe(true);
   expect(summary.failingChecks).toContainEqual(expect.objectContaining({ evaluationId: 'rescored',
     check: 'check/quality/grading/gate/factual-accuracy', status: 'fail' }));
+  const failures = summary.failingChecks.filter(value => value.trialId === trial.id);
+  for (const prefix of ['turn/wake/0', 'live/receipt/0', 'decisiveFailure']) {
+    expect(failures.filter(value => value.check === prefix || value.check.startsWith(`${prefix}/`)))
+      .toEqual([
+        expect.objectContaining({ check: prefix, evaluationId: trial.id, status: 'fail' }),
+        expect.objectContaining({ check: `${prefix}/receipt`, evaluationId: trial.id, status: 'unknown' }),
+        expect.objectContaining({ check: `${prefix}/grading/gate/factual-accuracy`, evaluationId: trial.id, status: 'fail' }),
+      ]);
+  }
+  expect(failures.filter(value => value.check.startsWith('check/') || value.check.startsWith('stage/') || value.check === 'trial-outcome'))
+    .toEqual(Array.from({ length: 10 }, () => expect.objectContaining({ evaluationId: 'rescored' })));
 });
 
 it.each(['unknown-candidate', 'duplicate-trial', 'wrong-split', 'missing-selection'] as const)('refuses silently incomplete provenance: %s', async mode => {

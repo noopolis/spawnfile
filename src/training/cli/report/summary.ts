@@ -76,24 +76,24 @@ function measurement(trial: TrialReport, rescored?: RescoreReport): Measurement 
 function failures(trial: TrialReport, rescored?: RescoreReport): Failure[] {
   const current = rescored ?? trial;
   const rows: Failure[] = [];
-  const visit = (check: string, value: EvaluationResult) => {
-    if (value.status !== 'pass') rows.push({ trialId: trial.id, evaluationId: current.id, candidateId: trial.candidateId,
+  const visit = (check: string, value: EvaluationResult, evaluationId: string) => {
+    if (value.status !== 'pass') rows.push({ trialId: trial.id, evaluationId, candidateId: trial.candidateId,
       split: trial.phase, exampleId: trial.recordId, check, status: value.status, reason: value.reason });
-    value.children?.forEach((child, index) => visit(`${check}/${child.id ?? index}`, child));
+    value.children?.forEach((child, index) => visit(`${check}/${child.id ?? index}`, child, evaluationId));
     value.grading?.gates.forEach(gate => {
-      if (gate.status !== 'pass') rows.push({ trialId: trial.id, evaluationId: current.id, candidateId: trial.candidateId,
+      if (gate.status !== 'pass') rows.push({ trialId: trial.id, evaluationId, candidateId: trial.candidateId,
         split: trial.phase, exampleId: trial.recordId, check: `${check}/grading/gate/${gate.id}`, status: gate.status,
         reason: `Grader gate ${gate.id}: ${gate.status}` });
     });
   };
-  Object.entries(current.evaluation.checks).forEach(([id, value]) => visit(`check/${id}`, value));
+  Object.entries(current.evaluation.checks).forEach(([id, value]) => visit(`check/${id}`, value, current.id));
   current.evaluation.stages.forEach(stage => {
-    visit(`stage/${stage.id}/gate`, stage.gate);
-    stage.checks.forEach((value, index) => visit(`stage/${stage.id}/${value.id ?? index}`, value));
+    visit(`stage/${stage.id}/gate`, stage.gate, current.id);
+    stage.checks.forEach((value, index) => visit(`stage/${stage.id}/${value.id ?? index}`, value, current.id));
   });
-  trial.turns.forEach(turn => turn.checks.forEach((value, index) => visit(`turn/${turn.id}/${value.id ?? index}`, value)));
-  trial.live.forEach((value, index) => visit(`live/${value.checkId}/${index}`, value.result));
-  if (trial.decisiveFailure) visit('decisiveFailure', trial.decisiveFailure);
+  trial.turns.forEach(turn => turn.checks.forEach((value, index) => visit(`turn/${turn.id}/${value.id ?? index}`, value, trial.id)));
+  trial.live.forEach((value, index) => visit(`live/${value.checkId}/${index}`, value.result, trial.id));
+  if (trial.decisiveFailure) visit('decisiveFailure', trial.decisiveFailure, trial.id);
   if (current.status !== 'pass') rows.push({ trialId: trial.id, evaluationId: current.id, candidateId: trial.candidateId,
     split: trial.phase, exampleId: trial.recordId, check: 'trial-outcome', status: current.status,
     reason: current.error ?? `Native execution: ${trial.execution}; host work: ${trial.hostWork}` });

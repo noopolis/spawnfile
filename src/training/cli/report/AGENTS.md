@@ -25,3 +25,8 @@ proposals absent from final optimizer provenance. Validate baseline policy and
 trial identity. Round rows use original attributed native measurements, with prior
 captures separate; tests and later rescores cannot enter past search rows. Legacy
 unattributed trials remain explicit. Retain failed-grade decisionAccounting too.
+
+Failure traversal carries the producing measurement ID through children and grader
+gates. Original turn/live/decisive failures keep the native trial ID even after a
+rescore; final checks/stages and the current outcome use the latest measurement ID.
+Mutation-check both original and rescored failure attribution.
