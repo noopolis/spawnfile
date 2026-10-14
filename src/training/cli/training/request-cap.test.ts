@@ -8,7 +8,7 @@ const broker: TrainingModel = { provider: 'grok-broker', model: 'grok-4.6', reas
 const fake = { id: 'fake', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const,
   temperature: false, seed: false }, generate: vi.fn() };
 
-it.each(['claude-subscription', 'grok-subscription', 'ollama'] as const)(
+it.each(['claude-subscription', 'codex-subscription', 'grok-subscription', 'ollama'] as const)(
   'rejects capped %s primary and fallback routes before any provider construction', provider => {
     vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
     for (const purpose of ['judge', 'optimizer'] as const) for (const fallback of [false, true]) {

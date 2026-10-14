@@ -5,6 +5,7 @@ const policies: Readonly<Record<TrainingModel['provider'], string>> = Object.fre
   'grok-subscription': 'paideia.grok-attested-response.v3',
   'grok-broker': 'paideia.grok-broker-grant-response.v1',
   'claude-subscription': 'paideia.claude-attested-response.v3',
+  'codex-subscription': 'paideia.codex-contained-response.v1',
   ollama: 'paideia.ollama-attested-response.v2',
 });
 

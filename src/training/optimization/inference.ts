@@ -5,8 +5,8 @@ import type { DspyOptimizationOptions } from './types.js';
 
 /** Exact two-message mapping; unsupported conversations are rejected, never flattened. */
 export function createDspyGeneration(provider: InferenceProvider, model: string): DspyOptimizationOptions['generate'] {
-  if (provider.capabilities.tools !== 'disabled') {
-    throw new Error('DSPy reflection requires an explicit tool-free inference route');
+  if (!['disabled', 'contained'].includes(provider.capabilities.tools)) {
+    throw new Error('DSPy reflection requires an explicit tool-isolated inference route');
   }
   if (model.trim().length === 0) throw new Error('DSPy reflection requires an explicit model');
   return async (raw, signal) => {

@@ -23,13 +23,13 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
   }
   const routes = options.routes.map(({ provider, model }) => {
     if (!provider.id.trim() || !model.trim() || model.startsWith('-') ||
-      provider.capabilities.tools !== 'disabled') throw new Error('Explicit tool-free routes are required');
+      !['disabled', 'contained'].includes(provider.capabilities.tools)) throw new Error('Explicit tool-isolated routes are required');
     return Object.freeze({ provider, model });
   });
   const { maxAttempts, timeoutMs, attemptTimeoutMs = timeoutMs, observeAttempt } = options;
   return {
     id: options.id,
-    capabilities: { tools: 'disabled', billing: routes.every(route => route.provider.capabilities.billing === routes[0]!.provider.capabilities.billing) ? routes[0]!.provider.capabilities.billing : 'mixed', temperature: false, seed: false },
+    capabilities: { tools: routes.some(route => route.provider.capabilities.tools === 'contained') ? 'contained' : 'disabled', billing: routes.every(route => route.provider.capabilities.billing === routes[0]!.provider.capabilities.billing) ? routes[0]!.provider.capabilities.billing : 'mixed', temperature: false, seed: false },
     async generate(request) {
       if (request.temperature !== undefined || request.seed !== undefined) throw new InferenceFailure('unsupported', 'Routed inference does not support sampling controls');
       if (!request.prompt.trim()) throw new InferenceFailure('unsupported', 'Inference prompt must not be empty');

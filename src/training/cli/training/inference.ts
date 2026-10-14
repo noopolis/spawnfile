@@ -3,7 +3,7 @@ import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 import type { InferenceProvider } from '../../contracts/index.js';
 import type { TrainingModel, TrainingRoute } from '../../contracts/training-config.js';
-import { assertModelRequestAdmission, createClaudeInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
+import { assertModelRequestAdmission, createClaudeInference, createCodexInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
 import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from '../../adapters/daimon-native/index.js';
 import { createJudgeCache } from '../../evaluation/index.js';
 import { judgeVersions } from './configuration.js';
@@ -34,7 +34,8 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     const key = model.provider === 'grok-broker' ? `${name}\0${purpose}` : name;
     if (providers.has(key)) return providers.get(key)!;
     const selected = dependencies.modelInference?.(model, timeoutMs) ?? (model.provider === 'claude-subscription'
-      ? createClaudeInference({ timeoutMs }) : model.provider === 'grok-subscription'
+      ? createClaudeInference({ timeoutMs }) : model.provider === 'codex-subscription'
+        ? createCodexInference({ timeoutMs }) : model.provider === 'grok-subscription'
         ? createGrokInference({ timeoutMs, reasoningEffort: model.reasoning_effort })
         : model.provider === 'grok-broker' ? createGrokBrokerInference({ pool: grants ??= grokGrantPool(dependencies), homeRoot: brokerHomeRoot(), purpose, timeoutMs,
           reasoningEffort: model.reasoning_effort as 'low' | 'medium' | 'high' })

@@ -27,6 +27,13 @@ it('identifies legacy Claude execution without constructing a provider', () => {
   expect(trainingInferencePolicies({ models: config.models })).toEqual(trainingInferencePolicies());
 });
 
+it('identifies the contained Codex subscription policy for optimizer and judge routes', () => {
+  const codex: TrainingConfiguration = { models: { primary: { provider: 'codex-subscription', model: 'chosen' } },
+    judges: { prose: { model: 'primary' } }, optimizer: { model: 'primary' } };
+  const policy = [{ provider: 'codex-subscription', policy: 'paideia.codex-contained-response.v1' }];
+  expect(trainingInferencePolicies(codex)).toEqual({ judges: { prose: policy }, optimizer: policy });
+});
+
 it('binds explicit execution to every primary, fallback and legacy policy without changing host defaults', () => {
   const scoped = trainingInferencePolicies(config, 'image:sha256:one');
   for (const route of [...Object.values(scoped.judges), scoped.optimizer]) {

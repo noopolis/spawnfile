@@ -1,7 +1,7 @@
 /** Authored controls live in the dataset, never in the subject workspace. */
 export interface TrainingModel {
   /** `grok-broker`: short Daimon broker inference grants (training containers); never a desktop login. */
-  provider: 'claude-subscription' | 'grok-subscription' | 'grok-broker' | 'ollama';
+  provider: 'claude-subscription' | 'codex-subscription' | 'grok-subscription' | 'grok-broker' | 'ollama';
   model: string;
   endpoint?: string;
   /** Grok only. `grok-broker` requires it and accepts low, medium or high. */
