@@ -50,7 +50,7 @@ export async function prepareCliInputs(args: CliArguments, io: CliIO, dependenci
 }
 
 export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number,
-  prepared?: Awaited<ReturnType<typeof prepareCliInputs>>) {
+  prepared?: Awaited<ReturnType<typeof prepareCliInputs>>, inferenceTimeoutMs = timeoutMs) {
   const inputs = prepared ?? await prepareCliInputs(args, io, dependencies);
   const { runtime, model, judges, datasets } = inputs;
   const graders = await datasets.buildGraders(dependencies.grader, args.command === 'train');
@@ -58,7 +58,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
     ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs })
     : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
       ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
-  const configured = createTrainingInference(args, dependencies, timeoutMs, judges, inputs.citationRepairs);
+  const configured = createTrainingInference(args, dependencies, inferenceTimeoutMs, judges, inputs.citationRepairs);
   let cacheRoots: Awaited<ReturnType<typeof prepareJudgeCaches>>;
   try { cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out, dependencies.spawnfile?.judgeCacheRoot); }
   catch (error) { await configured.close(); throw error; }

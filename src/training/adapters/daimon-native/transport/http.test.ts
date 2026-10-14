@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { createServer, type RequestListener, type Server } from 'node:http';
-import { Agent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
+import { Agent, getGlobalDispatcher, MockAgent, setGlobalDispatcher } from 'undici';
 import { createNativeHttpClient } from './http.js';
 
 const servers: Server[] = [];
@@ -41,10 +41,21 @@ it('rejects endpoint/path/auth/deadline/body changes before a request', async ()
   await expect(request('/trial/health?leak' as '/trial/health')).rejects.toThrow('Unsupported');
   await expect(request('/trial/health', {})).rejects.toThrow('Unsupported');
   await expect(request('/trial/run')).rejects.toThrow('Unsupported');
-  for (const ms of [0, 1.5, Infinity, 3608001]) await expect(request('/trial/health', undefined, ms)).rejects.toThrow('deadline');
+  for (const ms of [0, 1.5, Infinity, 86_408_001]) await expect(request('/trial/health', undefined, ms)).rejects.toThrow('deadline');
   await expect(request('/trial/run', { text: 'x'.repeat(32769) })).rejects.toThrow('byte bound');
   await expect(request('/trial/health', undefined, 100, AbortSignal.abort())).rejects.toThrow();
   expect(calls).toBe(0);
+});
+it('accepts the full 24-hour trial plus eight seconds of terminal cleanup grace', async () => {
+  const previous = getGlobalDispatcher(); const http = new MockAgent(); http.disableNetConnect(); setGlobalDispatcher(http);
+  try {
+    http.get('http://native-worker.test').intercept({ path: '/trial/run', method: 'POST' })
+      .reply(200, { ok: true }, { headers: { 'content-type': 'application/json' } });
+    const request = createNativeHttpClient('http://native-worker.test', token);
+    await expect(request('/trial/run', {}, 86_408_001)).rejects.toThrow('deadline');
+    expect(await request('/trial/run', {}, 86_408_000)).toEqual({ ok: true });
+    http.assertNoPendingInterceptors();
+  } finally { setGlobalDispatcher(previous); await http.close(); }
 });
 it('admits an authenticated arm-status GET only when transport mode is selected', async () => {
   const calls: unknown[] = [];

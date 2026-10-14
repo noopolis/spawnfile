@@ -18,7 +18,7 @@ export interface NativeAdapterOptions { timeoutMs?: number; startupMs?: number; 
 
 export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): SubjectAdapter {
   const timeoutMs = options.timeoutMs ?? 900_000;
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 3_600_000) throw new Error('Invalid native adapter deadline');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 86_400_000) throw new Error('Invalid native adapter deadline');
   if (options.execution && options.externalInputs) throw new Error('Child execution requires execution.externalInputs, not Docker externalInputs');
   const sealedUsage = options.sealedUsage;
   const execution = options.execution;

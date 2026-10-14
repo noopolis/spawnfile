@@ -5,6 +5,9 @@ import { createDaimonNativeAdapter } from './adapter.js';
 import { dockerFixture, launchFixture } from './test-fixtures.js';
 import { join } from 'node:path';
 import type { Observation } from '../../contracts/execution.js';
+import { getGlobalDispatcher, MockAgent, setGlobalDispatcher } from 'undici';
+import { parseWorkerArguments, type TerminalEvidence } from './worker/index.js';
+import { createNativeHttpClient } from './transport/index.js';
 
 test('adapter preserves terminal identity and actual usage while keeping unavailable output absent', async () => {
   const fixture = await launchFixture();
@@ -39,6 +42,46 @@ test('adapter rejects a terminal record from another trial and shuts down its ow
     assert.match(result.error!, /identity mismatch/);
     assert.equal(result.stop?.quiescence, 'confirmed');
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test.each([7_200_000, 86_400_000])('forwards a %i ms trial through worker arguments and HTTP with cleanup grace', async timeoutMs => {
+  const fixture = await launchFixture();
+  const previous = getGlobalDispatcher();
+  const http = new MockAgent(); http.disableNetConnect(); setGlobalDispatcher(http);
+  http.get('http://native-worker.test').intercept({ path: '/trial/run', method: 'POST' }).reply(() => {
+    const terminal: TerminalEvidence = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+      agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
+      status: 'completed', scheduleOverride: 'disabled', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+      native: { traces: [], toolReceipts: [], modelContexts: [], usage: [] }, coverage: [] };
+    return { statusCode: 200, data: JSON.stringify(terminal), responseOptions: { headers: { 'content-type': 'application/json' } } };
+  });
+  try {
+    const request = createNativeHttpClient('http://native-worker.test', 'unit-control-token-not-an-auth-login');
+    const docker = dockerFixture(fixture.launch, fixture.input.trialId);
+    let workerTimeout: number | undefined;
+    let httpTimeout: number | undefined;
+    const session = await createDaimonNativeAdapter({ timeoutMs, docker: async (args, options) => {
+      if (args[0] === 'create') workerTimeout = parseWorkerArguments(args.slice(args.indexOf('--launch'))).timeoutMs;
+      if (args[0] === 'exec' && options?.stdin) {
+        const input = JSON.parse(options.stdin);
+        if (input.path === '/trial/run') {
+          httpTimeout = input.timeoutMs as number;
+          const terminal = await request(input.path, input.body, httpTimeout, options.signal);
+          return { code: 0, stdout: JSON.stringify(terminal), stderr: '' };
+        }
+      }
+      return docker.run(args, options);
+    } }).start(fixture.input);
+    try {
+      assert.equal((await session.run({ id: 'task', text: 'Assigned article' })).status, 'completed');
+      assert.equal(workerTimeout, timeoutMs);
+      assert.ok(httpTimeout! > timeoutMs && httpTimeout! <= timeoutMs + 8000);
+    } finally { assert.equal((await session.stop('Deadline propagation checked')).quiescence, 'confirmed'); }
+    http.assertNoPendingInterceptors();
+  } finally {
+    setGlobalDispatcher(previous); await http.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
 });
 
 

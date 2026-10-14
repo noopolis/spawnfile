@@ -25,7 +25,7 @@ export function createNativeHttpClient(endpoint: string, token: string, delivery
     if (!['/trial/health', '/trial/run', '/trial/stop', '/v2/activity'].includes(path) ||
         (['/trial/health', '/v2/activity'].includes(path) ? body !== undefined
           : body === undefined && !(path === '/trial/run' && delivery === 'transport'))) throw new Error('Unsupported native worker request');
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 3_608_000) throw new Error('Invalid native worker request deadline');
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_408_000) throw new Error('Invalid native worker request deadline');
     const payload = body === undefined ? undefined : JSON.stringify(body);
     if (payload !== undefined && Buffer.byteLength(payload) > 32768) throw new Error('Native worker request exceeds its byte bound');
     const deadline = AbortSignal.timeout(timeoutMs);

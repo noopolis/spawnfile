@@ -64,7 +64,8 @@ test('worker arguments and physical files require bounded private exact candidat
       '--trial-id', 'unit', '--timeout-ms', '1000', '--schedule-override', 'disabled'];
     const options = parseWorkerArguments(args); await verifyWorkerPaths(config, options, f.launch);
     for (const invalid of [[], args.slice(1), [...args, '--unknown', 'x'], [...args, '--trial-id', 'x'],
-      ...[['1000', 'NaN'], ['1000', '99'], ['disabled', 'enabled'], [f.launch.configSha256, 'bad'], ['unit', 'bad id'],
+      ...[['1000', 'NaN'], ['1000', '99'], ['1000', '100.5'], ['1000', 'Infinity'], ['1000', '86400001'],
+        ['disabled', 'enabled'], [f.launch.configSha256, 'bad'], ['unit', 'bad id'],
         [f.launch.config, 'relative'], [join(f.launch.controlRoot, 'evidence'), f.launch.controlRoot],
         [join(f.launch.controlRoot, 'evidence'), '/elsewhere']].map(([from, to]) => args.map(value => value === from ? to! : value)),
     ]) expect(() => parseWorkerArguments(invalid)).toThrow();

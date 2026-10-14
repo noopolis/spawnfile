@@ -14,8 +14,9 @@ Owns explicit local commands, configuration selection and human diagnostics.
 - Explicit Markdown selections map to identical native paths. Resources remain
   locked unless a train invocation selects `--editable`; unsupported native
   configuration, skills or preparation profiles fail rather than approximate.
-- `--max-trials` includes two conservative sealed-test passes; `--timeout-ms`
-  bounds the whole command. A training report is stored under a test-role summary
+- `--max-trials` includes two conservative sealed-test passes; training's
+  `--experiment-timeout-ms` (legacy `--timeout-ms`) bounds the command, separately
+  from `--trial-timeout-ms`, inference routes, broker turns and extraction. A training report is stored under a test-role summary
   manifest bound to the frozen selected candidate, never an optimizer-readable run.
 - Resolve population trial defaults after dataset loading, identically in dry-run
   and execution. Count baseline plus every round's variants on train/validation,

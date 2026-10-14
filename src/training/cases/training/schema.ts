@@ -141,9 +141,11 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
   if (config.optimizer !== undefined) route(config.optimizer, `${path}.optimizer`);
   if (config.budget !== undefined) {
     const budget = object(config.budget, `${path}.budget`);
-    fields(budget, ['max_trials', 'max_proposals', 'timeout_ms'], `${path}.budget`);
+    fields(budget, ['max_trials', 'max_proposals', 'timeout_ms', 'experiment_timeout_ms', 'trial_timeout_ms'], `${path}.budget`);
     for (const [key, value] of Object.entries(budget)) {
-      integer(value, `${path}.budget.${key}`, 1, key === 'timeout_ms' ? 3_600_000 : key === 'max_trials' ? 10_000 : 1000);
+      const maximum = key === 'timeout_ms' || key === 'experiment_timeout_ms' ? 604_800_000
+        : key === 'trial_timeout_ms' ? 86_400_000 : key === 'max_trials' ? 10_000 : 1000;
+      integer(value, `${path}.budget.${key}`, 1, maximum);
     }
   }
   const optimizer = config.optimizer as { variants?: number; keep?: number } | undefined;

@@ -27,7 +27,12 @@ export function authoredArguments(args: CliArguments, io: CliIO): CliArguments {
     fallback('test', training.test === undefined ? undefined : resolve(dirname(path), training.test));
     fallback('max-trials', training.budget?.max_trials);
     fallback('max-proposals', training.budget?.max_proposals);
-    fallback('timeout-ms', training.budget?.timeout_ms);
+    // Either explicit command flag overrides both authored experiment deadline spellings.
+    if (flags['experiment-timeout-ms'] === undefined && flags['timeout-ms'] === undefined) {
+      if (training.budget?.experiment_timeout_ms !== undefined) fallback('experiment-timeout-ms', training.budget.experiment_timeout_ms);
+      else fallback('timeout-ms', training.budget?.timeout_ms);
+    }
+    fallback('trial-timeout-ms', training.budget?.trial_timeout_ms);
     fallback('seed', training.seed);
     if (training.optimizer && flags['optimizer-model'] && flags['optimizer-model'][0] !== training.models[training.optimizer.model]!.model) {
       throw new Error('Configured YAML optimizer conflicts with --optimizer-model');

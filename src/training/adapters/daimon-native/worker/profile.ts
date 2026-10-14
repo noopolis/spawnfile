@@ -16,7 +16,7 @@ export function parseWorkerArguments(args: readonly string[]): WorkerOptions {
   }
   if (keys.some(key => !values.has(key))) throw new Error(`Required worker options: ${keys.join(', ')}`);
   const timeoutMs = Number(values.get('timeout-ms'));
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 3_600_000) throw new Error('Invalid worker timeout');
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 86_400_000) throw new Error('Invalid worker timeout');
   const configSha256 = values.get('config-sha256')!;
   if (!/^[a-f0-9]{64}$/u.test(configSha256)) throw new Error('Expected config SHA-256 is required');
   if (values.get('schedule-override') !== 'disabled') throw new Error('Explicit isolated schedule override is required');

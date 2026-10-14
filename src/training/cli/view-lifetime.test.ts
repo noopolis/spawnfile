@@ -65,12 +65,12 @@ it('honors an explicit replay deadline and closes its actual listening socket', 
   } finally { vi.useRealTimers(); controller.abort(); await running; }
 });
 
-it.each(['evaluate', 'train'] as const)('retains the implicit three-minute %s deadline', async command => {
+it.each([['evaluate', 180_000], ['train', 43_200_000]] as const)('installs the implicit %s command deadline', async (command, deadlineMs) => {
   const fixture = await cliFixture(); roots.push(fixture.root);
   const timer = vi.spyOn(globalThis, 'setTimeout'), clear = vi.spyOn(globalThis, 'clearTimeout');
   // Missing runtime arguments reject before cognition, after installing the command deadline.
   expect(await main(command === 'train' ? ['train', '--train', 'data.yaml'] : ['evaluate', 'data.yaml'], fixture.io)).toBe(2);
-  expect(timer).toHaveBeenCalledWith(expect.any(Function), 180000);
+  expect(timer).toHaveBeenCalledWith(expect.any(Function), deadlineMs);
   expect(clear).toHaveBeenCalledWith(timer.mock.results[0]!.value);
   expect(fixture.observedInstructions).toEqual([]);
 });
