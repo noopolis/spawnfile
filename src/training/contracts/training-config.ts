@@ -50,7 +50,8 @@ export interface TrainingConfiguration {
   models: Record<string, TrainingModel>;
   judges?: Record<string, TrainingJudge>;
   optimizer?: TrainingOptimizer;
-  budget?: { max_trials?: number; max_proposals?: number; timeout_ms?: number };
+  budget?: { max_trials?: number; max_proposals?: number; timeout_ms?: number;
+    experiment_timeout_ms?: number; trial_timeout_ms?: number };
   cache?: { mode: 'off' | 'exact' | 'persistent'; max_entries?: number; namespace?: string; directory?: string };
   recovery?: { max_attempts?: number };
   test?: string;

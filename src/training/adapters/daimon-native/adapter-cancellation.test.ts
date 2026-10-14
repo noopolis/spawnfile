@@ -8,7 +8,9 @@ import type { DockerCommand } from './container/index.js';
 test('already aborted subjects never launch and cancellation stops an existing owned container', async () => {
   const fixture = await launchFixture();
   try {
-    assert.throws(() => createDaimonNativeAdapter({ timeoutMs: 0 }), /deadline/);
+    for (const timeoutMs of [0, 99, 100.5, Infinity, NaN, 86_400_001]) {
+      assert.throws(() => createDaimonNativeAdapter({ timeoutMs }), /deadline/);
+    }
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
     const adapter = createDaimonNativeAdapter({ docker: docker.run, timeoutMs: 1000 });
     await assert.rejects(adapter.start({ ...fixture.input, signal: AbortSignal.abort() }), /aborted/);

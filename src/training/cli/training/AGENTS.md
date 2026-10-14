@@ -1,6 +1,9 @@
 # Authored training command configuration
 
 Resolve controls from the existing dataset YAML before setting the command deadline.
+`deadlines.ts` resolves the 12-hour experiment, one-hour trial and 30-minute inference
+defaults separately. Explicit command flags override either YAML experiment spelling;
+route and atomic-extraction deadlines remain independently enforced.
 CLI flags explicitly override scalar controls; judge policies remain identity-bound.
 Use public inference, cases and evaluation APIs. Never execute models during dry-run.
 Tests cover YAML-only control selection, provider routes and refusal before execution.

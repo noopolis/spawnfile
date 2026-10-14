@@ -37,7 +37,8 @@ training:
   budget:
     max_trials: 16
     max_proposals: 4
-    timeout_ms: 3600000
+    experiment_timeout_ms: 43200000
+    trial_timeout_ms: 3600000
   cache:
     mode: persistent
     namespace: editorial-calibration-v1
@@ -94,7 +95,7 @@ data. They do not become template instructions. Existing inline rubric prompts a
 rubric files remain valid without a judge template.
 
 The parser rejects unknown fields, fractional or nonpositive limits, more than ten
-attempts, attempts exceeding the primary plus fallback count, deadlines beyond one
+attempts, attempts exceeding the primary plus fallback count, route deadlines beyond one
 hour, and cache capacity beyond ten thousand entries. Each declared route is tried at
 most once; attempts bounds the total routes attempted, not retries per model.
 Trial and proposal budgets cannot exceed 10,000 and 1,000 respectively.
@@ -184,6 +185,21 @@ subject. Dry-run creates no cache or directories. The same namespace and exact
 evidence can reuse judgments across commands; distinct judge names remain separate.
 
 ## Interruption and resume
+
+Training defaults to a 12-hour experiment deadline and a separate one-hour native
+trial deadline. Declare `budget.experiment_timeout_ms` (up to seven days) and
+`budget.trial_timeout_ms` (up to 24 hours), or override them with
+`--experiment-timeout-ms` and `--trial-timeout-ms`. Legacy `budget.timeout_ms` and
+`--timeout-ms` still bound the experiment; the explicit experiment spelling takes
+precedence when both spellings appear at the same level. Either CLI experiment
+flag overrides both YAML spellings. A larger experiment budget never extends a
+trial, broker turn or extraction call.
+
+Training judge/optimizer inference defaults to 30 minutes per call; a route's
+`timeout_ms` overrides that default at both routing and provider construction.
+Broker registrations retain their own authored turn limits (declare 1800000 for
+a 30-minute turn). Atomic `extractor.deadline_ms` stays separate, defaulting to
+15 minutes. Evaluate/grader commands retain their three-minute command default.
 
 Repeat the same command with `--resume` and the same `--out`. Resume validates
 the candidate, resources, dataset and criterion identities, runtime integration,

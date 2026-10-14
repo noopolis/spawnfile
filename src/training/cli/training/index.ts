@@ -1,4 +1,5 @@
 export { authoredArguments, judgeVersions, validateAuthoredTemplates } from './configuration.js';
+export { commandDeadlines } from './deadlines.js';
 export { createTrainingInference, configuredCostRoutes } from './inference.js';
 export { prepareJudgeCaches } from './cache.js';
 export { commandCheckpoint } from './checkpoint.js';

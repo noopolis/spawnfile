@@ -19,7 +19,9 @@ Daimon owns child offset application and real-time engines. Ready/terminal frame
 retain origin plus real anchor; Paideia deadlines never use task time.
 
 External continuations are opt-in, sourced, bounded to three deliveries and share
-one trial deadline. Deferred work is never success. Preserve per-wake evidence and
+one trial deadline, accepting overrides through 24 hours at adapter and worker
+boundaries. HTTP admits that limit plus eight seconds of terminal cleanup grace.
+Deferred work is never success. Preserve per-wake evidence and
 aggregate usage once; cancellation must stop the owned runtime. One observer-owned
 trial ledger accounts for execution IDs across terminal, legacy and recovered
 frames. Accounting and publication acknowledgement are separate: retain each new

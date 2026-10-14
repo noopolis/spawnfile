@@ -22,7 +22,7 @@ const graderFlags: Record<string, readonly string[]> = {
 };
 const flags: Record<string, readonly string[]> = {
   validate: ['judge', 'judge-citation-repairs'], evaluate: common, view: ['port', 'timeout-ms'],
-  train: [...common, 'concurrency', 'slots-file', 'train', 'validation', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
+  train: [...common, 'experiment-timeout-ms', 'trial-timeout-ms', 'concurrency', 'slots-file', 'train', 'validation', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
 };
 
 export const helpText = `Paideia — explicit local native-agent experiments
@@ -64,7 +64,12 @@ train --repair-measurements PARENT --out FRESH forks verified development eviden
 Repair preserves valid grades and native work; its dry-run conservatively estimates a full run without importing evidence.
 --cost-config FILE selects a paideia.cost-config.v1 YAML with token assumptions and explicit model prices.
 Dry-run requires no --out or --bridge-command. Unknown costs are reported, never priced at zero.
---timeout-ms N (default 180000 for evaluate/train/grader, ceiling 3600000) is the whole-command deadline.
+train --experiment-timeout-ms N (default 43200000 / 12h, ceiling 604800000 / 7d) is the whole-command deadline for the experiment.
+train --timeout-ms N is a legacy experiment deadline alias; --experiment-timeout-ms takes precedence.
+train --trial-timeout-ms N (default 3600000 / 1h, ceiling 86400000 / 24h) bounds each native trial separately.
+Training inference defaults to 1800000 / 30min per call; route timeout_ms overrides it.
+Broker turn limits and atomic extractor.deadline_ms (default 900000 / 15min) remain independent.
+--timeout-ms N (default 180000, ceiling 3600000) bounds evaluate/grader commands.
 Output stays local. An invocation index identifies immutable stored report and candidate blobs.
 --view PORT enables persisted live observation during evaluate/train (0 selects a free port).
 view reads a saved invocation with its recorded frozen-candidate authorization and has no default deadline.

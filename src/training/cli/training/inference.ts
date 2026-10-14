@@ -28,11 +28,12 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   const legacy = () => dependencies.inference?.(timeoutMs) ?? createClaudeInference({ timeoutMs });
   const providers = new Map<string, InferenceProvider>();
   let grants: GrokGrantPool | undefined;
-  function provider(name: string, purpose: 'judge' | 'optimizer'): InferenceProvider {
+  function provider(name: string, purpose: 'judge' | 'optimizer', routeTimeoutMs: number): InferenceProvider {
     const model = config!.models[name]!;
     // Broker grants record their purpose, so a broker model gets one provider per purpose.
-    const key = model.provider === 'grok-broker' ? `${name}\0${purpose}` : name;
+    const key = `${name}\0${model.provider === 'grok-broker' ? purpose : ''}\0${routeTimeoutMs}`;
     if (providers.has(key)) return providers.get(key)!;
+    const timeoutMs = routeTimeoutMs;
     const selected = dependencies.modelInference?.(model, timeoutMs) ?? (model.provider === 'claude-subscription'
       ? createClaudeInference({ timeoutMs }) : model.provider === 'codex-subscription'
         ? createCodexInference({ timeoutMs }) : model.provider === 'grok-subscription'
@@ -45,8 +46,9 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   }
   function route(policy: TrainingRoute, id: string, purpose: 'judge' | 'optimizer'): InferenceProvider {
     const names = [policy.model, ...(policy.fallbacks ?? [])];
-    return createRoutedInference({ id, routes: names.map(name => ({ provider: provider(name, purpose), model: config!.models[name]!.model })),
-      maxAttempts: policy.attempts ?? names.length, timeoutMs: Math.min(timeoutMs, policy.timeout_ms ?? timeoutMs) });
+    const routeTimeoutMs = policy.timeout_ms ?? timeoutMs;
+    return createRoutedInference({ id, routes: names.map(name => ({ provider: provider(name, purpose, routeTimeoutMs), model: config!.models[name]!.model })),
+      maxAttempts: policy.attempts ?? names.length, timeoutMs: routeTimeoutMs });
   }
   const versions = judgeVersions(config, executionIdentity, Object.keys(judges));
   let legacyProvider: InferenceProvider | undefined;

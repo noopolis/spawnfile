@@ -5,6 +5,7 @@ import { readMeasurementRepair, verifyRepairProjection, importMeasurementCapture
 import { resolveTrainingPartitions } from '../experiments/training/index.js';
 import { configuredCostRoutes, commandCheckpoint, prepareComparison } from './training/index.js';
 import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
+import { commandDeadlines } from './training/index.js';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { compareCandidates, freezeCriteria, planTrainingCost, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
@@ -18,7 +19,8 @@ import { dryRunTraining, readCostConfig } from './dry-run.js';
 import { createFailureReport, createProgressJournal } from './progress/index.js';
 
 async function execute(args: CliArguments, io: CliIO, dependencies: CliDependencies,
-  timeoutMs: number, signal: AbortSignal): Promise<number> {
+  deadlines: ReturnType<typeof commandDeadlines>, signal: AbortSignal): Promise<number> {
+  const { experimentMs: timeoutMs, trialMs: trialTimeoutMs, inferenceMs } = deadlines;
   if (args.command === 'grader') return runGraderCommand(args, io, dependencies.grader, signal);
   if (args.command === 'view') {
     await viewInvocation(resolve(io.cwd, args.dataset!), count(args, 'port', 0, 65535, 0), io, signal);
@@ -59,7 +61,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     subjectModel: inputs.model, ...(comparison ? {mode:'comparison' as const} : {optimizerModel: optimizerModel!}), validationGroups: args.flags['validation-group'],
     ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs),
     maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
-  const native = await prepareNative(args, io, dependencies, timeoutMs, inputs);
+  const native = await prepareNative(args, io, dependencies, trialTimeoutMs, inputs, inferenceMs);
   // Completion, failure and SIGINT/SIGTERM (launch aborts `signal`) all release inference grants here.
   try { return await executePrepared(native); } finally { await native.closeInference(); }
   async function executePrepared(native: Awaited<ReturnType<typeof prepareNative>>): Promise<number> {
@@ -83,7 +85,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     })() : undefined;
     const attemptId = randomUUID();
     const base: Omit<StoredTrialOptions, 'id' | 'phase' | 'record' | 'candidate' | 'datasetId' | 'datasetDigest' | 'planDigest'> = {
-      adapter: native.adapter, model: native.model, root: join(native.out, 'trials'), timeoutMs,
+      adapter: native.adapter, model: native.model, root: join(native.out, 'trials'), timeoutMs: trialTimeoutMs,
       subjectRoot: native.subjectRoot,
       registry: native.registry, evaluation: native.evaluation, resources: native.resources,
       prepareEnvironment: native.prepareEnvironment,
@@ -197,7 +199,8 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
       ? readSpawnfileContext(resolve(io.cwd, one(authored, 'spawnfile-context'))) : undefined;
     const args = await resolveTrainingOptimizer(authored, dependencies.spawnfile, context);
     if (args.command === 'help') { io.stdout(helpText); return 0; }
-    const timeoutMs = count(args, 'timeout-ms', 180000, 3600000);
+    const deadlines = commandDeadlines(args);
+    const timeoutMs = deadlines.experimentMs;
     const deadline = new AbortController();
     if (args.command !== 'view' || args.flags['timeout-ms'] !== undefined) {
       timer = setTimeout(() => { timedOut = true; deadline.abort(); }, timeoutMs);
@@ -206,7 +209,7 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
     const signal = io.signal === undefined ? deadline.signal : AbortSignal.any([deadline.signal, io.signal]);
     signal.throwIfAborted();
     await validateAuthoredTemplates(args, signal);
-    const code = await execute(args, io, dependencies, timeoutMs, signal);
+    const code = await execute(args, io, dependencies, deadlines, signal);
     // A persisted completion is authoritative even if cancellation arrives while closing optional UI.
     return code;
   } catch (error) {
