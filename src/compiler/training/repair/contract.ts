@@ -1,6 +1,7 @@
 import path from "node:path";
 import { z } from "zod";
 import { trainingContextSchema } from "../contract.js";
+import { trainingExecutionSchema } from "../execution.js";
 import { trainingPreparationSchema, trainingBuildSchema } from "../preparation/contract.js";
 
 export const sha = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
@@ -12,6 +13,7 @@ export const witnessSchema = z.object({
   schema: z.enum(["spawnfile.training-legacy-witness.v1", "spawnfile.training-witness.v1"]),
   parentImage: sha, parentPreparationDigest: sha, imagePlanDigest: sha,
   config: trainingPreparationSchema, context: trainingContextSchema,
+  execution: trainingExecutionSchema.optional(),
   command: z.object({ args: z.array(z.string()), env: z.record(z.string(), z.string()).optional() }).strict(),
   inputs: z.array(z.object({ id: z.string(), source: z.string(), destination: z.string(), digest: sha,
     staged: z.string(), snapshotDigest: sha.nullable() }).strict()),

@@ -150,7 +150,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
       const snapshots = await Promise.all(inputs.map(async (input, index) => input.git || input.files ? hashJson(fileIdentity(await sealTree(staged[index]!, "input", { ignoreGit: true, internalSymlinks: true }))) : null));
       await writeFile(statePath, JSON.stringify({ digest, image, staged, snapshots }), { flag: "wx", mode: 0o600 });
       if (imagePlan) await writeTrainingWitness({ directory: staging, digest, image, config, context: options.context,
-        args: options.args, inputs, staged, snapshots, plan: imagePlan,
+        args: options.args, execution: options.execution, inputs, staged, snapshots, plan: imagePlan,
         ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
     } catch (error) { if (owned) await removeTrainingPreparationScratch(staging); throw error; }
   }

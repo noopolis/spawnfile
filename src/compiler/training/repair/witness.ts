@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { TrainingContext } from "../contract.js";
+import { trainingExecutionIdentity, type TrainingExecution } from "../execution.js";
 import type { TrainingPreparationConfig } from "../preparation/contract.js";
 import type { TrainingImagePlan } from "../preparation/image.js";
 import { copySealed, exactPath, fileIdentity, hashJson, sealTree } from "../preparation/files.js";
@@ -19,22 +20,27 @@ export async function readTrainingWitness(file: string) {
   const { recipe, nativeImage, pythonImage, platform } = witness.image.build;
   if (hashJson({ recipe, nativeImage, pythonImage, platform, files: witness.image.files,
     dockerfile: witness.image.dockerfile, entry: witness.image.entry, brokerEntry: witness.image.brokerEntry }) !== witness.imagePlanDigest) throw Error("Training witness recipe identity mismatch");
-  const expected = hashJson({ config: raw.manifest && (raw.manifest as TrainingWitness).config,
+  // Validate with the schemas above, but hash the original property order used by preparation.
+  const manifest = raw.manifest as TrainingWitness;
+  const expected = hashJson({ config: manifest.config,
     sources: witness.inputs.map(input => ({ id: input.id, digest: input.digest })),
-    image: witness.imagePlanDigest, canonical: witness.context.project.sourceDigest, ...(witness.repair ? { repair: witness.repair } : {}) });
+    image: witness.imagePlanDigest, canonical: witness.context.project.sourceDigest,
+    ...(manifest.execution ? { execution: trainingExecutionIdentity(manifest.execution) } : {}),
+    ...(witness.repair ? { repair: witness.repair } : {}) });
   if (expected !== witness.parentPreparationDigest) throw Error("Training witness preparation identity mismatch");
   return { ...parsed, path: canonical };
 }
 
 /** Future repairs need sealed original bytes, not a mutable checkout or caller assertion. */
 export async function writeTrainingWitness(options: { directory: string; digest: string; image: string;
-  config: TrainingPreparationConfig; context: TrainingContext; args: readonly string[];
+  config: TrainingPreparationConfig; context: TrainingContext; args: readonly string[]; execution?: TrainingExecution;
   inputs: PlannedInput[]; staged: string[]; snapshots: (string | null)[]; plan: TrainingImagePlan; repair?: { witness: string; parent: string } }) {
   const directory = path.join(options.directory, "witness");
   await mkdir(directory, { mode: 0o700 });
   await copySealed(options.plan.files, path.join(directory, "image-files"));
   const manifest: TrainingWitness = { schema: "spawnfile.training-witness.v1", parentImage: options.image,
     parentPreparationDigest: options.digest, imagePlanDigest: options.plan.digest, config: options.config,
+    ...(options.execution ? { execution: options.execution } : {}),
     ...(options.repair ? { repair: options.repair } : {}),
     context: options.context, command: { args: [...options.args] },
     inputs: options.inputs.map((input, index) => ({ id: input.id, source: input.source, destination: input.destination,
