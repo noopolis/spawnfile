@@ -1,4 +1,4 @@
-import type { NativeActivity, NativeConfig, NativeReceipt, NativeTrace } from './worker/index.js';
+import type { NativeActivity, NativeConfig, NativeReceipt, NativeTrace, TerminalEvidence } from './worker/index.js';
 import { chmod, mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -32,6 +32,22 @@ export function traceFixture(): NativeTrace {
 export function activityFixture(active = false): NativeActivity {
   return { version: 'noopolis.daimon.organization-runtime-activity.v2', items: [{ ...receiptFixture(), active }],
     executions: active ? [{ agent_id: 'agent:writer', execution_id: executionId, delivery_ids: ['trial:wake'], state: 'running' }] : [] };
+}
+
+/** Terminal failure before admission, matching the retained run-39 public projections. */
+export function unadmittedFixture(trialId = 'trial', wakeId = 'task'): TerminalEvidence {
+  const receipt = { ...receiptFixture(), delivery_id: `${trialId}:${wakeId}`, state: 'accepted' as const };
+  delete receipt.execution_id;
+  return { schema: 'paideia.daimon-native.trial.v1', trialId, wakeId, agentId: 'agent:writer', model: 'test-model-v1',
+    configSha256: 'a'.repeat(64), scheduleOverride: 'disabled', status: 'failed',
+    startedAt: receipt.accepted_at, completedAt: receipt.updated_at, receipt,
+    activity: { version: 'noopolis.daimon.organization-runtime-activity.v2', items: [{ ...receipt, active: false }], executions: [] },
+    availability: { version: 'noopolis.daimon.work-availability.v1', state: 'paused', agents: [{ agent_id: receipt.agent_id,
+      pending: 1, running: false, deferred: 0, budget: { armed: true, epoch: trialId,
+        executions_used: 0, agent_executions_used: 0, tokens_used: 0, agent_tokens_used: 0 } }] },
+    native: { traces: [], usage: [], toolReceipts: [], modelContexts: [], accounting: { usage: [], coverage: 'absent' } },
+    coverage: ['tools', 'output', 'usage'].map(channel => ({ channel: channel as 'tools' | 'output' | 'usage', completeness: 'absent', ordering: 'none' })),
+    error: 'Native execution failed before terminal telemetry' };
 }
 
 export function sandboxProjectionFixture(agentId = 'agent:writer', workspacePath = '/native/workspace', runtimeHomePath = '/native/home'): NativeSandboxProjection {

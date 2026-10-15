@@ -9,6 +9,7 @@ import { startOwnedContainer } from './container/index.js';
 import { loadNativeLaunch } from './container/index.js';
 import { createNativeObserver } from './observations.js';
 import { readSealedBrokerRequests, readSealedBrokerSeal, readSealedBrokerUsage, type SealedBrokerUsageOptions } from './sealed-usage.js';
+import { nativeAdmission, unknownNativeAdmission } from './admission.js';
 
 export interface NativeAdapterOptions { timeoutMs?: number; startupMs?: number; docker?: DockerCommand; execution?: NativeChildExecution; externalInputs?: NativeExternalInputs;
   /** Reserve the caller-owned transport source; the adapter publishes after the worker arms it. */
@@ -80,12 +81,17 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             const binding = transport ? transportTerminalBinding(terminal, transport.source) : 'bound';
             if (binding === 'conflict') throw new Error('Native transport terminal evidence identity mismatch');
             if (terminal.blocked && terminal.status !== 'failed') throw new Error('Blocked native terminal cannot claim completion');
+            const admission = terminal.status === 'failed' && !terminal.blocked ? nativeAdmission(terminal) : undefined;
             await observer.checkpoint(observedWakeId);
-            const usage = await observer.terminal(observedWakeId, terminal);
+            // No execution has no usage/output to publish. Retain its admission
+            // evidence in the turn before collectors demand an execution binding.
+            const usage = admission && Object.values(admission).every(value => value === 0)
+              ? null : await observer.terminal(observedWakeId, terminal);
             // The blocked receipt travels with the verified terminal evidence: the trace
             // closed, the delivery stayed accepted and deferred, and the identity checks
             // above matched. The caller needs that apart from the bare `failed` status.
             return { result: { status: terminal.status, text: '', usage, error: terminal.error, coverage: terminal.coverage,
+              ...(admission ? { admission } : {}),
               ...(terminal.blocked ? { blocked: terminal.blocked } : {}) } as SubjectTurnResult, terminal, verified: binding === 'bound' };
           } catch (error) {
             const wasCancelled = stopped || signals.some(source => source.aborted);
@@ -113,6 +119,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             const record = container.diagnostic?.();
             if (record) await observer.childDiagnostic(observedWakeId, record);
             return { result: { status: wasCancelled ? 'cancelled' as const : 'failed' as const,
+              admission: unknownNativeAdmission(),
               text: '', usage, error: String(error), stop: receipt,
               coverage: [{ channel: 'tools' as const, completeness: 'partial' as const, ordering: 'none' as const },
                 { channel: 'output' as const, completeness: 'absent' as const, ordering: 'none' as const },
@@ -163,6 +170,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
           const wasCancelled = combined.aborted;
           const receipt = await stop('External input continuation failed');
           return { status: wasCancelled ? 'cancelled' : 'failed', text: '', usage: observer.usage(), error: String(error), stop: receipt,
+            admission: unknownNativeAdmission(),
             coverage: weakestNativeCoverage(coverages) };
         }
       } };

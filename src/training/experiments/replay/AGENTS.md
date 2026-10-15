@@ -46,3 +46,5 @@ Legacy reports omit it; stripping it breaks cached recovery and deferred rewards
 
 Validate and retain optional failureKind (native-infrastructure, behavioral,
 measurement). Legacy reports omit it and cannot acquire retry eligibility by replay.
+Preserve collectionFailed and per-turn neutral admission counters. Validate every
+counter as a nonnegative integer or explicit null; missing fields are not zeros.

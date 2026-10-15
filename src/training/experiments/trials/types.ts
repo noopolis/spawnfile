@@ -68,6 +68,8 @@ export interface TrialReport {
   execution: 'completed' | 'deferred' | 'interrupted' | 'failed';
   /** Present on classified failures only; absent legacy failures are not retryable. */
   failureKind?: 'native-infrastructure' | 'behavioral' | 'measurement';
+  /** A failed collector requires explicit zero-admission evidence before replacement. */
+  collectionFailed?: true;
   hostWork: 'settled' | 'incomplete';
   snapshot: EvaluationSnapshot;
   /** Authored turn count, retained independently of returned native results. */

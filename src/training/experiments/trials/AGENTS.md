@@ -96,8 +96,11 @@ retain their existing shape when the flag is absent.
 Classify failed execution at the failure decision. Only subjects with no tool/action
 observations, output, non-empty collected artifacts, native usage, completed/deferred
 turn or decisive witness may be native-infrastructure. Retain behavior across failed
-collections and later empty results. Any failed or unfinished collection prevents
-establishing absence of behavior; other collection/closure/evaluation failures
+collections and later empty results. A failed collection prevents establishing
+absence unless every failed turn carries explicit all-zero neutral admission
+counters, with no retained behavior. Persist collectionFailed so replay/retry must
+re-derive that exception; missing or partial counters cannot authorize replacement.
+Unfinished collections always block; other collection/closure/evaluation failures
 are measurement failures, and decisive witnesses are behavioral failures. Operator
 and trial-deadline cancellation outrank finalization failures: execution stays
 interrupted without failureKind and is never replaceable.

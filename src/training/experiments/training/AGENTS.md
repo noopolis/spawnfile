@@ -126,6 +126,8 @@ shutdown and settled host work. Recheck retained observations, output, artifacts
 native usage, turns and decisive witnesses before replacement, including on resume;
 a persisted classification alone is insufficient. Keep historical reports unchanged.
 Legacy unclassified failures are ineligible.
+Retained collectionFailed reports require all-zero per-turn admission counters
+again on resume, in addition to every retained behavior and closure veto.
 retry.ts retains the
 logical callback/repeat key and checkpoint.ts reserves distinct replacement entries
 with failed IDs and causes. Failed captures remain unscorable; successful captures

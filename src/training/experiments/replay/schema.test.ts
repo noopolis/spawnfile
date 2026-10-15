@@ -42,6 +42,22 @@ test('replay validates failure classifications without adding them to legacy rep
   }
 });
 
+test('replay retains collection failures and neutral admission counters for resume', async () => {
+  const { store, options, report } = await fixture(report => {
+    report.execution = 'failed'; report.failureKind = 'native-infrastructure'; report.collectionFailed = true;
+    report.turns[0]!.native.admission = { executionRecords: 0, executionsUsed: 0, agentExecutionsUsed: 0,
+      tokensUsed: 0, agentTokensUsed: 0, toolEvents: 0, outputEvents: 0 };
+  });
+  expect(capturedTrial(await store.readReplay(options.runId, options.access)).report).toEqual(report);
+  for (const value of [undefined, null, 1, -1, '0']) {
+    const modified = structuredClone(report);
+    modified.turns[0]!.native.admission!.agentTokensUsed = value as number;
+    if (value === null || value === 1) expect(trialReportSchema.parse(modified)).toEqual(modified);
+    else expect(() => trialReportSchema.parse(modified)).toThrow();
+  }
+  expect(() => trialReportSchema.parse({ ...report, collectionFailed: false })).toThrow();
+});
+
 test('replay preserves atomic acceptance-gate failures without fabricating a grade', async () => {
   const { store, options, report } = await fixture(report => {
     const atomic = { status: 'error' as const, finality: 'final' as const, reason: 'Gate failed', evidence: [],
