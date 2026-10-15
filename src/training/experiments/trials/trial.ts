@@ -14,6 +14,22 @@ import { createTrialPaths, releaseTrialScratch } from './paths.js';
 import { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './diagnostics.js';
 import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
+/** Retained evidence vetoes replacement, including reports classified by older runners. */
+export function hasSubjectBehavior(evidence: {
+  turns: readonly TurnReport[];
+  snapshot: Pick<EvaluationSnapshot, 'events' | 'output' | 'artifacts' | 'subjectUsage'>;
+  decisiveFailure?: TrialReport['decisiveFailure'];
+}): boolean {
+  const { snapshot, turns } = evidence;
+  return !!evidence.decisiveFailure || snapshot.output.length > 0 ||
+    Object.values(snapshot.artifacts).some(artifact => artifact.bytes.length > 0) ||
+    snapshot.subjectUsage?.usage != null ||
+    turns.some(({ native }) => native.status === 'completed' || native.blocked === 'awaiting-external-input' ||
+      native.text.length > 0 || native.usage !== null) ||
+    snapshot.events.some(event => event.type === 'tool.dispatch' || event.type === 'tool.complete' ||
+      event.type === 'usage' || event.type === 'output' && !!event.text);
+}
+
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   const started = performance.now();
   const { adapter, registry } = options;
@@ -61,18 +77,40 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     await observer?.(structuredClone(attempt));
   } };
   let nativeClosureConfirmed = false;
+  let collectedBehavior = false;
+  let pendingCollections = 0;
+  let collectionFailed = false;
+  const externallyInterrupted = () => control.cause === 'operator' || control.cause === 'deadline';
   const subjectUsage = () => subjectUsageSnapshot(turns.map(turn => turn.native), { expectedTurns: inputs.length,
     complete: closed && execution === 'completed' && control.hostWork === 'settled' && !control.signal.aborted && nativeClosureConfirmed });
-  const snapshot = async (): Promise<EvaluationSnapshot> => ({ trialId: options.id, recordId: record.id, closed,
-    subjectUsage: subjectUsage(), events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {},
-    artifacts: { ...await collectOutputs(record.outputs ?? {}, paths.workspace, `${options.id}/${events.length}`), ...await prepared?.collect?.() } });
+  const snapshot = async (): Promise<EvaluationSnapshot> => {
+    pendingCollections++;
+    try {
+      const state = { trialId: options.id, recordId: record.id, closed, subjectUsage: subjectUsage(),
+        events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles },
+        context: record.context ?? {} };
+      let artifacts: EvaluationSnapshot['artifacts'] = {};
+      for (const [name, path] of Object.entries(record.outputs ?? {})) {
+        const captured = await collectOutputs({ [name]: path }, paths.workspace, `${options.id}/${events.length}`);
+        collectedBehavior ||= Object.values(captured).some(artifact => artifact.bytes.length > 0);
+        artifacts = { ...artifacts, ...captured };
+      }
+      const collected = await prepared?.collect?.();
+      collectedBehavior ||= Object.values(collected ?? {}).some(artifact => artifact.bytes.length > 0);
+      return { ...state, artifacts: { ...artifacts, ...collected } };
+    } catch (error) { collectionFailed = true; throw error; }
+    finally { pendingCollections--; }
+  };
   const live = createLiveMonitor({ checks: record.live.checks, registry, evaluation: evaluationServices,
     persist: entry => persist('live.evaluation', entry), stop: why => control.stop(why, 'decisive'), signal: control.signal });
-  const fail = (kind: NonNullable<TrialReport['failureKind']>) => {
+  const fail = () => {
+    if (externallyInterrupted()) { execution = 'interrupted'; failureKind = undefined; return; }
     execution = 'failed';
-    // Never discard a decisive witness or repeat any already completed native work.
-    failureKind = live.decisive ? 'behavioral'
-      : turns.some(turn => turn.native.status === 'completed' || turn.native.blocked === 'awaiting-external-input') ? 'measurement' : kind;
+    // Retain all observed behavior, even if a later empty result or failed
+    // collector cannot publish a snapshot. Only a never-acting subject is replaceable.
+    const acted = collectedBehavior || collectionFailed || pendingCollections > 0 ||
+      hasSubjectBehavior({ turns, snapshot: { events, output, artifacts: {} }, decisiveFailure: live.decisive });
+    failureKind = live.decisive ? 'behavioral' : acted ? 'measurement' : 'native-infrastructure';
   };
   const evaluate = (state: EvaluationSnapshot) => ({ ...evaluationServices, snapshot: state, results: {}, scores: {}, signal: control.signal });
   try {
@@ -131,7 +169,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         // demote it; an uncertain, hung, crashed or cancelled turn never reaches it.
         execution = native.status === 'cancelled' ? 'interrupted'
           : native.blocked === 'awaiting-external-input' ? 'deferred' : 'failed';
-        if (execution === 'failed') fail('native-infrastructure');
+        if (execution === 'failed') fail();
         error = native.error; break;
       }
       if (checks.some(check => check.status !== 'pass' || check.finality !== 'final')) { execution = 'interrupted'; error = 'Turn gate is not satisfied'; break; }
@@ -142,7 +180,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     error = caught instanceof Error ? caught.message : String(caught);
     const abortedByPolicy = control.cause === 'decisive' && caught instanceof Error && caught.name === 'AbortError';
     execution = control.cause === 'operator' || control.cause === 'deadline' || abortedByPolicy ? 'interrupted' : 'failed';
-    if (execution === 'failed') fail(observationFailure ? 'measurement' : 'native-infrastructure');
+    if (execution === 'failed') fail();
     diagnostic = subjectStartupDiagnostic(caught);
     const capture = diagnostic ? subjectStartupCapture(caught) : undefined;
     // The adapter's own copy can be runtime-local; the operator's trial directory outlives it.
@@ -162,7 +200,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   // Two separate refusals, and a report that cannot tell them apart sends the next
   // investigation to the wrong layer. Closure is claimable only with the adapter's
   // own proofs — idle runtime, acknowledged stop, observed exit — and without them
-  // the run is an unproven execution and stays an infrastructure failure. Terminal
+  // the run is an unproven execution and stays unscorable. Terminal
   // evidence is the separate question of whether this trial can be scored at all:
   // a run can be provably quiet and still have no frame to score, which is not a
   // containment doubt and must never be published as one.
@@ -173,7 +211,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   const unevidenced = nativeStop?.unevidenced
     ? `Native trial unscorable for want of terminal evidence (${nativeStop.unevidenced})${failedWake ? ` on wake ${failedWake}` : ''}` : undefined;
   if (execution === 'deferred' && (unproven || unevidenced || control.signal.aborted)) {
-    fail('native-infrastructure');
+    fail();
     // The deferral is the subject's outcome; this demotion is the machine's. While
     // they shared one message, an unprovable closure published the subject's own
     // "delivery blocked awaiting external input" as the reason a trial was
@@ -186,7 +224,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     await control.owned(drainObservations(() => observationTail));
     if (observationFailure) throw new Error(observationFailure);
   } catch (caught) {
-    error = `Observation closure failed: ${String(caught)}`; fail('measurement'); control.stop(error);
+    error = `Observation closure failed: ${String(caught)}`; fail(); control.stop(error);
   }
   closed = true;
   try {
@@ -195,7 +233,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     let liveGates: EvaluationResult[] = [];
     try { finalSnapshot = await control.owned(snapshot()); }
     catch (caught) {
-      error = `Final collection failed: ${String(caught)}`; fail('measurement'); control.stop(error);
+      error = `Final collection failed: ${String(caught)}`; fail(); control.stop(error);
       finalSnapshot = { trialId: options.id, recordId: record.id, closed, subjectUsage: subjectUsage(), events: structuredClone(events),
         coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {}, artifacts: {} };
     }
@@ -206,12 +244,14 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         await persist('terminal.evaluation.skipped', { reason: 'Selected decisive mechanical failure', witness: live.decisive });
       } else evaluation = await control.owned(evaluatePlan(record.effectiveStages, evaluate(finalSnapshot), registry));
     } catch (caught) {
-      error = `Final evaluation failed: ${String(caught)}`; fail('measurement'); control.stop(error);
+      error = `Final evaluation failed: ${String(caught)}`; fail(); control.stop(error);
     }
-    // Closing live checks can establish a decisive witness after an earlier failure.
-    if (execution === 'failed' && live.decisive) failureKind = 'behavioral';
+    // Final collection or live checks can reveal behavior after an earlier failure.
+    if (execution === 'failed') fail();
     const finalStop = await control.receipt();
-    if (control.signal.aborted && execution === 'completed') execution = 'interrupted';
+    if (externallyInterrupted() || control.signal.aborted && execution === 'completed') {
+      execution = 'interrupted'; failureKind = undefined;
+    }
     // Subject totals were frozen at native closure; judge failures are separate work.
     if (observationFailure && finalSnapshot.subjectUsage) finalSnapshot.subjectUsage.status = 'incomplete';
     const gates = [result(evaluation.status, 'Terminal plan'), ...liveGates,
