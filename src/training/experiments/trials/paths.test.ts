@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { chmod, mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { chmod, link, mkdir, mkdtemp, open, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createTrialPaths, releaseTrialScratch } from './paths.js';
@@ -7,7 +8,16 @@ import { runTrial } from './trial.js';
 import { setup, complete } from './fixture.js';
 
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, open: vi.fn(actual.open) };
+});
+afterEach(async () => {
+  vi.mocked(open).mockReset();
+  vi.mocked(open).mockImplementation((await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')).open);
+  vi.restoreAllMocks();
+  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+});
 async function root() { const value = await realpath(await mkdtemp(join(tmpdir(), 'paideia-paths-'))); roots.push(value); return value; }
 
 it('preserves default paths and separates only subject scratch when explicitly selected', async () => {
@@ -96,6 +106,70 @@ it('reports foreign-owned directories without widening their permissions', async
   } finally {
     owner.mockRestore();
     await chmod(paths.workspace, 0o700);
+  }
+});
+
+it('chmods the checked inode when its path becomes an external symlink after fstat', async () => {
+  const base = await root(); const subjects = join(base, 'subjects');
+  const paths = await createTrialPaths(join(base, 'store'), subjects);
+  const outside = join(base, 'outside');
+  await mkdir(outside);
+  await writeFile(join(outside, 'keep'), 'untouched');
+  await chmod(outside, 0o555);
+  await chmod(paths.workspace, 0o555);
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  let swapped = false;
+  vi.mocked(open).mockImplementation(async (path, flags, mode) => {
+    const handle = await actual.open(path, flags, mode);
+    if (path === paths.workspace) {
+      expect(flags).toBe(constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      const fstat = handle.stat.bind(handle);
+      vi.spyOn(handle, 'stat').mockImplementationOnce(async () => {
+        const checked = await fstat();
+        await rename(paths.workspace, `${paths.workspace}-checked`);
+        await symlink(outside, paths.workspace);
+        swapped = true;
+        return checked;
+      });
+    }
+    return handle;
+  });
+  try {
+    await releaseTrialScratch(paths, subjects, true);
+    expect(swapped).toBe(true);
+    expect((await stat(outside)).mode & 0o777).toBe(0o555);
+    expect((await stat(join(outside, 'keep'))).isFile()).toBe(true);
+  } finally {
+    await chmod(outside, 0o700);
+  }
+});
+
+it.each(['symlink', 'hardlink', 'directory'] as const)('rejects a %s replacement between the walk check and open', async replacement => {
+  const base = await root(); const subjects = join(base, 'subjects');
+  const paths = await createTrialPaths(join(base, 'store'), subjects);
+  const outside = join(base, 'outside');
+  if (replacement === 'hardlink') await writeFile(outside, 'untouched');
+  else await mkdir(outside);
+  await chmod(outside, 0o555);
+  await chmod(paths.workspace, 0o555);
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  vi.mocked(open).mockImplementation(async (path, flags, mode) => {
+    if (path === paths.workspace) {
+      await rename(paths.workspace, `${paths.workspace}-checked`);
+      if (replacement === 'symlink') await symlink(outside, paths.workspace);
+      else if (replacement === 'hardlink') await link(outside, paths.workspace);
+      else { await mkdir(paths.workspace); await chmod(paths.workspace, 0o555); }
+    }
+    return actual.open(path, flags, mode);
+  });
+  try {
+    await expect(releaseTrialScratch(paths, subjects, true)).rejects.toThrow();
+    expect((await stat(outside)).mode & 0o777).toBe(0o555);
+    if (replacement === 'directory') expect((await stat(paths.workspace)).mode & 0o777).toBe(0o555);
+  } finally {
+    await chmod(outside, 0o700);
+    await chmod(`${paths.workspace}-checked`, 0o700);
+    if (replacement === 'directory') await chmod(paths.workspace, 0o700);
   }
 });
 

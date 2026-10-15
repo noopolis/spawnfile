@@ -1,4 +1,5 @@
-import { chmod, lstat, mkdir, mkdtemp, opendir, realpath, rm } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, mkdir, mkdtemp, open, opendir, realpath, rm } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { TrialPaths } from './types.js';
 
@@ -7,7 +8,11 @@ const contains = (parent: string, child: string): boolean => {
   return name === '' || name !== '..' && !name.startsWith(`..${sep}`) && !isAbsolute(name);
 };
 
-/** Native work is closed: repair only owned directories, never linked targets. */
+/**
+ * Requires confirmed native closure: no subject process remains alive. Handle-bound
+ * chmod protects the checked inode; ancestor swaps still require a concurrent
+ * writer, which the closure gate must exclude. This is not general race freedom.
+ */
 async function makeScratchRemovable(allocated: string): Promise<void> {
   const uid = process.getuid?.();
   let entries = 0;
@@ -26,10 +31,21 @@ async function makeScratchRemovable(allocated: string): Promise<void> {
     if (uid === undefined || info.uid !== uid) {
       throw new Error(`Refusing permission changes to subject scratch owned by another uid: ${path}`);
     }
-    // Unlinking needs write/search on the parent; read-only files need no changes.
-    if ((info.mode & 0o300) !== 0o300) await chmod(path, info.mode | 0o300);
-    const directory = await opendir(path);
-    for await (const entry of directory) await visit(join(path, entry.name), depth + 1);
+    const handle = await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try {
+      const opened = await handle.stat();
+      if (!opened.isDirectory() || opened.uid !== uid || opened.dev !== info.dev || opened.ino !== info.ino) {
+        throw new Error(`Refusing permission changes to replaced subject scratch: ${path}`);
+      }
+      // Unlinking needs write/search on the parent; read-only files need no changes.
+      if ((opened.mode & 0o300) !== 0o300) await handle.chmod(opened.mode | 0o300);
+      // Node's public opendir API cannot enumerate a FileHandle. Path-based
+      // enumeration therefore relies on the same no-concurrent-writer precondition.
+      const directory = await opendir(path);
+      for await (const entry of directory) await visit(join(path, entry.name), depth + 1);
+    } finally {
+      await handle.close();
+    }
   }
   await visit(allocated, 0);
 }
