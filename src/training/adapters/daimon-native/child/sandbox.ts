@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { lstat, mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { nativeChildProbe } from './probe.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
@@ -21,7 +21,9 @@ export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: 
   const owned: string[] = []; const denied: string[] = [];
   const server = createServer(socket => socket.destroy());
   try {
-    for (const path of [...new Set([...protectedPaths, launch.controlRoot, launch.config, launch.tokenFile, launch.envFile])]) {
+    const evaluatorSecret = process.env.PAIDEIA_TYPESAFE_SECRET_FILE;
+    for (const path of [...new Set([...protectedPaths, launch.controlRoot, launch.config, launch.tokenFile, launch.envFile,
+      ...(evaluatorSecret ? [resolve(evaluatorSecret)] : [])])]) {
       const entry = await lstat(path);
       if (!entry.isDirectory() && !entry.isFile()) throw new Error('Unsupported protected native path');
       denied.push(path);
