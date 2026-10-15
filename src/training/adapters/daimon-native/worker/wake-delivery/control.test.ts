@@ -36,8 +36,13 @@ async function fixture(timeoutMs = 1500) {
     wakeReceipt: async (_token, id) => [...receipts.values()].find(row => row.acceptance_id === id),
     activityV2: vi.fn(async () => { if (executions?.length) activeReads++; return { version: 'activity',
       items: [...receipts.values()].map(row => ({ ...row, active: row.state === 'running' })), executions }; }),
-    availability: async () => ({ version: 'availability', state: 'running', agents: [
-      { agent_id: 'agent:writer', pending: 0, running: true, deferred: 0, budget: { remaining: 3 } }] }),
+    availability: async () => {
+      const items = [...receipts.values()].filter(row => row.agent_id === 'agent:writer');
+      const running = !!executions?.some(row => row.agent_id === 'agent:writer');
+      return { version: 'availability', state: 'running', agents: [
+        { agent_id: 'agent:writer', pending: items.filter(row => row.state === 'accepted' || row.state === 'running' && !running).length,
+          running, deferred: items.filter(row => row.state === 'accepted' && row.deferred === true).length, budget: { remaining: 3 } }] };
+    },
   };
   const options: WorkerOptions = { launch: f.launch.receiptFile, config: f.launch.config, configSha256: f.launch.configSha256,
     controlRoot: f.launch.controlRoot, tokenFile: f.launch.tokenFile, evidence: join(f.launch.controlRoot, 'evidence.json'),
@@ -140,6 +145,7 @@ test('deferred batch members never pass; continuation waits for its declared mes
   const blocked = await first;
   expect(blocked.status).toBe('failed');
   expect(blocked.blocked).toBe('awaiting-external-input');
+  expect(blocked.availability?.agents[0]).toMatchObject({ pending: 1, deferred: 1, running: false });
   expect(blocked.transport?.deferredDeliveryIds).toEqual(['m:peer']);
   expect(f.host.stop).not.toHaveBeenCalled();
   const second = f.controller.run('answer', '', {}, { kind: 'transport', deliveryId: 'm:answer' });

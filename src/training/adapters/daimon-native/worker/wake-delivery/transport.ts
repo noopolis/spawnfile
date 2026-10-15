@@ -76,13 +76,19 @@ export function createTransportDelivery(host: NativeHost, agentId: string) {
       const current: ArmedRun = { wakeId, evidence, resolve, generation: 0, pending: 0 };
       let observed: NativeReceipt[] = [];
       let nativePending: number | undefined;
+      let nativeDeferred: number | undefined;
       const disposed = (row: NativeReceipt) => ['completed', 'failed', 'stopped'].includes(row.state) ||
         row.state === 'accepted' && row.deferred === true && selected.has(row.delivery_id);
-      const closed = (traces: NativeTrace[]) => nativePending === 0 && observed.every(disposed) &&
-        [...agentAcceptances].every(([id, acceptance]) => observed.some(row =>
-          row.delivery_id === id && row.acceptance_id === acceptance && disposed(row))) &&
-        [...selected.values()].every(row => row.receipt && disposed(row.receipt) &&
-          [...row.executionIds].every(id => traces.some(trace => trace.turn_id === id)));
+      const closed = (traces: NativeTrace[]) => {
+        // Daimon includes accepted deferrals in pending. The selection map counts
+        // delivery identities once, even when receipt and activity both name them.
+        const deferred = [...selected.values()].filter(row => row.receipt?.state === 'accepted' && row.receipt.deferred === true).length;
+        return nativePending === deferred && (nativeDeferred ?? 0) === deferred && observed.every(disposed) &&
+          [...agentAcceptances].every(([id, acceptance]) => observed.some(row =>
+            row.delivery_id === id && row.acceptance_id === acceptance && disposed(row))) &&
+          [...selected.values()].every(row => row.receipt && disposed(row.receipt) &&
+            [...row.executionIds].every(id => traces.some(trace => trace.turn_id === id)));
+      };
       armed = current;
       return {
         accepted, evidence, closed,
@@ -97,6 +103,7 @@ export function createTransportDelivery(host: NativeHost, agentId: string) {
         observe(receipt: NativeReceipt, activity: NativeActivity, availability: NativeAvailability, executionId?: string) {
           observed = structuredClone([...activity.items, receipt].filter(row => row.agent_id === agentId));
           nativePending = availability.agents.find(row => row.agent_id === agentId)?.pending;
+          nativeDeferred = availability.agents.find(row => row.agent_id === agentId)?.deferred;
           for (const batch of activity.executions ?? []) {
             if (batch.agent_id !== agentId || !batch.delivery_ids.some(id => selected.has(id))) continue;
             const primary = batch.delivery_ids.includes(evidence.deliveryId!);
