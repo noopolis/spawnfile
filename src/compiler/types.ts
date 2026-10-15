@@ -7,6 +7,7 @@ import {
   MemoryIndex,
   MemoryRetention,
   ModelEndpoint,
+  ModelTarget,
   Secret,
   TeamNetworkServer,
   type ExternalParticipantService
@@ -238,7 +239,7 @@ export interface EffectiveModelTarget {
   endpoint?: ModelEndpoint;
   name: string;
   provider: string;
-  reasoningEffort?: "high" | "low" | "medium";
+  reasoningEffort?: ModelTarget["reasoning_effort"];
 }
 
 export interface ResolvedSubagentRef {

@@ -43,7 +43,7 @@ const assertDaimonSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void
 };
 
 const assertDaimonModel = (target: EffectiveModelTarget): void => {
-  if (target.provider === "openai" && target.auth.method === "codex" && !target.endpoint && !target.reasoningEffort) return;
+  if (target.provider === "openai" && target.auth.method === "codex" && !target.endpoint) return;
   if (target.provider === "xai" && target.auth.method === "grok" && !target.endpoint) return;
   throw new SpawnfileError(
     "validation_error",
