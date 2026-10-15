@@ -9,6 +9,15 @@ receipts, authenticated native activity, closed telemetry and verified containme
 Use public module indexes across child boundaries; no sibling implementation imports.
 Keep adjacent tests, files below 400 lines and per-file coverage above 90 percent.
 
+Failed terminal frames project neutral admission counters only after identity and
+delivery binding. Acceptance identities must be nonempty and match across receipt,
+activity and transport evidence; missing identities never authorize replacement.
+Missing projections remain null. Explicit zero runtime/agent
+execution and token budgets, empty execution/telemetry/receipt histories and absent
+output establish no admission; any conflicting or partial evidence fails closed.
+A proven unadmitted failure returns those counters before invoking observation
+collectors that require an execution ID. Executed trials retain all binding checks.
+
 Transport delivery is explicit in the launch receipt. The real caller-owned bridge
 submits production message envelopes; the worker arms an expected source and never
 synthesizes that wake. Continuations name exact external message IDs. Preserve real

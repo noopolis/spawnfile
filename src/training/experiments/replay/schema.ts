@@ -94,10 +94,13 @@ export const trialReportSchema = z.object({
   paths: z.object({ root: z.string(), workspace: z.string(), control: z.string(), runtimeHome: z.string() }),
   status: verdict, preDeferralStatus: verdict.optional(),
   failureKind: z.enum(['native-infrastructure', 'behavioral', 'measurement']).optional(),
+  collectionFailed: z.literal(true).optional(),
   execution: z.enum(['completed', 'deferred', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
   expectedTurns: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   turns: z.array(z.object({ id: identity, checks: z.array(result), native: z.object({
     status: z.enum(['completed', 'failed', 'cancelled']), blocked: z.literal('awaiting-external-input').optional(),
+    admission: z.object({ executionRecords: tokenCount, executionsUsed: tokenCount, agentExecutionsUsed: tokenCount,
+      tokensUsed: tokenCount, agentTokensUsed: tokenCount, toolEvents: tokenCount, outputEvents: tokenCount }).strict().optional(),
     text: z.string(), coverage: z.array(coverage), usage: usage.nullable(),
     error: z.string().optional(), stop: stop.optional() }) })),
   evaluation: plan, live: z.array(z.object({ checkId: z.string(), boundary: z.string(), result })),

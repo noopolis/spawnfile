@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { EvaluationSnapshot, EvaluationResult, JudgeAttemptObservation } from '../../contracts/evaluation.js';
-import type { Observation, ObservationCoverage } from '../../contracts/execution.js';
+import type { Observation, ObservationCoverage, SubjectTurnResult } from '../../contracts/execution.js';
 import { captureObservation } from '../../capture/index.js';
 import { combine, evaluatePlan, mayStop, result } from '../../evaluation/index.js';
 import { captureBindings, resolveTurnInput } from './bindings.js';
@@ -14,6 +14,19 @@ import { createTrialPaths, releaseTrialScratch } from './paths.js';
 import { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './diagnostics.js';
 import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
+/** Missing or partial admission evidence never proves a never-acting execution. */
+function zeroAdmission(native: SubjectTurnResult): boolean {
+  const evidence = native.admission;
+  return native.status === 'failed' && !!evidence && evidence.executionRecords === 0 &&
+    evidence.executionsUsed === 0 && evidence.agentExecutionsUsed === 0 && evidence.tokensUsed === 0 &&
+    evidence.agentTokensUsed === 0 && evidence.toolEvents === 0 && evidence.outputEvents === 0;
+}
+
+/** Re-derived from persisted counters, never from a failure label alone. */
+export function hasUnadmittedExecution(turns: readonly TurnReport[]): boolean {
+  return turns.length > 0 && turns.every(({ native }) => zeroAdmission(native));
+}
+
 /** Retained evidence vetoes replacement, including reports classified by older runners. */
 export function hasSubjectBehavior(evidence: {
   turns: readonly TurnReport[];
@@ -25,7 +38,7 @@ export function hasSubjectBehavior(evidence: {
     Object.values(snapshot.artifacts).some(artifact => artifact.bytes.length > 0) ||
     snapshot.subjectUsage?.usage != null ||
     turns.some(({ native }) => native.status === 'completed' || native.blocked === 'awaiting-external-input' ||
-      native.text.length > 0 || native.usage !== null) ||
+      native.text.length > 0 || native.usage !== null || native.admission !== undefined && !zeroAdmission(native)) ||
     snapshot.events.some(event => event.type === 'tool.dispatch' || event.type === 'tool.complete' ||
       event.type === 'usage' || event.type === 'output' && !!event.text);
 }
@@ -108,7 +121,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     execution = 'failed';
     // Retain all observed behavior, even if a later empty result or failed
     // collector cannot publish a snapshot. Only a never-acting subject is replaceable.
-    const acted = collectedBehavior || collectionFailed || pendingCollections > 0 ||
+    const acted = collectedBehavior || collectionFailed && !hasUnadmittedExecution(turns) || pendingCollections > 0 ||
       hasSubjectBehavior({ turns, snapshot: { events, output, artifacts: {} }, decisiveFailure: live.decisive });
     failureKind = live.decisive ? 'behavioral' : acted ? 'measurement' : 'native-infrastructure';
   };
@@ -273,6 +286,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       subject: { adapterId: adapter.id, requestedModel: options.model, isolation: adapter.capabilities.isolation },
       ...(execution === 'deferred' && options.retainDeferredStatus ? { preDeferralStatus } : {}),
       ...(failureKind ? { failureKind } : {}),
+      ...(collectionFailed ? { collectionFailed: true as const } : {}),
       paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
       expectedTurns: inputs.length, turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),
       stop: structuredClone(finalStop), ...(diagnostic ? { diagnostic: structuredClone(diagnostic) } : {}), ...(error ? { error } : {}) };

@@ -6,6 +6,8 @@ Owns versioned IDs, capabilities, interfaces and shared result schemas.
 - Model incomplete observations, unsupported controls and unknown usage explicitly.
 - Runtime and inference adapters are different contracts; do not merge them just
   because both can launch a CLI.
+- Per-turn admission evidence uses neutral execution/token/event counts. Null
+  means unobserved; classifications cannot substitute for these retained counters.
 - Keep wire compatibility and validation versioned. Split schema families into
   cohesive children when they grow; do not centralize every type in one file.
 - Tests should reject malformed, ambiguous and incompatible values while accepting

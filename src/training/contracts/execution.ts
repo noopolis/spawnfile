@@ -221,6 +221,16 @@ export interface SubjectStart {
 
 export interface SubjectTurnResult {
   status: 'completed' | 'failed' | 'cancelled';
+  /** Adapter-bound terminal admission evidence. Null means unobserved, never zero. */
+  admission?: {
+    executionRecords: number | null;
+    executionsUsed: number | null;
+    agentExecutionsUsed: number | null;
+    tokensUsed: number | null;
+    agentTokensUsed: number | null;
+    toolEvents: number | null;
+    outputEvents: number | null;
+  };
   /**
    * The subject's own execution closed while its delivery stayed accepted and
    * deferred awaiting external input. The turn is never `completed`: confirming
