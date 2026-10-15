@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { EvaluationSnapshot } from '../../contracts/evaluation.js';
 import { runTrial } from './trial.js';
 import { complete, setup } from './fixture.js';
 import { drainObservations } from './closure.js';
@@ -21,7 +22,7 @@ it('bounds a source that continuously replaces its acknowledged tail', async () 
 });
 
 it.each(['none', 'tool.dispatch', 'tool.complete', 'output', 'output-event', 'usage', 'usage-event',
-  'completed', 'deferred', 'artifact', 'earlier-artifact', 'partial-artifacts', 'empty-artifact', 'diagnostic'])(
+  'completed', 'deferred', 'artifact', 'earlier-artifact', 'partial-artifacts', 'reversed-artifacts', 'empty-artifact', 'diagnostic'])(
   'retains %s evidence across cancellation and failed collection', async evidence => {
     const task = await setup(async (input, turn) => {
       if (['tool.dispatch', 'tool.complete', 'output-event', 'usage-event', 'diagnostic'].includes(evidence)) {
@@ -30,9 +31,9 @@ it.each(['none', 'tool.dispatch', 'tool.complete', 'output', 'output-event', 'us
           text: type === 'output' ? 'acted' : undefined, trialId: input.trialId, wakeId: turn.id,
           timestamp: '2026-10-15T00:00:00.000Z' });
       }
-      if (['artifact', 'partial-artifacts', 'empty-artifact'].includes(evidence)) {
+      if (['artifact', 'partial-artifacts', 'reversed-artifacts', 'empty-artifact'].includes(evidence)) {
         await writeFile(join(input.workspacePath, 'filing.txt'), evidence === 'empty-artifact' ? '' : 'Filed');
-        if (evidence === 'partial-artifacts') await symlink('/etc/passwd', join(input.workspacePath, 'unsafe.txt'));
+        if (['partial-artifacts', 'reversed-artifacts'].includes(evidence)) await symlink('/etc/passwd', join(input.workspacePath, 'unsafe.txt'));
       }
       return { ...complete, status: evidence === 'completed' ? 'completed' : 'cancelled',
         ...(evidence === 'deferred' ? { blocked: 'awaiting-external-input' as const } : {}),
@@ -41,19 +42,56 @@ it.each(['none', 'tool.dispatch', 'tool.complete', 'output', 'output-event', 'us
         } : null };
     });
     let collections = 0;
-    task.options.record.outputs = { filing: 'filing.txt', ...(evidence === 'partial-artifacts' ? { unsafe: 'unsafe.txt' } : {}) };
-    task.options.prepare = async () => ({ instructions: 'fixture', collect: async () => {
+    task.options.record.outputs = evidence === 'reversed-artifacts' ? { unsafe: 'unsafe.txt', filing: 'filing.txt' } : { filing: 'filing.txt', ...(evidence === 'partial-artifacts' ? { unsafe: 'unsafe.txt' } : {}) };
+    task.options.prepare = async () => ({ instructions: 'fixture', collect: async (): Promise<EvaluationSnapshot['artifacts']> => {
       collections++;
       if (evidence === 'earlier-artifact' && collections === 1) return {
         filing: { name: 'filing', checkpointId: 'first', digest: 'digest', bytes: 'Filed', value: 'Filed', provenance: 'collector' },
       };
+      if (evidence === 'reversed-artifacts') return {};
       throw new Error('collector unavailable');
     } });
     const report = await runTrial(task.options);
-    expect(report).toMatchObject({ execution: 'failed', failureKind:
-      ['none', 'empty-artifact', 'diagnostic'].includes(evidence) ? 'native-infrastructure' : 'measurement' });
+    expect(report).toMatchObject({ execution: 'failed', failureKind: 'measurement' });
     expect(report.error).toContain('Final collection failed');
   });
+
+it('keeps a collection failure conservative after a later successful snapshot', async () => {
+  const task = await setup(async () => ({ ...complete, status: 'failed', text: '' }));
+  let collections = 0;
+  task.options.prepare = async () => ({ instructions: 'fixture', collect: async () => {
+    if (++collections === 1) throw new Error('collector unavailable');
+    return {};
+  } });
+  const report = await runTrial(task.options);
+  expect(collections).toBe(2);
+  expect(report).toMatchObject({ execution: 'failed', failureKind: 'measurement', snapshot: { output: '', artifacts: {} } });
+});
+
+it('does not establish absence while an earlier collection remains unfinished', async () => {
+  let started!: () => void;
+  let finish!: (artifacts: EvaluationSnapshot['artifacts']) => void;
+  const collecting = new Promise<void>(resolve => { started = resolve; });
+  const pending = new Promise<EvaluationSnapshot['artifacts']>(resolve => { finish = resolve; });
+  let observation: Promise<void> | undefined;
+  const task = await setup(async (input, turn) => {
+    observation = Promise.resolve(input.onObservation({ id: 'diagnostic', source: 'native', seq: 1, type: 'diagnostic',
+      trialId: input.trialId, wakeId: turn.id, timestamp: '2026-10-15T00:00:00.000Z' })).catch(() => undefined);
+    await collecting;
+    throw new Error('Native failed while collection was pending');
+  });
+  let collections = 0;
+  task.options.prepare = async () => ({ instructions: 'fixture', collect: async () => {
+    if (++collections === 1) { started(); return pending; }
+    return {};
+  } });
+  try {
+    const report = await runTrial(task.options);
+    expect(report).toMatchObject({ execution: 'failed', failureKind: 'measurement', hostWork: 'incomplete' });
+    expect(collections).toBe(2);
+    expect(report.turns).toEqual([]);
+  } finally { finish({}); await observation; }
+});
 
 it.each(['operator', 'deadline'] as const)('preserves %s interruption through collection failure', async cause => {
   const abort = new AbortController();

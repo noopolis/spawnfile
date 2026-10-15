@@ -115,7 +115,7 @@ it.each(['train', 'validation', 'test'] as const)('replaces one infrastructure f
   expect(run).toHaveBeenCalledOnce(); // Frozen optimizer resume never calls native again.
 });
 
-it.each(['behavioral', 'malicious-output', 'collection', 'evaluation'] as const)(
+it.each(['behavioral', 'malicious-output', 'collection', 'evaluation', 'historical'] as const)(
   'does not replace a failed execution caused by %s, including checkpoint resume', async kind => {
     const { options, events } = await fixture(); options.trialRetries = 3;
     options.checkpoint = { directory: join(options.bridge.cwd, 'checkpoint'), identity: kind, resume: false };
@@ -131,6 +131,14 @@ it.each(['behavioral', 'malicious-output', 'collection', 'evaluation'] as const)
         return {};
       } });
     }
+    if (kind === 'historical') {
+      const append = options.native.store.appendEvaluation;
+      vi.spyOn(options.native.store, 'appendEvaluation').mockImplementation(async (id, evaluation, visibility) => {
+        // Seed an immutable historical report; the current runner's report stays unchanged.
+        const report = evaluation.report as import('../trials/index.js').TrialReport;
+        await append(id, { ...evaluation, report: { ...report, failureKind: 'native-infrastructure' } }, visibility);
+      });
+    }
     const { counts } = native(options, 0);
     const start = options.native.adapter.start;
     options.native.adapter.start = async input => {
@@ -145,6 +153,11 @@ it.each(['behavioral', 'malicious-output', 'collection', 'evaluation'] as const)
           throw new Error('regular adapter exception after decisive stop');
         }
         if (kind === 'malicious-output') await symlink('/etc/passwd', join(input.workspacePath, 'article.json'));
+        if (kind === 'historical') {
+          await input.onObservation({ id: 'acted', source: 'native', seq: 1, type: 'tool.dispatch',
+            tool: 'file', callId: 'filing', trialId: input.trialId, wakeId: turn.id, timestamp: '2026-10-15T00:00:00.000Z' });
+          return { ...result, status: 'failed' };
+        }
         return result;
       } };
     };
@@ -158,14 +171,22 @@ it.each(['behavioral', 'malicious-output', 'collection', 'evaluation'] as const)
       expect(report.decisiveFailure).toMatchObject({ id: 'boundary', status: 'fail', finality: 'final' });
       expect(report.turns).toHaveLength(0);
     } else {
-      expect(report.turns[0]!.native.status).toBe('completed');
+      expect(report.turns[0]!.native.status).toBe(kind === 'historical' ? 'failed' : 'completed');
       expect(report.snapshot.output).toBe('ack:alpha');
+    }
+    const retained = structuredClone(report);
+    if (kind === 'historical') {
+      retained.failureKind = 'native-infrastructure';
+      const path = join(options.checkpoint!.directory, 'training.json');
+      const saved = JSON.parse(await readFile(path, 'utf8'));
+      Object.values(saved.state.entries).forEach(entry => { (entry as { report: unknown }).report = retained; });
+      await writeFile(path, JSON.stringify({ state: saved.state, digest: trainingDigest(saved.state) }));
     }
     options.checkpoint.resume = true;
     await expect(trainAgent(options)).rejects.toThrow(/failed in infrastructure/);
     expect(counts.get('Alpha')).toBe(1);
     expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(0);
-    expect(events.find(event => event.type === 'trial.restored')!.payload).toEqual(report);
+    expect(events.find(event => event.type === 'trial.restored')!.payload).toEqual(retained);
   });
 
 it('retries a closed native failure before terminal telemetry, retaining its missing-evidence receipt', async () => {
@@ -307,6 +328,8 @@ it('binds nondefault retries while omitted and explicit zero checkpoint bytes ma
 it.each(['host', 'stop', 'quiescence', 'interrupted', 'legacy'])('does not replace unsafe, interrupted or unclassified native work: %s', async kind => {
   const { options } = await fixture(); optimizer(); native(options, 0);
   const report = (await trainAgent(options)).trials[0]!;
+  report.snapshot = { ...report.snapshot, events: [], output: '', artifacts: {}, subjectUsage: undefined };
+  report.turns = [];
   report.execution = kind === 'interrupted' ? 'interrupted' : 'failed';
   if (kind !== 'legacy') report.failureKind = 'native-infrastructure';
   if (kind === 'host') report.hostWork = 'incomplete';
@@ -334,7 +357,7 @@ it('does not replace a deferred native result whose collection failed afterwards
   expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(0);
 });
 
-it.each(['none', 'tool', 'artifact', 'deadline'] as const)('replaces only a never-acting cancelled wake: %s', async evidence => {
+it.each(['none', 'tool', 'artifact', 'deadline'] as const)('never replaces a cancelled wake after collection failure: %s', async evidence => {
   const { options, events } = await fixture(); options.trialRetries = 1;
   const { counts } = native(options, 1); optimizer();
   const start = options.native.adapter.start;
@@ -359,13 +382,12 @@ it.each(['none', 'tool', 'artifact', 'deadline'] as const)('replaces only a neve
     if (failed) throw new Error('collection cannot bind terminal evidence');
     return {};
   } });
-  if (evidence === 'none') expect((await trainAgent(options)).retries).toHaveLength(1);
-  else await expect(trainAgent(options)).rejects.toThrow();
+  await expect(trainAgent(options)).rejects.toThrow();
   const report = events.find(event => event.type === 'trial.finished')!.payload as import('../trials/index.js').TrialReport;
   expect(report).toMatchObject(evidence === 'deadline' ? { execution: 'interrupted' }
-    : { execution: 'failed', failureKind: evidence === 'none' ? 'native-infrastructure' : 'measurement' });
+    : { execution: 'failed', failureKind: 'measurement' });
   if (evidence === 'deadline') expect(report).not.toHaveProperty('failureKind');
   expect(report.error).toContain('Final collection failed');
-  expect(counts.get('Alpha')).toBe(evidence === 'none' ? 2 : 1);
-  expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(evidence === 'none' ? 1 : 0);
+  expect(counts.get('Alpha')).toBe(1);
+  expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(0);
 });

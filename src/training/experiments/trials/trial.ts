@@ -14,6 +14,22 @@ import { createTrialPaths, releaseTrialScratch } from './paths.js';
 import { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './diagnostics.js';
 import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
+/** Retained evidence vetoes replacement, including reports classified by older runners. */
+export function hasSubjectBehavior(evidence: {
+  turns: readonly TurnReport[];
+  snapshot: Pick<EvaluationSnapshot, 'events' | 'output' | 'artifacts' | 'subjectUsage'>;
+  decisiveFailure?: TrialReport['decisiveFailure'];
+}): boolean {
+  const { snapshot, turns } = evidence;
+  return !!evidence.decisiveFailure || snapshot.output.length > 0 ||
+    Object.values(snapshot.artifacts).some(artifact => artifact.bytes.length > 0) ||
+    snapshot.subjectUsage?.usage != null ||
+    turns.some(({ native }) => native.status === 'completed' || native.blocked === 'awaiting-external-input' ||
+      native.text.length > 0 || native.usage !== null) ||
+    snapshot.events.some(event => event.type === 'tool.dispatch' || event.type === 'tool.complete' ||
+      event.type === 'usage' || event.type === 'output' && !!event.text);
+}
+
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   const started = performance.now();
   const { adapter, registry } = options;
@@ -62,22 +78,28 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   } };
   let nativeClosureConfirmed = false;
   let collectedBehavior = false;
+  let pendingCollections = 0;
+  let collectionFailed = false;
   const externallyInterrupted = () => control.cause === 'operator' || control.cause === 'deadline';
   const subjectUsage = () => subjectUsageSnapshot(turns.map(turn => turn.native), { expectedTurns: inputs.length,
     complete: closed && execution === 'completed' && control.hostWork === 'settled' && !control.signal.aborted && nativeClosureConfirmed });
   const snapshot = async (): Promise<EvaluationSnapshot> => {
-    const state = { trialId: options.id, recordId: record.id, closed, subjectUsage: subjectUsage(),
-      events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles },
-      context: record.context ?? {} };
-    let artifacts: EvaluationSnapshot['artifacts'] = {};
-    for (const [name, path] of Object.entries(record.outputs ?? {})) {
-      const captured = await collectOutputs({ [name]: path }, paths.workspace, `${options.id}/${events.length}`);
-      collectedBehavior ||= Object.values(captured).some(artifact => artifact.bytes.length > 0);
-      artifacts = { ...artifacts, ...captured };
-    }
-    const collected = await prepared?.collect?.();
-    collectedBehavior ||= Object.values(collected ?? {}).some(artifact => artifact.bytes.length > 0);
-    return { ...state, artifacts: { ...artifacts, ...collected } };
+    pendingCollections++;
+    try {
+      const state = { trialId: options.id, recordId: record.id, closed, subjectUsage: subjectUsage(),
+        events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles },
+        context: record.context ?? {} };
+      let artifacts: EvaluationSnapshot['artifacts'] = {};
+      for (const [name, path] of Object.entries(record.outputs ?? {})) {
+        const captured = await collectOutputs({ [name]: path }, paths.workspace, `${options.id}/${events.length}`);
+        collectedBehavior ||= Object.values(captured).some(artifact => artifact.bytes.length > 0);
+        artifacts = { ...artifacts, ...captured };
+      }
+      const collected = await prepared?.collect?.();
+      collectedBehavior ||= Object.values(collected ?? {}).some(artifact => artifact.bytes.length > 0);
+      return { ...state, artifacts: { ...artifacts, ...collected } };
+    } catch (error) { collectionFailed = true; throw error; }
+    finally { pendingCollections--; }
   };
   const live = createLiveMonitor({ checks: record.live.checks, registry, evaluation: evaluationServices,
     persist: entry => persist('live.evaluation', entry), stop: why => control.stop(why, 'decisive'), signal: control.signal });
@@ -86,10 +108,8 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     execution = 'failed';
     // Retain all observed behavior, even if a later empty result or failed
     // collector cannot publish a snapshot. Only a never-acting subject is replaceable.
-    const acted = collectedBehavior || turns.some(({ native }) => native.status === 'completed' ||
-      native.blocked === 'awaiting-external-input' || native.text.length > 0 || native.usage !== null) ||
-      events.some(event => event.type === 'tool.dispatch' || event.type === 'tool.complete' ||
-        event.type === 'usage' || event.type === 'output' && !!event.text);
+    const acted = collectedBehavior || collectionFailed || pendingCollections > 0 ||
+      hasSubjectBehavior({ turns, snapshot: { events, output, artifacts: {} }, decisiveFailure: live.decisive });
     failureKind = live.decisive ? 'behavioral' : acted ? 'measurement' : 'native-infrastructure';
   };
   const evaluate = (state: EvaluationSnapshot) => ({ ...evaluationServices, snapshot: state, results: {}, scores: {}, signal: control.signal });

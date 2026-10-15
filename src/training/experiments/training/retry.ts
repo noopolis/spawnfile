@@ -1,4 +1,4 @@
-import type { TrialReport } from '../trials/index.js';
+import { hasSubjectBehavior, type TrialReport } from '../trials/index.js';
 
 export interface TrialRetry {
   failedTrialId: string;
@@ -15,7 +15,8 @@ export async function retryTrial(input: {
   execute(key: string, retry?: Omit<TrialRetry, 'replacementTrialId'>): Promise<TrialReport>;
 }): Promise<TrialReport> {
   let report = await input.execute(input.key);
-  for (let attempt = 1; report.execution === 'failed' && report.failureKind === 'native-infrastructure' && attempt <= input.maximum; attempt++) {
+  for (let attempt = 1; report.execution === 'failed' && report.failureKind === 'native-infrastructure' &&
+    !hasSubjectBehavior(report) && attempt <= input.maximum; attempt++) {
     input.signal?.throwIfAborted();
     // An abandoned native process must never overlap its replacement.
     if (report.hostWork !== 'settled' || report.stop?.state !== 'acknowledged' || report.stop.quiescence !== 'confirmed') break;

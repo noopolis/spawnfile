@@ -122,7 +122,10 @@ replace measurements without adding samples. Missing repeats alone execute on re
 
 Opt-in trialRetries (authored budget.trial_retries, 0..3) replaces only execution=failed
 trials explicitly classified failureKind=native-infrastructure, after confirmed
-shutdown and settled host work. Legacy unclassified failures are ineligible.
+shutdown and settled host work. Recheck retained observations, output, artifacts,
+native usage, turns and decisive witnesses before replacement, including on resume;
+a persisted classification alone is insufficient. Keep historical reports unchanged.
+Legacy unclassified failures are ineligible.
 retry.ts retains the
 logical callback/repeat key and checkpoint.ts reserves distinct replacement entries
 with failed IDs and causes. Failed captures remain unscorable; successful captures
