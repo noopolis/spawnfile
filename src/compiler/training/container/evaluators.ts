@@ -28,6 +28,7 @@ export const trainingEvaluatorSecretsSchema = (source: z.ZodString) => z.array(z
 export const prepareTrainingEvaluators = async (root: string, config: {
   evaluatorRoutes?: z.infer<typeof trainingEvaluatorRoutesSchema>;
   evaluatorSecrets?: { provider: "typesafe"; source: string }[];
+  subjectIsolation?: "codex-native-sandbox";
 }, mappedArgs: readonly string[]): Promise<{ mounts: string[]; env: string[] }> => {
   const mounts: string[] = [], env: string[] = [];
   if (config.evaluatorRoutes) {
@@ -44,7 +45,10 @@ export const prepareTrainingEvaluators = async (root: string, config: {
     env.push(`PAIDEIA_EVALUATOR_ROUTES_FILE=${TRAINING_EVALUATOR_ROUTES_FILE}`);
   }
   for (const secret of config.evaluatorSecrets ?? []) {
-    mounts.push(`type=bind,src=${secret.source},dst=${TRAINING_TYPESAFE_SECRET_INGRESS},readonly`);
+    // The host-uid v1 launcher cannot stage a root-owned copy; bind the canonical leaf at the consumer path.
+    if (config.subjectIsolation === "codex-native-sandbox") {
+      mounts.push(`type=bind,src=${secret.source},dst=${TRAINING_TYPESAFE_SECRET_FILE},readonly`);
+    } else mounts.push(`type=bind,src=${secret.source},dst=${TRAINING_TYPESAFE_SECRET_INGRESS},readonly`);
     env.push(`PAIDEIA_TYPESAFE_SECRET_FILE=${TRAINING_TYPESAFE_SECRET_FILE}`);
   }
   return { mounts, env };

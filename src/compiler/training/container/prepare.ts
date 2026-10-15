@@ -4,6 +4,7 @@ import path from "node:path";
 import { trainingContextSchema, type TrainingContext } from "../contract.js";
 import { trainingContainerConfigSchema, type TrainingContainerConfig } from "./contract.js";
 import { allocateTrainingOutputParent } from "../execution.js";
+import { assertTrainingSubjectIsolation } from "./subjectIsolation.js";
 
 const inside = (root: string, value: string): boolean => value === root || value.startsWith(`${root}/`);
 export const prepareTrainingContainer = async (raw: unknown, context: TrainingContext, args: readonly string[],
@@ -11,6 +12,7 @@ export const prepareTrainingContainer = async (raw: unknown, context: TrainingCo
   config: TrainingContainerConfig; context: TrainingContext; args: string[]; viewerPort?: number;
 }> => {
   const config = trainingContainerConfigSchema.parse(raw);
+  await assertTrainingSubjectIsolation(config, context);
   const entries = [...config.inputs, config.output];
   const protectedLeaves = [...config.auth, ...config.evaluatorSecrets ?? []];
   const home = path.resolve(os.homedir());

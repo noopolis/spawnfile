@@ -70,9 +70,12 @@ export const trainingPreparationSchema = z.object({
   auth: z.array(z.object({ source: local, provider: z.enum(["codex", "claude"]) }).strict()).max(2),
   evaluatorRoutes: trainingEvaluatorRoutesSchema.optional(),
   evaluatorSecrets: trainingEvaluatorSecretsSchema(local).optional(),
+  subjectIsolation: z.literal("codex-native-sandbox").optional(),
   broker: trainingBrokerSchema.optional()
 }).strict().superRefine((value, context) => {
-  if (value.evaluatorSecrets && !value.broker) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation" });
+  if (value.evaluatorSecrets && !value.broker && !value.subjectIsolation) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation or explicit codex-native-sandbox subject isolation" });
+  if (value.subjectIsolation && value.version !== "spawnfile.training-container.v2") context.addIssue({ code: "custom", message: "Codex native subject isolation requires a non-brokered v2 preparation" });
+  if (value.subjectIsolation && !value.evaluatorRoutes?.some(route => route.provider === "typesafe")) context.addIssue({ code: "custom", message: "Codex native subject isolation requires a TypeSafe evaluator route" });
   if (value.evaluatorSecrets && !value.evaluatorRoutes?.some(route => route.provider === "typesafe")) {
     context.addIssue({ code: "custom", message: "TypeSafe secret requires a declared evaluator route" });
   }

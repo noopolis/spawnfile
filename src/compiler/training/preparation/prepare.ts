@@ -4,6 +4,7 @@ import { mapTrainingExecution, trainingExecutionIdentity, type TrainingExecution
 import type { TrainingContext } from "../contract.js";
 import { trainingContainerConfigSchema } from "../container/contract.js";
 import type { TrainingDockerProcess } from "../container/process.js";
+import { assertTrainingSubjectIsolation } from "../container/subjectIsolation.js";
 import { trainingPreparationSchema, parseTrainingMappedPreparation, type TrainingMappedPreparation } from "./contract.js";
 import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } from "./files.js";
 import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
@@ -40,6 +41,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const config = trainingPreparationSchema.parse({ ...raw,
     ...(options.outputOverride ? { output: { source: options.outputOverride, destination: "/run/training/output" } } : {}),
     ...(options.imageOverride ? { image: { ref: options.imageOverride } } : {}) });
+  await assertTrainingSubjectIsolation(config, options.context);
   // A v2 declaration still lowers to the unchanged v1 launch config; v4 carries the broker slots into Docker.
   const launchVersion = config.version === "spawnfile.training-container.v4" ? config.version : "spawnfile.training-container.v1";
   const root = path.dirname(path.resolve(options.configPath));
@@ -47,6 +49,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const evaluatorSecrets = config.evaluatorSecrets?.map(entry => ({ ...entry, source: path.resolve(root, entry.source) }));
   const protectedLeaves = [...auth, ...evaluatorSecrets ?? []];
   const evaluatorConfig = { ...(config.evaluatorRoutes ? { evaluatorRoutes: config.evaluatorRoutes } : {}),
+    ...(config.subjectIsolation ? { subjectIsolation: config.subjectIsolation } : {}),
     ...(evaluatorSecrets ? { evaluatorSecrets } : {}) };
   const output = path.resolve(root, config.output.source), parent = path.dirname(output);
   for (let index = 0; index < options.args.length; index++) {

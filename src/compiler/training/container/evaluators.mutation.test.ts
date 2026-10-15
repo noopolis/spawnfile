@@ -9,7 +9,33 @@ import { expect, it } from "vitest";
 const run = promisify(execFile), root = fileURLToPath(new URL("../../../../", import.meta.url));
 const containerTest = "src/compiler/training/container/evaluators.test.ts";
 const preparationTest = "src/compiler/training/preparation/evaluators.test.ts";
+const codexTest = "src/compiler/training/container/evaluators.codex.test.ts";
 const mutations = [
+  { name: "direct resolved subject admission", file: "src/compiler/training/container/prepare.ts",
+    before: "  await assertTrainingSubjectIsolation(config, context);", after: "",
+    test: codexTest, title: "refuses mismatched Codex isolation subjects", assertion: "Codex resolved subject admission guarantee" },
+  { name: "build preparation resolved subject admission", file: "src/compiler/training/preparation/prepare.ts",
+    before: "  await assertTrainingSubjectIsolation(config, options.context);", after: "",
+    test: preparationTest, title: "refuses mismatched Codex preparation subjects before Docker: build", assertion: "Codex preparation subject admission guarantee" },
+  ...[
+    'agent.runtime.name !== "daimon"',
+    'resolveDaimonEngine(agent) !== "codex"',
+    'agent.runtime.options.codex_policy !== "workspace-no-network"',
+    'agent.execution?.sandbox?.mode !== "workspace"'
+  ].map(condition => ({
+    name: `resolved subject ${condition} binding`, file: "src/compiler/training/container/subjectIsolation.ts",
+    before: condition,
+    after: "false", test: codexTest, title: "refuses mismatched Codex isolation subjects", assertion: "Codex resolved subject admission guarantee"
+  })),
+  { name: "Codex secret admission", file: "src/compiler/training/container/contract.ts",
+    before: '  if (value.evaluatorSecrets && !value.broker && !value.subjectIsolation) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation or explicit codex-native-sandbox subject isolation" });', after: "",
+    test: codexTest, title: "admits v1 evaluator secrets", assertion: "Codex secret admission guarantee" },
+  { name: "Codex preparation secret admission", file: "src/compiler/training/preparation/contract.ts",
+    before: '  if (value.evaluatorSecrets && !value.broker && !value.subjectIsolation) context.addIssue({ code: "custom", message: "Evaluator secrets require brokered v4 isolation or explicit codex-native-sandbox subject isolation" });', after: "",
+    test: preparationTest, title: "admits non-broker preparation secrets", assertion: "Codex preparation secret admission guarantee" },
+  { name: "Codex evaluator secret mount", file: "src/compiler/training/container/evaluators.ts",
+    before: '      mounts.push(`type=bind,src=${secret.source},dst=${TRAINING_TYPESAFE_SECRET_FILE},readonly`);', after: "",
+    test: codexTest, title: "binds the Codex evaluator leaf", assertion: "Codex evaluator secret mount guarantee" },
   { name: "root secret staging invocation", file: "src/compiler/training/broker/entrypoint.ts",
     before: "  await stageTrainingEvaluatorSecret();", after: "",
     test: "src/compiler/training/broker/entrypoint.evaluators.test.ts", title: "stages evaluator credentials", assertion: "evaluator secret staging order guarantee" },
