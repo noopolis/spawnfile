@@ -161,6 +161,13 @@ describe('TypeSafe transport safety', () => {
     const backend = createTypeSafeDecision({ model, env, fetch: async () => new Response(key, { status: 401 }) });
     await expect(backend.score([request()])).rejects.toThrow('authentication failed (401)');
   });
+  it('retries a proxy-dropped 499 and recovers', async () => {
+    const fetch = responder();
+    fetch.mockResolvedValueOnce(new Response('', { status: 499 }));
+    const backend = createTypeSafeDecision({ model, env, fetch, retryBaseMs: 0 });
+    expect((await backend.score([request()]))[0]!.status).toBe('ok');
+    expect(backend.requestReceipts!().map(r => r.status)).toEqual([499, 200]);
+  });
   it('retries 429 and 5xx with exponential jitter, and exhausts 529 as infrastructure failure', async () => {
     const fetch = responder();
     fetch.mockResolvedValueOnce(new Response('', { status: 429 })).mockResolvedValueOnce(new Response('', { status: 503 }));

@@ -86,7 +86,8 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
             receipt.status = response.status;
             if (response.status === 401) throw new Error('TypeSafe authentication failed (401)');
             if (response.status === 402) throw new Error('TypeSafe payment failed (402)');
-            const retry = response.status === 429 || response.status >= 500;
+            // 408/499 are proxy-side drops of an otherwise valid request: transient, like 429 and 5xx.
+            const retry = response.status === 408 || response.status === 429 || response.status === 499 || response.status >= 500;
             if (!retry && !response.ok) return { reason: `TypeSafe HTTP ${response.status}: request rejected`, failureCause: 'request-rejected' };
             if (!retry) {
               const raw: unknown = await response.json();
