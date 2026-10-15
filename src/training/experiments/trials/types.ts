@@ -62,9 +62,12 @@ export interface TrialReport {
   /**
    * `deferred` is the subject's own closed execution whose delivery is still
    * waiting on external input: the machine worked and the task did not finish.
-   * It is scored and never passed; `failed` stays reserved for infrastructure.
+   * It is scored and never passed; `failed` requires failureKind to distinguish
+   * native infrastructure from behavioral and measurement failures.
    */
   execution: 'completed' | 'deferred' | 'interrupted' | 'failed';
+  /** Present on classified failures only; absent legacy failures are not retryable. */
+  failureKind?: 'native-infrastructure' | 'behavioral' | 'measurement';
   hostWork: 'settled' | 'incomplete';
   snapshot: EvaluationSnapshot;
   /** Authored turn count, retained independently of returned native results. */

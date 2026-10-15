@@ -27,6 +27,21 @@ test('replay validates optional pre-deferral verdicts and preserves legacy repor
   }
 });
 
+test('replay validates failure classifications without adding them to legacy reports', async () => {
+  const { report } = await fixture();
+  const legacyBytes = JSON.stringify(trialReportSchema.parse(report));
+  expect(trialReportSchema.parse(report)).not.toHaveProperty('failureKind');
+  expect(JSON.stringify(trialReportSchema.parse({ ...report, failureKind: undefined }))).toBe(legacyBytes);
+  for (const failureKind of ['native-infrastructure', 'behavioral', 'measurement'] as const) {
+    const stored = await fixture(report => { report.execution = 'failed'; report.failureKind = failureKind; });
+    expect(capturedTrial(await stored.store.readReplay(stored.options.runId, stored.options.access)).report).toEqual(stored.report);
+    expect(trialReportSchema.parse(stored.report).failureKind).toBe(failureKind);
+  }
+  for (const failureKind of ['failed', '', null, true, 1, {}]) {
+    expect(() => trialReportSchema.parse({ ...report, failureKind })).toThrow();
+  }
+});
+
 test('replay preserves atomic acceptance-gate failures without fabricating a grade', async () => {
   const { store, options, report } = await fixture(report => {
     const atomic = { status: 'error' as const, finality: 'final' as const, reason: 'Gate failed', evidence: [],

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify } from 'yaml';
@@ -7,6 +7,7 @@ import { snapshotCandidate } from '../../candidates/index.js';
 import { openExperimentStore } from '../../storage/index.js';
 import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import { createEvaluationRegistry } from '../../evaluation/index.js';
+import * as evaluation from '../../evaluation/index.js';
 import * as optimization from '../../optimization/index.js';
 import { TrainingCheckpoint, trainingDigest } from './checkpoint.js';
 import { retryTrial } from './retry.js';
@@ -95,6 +96,8 @@ it.each(['train', 'validation', 'test'] as const)('replaces one infrastructure f
   expect(report.retries).toEqual([{ failedTrialId: failed.id, replacementTrialId: replacement.id,
     cause: failed.error, attempt: 1 }]);
   expect(failed.error).toContain('wake execution claim was lost');
+  expect(failed.failureKind).toBe('native-infrastructure');
+  expect(replacement).not.toHaveProperty('failureKind');
   expect(replacement).toMatchObject({ phase, recordId: token, candidateId: failed.candidateId, execution: 'completed' });
   expect(replacement.round).toBe(failed.round);
   expect(start.mock.calls.every(([input]) => input.slot?.index === 0)).toBe(true);
@@ -110,6 +113,79 @@ it.each(['train', 'validation', 'test'] as const)('replaces one infrastructure f
   expect(resumed.retries).toEqual(report.retries);
   expect(start).toHaveBeenCalledTimes(calls);
   expect(run).toHaveBeenCalledOnce(); // Frozen optimizer resume never calls native again.
+});
+
+it.each(['behavioral', 'malicious-output', 'collection', 'evaluation'] as const)(
+  'does not replace a failed execution caused by %s, including checkpoint resume', async kind => {
+    const { options, events } = await fixture(); options.trialRetries = 3;
+    options.checkpoint = { directory: join(options.bridge.cwd, 'checkpoint'), identity: kind, resume: false };
+    const record = options.train.records[0]!;
+    if (kind === 'behavioral') record.live.checks = [
+      { id: 'boundary', on: 'event', on_fail: 'stop', not: { eval: 'tool-called', tool: 'forbidden' } },
+    ];
+    if (kind === 'malicious-output') record.outputs = { article: 'article.json' };
+    if (kind === 'collection') {
+      let collections = 0;
+      options.native.prepareEnvironment = async () => ({ collect: async () => {
+        if (++collections === 1) throw new Error('collector unavailable');
+        return {};
+      } });
+    }
+    const { counts } = native(options, 0);
+    const start = options.native.adapter.start;
+    options.native.adapter.start = async input => {
+      const session = await start(input);
+      return { ...session, run: async (turn, signal) => {
+        const result = await session.run(turn, signal);
+        if (kind === 'behavioral') {
+          await input.onObservation({ id: 'forbidden', source: 'native', seq: 1, type: 'tool.dispatch',
+            tool: 'forbidden', callId: 'call', args: {}, trialId: input.trialId, wakeId: turn.id,
+            timestamp: '2026-10-15T00:00:00.000Z' });
+          expect(signal?.aborted).toBe(true);
+          throw new Error('regular adapter exception after decisive stop');
+        }
+        if (kind === 'malicious-output') await symlink('/etc/passwd', join(input.workspacePath, 'article.json'));
+        return result;
+      } };
+    };
+    if (kind === 'evaluation') vi.spyOn(evaluation, 'evaluatePlan').mockRejectedValueOnce(new Error('evaluation unavailable'));
+    optimizer();
+    await expect(trainAgent(options)).rejects.toThrow();
+    const report = events.find(event => event.type === 'trial.finished')!.payload as import('../trials/index.js').TrialReport;
+    expect(report).toMatchObject({ execution: 'failed', failureKind: kind === 'behavioral' ? 'behavioral' : 'measurement',
+      hostWork: 'settled', stop: { state: 'acknowledged', quiescence: 'confirmed' } });
+    if (kind === 'behavioral') {
+      expect(report.decisiveFailure).toMatchObject({ id: 'boundary', status: 'fail', finality: 'final' });
+      expect(report.turns).toHaveLength(0);
+    } else {
+      expect(report.turns[0]!.native.status).toBe('completed');
+      expect(report.snapshot.output).toBe('ack:alpha');
+    }
+    options.checkpoint.resume = true;
+    await expect(trainAgent(options)).rejects.toThrow(/failed in infrastructure/);
+    expect(counts.get('Alpha')).toBe(1);
+    expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(0);
+    expect(events.find(event => event.type === 'trial.restored')!.payload).toEqual(report);
+  });
+
+it('retries a closed native failure before terminal telemetry, retaining its missing-evidence receipt', async () => {
+  const { options } = await fixture(); options.trialRetries = 1;
+  const { counts } = native(options, 1);
+  const start = options.native.adapter.start;
+  options.native.adapter.start = async input => {
+    const session = await start(input);
+    let failed = false;
+    return { ...session, run: async (turn, signal) => {
+      const result = await session.run(turn, signal); failed = result.status === 'failed';
+      return failed ? { ...result, text: '', coverage: [] } : result;
+    }, stop: async reason => ({ ...await session.stop(reason), ...(failed ? { unevidenced: 'terminal-absent' as const } : {}) }) };
+  };
+  optimizer();
+  const report = await trainAgent(options);
+  expect(counts.get('Alpha')).toBe(2);
+  expect(report.retries).toHaveLength(1);
+  expect(report.trials[0]).toMatchObject({ execution: 'failed', failureKind: 'native-infrastructure',
+    stop: { quiescence: 'confirmed', unevidenced: 'terminal-absent' }, snapshot: { events: [], output: '' } });
 });
 
 it.each([undefined, 0, 1, 3])('exhausts bound %s with the original infrastructure error and no zero score', async trialRetries => {
@@ -228,10 +304,11 @@ it('binds nondefault retries while omitted and explicit zero checkpoint bytes ma
   await expect(TrainingCheckpoint.open(options, datasets)).rejects.toThrow('identity');
 });
 
-it.each(['host', 'stop', 'quiescence', 'interrupted'])('does not replace unsafe or interrupted native work: %s', async kind => {
+it.each(['host', 'stop', 'quiescence', 'interrupted', 'legacy'])('does not replace unsafe, interrupted or unclassified native work: %s', async kind => {
   const { options } = await fixture(); optimizer(); native(options, 0);
   const report = (await trainAgent(options)).trials[0]!;
   report.execution = kind === 'interrupted' ? 'interrupted' : 'failed';
+  if (kind !== 'legacy') report.failureKind = 'native-infrastructure';
   if (kind === 'host') report.hostWork = 'incomplete';
   if (kind === 'stop') report.stop = undefined;
   if (kind === 'quiescence') report.stop = { ...report.stop!, quiescence: 'unknown' };

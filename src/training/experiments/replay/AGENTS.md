@@ -43,3 +43,6 @@ Failed-grade decisionAccounting uses the same allowlisted receipt schema as grad
 
 Retain optional preDeferralStatus with the same verdict vocabulary as status.
 Legacy reports omit it; stripping it breaks cached recovery and deferred rewards.
+
+Validate and retain optional failureKind (native-infrastructure, behavioral,
+measurement). Legacy reports omit it and cannot acquire retry eligibility by replay.

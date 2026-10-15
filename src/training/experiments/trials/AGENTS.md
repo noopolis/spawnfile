@@ -92,3 +92,8 @@ When retainDeferredStatus is selected, record preDeferralStatus from the combine
 terminal/live/turn gates before appending the delivery witness. Training owns
 reward policy; never turn a deferred delivery into pass. Default report bytes
 retain their existing shape when the flag is absent.
+
+Classify failed execution at the failure decision: failureKind is native-infrastructure
+only without a completed native turn or decisive behavioral witness. Collection,
+observation closure and evaluation failures are measurement failures; decisive
+witnesses take precedence as behavioral failures. Omit the field on other paths.
