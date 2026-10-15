@@ -32,3 +32,20 @@ it('separates quality, incomplete observation and infrastructure outcomes', () =
   graded.evaluation.stages[0]!.score!.missingWeight = 0.1;
   expect(() => trialScore(graded)).toThrow('coverage');
 });
+
+it('keeps infrastructure and decisive failures guarded under deferred stage scoring', () => {
+  const scoring = { deferred: 'stage-score' as const };
+  const report = { id: 'deferred', execution: 'deferred', hostWork: 'settled', status: 'fail', preDeferralStatus: 'pass',
+    stop: { state: 'acknowledged', quiescence: 'confirmed' }, evaluation: { stages: [] } } as unknown as TrialReport;
+  expect(trialScore(report, scoring)).toBe(0); // No final stage score is not a reward of one.
+  const scored = { ...report, evaluation: { ...report.evaluation, stages: [{ id: 'writing', checks: [], gate: result('pass', 'accepted'),
+    score: { finality: 'final' as const, lower: 0.1, upper: 0.1, assessedWeight: 1, missingWeight: 0 } }] } };
+  expect(trialScore(scored, scoring)).toBe(0.1);
+  expect(trialScore({ ...scored, decisiveFailure: result('fail', 'forbidden') }, scoring)).toBe(0);
+  expect(() => trialScore({ ...scored, execution: 'failed' }, scoring)).toThrow('infrastructure');
+  expect(() => trialScore({ ...scored, hostWork: 'incomplete' }, scoring)).toThrow('cleanup');
+  expect(() => trialScore({ ...scored, stop: undefined }, scoring)).toThrow('cleanup');
+  expect(() => trialScore({ ...scored, stop: { ...scored.stop!, quiescence: 'unknown' } }, scoring)).toThrow('incomplete');
+  expect(() => trialScore({ ...scored, execution: 'interrupted' }, scoring)).toThrow('incomplete');
+  expect(() => trialScore({ ...scored, status: 'pass' }, scoring)).toThrow('cannot pass');
+});

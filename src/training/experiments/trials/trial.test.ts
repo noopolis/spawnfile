@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFile, stat, writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { parseAtomicGrader, type AtomicRuntime } from '../../graders/atomic/index.js';
+import { parseCheckTemplates, parseDecomposition } from '../../graders/decomposition/index.js';
+import { artifact } from '../../testing/index.js';
+import { trialScore } from '../training/index.js';
 import type { Observation } from '../../contracts/execution.js';
 import { captureObservation } from '../../capture/index.js';
 import { createEvaluationRegistry, result } from '../../evaluation/index.js';
@@ -238,5 +242,106 @@ describe('native trial lifecycle', () => {
     task.options.record.live.checks = [{ id: 'advice', on: 'event', eval: 'advisory', on_fail: 'continue' }];
     const report = await runTrial(task.options);
     expect(reachedEnd).toBe(true); expect(report.status).toBe('pass'); expect(task.stops).toBe(1);
+  });
+});
+
+describe('deferred stage rewards', () => {
+  const scoring = { deferred: 'stage-score' as const };
+
+  async function fixture(deferred = true, missing = false) {
+    const task = await setup(async () => deferred ? { ...complete, status: 'failed', blocked: 'awaiting-external-input' } : complete);
+    task.options.retainDeferredStatus = true;
+    const grader = parseAtomicGrader({ schema: 'paideia.atomic-grader.v1', id: 'writing', templates: 'templates.yaml',
+      extractor: { provider: 'codex', model: 'test' }, decision: { backend: 'typesafe', model: 'jev-1.0.0', max_spend_usd: 1 }, missing: 'fail',
+      aggregation: { method: 'coverage-times-quality', critical_pass_at: 0.8, pass_at: 0.99, obligation_kinds: ['obligation'],
+        dimensions: { coverage: { weight: 1, budget: 2 } }, penalties: { critical: 1, major: 0.5, minor: 0.1 } } });
+    const templates = parseCheckTemplates({ schema: 'paideia.check-templates.v1', context: { assignment: { role: 'assignment' } },
+      templates: [{ id: 'covered', applies_to: 'obligation', type: 'noul', instructions: 'Covered?', criteria: { true: 'Good', false: 'Bad' },
+        expected: [true], state: ['unit', 'output.body'], dimension: 'coverage', severity: 'major' }] });
+    const receipt = { provider: 'codex', model: 'test', prompt_digest: 'c'.repeat(64), at: '2026-10-14T00:00:00Z' };
+    const runtime: AtomicRuntime = { kind: 'atomic', grader, templates, definitionDigest: 'a'.repeat(64), templatesDigest: 'b'.repeat(64), resource: {},
+      backend: { identity: async () => ({ backend: 'typesafe', model: grader.decision.model }),
+        score: vi.fn<AtomicRuntime['backend']['score']>(async requests => requests.map((request, index) => missing && index === 0
+          ? { key: request.key, status: 'missing', probabilities: null, reason: 'Missing answer' }
+          : { key: request.key, status: 'ok', probabilities: { true: missing ? 1 : 0.2, false: missing ? 0 : 0.8 } })) },
+      extract: async () => ({ decomposition: parseDecomposition({ schema: 'paideia.decomposition.v1', output: { from: 'trial', sha256: 'c'.repeat(64) },
+        units: Array.from({ length: missing ? 208 : 1 }, (_, index) => ({ id: `unit-${index}`, kind: 'obligation', text: `Cover fact ${index}.` })),
+        extractors: [receipt], audit: { extractor: receipt, missed: [], at: receipt.at } }), receipts: [], judgeCalls: [] }) };
+    task.options.prepare = async () => ({ instructions: 'Write', collect: async () => ({
+      article: artifact({ body: ['Filed story.'] }),
+      assignment: { ...artifact(Array.from({ length: missing ? 208 : 1 }, (_, index) => `Cover fact ${index}.`).join('\n')), name: 'assignment' },
+    }) });
+    task.options.evaluation.graders = { '/grader.yaml': runtime };
+    task.options.record.effectiveStages = [{ id: 'article', checks: [
+      { id: 'accepted-filing', eval: 'equals', input: 'output.text', value: 'DONE' },
+      { id: 'writing', eval: 'grader', grader: '/grader.yaml', input: 'artifact:article', context: { assignment: 'artifact:assignment' },
+        grader_binding: { kind: 'atomic', definitionDigest: runtime.definitionDigest, templatesDigest: runtime.templatesDigest, gates: [] } },
+    ], gate: { all: [{ passed: 'accepted-filing' }] }, score: { linear: { writing: 1 } } }];
+    return { ...task, runtime };
+  }
+
+  it.each([false, true])('uses atomic numeric fail grades only as score terms (one missing answer: %s)', async missing => {
+    for (const deferred of [false, true]) {
+      const task = await fixture(deferred, missing);
+      const report = await runTrial(task.options);
+      const writing = report.evaluation.checks.writing!;
+      expect(writing.status).toBe('fail');
+      expect(writing.atomicGrading).toMatchObject({ status: 'fail', coverage: missing ? 207 / 208 : 1 });
+      expect(writing.score).toBeCloseTo(missing ? (207 / 208) * 0.75 : 0.16);
+      expect(writing.score).toBeLessThan(1);
+      expect(report.evaluation.status).toBe('pass');
+      expect(report.evaluation.stages[0]!.score).toMatchObject({ lower: writing.score, missingWeight: 0 });
+      expect(report.status).toBe(deferred ? 'fail' : 'pass');
+      expect(report.preDeferralStatus).toBe(deferred ? 'pass' : undefined);
+      expect(trialScore(report)).toBe(deferred ? 0 : writing.score);
+      expect(trialScore(report, { deferred: 'zero' })).toBe(trialScore(report));
+      expect(trialScore(report, scoring)).toBe(writing.score);
+      expect(report.status).toBe(deferred ? 'fail' : 'pass');
+    }
+  });
+
+  it('retains default report shape and never guesses why a legacy deferred report failed', async () => {
+    const task = await fixture(); delete task.options.retainDeferredStatus;
+    const report = await runTrial(task.options);
+    expect(Object.hasOwn(report, 'preDeferralStatus')).toBe(false);
+    expect(trialScore(report, scoring)).toBe(0);
+  });
+
+  it.each(['fail', 'unknown', 'error'] as const)('refuses a deferred reward when the stage gate is %s', async status => {
+    const task = await fixture();
+    task.options.record.effectiveStages[0]!.gate = status === 'fail'
+      ? { eval: 'equals', input: 'output.text', value: 'WRONG' }
+      : status === 'unknown' ? { passed: 'unobserved' } : { eval: 'unregistered' };
+    const report = await runTrial(task.options);
+    expect(report.preDeferralStatus).toBe(status);
+    expect(report.status).toBe(status === 'error' ? 'error' : 'fail');
+    if (status === 'error') expect(() => trialScore(report, scoring)).toThrow('unscorable');
+    else expect(trialScore(report, scoring)).toBe(0);
+  });
+
+  it.each(['fail', 'unknown'] as const)('includes a %s turn gate in the pre-deferral verdict', async status => {
+    const task = await fixture();
+    task.options.record.turns = [{ id: 'wake', input: { prompt: 'Write' }, checks: [status === 'fail'
+      ? { eval: 'equals', input: 'output.text', value: 'WRONG' } : { eval: 'contains-any', input: 'artifact:unobserved', values: ['done'] }] }];
+    const report = await runTrial(task.options);
+    expect(report.evaluation.status).toBe('pass');
+    expect(report.preDeferralStatus).toBe(status);
+    expect(trialScore(report, scoring)).toBe(0);
+  });
+
+  it('rejects missing score coverage and masked atomic infrastructure failure in the opt-in path', async () => {
+    const task = await fixture();
+    task.options.record.effectiveStages[0]!.checks.push({ id: 'missing', passed: 'unobserved' });
+    task.options.record.effectiveStages[0]!.score!.linear.missing = 1;
+    const incomplete = await runTrial(task.options);
+    expect(incomplete.preDeferralStatus).toBe('pass');
+    expect(() => trialScore(incomplete, scoring)).toThrow('coverage');
+    expect(trialScore(incomplete)).toBe(0);
+    const broken = await fixture();
+    vi.mocked(broken.runtime.backend.score).mockRejectedValue(new Error('Provider unavailable'));
+    const failed = await runTrial(broken.options);
+    expect(failed.preDeferralStatus).toBe('pass');
+    expect(failed.evaluation.checks.writing!.atomicGrading!.status).toBe('error');
+    expect(() => trialScore(failed, scoring)).toThrow('atomic grading measurement');
   });
 });

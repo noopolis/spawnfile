@@ -1,6 +1,7 @@
 import { testRepeatCount } from '../../contracts/training-config.js';
 import { MutationQueue } from '../../platform/mutations/index.js';
 import { loadTrialSlots } from '../concurrency/index.js';
+import type { TrainingScoring } from '../../contracts/training-config.js';
 import type { TrialSlot } from '../../contracts/trial-slot.js';
 import { repairMeasurement } from '../repair/index.js';
 import { recoverMeasurement, recoverStoredReport } from './recovery.js';
@@ -25,6 +26,7 @@ import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
 export interface TrainingOptions {
   testRepeats?: number;
+  scoring?: TrainingScoring;
   concurrency?: number;
   slotsFile?: string;
   slots?: readonly TrialSlot[];
@@ -47,6 +49,7 @@ export interface TrainingOptions {
   onProgress?: (event: { type: string; payload: unknown }) => Promise<void>;
 }
 export interface TrainingReport {
+  scoring?: TrainingScoring;
   schema: 'paideia.training.v1';
   id: string;
   baseline: CandidateManifest;
@@ -137,7 +140,8 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     let confirmed = false;
     let report: TrialReport;
     try {
-    report = await runStoredTrial({ ...options.native, slot: lease?.slot, id, phase, round, record: structuredClone(record), candidate,
+    report = await runStoredTrial({ ...options.native,
+      ...(options.scoring?.deferred === 'stage-score' ? { retainDeferredStatus: true } : {}), slot: lease?.slot, id, phase, round, record: structuredClone(record), candidate,
       datasetId: dataset.id, datasetDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest,
       signal: signal ?? options.signal, evaluation: criteria.get(dataset)!,
       protectedPaths: [...options.native.protectedPaths ?? [], ...options.checkpoint ? [options.checkpoint.directory] : []],
@@ -185,7 +189,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       const dataset = request.split === 'train' ? partition.train : partition.validation;
       const report = await trial(dataset, request.caseId, request.split, candidateFor(request.components), signal, callbackId, request.round);
       const record = dataset.records.find(record => record.id === request.caseId)!;
-      return { score: trialScore(measured(report)), captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation) };
+      return { score: trialScore(measured(report), options.scoring), captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation) };
     } });
   await checkpoint?.freeze(optimizer);
   const selected = candidateFor(optimizer.components);
@@ -195,8 +199,9 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   const heldOut = await evaluateHeldOut({ candidates: frozen, caseIds: options.test.records.map(record => record.id), concurrency, testRepeats,
     trial: (candidate, caseId, repeat) => trial(options.test, caseId, 'test', candidate, undefined,
       repeat === 0 ? undefined : `test-repeat:${JSON.stringify([candidate.id, caseId, repeat])}`),
-    measurement: report => ({ id: measured(report).id, score: trialScore(measured(report)) }) });
+    measurement: report => ({ id: measured(report).id, score: trialScore(measured(report), options.scoring) }) });
   const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer,
+    ...(options.scoring?.deferred === 'stage-score' ? { scoring: { ...options.scoring } } : {}),
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
       test: options.test.records.map(record => record.id) }, trials, heldOut, ...(rescores.length ? { rescores } : {}),
     ...(options.checkpoint?.fork ? { lineage: { kind: 'measurement-repair' as const,

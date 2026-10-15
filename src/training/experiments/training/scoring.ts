@@ -1,3 +1,4 @@
+import type { TrainingScoring } from '../../contracts/training-config.js';
 import type { EvaluationResult } from '../../contracts/evaluation.js';
 import type { TrialReport } from '../trials/index.js';
 
@@ -7,7 +8,10 @@ function atomicMeasurementFailed(check: EvaluationResult): boolean {
 }
 
 /** A missing or interrupted measurement is not a cheap zero-quality observation. */
-export function trialScore(report: Pick<TrialReport, 'id' | 'execution' | 'hostWork' | 'stop' | 'decisiveFailure' | 'status' | 'evaluation'>): number {
+export function trialScore(
+  report: Pick<TrialReport, 'id' | 'execution' | 'hostWork' | 'stop' | 'decisiveFailure' | 'status' | 'preDeferralStatus' | 'evaluation'>,
+  scoring?: TrainingScoring,
+): number {
   if (report.execution === 'failed') throw new Error(`Trial ${report.id} failed in infrastructure`);
   if (report.hostWork !== 'settled' || report.stop?.state !== 'acknowledged') throw new Error(`Trial ${report.id} has incomplete infrastructure cleanup`);
   const decisive = report.decisiveFailure?.status === 'fail' && report.decisiveFailure.finality === 'final' && report.status === 'fail';
@@ -22,8 +26,12 @@ export function trialScore(report: Pick<TrialReport, 'id' | 'execution' | 'hostW
   const checks = [...Object.values(report.evaluation.checks ?? {}),
     ...report.evaluation.stages.flatMap(stage => [...stage.checks, stage.gate])];
   if (checks.some(atomicMeasurementFailed)) throw new Error(`Trial ${report.id} has unscorable atomic grading measurement`);
-  if (report.status === 'fail') return 0;
+  // The trial owner combines every actual gate before adding the deferral witness.
+  // Legacy captures have no such provenance and conservatively retain zero reward.
+  const deferredReward = scoring?.deferred === 'stage-score' && deferred &&
+    report.preDeferralStatus === 'pass' && !decisive;
+  if (report.status === 'fail' && !deferredReward) return 0;
   const score = report.evaluation.stages.at(-1)?.score;
   if (score && score.missingWeight > 1e-9) throw new Error('Trial scoring coverage is incomplete');
-  return score?.lower ?? 1;
+  return score?.lower ?? (deferredReward ? 0 : 1);
 }

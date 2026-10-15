@@ -303,3 +303,13 @@ it('binds held-out repeat counts to checkpoint identity while preserving omitted
   options.testRepeats = 3;
   await expect(TrainingCheckpoint.open(options, [options.train, options.test])).rejects.toThrow('identity');
 });
+
+it('binds opt-in deferred rewards into checkpoint identity while zero retains the legacy identity', async () => {
+  const { options } = await fixture();
+  const datasets = [options.train, options.test];
+  options.checkpoint = { directory: join(options.bridge.cwd, 'scoring-checkpoint'), identity: 'scoring', resume: false };
+  await TrainingCheckpoint.open(options, datasets);
+  options.checkpoint.resume = true;
+  await expect(TrainingCheckpoint.open({ ...options, scoring: { deferred: 'zero' } }, datasets)).resolves.toBeDefined();
+  await expect(TrainingCheckpoint.open({ ...options, scoring: { deferred: 'stage-score' } }, datasets)).rejects.toThrow('identity');
+});

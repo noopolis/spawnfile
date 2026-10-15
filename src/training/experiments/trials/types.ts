@@ -13,6 +13,8 @@ export interface PreparedTrial {
 }
 export interface TrialEvent { type: string; payload: unknown }
 export interface TrialOptions {
+  /** Opt-in provenance for training rewards; omission preserves legacy report bytes. */
+  retainDeferredStatus?: boolean;
   slot?: TrialSlot;
   id: string;
   phase: 'train' | 'validation' | 'test';
@@ -55,6 +57,8 @@ export interface TrialReport {
   subject?: { adapterId: string; requestedModel: string; isolation: string };
   paths: TrialPaths;
   status: Verdict;
+  /** All terminal/live/turn gates before adding the failing delivery witness. */
+  preDeferralStatus?: Verdict;
   /**
    * `deferred` is the subject's own closed execution whose delivery is still
    * waiting on external input: the machine worked and the task did not finish.

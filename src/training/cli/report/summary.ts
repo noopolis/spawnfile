@@ -62,10 +62,10 @@ function candidates(report: TrainingReport): ExportCandidate[] {
   }));
 }
 
-function measurement(trial: TrialReport, rescored?: RescoreReport): Measurement {
+function measurement(trial: TrialReport, rescored?: RescoreReport, scoring?: TrainingReport['scoring']): Measurement {
   const current = rescored ?? trial;
   let score: number | null = null, scoreUnavailable: string | null = null;
-  try { score = trialScore(current); } catch (error) { scoreUnavailable = String(error); }
+  try { score = trialScore(current, scoring); } catch (error) { scoreUnavailable = String(error); }
   return { trialId: trial.id, evaluationId: current.id, round: trial.round ?? null, score, scoreUnavailable, status: current.status,
     durationMs: trial.durationMs ?? null, fidelity: { execution: trial.execution,
       measurement: rescored ? 'rescore' : 'native-trial', historical: 'unverified',
@@ -104,7 +104,7 @@ function splitScores(report: TrainingReport, candidateId: string, split: Split, 
   rescore?: (trial: TrialReport) => RescoreReport | undefined): SplitScores {
   const examples = report.partitions[split].map(id => {
     const measurements = trials.filter(trial => trial.candidateId === candidateId && trial.phase === split && trial.recordId === id)
-      .map(trial => measurement(trial, rescore?.(trial)));
+      .map(trial => measurement(trial, rescore?.(trial), report.scoring));
     const complete = measurements.length > 0 && measurements.every(value => value.score !== null);
     return { id, meanScore: complete ? mean(measurements.map(value => value.score!)) : null, measurements };
   });
