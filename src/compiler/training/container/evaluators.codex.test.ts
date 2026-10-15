@@ -1,6 +1,8 @@
 import { chmod, link, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { stringify } from "yaml";
+import { createTrainingContext } from "../context.js";
 import { trainingContainerConfigSchema } from "./contract.js";
 import { fixture, dockerFixture, image } from "./fixtures.test-helper.js";
 import { launchTrainingContainer } from "./launch.js";
@@ -9,6 +11,11 @@ import { prepareTrainingContainer } from "./prepare.js";
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const marker = "test-only-codex-evaluator-key";
+const writeSubject = (project: string, runtime = "daimon", engine = "codex",
+  policy: string | null = "workspace-no-network", mode = "workspace") => writeFile(path.join(project, "Spawnfile"), stringify({
+  spawnfile_version: "0.1", kind: "agent", name: "a", runtime: { name: runtime,
+    options: { engine, ...(policy === null ? {} : { codex_policy: policy }) } }, execution: { sandbox: { mode } }
+}));
 const setup = async () => {
   const f = await fixture(); roots.push(f.root);
   const secret = path.join(f.root, "typesafe-key");
@@ -17,7 +24,8 @@ const setup = async () => {
     evaluatorRoutes: [{ purpose: "decisions", provider: "typesafe", model: "judge-model", maxRequests: 20, maxSpendUsd: 1 }],
     evaluatorSecrets: [{ provider: "typesafe", source: secret }] };
   await writeFile(f.configPath, JSON.stringify(config));
-  return { ...f, config, secret, context: { ...f.context, agent: { ...f.context.agent, engine: "codex" } } };
+  await writeSubject(f.project);
+  return { ...f, config, secret, context: await createTrainingContext(f.project, { packageVersion: "test" }) };
 };
 
 it("admits v1 evaluator secrets only with explicit Codex native isolation", async () => {
@@ -34,6 +42,25 @@ it("admits v1 evaluator secrets only with explicit Codex native isolation", asyn
       bootstrap: f.config.auth[0]!.source, declaration: f.configPath } },
     { ...f.config, broker: { engine: "codex", realmVolume: "realm", bootstrap: f.config.auth[0]!.source, declaration: f.configPath } }
   ]) expect(trainingContainerConfigSchema.safeParse(config).success).toBe(false);
+});
+
+it("refuses mismatched Codex isolation subjects before any Docker process call", async () => {
+  const f = await setup();
+  for (const [runtime, engine, policy, mode] of [
+    ["daimon", "grok", "workspace-no-network", "workspace"],
+    ["pi", "codex", "workspace-no-network", "workspace"],
+    ["daimon", "codex", null, "workspace"],
+    ["daimon", "codex", "workspace-no-network", "unrestricted"]
+  ] as const) {
+    await writeSubject(f.project, runtime, engine, policy, mode);
+    const docker = dockerFixture();
+    // Keep the old strict subject's context: host graph facts must own admission.
+    const refusal = await launchTrainingContainer({ ...f, image,
+      timeoutMs: 5000, process: docker.process, streams: { stdout() {}, stderr() {} } }).then(() => undefined, error => error);
+    expect(refusal, "Codex resolved subject admission guarantee").toBeInstanceOf(Error);
+    expect(refusal.message, "Codex resolved subject admission guarantee").toContain("strict codex_policy: workspace-no-network");
+    expect(docker.calls, "Codex pre-Docker admission guarantee").toEqual([]);
+  }
 });
 
 it("binds the Codex evaluator leaf at the final readonly Paideia path with unchanged v1 privileges", async () => {

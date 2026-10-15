@@ -24,14 +24,19 @@ export interface CreateTrainingContextOptions {
   packageVersion: string;
 }
 
+/** Internal host-side resolution shared by context capture and subject admission. */
+export const resolveTrainingContextGraph = async (inputPath: string, selector?: string) => {
+  const plan = await buildCompilePlan(await realpath(getManifestPath(inputPath)));
+  const agents = plan.nodes.filter((node): node is CompilePlanNode & { value: ResolvedAgentNode } => node.kind === "agent");
+  return { plan, selected: selectTrainingAgent(agents, selector) };
+};
+
 /** Resolves the complete project, preserving inherited selection and source provenance. */
 export const createTrainingContext = async (
   inputPath: string,
   options: CreateTrainingContextOptions
 ): Promise<TrainingContext> => {
-  const plan = await buildCompilePlan(await realpath(getManifestPath(inputPath)));
-  const agents = plan.nodes.filter((node): node is CompilePlanNode & { value: ResolvedAgentNode } => node.kind === "agent");
-  const selected = selectTrainingAgent(agents, options.agent);
+  const { plan, selected } = await resolveTrainingContextGraph(inputPath, options.agent);
   const agent = selected!.value;
   const manifest = await realpath(plan.root);
   const root = path.dirname(manifest);
