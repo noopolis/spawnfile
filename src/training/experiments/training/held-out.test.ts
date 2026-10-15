@@ -75,3 +75,30 @@ it.each(['native', 'measurement'])('stops dequeuing on %s failure and drains eve
   expect(settled).toBe(true); expect(returned).toBe(true);
   expect(started).toHaveLength(2);
 });
+
+it.each([undefined, 1])('preserves one native pass when repeats is %s', async testRepeats => {
+  const started: string[] = [];
+  const scores = await evaluateHeldOut({ candidates, caseIds: ['one'], concurrency: 1, testRepeats,
+    async trial(candidate, caseId, repeat) { const id = `${candidate.id}:${caseId}:${repeat}`; started.push(id); return report(id); },
+    measurement: captured => ({ id: captured.id, score: 0.5 }),
+  });
+  expect(started).toEqual(['baseline:one:0', 'selected:one:0']);
+  expect(JSON.stringify(scores)).toBe(JSON.stringify(candidates.map(candidate => ({ candidateId: candidate.id, meanScore: 0.5,
+    trialIds: [`${candidate.id}:one:0`], evaluationIds: [`${candidate.id}:one:0`] }))));
+});
+
+it('schedules every candidate/case/repeat and computes sample standard error over all trials', async () => {
+  const started: string[] = [];
+  const scores = await evaluateHeldOut({ candidates, caseIds: ['a', 'b'], concurrency: 4, testRepeats: 3,
+    async trial(candidate, caseId, repeat) {
+      const id = `${candidate.id}:${caseId}:${repeat}`; started.push(id); return report(id);
+    }, measurement: captured => ({ id: `score:${captured.id}`, score: Number(captured.id.at(-1)) / 2 }),
+  });
+  expect(started).toHaveLength(12); expect(new Set(started).size).toBe(12);
+  for (const arm of scores) {
+    expect(arm.trialIds).toEqual(['a', 'b'].flatMap(id => [0, 1, 2].map(repeat => `${arm.candidateId}:${id}:${repeat}`)));
+    expect(arm.evaluationIds).toEqual(arm.trialIds.map(id => `score:${id}`));
+    expect(arm.trialScores).toEqual([0, 0.5, 1, 0, 0.5, 1]);
+    expect(arm.meanScore).toBe(0.5); expect(arm.standardError).toBeCloseTo(Math.sqrt(1 / 30));
+  }
+});

@@ -148,3 +148,11 @@ it('accepts a separate dataset-relative validation input and rejects ambiguous o
     expect(() => validateTrainingConfiguration({ models, ...config })).toThrow();
   }
 });
+
+it.each([0, -1, 9, 1.5, '3', null, true])('refuses authored test_repeats=%s', test_repeats => {
+  expect(() => validateTrainingConfiguration({ ...config, budget: { test_repeats } })).toThrow('budget.test_repeats');
+});
+
+it.each([1, 3, 8])('accepts authored test_repeats=%s', test_repeats => {
+  expect(validateTrainingConfiguration({ ...config, budget: { test_repeats } }).budget).toEqual({ test_repeats });
+});

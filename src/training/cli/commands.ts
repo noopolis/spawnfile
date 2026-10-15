@@ -1,3 +1,4 @@
+import { testRepeatCount } from '../contracts/training-config.js';
 import { readSpawnfileContext } from './spawnfile/index.js';
 import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
@@ -48,7 +49,8 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const inputs = { ...prepared, maxTrials: trainingTrialBudget(args, dataset.records.length, validation?.records.length, test?.records.length) };
   if (args.command === 'evaluate' && dataset.records.length > inputs.maxTrials) throw new Error('Dataset exceeds --max-trials; no records are silently dropped');
   const comparison = prepareComparison(args, io, inputs.candidate);
-  const metricCalls = inputs.maxTrials - (test === undefined ? 0 : 2 * test.records.length);
+  const testRepeats = testRepeatCount(args.training?.budget?.test_repeats);
+  const metricCalls = inputs.maxTrials - (test === undefined ? 0 : 2 * test.records.length * testRepeats);
   if (metricCalls < 1) throw new Error('--max-trials cannot cover optimizer evaluation plus two reserved sealed-test passes');
   const bridgeCommand = args.command === 'train' && !comparison ? one(args, 'bridge-command') : undefined;
   const bridge = bridgeCommand === undefined ? undefined : Object.freeze({
@@ -61,7 +63,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, validation, test,
     subjectModel: inputs.model, ...(comparison ? {mode:'comparison' as const} : {optimizerModel: optimizerModel!}), validationGroups: args.flags['validation-group'],
     ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs),
-    maxTrials: inputs.maxTrials, maxProposals, ...costConfig });
+    maxTrials: inputs.maxTrials, maxProposals, testRepeats, ...costConfig });
   const native = await prepareNative(args, io, dependencies, trialTimeoutMs, inputs, inferenceMs);
   // Completion, failure and SIGINT/SIGTERM (launch aborts `signal`) all release inference grants here.
   try { return await executePrepared(native); } finally { await native.closeInference(); }
@@ -122,7 +124,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         .every(trial => (report.rescores?.findLast(score => score.runId === trial.id)?.status ?? trial.status) === 'pass') ? 0 : 1;
     }
     if (test !== undefined) {
-      const report = await trainAgent({
+      const report = await trainAgent({ testRepeats,
         concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined,
         slotsFile: args.flags['slots-file'] ? resolve(io.cwd, one(args, 'slots-file')) : undefined, id, baseline: native.candidate, train: dataset, validation, test,
         validationGroups: args.flags['validation-group'], native: base,

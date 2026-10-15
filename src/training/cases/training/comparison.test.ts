@@ -22,3 +22,8 @@ it('rejects optimizer route and proposal budget instead of silently ignoring the
   expect(() => validateTrainingConfiguration({ ...config(), optimizer: { model: 'judge' } })).toThrow('does not run an optimizer');
   expect(() => validateTrainingConfiguration({ ...config(), budget: { max_proposals: 0 } })).toThrow('has no proposals');
 });
+
+it('refuses unsupported repeated comparison arms rather than silently running one pass', () => {
+  expect(validateTrainingConfiguration({ ...config(), budget: { test_repeats: 1 } }).budget).toEqual({ test_repeats: 1 });
+  expect(() => validateTrainingConfiguration({ ...config(), budget: { test_repeats: 3 } })).toThrow('test_repeats');
+});

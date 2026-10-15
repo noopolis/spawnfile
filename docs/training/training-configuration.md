@@ -36,6 +36,7 @@ training:
     model: reflection
   budget:
     max_trials: 16
+    test_repeats: 1
     max_proposals: 4
     experiment_timeout_ms: 43200000
     trial_timeout_ms: 3600000
@@ -240,6 +241,33 @@ protected checkpoint directory. Its disposable caches are removed after confirme
 process closure and are not resume state; uncertain closure preserves them and
 fails the optimization.
 
+
+## Held-out test repeats
+
+`training.budget.test_repeats` optionally repeats each sealed test case for each
+frozen arm (baseline and selected candidate). It is an integer from `1` to `8`,
+defaulting to `1` (the existing single-pass behavior). Each repeat starts a fresh
+isolated native trial. Resume restores that exact repeat's capture and runs only
+missing repeats; measurement recovery never substitutes for another repeat.
+The frozen selection cannot change from test results. Identical baseline/selected
+content shares one arm, as before; budgets conservatively reserve two arms.
+
+`max_trials` includes `2 * test cases * test_repeats` reserved sealed trials;
+optimizer metric calls use the remainder. Cost plans multiply held-out subject
+and judge calls by the repeat count. Population defaults include this reservation;
+legacy GEPA retains its default 20-trial cap, so increase `max_trials` if needed.
+Changing repeats invalidates resume identity. The separate authored `comparison`
+mode currently accepts only the default single pass.
+
+For repeat counts above one, completed held-out arms retain `meanScore`,
+`trialIds` and `evaluationIds`, adding aligned `trialScores` and `standardError`. The mean weights all case/repeat trials
+equally; standard error is sample standard deviation divided by `sqrt(n)`, or
+`null` when fewer than two trials are available. Single-pass reports keep their
+existing shape and omit these additive fields. Local report exports and completed
+viewer projections retain these figures. This is descriptive variation assuming independent trials
+on the fixed test cases, not a confidence interval for unseen cases. Rescores
+replace measurements without increasing sample size. Per-case paired uncertainty
+in the report remains separate from this trial-level figure.
 
 ## Round-based population search
 

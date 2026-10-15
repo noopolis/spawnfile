@@ -162,7 +162,7 @@ export function summarizeTraining(report: TrainingReport) {
   return { schema: 'paideia.training-export.v1' as const, id: report.id, selectedCandidateId: report.selected.id,
     baselineCandidateId: report.baseline.id, candidates: entries, rounds: report.optimizer.provenance.rounds ?? [], roundScores,
     unattributedSearchTrialIds: report.trials.filter(trial => trial.phase !== 'test' && trial.round === undefined).map(trial => trial.id),
-    heldOut: { complete, pairs, pairedExamples: deltas.length, meanDelta, standardDeviation,
+    heldOut: { ...(report.heldOut.some(arm => arm.trialScores !== undefined) ? { arms: report.heldOut } : {}), complete, pairs, pairedExamples: deltas.length, meanDelta, standardDeviation,
       standardError: standardDeviation === null ? null : standardDeviation / Math.sqrt(deltas.length),
       uncertainty: !complete ? 'Incomplete held-out pairs; no comparison claim.' : deltas.length < 2
         ? 'One paired example; sampling uncertainty is unknown. No generalization claim.'

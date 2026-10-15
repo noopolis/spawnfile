@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { validateTrainingConfiguration } from '../../cases/index.js';
 import { type CandidateManifest } from '../../candidates/index.js';
-import type { TrainingOptimizer } from '../../contracts/training-config.js';
+import { testRepeatCount, type TrainingOptimizer } from '../../contracts/training-config.js';
 import type { CliArguments } from '../arguments.js';
 import { count } from '../arguments.js';
 import type { SpawnfileCliIntegration } from '../types.js';
@@ -69,7 +69,8 @@ export function populationSearch(optimizer?: TrainingOptimizer) {
 /** One baseline plus every declared variant, each on train and validation; two sealed passes. */
 export function trainingTrialBudget(args: CliArguments, trainCases: number, validationCases = 0, testCases = 0): number {
   const search = args.command === 'train' && !args.training?.comparison ? populationSearch(args.training?.optimizer) : undefined;
-  const derived = search ? (1 + search.variants * search.rounds) * (trainCases + validationCases) + 2 * testCases : 20;
+  const repeats = testRepeatCount(args.training?.budget?.test_repeats);
+  const derived = search ? (1 + search.variants * search.rounds) * (trainCases + validationCases) + 2 * testCases * repeats : 20;
   if (args.flags['max-trials'] === undefined && (!Number.isSafeInteger(derived) || derived > 10000)) {
     throw new Error('Derived population trial budget exceeds the 10000 trial ceiling; declare a smaller --max-trials cap');
   }

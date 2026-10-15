@@ -147,7 +147,20 @@ it('plans every fixed comparison pair and heterogeneous judge exactly with zero 
   expect(plan.lines.filter(line => line.role === 'subject').map(line => line.plannedCalls)).toEqual([6,4]);
   expect(plan.lines.some(line => line.role === 'optimizer')).toBe(false);
   expect(() => planTrainingCost({ ...comparison, maxTrials: 9 })).toThrow('both arms');
+  expect(() => planTrainingCost({ ...comparison, testRepeats: 3 })).toThrow('test repeats');
   expect(() => planTrainingCost({ ...comparison, maxProposals: 1 })).toThrow('no optimizer');
   expect(() => planTrainingCost({ ...comparison, optimizerModel: 'no' })).toThrow('no optimizer');
   expect(() => planTrainingCost({ ...input, optimizerModel: undefined })).toThrow('Optimizer model');
+});
+
+it('counts repeated held-out subject and judge calls, preserving the default plan exactly', () => {
+  const input = options(); input.maxTrials = 20;
+  input.test.records[0]!.effectiveStages[0]!.checks = [rubric];
+  const ordinary = planTrainingCost(input);
+  expect(planTrainingCost({ ...input, testRepeats: 1 })).toEqual(ordinary);
+  const repeated = planTrainingCost({ ...input, testRepeats: 3 });
+  expect(repeated.budget).toMatchObject({ reservedTestTrials: 12, metricCalls: 8 });
+  expect(repeated.lines.filter(line => line.phase === 'held-out').map(line => [line.role, line.plannedCalls]))
+    .toEqual([['subject', 12], ['judge', 6]]);
+  expect(() => planTrainingCost({ ...input, testRepeats: 3, maxTrials: 12 })).toThrow('budget');
 });

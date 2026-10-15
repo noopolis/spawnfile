@@ -33,3 +33,6 @@ Failed attempts remain in original evaluations after repair/resume; origin IDs
 still deduplicate plan aliases and copied measurements.
 
 Cost planning shares explicit validation selection and evidence-lineage isolation with execution.
+
+Reserve two arms times test cases times testRepeats for held-out subject trials
+and multiply held-out judge counts likewise; default one preserves existing plans.

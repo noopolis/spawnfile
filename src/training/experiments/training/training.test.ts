@@ -293,3 +293,13 @@ it('leases four slots for fresh sealed pairs only after selection freezes and ne
   expect(new Set(trained.trials.map(row => row.id)).size).toBe(trained.trials.length);
   expect(events.filter(event => event.type === 'selection.frozen')).toHaveLength(1);
 });
+
+it('binds held-out repeat counts to checkpoint identity while preserving omitted and explicit one', async () => {
+  const { options } = await fixture();
+  options.checkpoint = { directory: join(options.bridge.cwd, 'repeat-checkpoint'), identity: 'repeats', resume: false };
+  await TrainingCheckpoint.open(options, [options.train, options.test]);
+  options.checkpoint.resume = true; options.testRepeats = 1;
+  expect(await TrainingCheckpoint.open(options, [options.train, options.test])).toBeDefined();
+  options.testRepeats = 3;
+  await expect(TrainingCheckpoint.open(options, [options.train, options.test])).rejects.toThrow('identity');
+});

@@ -28,6 +28,7 @@ export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies
     subjectModel: native.model, ...(comparison ? { mode: 'comparison' as const } : { optimizerModel: one(args, 'optimizer-model') }),
     ...configuredCostRoutes(args, native.judges, native.citationRepairs),
     maxTrials: trainingTrialBudget(args, train.records.length, validation?.records.length, test.records.length),
+    testRepeats: args.training?.budget?.test_repeats,
     maxProposals: comparison ? 0 : count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });
   io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id, editableResources: editableResources(native.candidate),
     ...(populationSearch(args.training?.optimizer) ? { search: populationSearch(args.training?.optimizer) } : {}), ...(comparison ? { comparison: { name: comparison.name, candidateId: comparison.candidate.id, optimizerCalls: 0 } } : {}),

@@ -50,7 +50,7 @@ export interface TrainingConfiguration {
   models: Record<string, TrainingModel>;
   judges?: Record<string, TrainingJudge>;
   optimizer?: TrainingOptimizer;
-  budget?: { max_trials?: number; max_proposals?: number; timeout_ms?: number;
+  budget?: { test_repeats?: number; max_trials?: number; max_proposals?: number; timeout_ms?: number;
     experiment_timeout_ms?: number; trial_timeout_ms?: number };
   cache?: { mode: 'off' | 'exact' | 'persistent'; max_entries?: number; namespace?: string; directory?: string };
   recovery?: { max_attempts?: number };
@@ -58,4 +58,12 @@ export interface TrainingConfiguration {
   validation?: string;
   validation_groups?: string[];
   seed?: number;
+}
+
+/** Independent sealed native trials per candidate/case; omitted preserves one pass. */
+export function testRepeatCount(value: number = 1): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 8) {
+    throw new Error('training.budget.test_repeats must be an integer from 1 to 8');
+  }
+  return value;
 }

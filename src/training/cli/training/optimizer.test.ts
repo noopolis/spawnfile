@@ -98,3 +98,11 @@ it('comparison bypasses inherited optimizer resolution but rejects an explicit o
     {} as SpawnfileTrainingContext)).rejects.toThrow('comparison does not run an optimizer');
   expect(integration.trainingOptimizer).not.toHaveBeenCalled();
 });
+
+it('reserves repeated sealed passes in derived budgets while preserving explicit and legacy caps', () => {
+  const repeated = args({ models, optimizer: population, budget: { test_repeats: 3 } });
+  expect(trainingTrialBudget(repeated, 2, 1, 2)).toBe(51);
+  expect(trainingTrialBudget({ ...repeated, flags: { 'max-trials': ['20'] } }, 2, 1, 2)).toBe(20);
+  expect(trainingTrialBudget(args({ models, budget: { test_repeats: 3 } }), 2, 1, 2)).toBe(20);
+  expect(() => trainingTrialBudget(args({ models, optimizer: population, budget: { test_repeats: 8 } }), 1, 1, 625)).toThrow('10000');
+});

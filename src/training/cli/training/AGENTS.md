@@ -43,7 +43,7 @@ Population search defaults are resolved by optimizer.ts; derived caps
 remain within the existing 1000-call ceiling. Dry-run displays each editable
 resource's whole-file or heading scope and the effective search controls.
 `trainingTrialBudget` derives `(1 + variants * rounds) * (train + validation) +
-2 * test` after dataset resolution; internal holdouts preserve the input case total.
+2 * test * test_repeats` after dataset resolution; internal holdouts preserve the input case total.
 Keep explicit caps and the 10000-trial ceiling. Verify the actual CLI/bridge run,
 not just dry-run arithmetic; legacy GEPA and frozen comparisons retain defaults.
 
