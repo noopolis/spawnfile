@@ -75,3 +75,16 @@ it.each([undefined, ''])('keeps unconfigured evaluator secrets optional: %s', as
   await verifyChildSandbox(f.launch, f.input.trialId, [], new AbortController().signal);
   expect(policy.attempted).not.toContain(policy.readable);
 });
+
+it('skips an absent configured evaluator secret instead of failing unrelated runs', async () => {
+  const f = await fixture(); const missing = join(f.launch.controlRoot, 'absent-typesafe-secret');
+  vi.stubEnv('PAIDEIA_TYPESAFE_SECRET_FILE', missing);
+  await verifyChildSandbox(f.launch, f.input.trialId, [], new AbortController().signal);
+  expect(policy.attempted).not.toContain(missing);
+});
+
+it('fails closed when the configured evaluator secret cannot be inspected', async () => {
+  const f = await fixture(); const blocked = join(f.launch.config, 'typesafe');
+  vi.stubEnv('PAIDEIA_TYPESAFE_SECRET_FILE', blocked);
+  await expect(verifyChildSandbox(f.launch, f.input.trialId, [], new AbortController().signal)).rejects.toMatchObject({ message: 'Exact native child sandbox failed before cognition', cause: { code: 'ENOTDIR' } });
+});

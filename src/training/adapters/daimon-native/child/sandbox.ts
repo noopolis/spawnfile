@@ -21,9 +21,13 @@ export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: 
   const owned: string[] = []; const denied: string[] = [];
   const server = createServer(socket => socket.destroy());
   try {
-    const evaluatorSecret = process.env.PAIDEIA_TYPESAFE_SECRET_FILE;
+    // An absent configured secret has nothing to deny; the TypeSafe transport refuses it on use.
+    const evaluatorSecret = process.env.PAIDEIA_TYPESAFE_SECRET_FILE ? resolve(process.env.PAIDEIA_TYPESAFE_SECRET_FILE) : undefined;
+    const secretPresent = evaluatorSecret !== undefined && await lstat(evaluatorSecret).then(() => true, (error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return false; throw error;
+    });
     for (const path of [...new Set([...protectedPaths, launch.controlRoot, launch.config, launch.tokenFile, launch.envFile,
-      ...(evaluatorSecret ? [resolve(evaluatorSecret)] : [])])]) {
+      ...(secretPresent ? [evaluatorSecret] : [])])]) {
       const entry = await lstat(path);
       if (!entry.isDirectory() && !entry.isFile()) throw new Error('Unsupported protected native path');
       denied.push(path);
