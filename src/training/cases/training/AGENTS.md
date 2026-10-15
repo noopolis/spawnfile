@@ -19,3 +19,6 @@ training.validation selects a separate contained relative dataset path and is mu
 
 Bound training.budget.test_repeats to integer 1..8; omit to retain one pass.
 Authored comparison remains single-pass and refuses nondefault repeats.
+
+Bound training.budget.trial_retries to integer 0..3; omit to preserve no retry.
+Authored comparison refuses nonzero retries; trial execution belongs to training.

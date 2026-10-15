@@ -30,3 +30,7 @@ Failure traversal carries the producing measurement ID through children and grad
 gates. Original turn/live/decisive failures keep the native trial ID even after a
 rescore; final checks/stages and the current outcome use the latest measurement ID.
 Mutation-check both original and rescored failure attribution.
+
+Infrastructure retry receipts list original/replacement IDs and causes. Preserve all
+failed measurements with unknown scores and cost receipts; exclude replaced failed
+attempts from split/round means. Replacements alone supply held-out samples.

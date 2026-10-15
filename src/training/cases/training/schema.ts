@@ -141,16 +141,19 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
   if (config.optimizer !== undefined) route(config.optimizer, `${path}.optimizer`);
   if (config.budget !== undefined) {
     const budget = object(config.budget, `${path}.budget`);
-    fields(budget, ['test_repeats', 'max_trials', 'max_proposals', 'timeout_ms', 'experiment_timeout_ms', 'trial_timeout_ms'], `${path}.budget`);
+    fields(budget, ['trial_retries', 'test_repeats', 'max_trials', 'max_proposals', 'timeout_ms', 'experiment_timeout_ms', 'trial_timeout_ms'], `${path}.budget`);
     for (const [key, value] of Object.entries(budget)) {
       const maximum = key === 'timeout_ms' || key === 'experiment_timeout_ms' ? 604_800_000
-        : key === 'test_repeats' ? 8 : key === 'trial_timeout_ms' ? 86_400_000 : key === 'max_trials' ? 10_000 : 1000;
-      integer(value, `${path}.budget.${key}`, 1, maximum);
+        : key === 'trial_retries' ? 3 : key === 'test_repeats' ? 8 : key === 'trial_timeout_ms' ? 86_400_000 : key === 'max_trials' ? 10_000 : 1000;
+      integer(value, `${path}.budget.${key}`, key === 'trial_retries' ? 0 : 1, maximum);
     }
   }
   if (config.comparison !== undefined && (config.budget as { test_repeats?: number } | undefined)?.test_repeats !== undefined
       && (config.budget as { test_repeats: number }).test_repeats !== 1) {
     fail(`${path}.budget.test_repeats`, 'repeats are supported for optimizer training only');
+  }
+  if (config.comparison !== undefined && ((config.budget as { trial_retries?: number } | undefined)?.trial_retries ?? 0) !== 0) {
+    fail(`${path}.budget.trial_retries`, 'retries are supported for optimizer training only');
   }
   const optimizer = config.optimizer as { variants?: number; keep?: number } | undefined;
   const maxProposals = (config.budget as { max_proposals?: number } | undefined)?.max_proposals;

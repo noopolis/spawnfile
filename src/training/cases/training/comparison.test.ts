@@ -27,3 +27,8 @@ it('refuses unsupported repeated comparison arms rather than silently running on
   expect(validateTrainingConfiguration({ ...config(), budget: { test_repeats: 1 } }).budget).toEqual({ test_repeats: 1 });
   expect(() => validateTrainingConfiguration({ ...config(), budget: { test_repeats: 3 } })).toThrow('test_repeats');
 });
+
+it('rejects nondefault infrastructure retry controls for comparison', () => {
+  expect(validateTrainingConfiguration({ ...config(), budget: { trial_retries: 0 } }).budget).toEqual({ trial_retries: 0 });
+  expect(() => validateTrainingConfiguration({ ...config(), budget: { trial_retries: 1 } })).toThrow('trial_retries');
+});

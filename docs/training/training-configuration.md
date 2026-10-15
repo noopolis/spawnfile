@@ -270,6 +270,36 @@ process closure and are not resume state; uncertain closure preserves them and
 fails the optimization.
 
 
+## Infrastructure trial retries
+
+`training.budget.trial_retries` is an opt-in integer from `0` to `3`, default
+`0`. Each train, validation or sealed-test trial whose `execution` is `failed`
+may run that many fresh isolated replacements for the same candidate, case,
+phase and repeat. Replacements require settled host work and acknowledged,
+confirmed native shutdown; ambiguous closure blocks retry. Behavioral failures,
+deferred deliveries, interruptions and successfully captured trials with errored
+measurements are never replacement triggers. Measurement recovery remains separate.
+
+Failed infrastructure reports remain persisted with unknown scores; only the final
+replacement supplies the optimizer reward or held-out sample. Exhaustion preserves
+the existing infrastructure error instead of supplying a zero. The training report
+and local REPORT.json/REPORT.md list failed IDs, replacement IDs, attempt numbers
+and causes. All native attempts remain in trial lists and cost accounting.
+
+Retries stay inside the original optimizer callback or held-out worker, acquire
+ordinary slot leases, and share its experiment cancellation/deadline. They do not
+create optimizer metric calls or additional held-out samples. `max_trials` reserves
+logical evaluations and sealed samples as before; opted-in replacements can add up
+to `trial_retries` native attempts per logical trial beyond that reservation.
+Cost planning does not predict which attempts will fail.
+
+Nonzero retry bounds bind checkpoint identity. Each replacement has its own durable
+key and native ID, so resume retains the consumed retry count and reuses published
+successful captures, including publication before checkpoint completion. As with
+ordinary trials, a reserved attempt without verifiable stored terminal evidence
+blocks resume; it is never presumed stopped or repeated. Separate authored
+`comparison` runs refuse nonzero retry controls.
+
 ## Held-out test repeats
 
 `training.budget.test_repeats` optionally repeats each sealed test case for each

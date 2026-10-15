@@ -118,3 +118,10 @@ Repeat zero retains legacy checkpoint keys; additional repeats use a distinct
 JSON tuple namespace. Bind nondefault repeat counts into checkpoint identity.
 Report aligned per-trial scores and descriptive sample standard error; rescores
 replace measurements without adding samples. Missing repeats alone execute on resume.
+
+Opt-in trialRetries (authored budget.trial_retries, 0..3) replaces only execution=failed
+native trials after confirmed shutdown and settled host work. retry.ts retains the
+logical callback/repeat key and checkpoint.ts reserves distinct replacement entries
+with failed IDs and causes. Failed captures remain unscorable; successful captures
+and errored measurements are never repeated. Retry count survives resume; replacements
+share cancellation, slot admission and the original callback/held-out worker.

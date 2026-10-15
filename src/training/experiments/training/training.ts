@@ -1,4 +1,5 @@
-import { testRepeatCount } from '../../contracts/training-config.js';
+import { retryTrial, type TrialRetry } from './retry.js';
+import { testRepeatCount, trialRetryCount } from '../../contracts/training-config.js';
 import { MutationQueue } from '../../platform/mutations/index.js';
 import { loadTrialSlots } from '../concurrency/index.js';
 import type { TrainingScoring } from '../../contracts/training-config.js';
@@ -25,6 +26,7 @@ import { evaluateHeldOut, type HeldOutScore } from './held-out.js';
 import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
 export interface TrainingOptions {
+  trialRetries?: number;
   testRepeats?: number;
   scoring?: TrainingScoring;
   concurrency?: number;
@@ -62,6 +64,8 @@ export interface TrainingReport {
   heldOut: HeldOutScore[];
   /** Separate measurements over an original native capture, never additional trials. */
   rescores?: RescoreReport[];
+  /** Failed infrastructure captures and their separately persisted replacements. */
+  retries?: TrialRetry[];
   /** Optional host reporting, never optimizer feedback or a subscription invoice. */
   costs?: CostReport;
   costPlan?: TrainingCostPlan;
@@ -70,6 +74,7 @@ export interface TrainingReport {
 }
 export async function trainAgent(options: TrainingOptions): Promise<TrainingReport> {
   const started = performance.now();
+  const trialRetries = trialRetryCount(options.trialRetries);
   const testRepeats = testRepeatCount(options.testRepeats);
   if ('maxRunRequests' in options) throw new Error('Run-wide Grok request admission is not implemented; maxRunRequests cannot be enforced');
   const { concurrency, pool, slots } = await loadTrialSlots(options);
@@ -91,6 +96,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   if (!Object.keys(baselineComponents).length) throw new Error('No declared editable components');
   const checkpoint = await TrainingCheckpoint.open(options, [partition.train, partition.validation, options.test]);
   const trials: TrialReport[] = [...checkpoint?.reports ?? []];
+  const retries = new Map((checkpoint?.retries ?? []).map(retry => [retry.replacementTrialId, retry]));
   const rescores = [...checkpoint?.rescores ?? []];
   const inheritedTrialIds = checkpoint?.inheritedTrialIds ?? [];
   for (const report of trials) await options.onProgress?.({ type: 'trial.restored', payload: report });
@@ -110,16 +116,23 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     if (!candidate) { candidate = deriveCandidate(options.baseline, options.baseline, components); candidates.set(identity, candidate); }
     return candidate;
   };
-  const trial = async (dataset: ResolvedDataset, caseId: string, phase: 'train' | 'validation' | 'test', candidate: CandidateManifest, signal?: AbortSignal, callbackId?: string, round?: number) => {
+  const attemptTrial = async (dataset: ResolvedDataset, caseId: string, phase: 'train' | 'validation' | 'test', candidate: CandidateManifest, signal?: AbortSignal, callbackId?: string, round?: number, retry?: Omit<TrialRetry, 'replacementTrialId'>) => {
     const record = dataset.records.find(record => record.id === caseId);
     if (!record) throw new Error(`Case ${caseId} is not in ${phase}`);
     const key = callbackId ?? `test:${candidate.id}:${caseId}`;
-    const entry = await checkpoint?.begin(key);
+    const entry = await checkpoint?.begin(key, retry);
+    const id = entry?.id ?? randomUUID();
+    if (retry) {
+      const receipt = { ...retry, replacementTrialId: id };
+      retries.set(id, receipt);
+      await options.onProgress?.({ type: 'trial.retry', payload: receipt });
+    }
     if (entry?.restored) {
       const report = await recoverStoredReport(options, entry.id, phase, candidate.id, entry.report);
       if (!entry.report) { await checkpoint!.complete(key, report); entry.report = report; trials.push(report); }
     }
     if (entry?.report) {
+      if (trialRetries && entry.report.execution === 'failed') return entry.report;
       const recovery = { options, dataset, report: entry.report, previous: entry.rescores?.at(-1),
         evaluation: criteria.get(dataset)!, signal: signal ?? options.signal,
         pendingRescoreId: entry.pendingRescoreId,
@@ -134,7 +147,6 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       await options.onProgress?.({ type: 'trial.reused', payload: { id: entry.report.id, caseId, phase, candidateId: candidate.id } });
       return entry.report;
     }
-    const id = entry?.id ?? randomUUID();
     await options.onProgress?.({ type: 'trial.queued', payload: { caseId, phase, candidateId: candidate.id } });
     const lease = await pool?.acquire(signal ?? options.signal);
     let confirmed = false;
@@ -155,6 +167,15 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     trials.push(report);
     await options.onProgress?.({ type: 'trial.finished', payload: report });
     return report;
+  };
+  const trial: typeof attemptTrial = (dataset, caseId, phase, candidate, signal, callbackId, round) => {
+    if (!trialRetries) return attemptTrial(dataset, caseId, phase, candidate, signal, callbackId, round);
+    const combined = AbortSignal.any([signal, options.signal].filter((value): value is AbortSignal => value !== undefined));
+    return retryTrial({ key: callbackId ?? `test:${candidate.id}:${caseId}`, maximum: trialRetries, signal: combined,
+      execute: (key, retry) => {
+        combined.throwIfAborted();
+        return attemptTrial(dataset, caseId, phase, candidate, combined, key, round, retry);
+      } });
   };
   await options.onProgress?.({ type: 'training.started', payload: { id: options.id, baselineId: options.baseline.id,
     train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id), budget: options.budget } });
@@ -203,7 +224,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer,
     ...(options.scoring?.deferred === 'stage-score' ? { scoring: { ...options.scoring } } : {}),
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
-      test: options.test.records.map(record => record.id) }, trials, heldOut, ...(rescores.length ? { rescores } : {}),
+      test: options.test.records.map(record => record.id) }, trials, heldOut, ...(retries.size ? { retries: [...retries.values()] } : {}), ...(rescores.length ? { rescores } : {}),
     ...(options.checkpoint?.fork ? { lineage: { kind: 'measurement-repair' as const,
       parentExperimentId: options.checkpoint.fork.id, parentExecutionIdentity: options.checkpoint.fork.identity,
       executionIdentity: options.checkpoint.identity, receiptDigest: options.checkpoint.fork.receiptDigest, inheritedTrialIds } } : {}) };

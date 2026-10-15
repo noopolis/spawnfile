@@ -55,7 +55,7 @@ export interface TrainingConfiguration {
   models: Record<string, TrainingModel>;
   judges?: Record<string, TrainingJudge>;
   optimizer?: TrainingOptimizer;
-  budget?: { test_repeats?: number; max_trials?: number; max_proposals?: number; timeout_ms?: number;
+  budget?: { trial_retries?: number; test_repeats?: number; max_trials?: number; max_proposals?: number; timeout_ms?: number;
     experiment_timeout_ms?: number; trial_timeout_ms?: number };
   cache?: { mode: 'off' | 'exact' | 'persistent'; max_entries?: number; namespace?: string; directory?: string };
   recovery?: { max_attempts?: number };
@@ -69,6 +69,14 @@ export interface TrainingConfiguration {
 export function testRepeatCount(value: number = 1): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > 8) {
     throw new Error('training.budget.test_repeats must be an integer from 1 to 8');
+  }
+  return value;
+}
+
+/** Fresh replacements for infrastructure-failed native trials only. */
+export function trialRetryCount(value: number = 0): number {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 3) {
+    throw new Error('training.budget.trial_retries must be an integer from 0 to 3');
   }
   return value;
 }

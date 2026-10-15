@@ -1,4 +1,5 @@
 import { MutationQueue } from '../../platform/mutations/index.js';
+import type { TrialRetry } from './retry.js';
 import { recoverStoredReport } from './recovery.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, readdir, rename, link, unlink } from 'node:fs/promises';
@@ -10,7 +11,7 @@ import type { TrialReport } from '../trials/index.js';
 import type { CandidateManifest } from '../../candidates/index.js';
 import type { TrainingOptions } from './training.js';
 
-interface Entry { id: string; report?: TrialReport; rescores?: RescoreReport[]; pendingRescoreId?: string }
+interface Entry { id: string; retry?: Omit<TrialRetry, 'replacementTrialId'>; report?: TrialReport; rescores?: RescoreReport[]; pendingRescoreId?: string }
 interface State {
   identity: string;
   entries: Record<string, Entry>;
@@ -28,6 +29,7 @@ export class TrainingCheckpoint {
   get inheritedTrialIds() { return [...this.state.lineage?.inheritedTrialIds ?? []]; }
   get optimizer() { return this.state.optimizer; }
   get rescores() { return Object.values(this.state.entries).flatMap(entry => entry.rescores ?? []); }
+  get retries(): TrialRetry[] { return Object.values(this.state.entries).flatMap(entry => entry.retry ? [{ ...entry.retry, replacementTrialId: entry.id }] : []); }
   get reports() { return Object.values(this.state.entries).flatMap(entry => entry.report ? [entry.report] : []); }
 
   static async open(options: TrainingOptions, datasets: ResolvedDataset[]) {
@@ -37,6 +39,7 @@ export class TrainingCheckpoint {
       adapter: options.native.adapter.id, model: options.native.model, resources: options.native.resources,
       optimizer: { provider: options.inference.provider.id, model: options.inference.model },
       concurrency: options.concurrency, slots: options.slots, slotsFile: options.slotsFile,
+      ...(options.trialRetries ? { trialRetries: options.trialRetries } : {}),
       ...(options.testRepeats === undefined || options.testRepeats === 1 ? {} : { testRepeats: options.testRepeats }),
       ...(options.scoring?.deferred === 'stage-score' ? { scoring: options.scoring } : {}),
       seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, search: options.search, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
@@ -105,19 +108,19 @@ export class TrainingCheckpoint {
     });
   }
 
-  async begin(key: string): Promise<Entry & { restored: boolean }> {
-    return this.transaction(() => this.beginMutation(key));
+  async begin(key: string, retry?: Entry['retry']): Promise<Entry & { restored: boolean }> {
+    return this.transaction(() => this.beginMutation(key, retry));
   }
-  private async beginMutation(key: string): Promise<Entry & { restored: boolean }> {
+  private async beginMutation(key: string, retry?: Entry['retry']): Promise<Entry & { restored: boolean }> {
     let entry = this.state.entries[key];
-    if (!entry) { entry = { id: randomUUID() }; this.state.entries[key] = entry; await this.save(); }
+    if (!entry) { entry = { id: randomUUID(), ...(retry ? { retry } : {}) }; this.state.entries[key] = entry; await this.save(); }
     return { ...entry, restored: this.restored.delete(key) };
   }
   async complete(key: string, report: TrialReport) {
     return this.transaction(() => this.completeMutation(key, report));
   }
   private async completeMutation(key: string, report: TrialReport) {
-    this.state.entries[key] = { id: report.id, report };
+    this.state.entries[key] = { ...this.state.entries[key], id: report.id, report };
     await this.save();
   }
   async reserveRecovery(maximum: number, key?: string): Promise<string> {
