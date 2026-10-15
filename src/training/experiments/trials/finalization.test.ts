@@ -148,7 +148,7 @@ it('freezes the capture when an observation persistence callback outlives the dr
   };
   const report = await runTrial(task.options);
   const frozen = JSON.stringify(report);
-  expect(report.execution).toBe('failed'); expect(report.hostWork).toBe('incomplete');
+  expect(report.execution).toBe('interrupted'); expect(report.hostWork).toBe('incomplete');
   release(); await expect(callback).rejects.toThrow(); await new Promise(resolve => setTimeout(resolve, 10));
   expect(JSON.stringify(report)).toBe(frozen); expect(report.snapshot.events).toHaveLength(0);
   expect(task.journal.some(event => event.type === 'live.evaluation' && (event.payload as { boundary: string }).boundary === 'late')).toBe(false);

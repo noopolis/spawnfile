@@ -17,7 +17,10 @@ export function trialControl(timeoutMs: number, outer?: AbortSignal) {
   };
   const stop = (why: string, source: 'operator' | 'deadline' | 'requested' | 'decisive' = 'requested') => {
     reason ??= why;
-    cause ??= source;
+    // External cancellation outranks internal failures, including during finalization.
+    if (!cause || (source === 'operator' || source === 'deadline') && cause !== 'operator' && cause !== 'deadline') {
+      reason = why; cause = source;
+    }
     controller.abort(new DOMException(reason, 'AbortError'));
     closeNative(reason);
   };

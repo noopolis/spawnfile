@@ -27,3 +27,21 @@ it('propagates deadlines and cancellation without claiming unacknowledged work s
   const afterAbort = expect(stalled.owned(new Promise(() => {}))).rejects.toThrow('did not settle');
   await vi.advanceTimersByTimeAsync(2_000); await afterAbort; stalled.dispose();
 });
+
+it.each(['operator', 'deadline'] as const)('keeps %s cancellation above earlier internal stop causes', async source => {
+  vi.useFakeTimers();
+  for (const prior of ['requested', 'decisive'] as const) {
+    const outer = new AbortController();
+    const control = trialControl(20, outer.signal);
+    control.stop('internal fault', prior);
+    if (source === 'operator') outer.abort();
+    else await vi.advanceTimersByTimeAsync(20);
+    expect(control.cause).toBe(source);
+    expect(control.reason).toBe(source === 'operator' ? 'Operator cancelled' : 'Trial deadline exceeded');
+    control.stop('another failure');
+    expect(control.cause).toBe(source);
+    if (source === 'operator') await vi.advanceTimersByTimeAsync(20);
+    expect(control.cause).toBe(source);
+    control.dispose();
+  }
+});

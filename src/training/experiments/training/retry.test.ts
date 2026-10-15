@@ -71,7 +71,7 @@ function native(options: TrainingOptions, failures: number, target = 'Alpha', de
       const count = (counts.get(token) ?? 0) + 1; counts.set(token, count);
       return { status: token === target && count <= failures ? 'failed' : 'completed',
         ...(deferred ? { blocked: 'awaiting-external-input' as const } : {}),
-        text: `ack:${token.toLowerCase()}`, error: token === target && count <= failures ? 'wake execution claim was lost' : undefined,
+        text: token === target && count <= failures && !deferred ? '' : `ack:${token.toLowerCase()}`, error: token === target && count <= failures ? 'wake execution claim was lost' : undefined,
         usage: null, coverage: [{ channel: 'output', completeness: 'complete', ordering: 'source' }] };
     },
     async stop(reason) { return { state: 'acknowledged', scope: 'native-handle', quiescence: 'confirmed', remoteWork: 'unknown', reason, detail: 'Test fixture closed' }; },
@@ -332,4 +332,40 @@ it('does not replace a deferred native result whose collection failed afterwards
   expect(report.turns[0]!.native.blocked).toBe('awaiting-external-input');
   expect(counts.get('Alpha')).toBe(1);
   expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(0);
+});
+
+it.each(['none', 'tool', 'artifact', 'deadline'] as const)('replaces only a never-acting cancelled wake: %s', async evidence => {
+  const { options, events } = await fixture(); options.trialRetries = 1;
+  const { counts } = native(options, 1); optimizer();
+  const start = options.native.adapter.start;
+  let failed = false;
+  options.native.adapter.start = async input => {
+    const session = await start(input);
+    return { ...session, run: async (turn, signal) => {
+      const result = await session.run(turn, signal);
+      failed = result.status === 'failed';
+      if (!failed) return result;
+      if (evidence === 'tool') await input.onObservation({ id: 'acted', source: 'native', seq: 1,
+        type: 'tool.dispatch', tool: 'file', callId: 'filing', trialId: input.trialId, wakeId: turn.id,
+        timestamp: '2026-10-15T00:00:00.000Z' });
+      if (evidence === 'artifact') await writeFile(join(input.workspacePath, 'filing.txt'), 'Filed');
+      if (evidence === 'deadline') await new Promise(resolve => setTimeout(resolve, 1_100));
+      return { ...result, status: 'cancelled', text: '', coverage: [] };
+    }, stop: async reason => ({ ...await session.stop(reason), unevidenced: 'terminal-unbound' }) };
+  };
+  options.train.records[0]!.outputs = { filing: 'filing.txt' };
+  if (evidence === 'deadline') options.native.timeoutMs = 1_000;
+  options.native.prepareEnvironment = async () => ({ collect: async () => {
+    if (failed) throw new Error('collection cannot bind terminal evidence');
+    return {};
+  } });
+  if (evidence === 'none') expect((await trainAgent(options)).retries).toHaveLength(1);
+  else await expect(trainAgent(options)).rejects.toThrow();
+  const report = events.find(event => event.type === 'trial.finished')!.payload as import('../trials/index.js').TrialReport;
+  expect(report).toMatchObject(evidence === 'deadline' ? { execution: 'interrupted' }
+    : { execution: 'failed', failureKind: evidence === 'none' ? 'native-infrastructure' : 'measurement' });
+  if (evidence === 'deadline') expect(report).not.toHaveProperty('failureKind');
+  expect(report.error).toContain('Final collection failed');
+  expect(counts.get('Alpha')).toBe(evidence === 'none' ? 2 : 1);
+  expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(evidence === 'none' ? 1 : 0);
 });
