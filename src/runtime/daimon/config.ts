@@ -95,9 +95,17 @@ const assertTurnLimitsEngine = (agentId: string, engine: DaimonEngine, turnLimit
   }
 };
 
+// Daimon lowers only the primary model; an effort on a fallback would be accepted and dropped.
+const assertNoFallbackReasoningEffort = (agentId: string, node: ResolvedAgentNode): void => {
+  if ((node.execution?.model?.fallback ?? []).some((target) => target.reasoning_effort !== undefined)) {
+    throw new SpawnfileError("validation_error", `Daimon lowers reasoning_effort only from the primary model; remove it from fallback models: ${agentId}`);
+  }
+};
+
 /** The per-agent option checks `createDaimonContainerTargets` applies, for preflight. */
 export const assertDaimonAgentOptions = (agentId: string, node: ResolvedAgentNode): void => {
   resolveDaimonAttention(node.runtime.options.attention);
+  assertNoFallbackReasoningEffort(agentId, node);
   assertTurnLimitsEngine(agentId, resolveDaimonEngine(node), resolveDaimonGrokTurnLimits(node.runtime.options.turn_limits));
 };
 
@@ -201,6 +209,7 @@ export const createDaimonContainerTargets = async (
     );
   }
 
+  for (const input of agents) assertNoFallbackReasoningEffort(input.id, input.value);
   const hasSchedules = agents.some((input) => input.value.schedule !== undefined);
   const attentionById = new Map(agents.map((input) => [input.id, resolveDaimonAttention(input.value.runtime.options.attention)]));
   // Declared per agent and carried to the broker's service config, never into the Daimon

@@ -70,3 +70,34 @@ describe("Daimon reasoning effort lowering", () => {
     expect(await emitEngine("grok", reasoningEffort)).toEqual({ kind: "grok", model: "grok-4.6", reasoningEffort });
   });
 });
+
+describe("Daimon Codex fallback reasoning effort", () => {
+  it("refuses an effort declared on a fallback instead of dropping it", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-fallback-effort-"));
+    try {
+      await writeFile(path.join(directory, "AGENTS.md"), "# Instructions\n");
+      await writeFile(path.join(directory, "Spawnfile"), JSON.stringify({
+        spawnfile_version: "0.1", kind: "agent", name: "test",
+        runtime: { name: "daimon", options: { engine: "codex" } },
+        execution: {
+          model: {
+            primary: { auth: { method: "codex" }, name: "gpt-5.4-codex", provider: "openai" },
+            fallback: [{ auth: { method: "codex" }, name: "gpt-5.4-mini", provider: "openai", reasoning_effort: "high" }]
+          },
+          sandbox: { mode: "workspace" }
+        },
+        workspace: { docs: { system: "AGENTS.md" } }
+      }));
+      const plan = await buildCompilePlan(directory);
+      const planned = plan.nodes[0]!;
+      const node = planned.value as ResolvedAgentNode;
+      expect(() => daimonAdapter.preflightAgent!(node, planned.id)).toThrow(/only from the primary model/u);
+      const compiled = await daimonAdapter.compileAgent(node);
+      await expect(createDaimonContainerTargets([
+        { emittedFiles: compiled.files, id: planned.id, kind: "agent", slug: planned.slug, value: node }
+      ])).rejects.toThrow(/only from the primary model/u);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
