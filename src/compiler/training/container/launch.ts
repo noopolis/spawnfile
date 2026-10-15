@@ -19,6 +19,10 @@ import { hashJson } from "../preparation/files.js";
 import { parseTrainingMappedPreparation } from "../preparation/contract.js";
 import { persistTrainingGrokCredential } from "./grokWriteback.js";
 
+// The image bakes /run/training/inputs as 0:2000 0750 for brokered worker isolation; the
+// non-brokered host-uid evaluator joins that group so it can still traverse its own inputs.
+export const TRAINING_INPUTS_GID = 2_000;
+
 export interface LaunchTrainingContainerOptions {
   image: string; configPath: string; context: TrainingContext; args: readonly string[];
   timeoutMs: number; signal?: AbortSignal;
@@ -123,7 +127,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const privilege = broker
       ? [...await trainingBrokerSecurityArgs(privateRoot), "--pids-limit", "2048",
         ...trainingBrokerTmpfsTargets(prepared.config.slots).flatMap((entry) => ["--tmpfs", `${entry.path}:rw,nosuid,nodev,size=${entry.size},mode=${entry.mode}`])]
-      : ["--user", `${uid}:${gid}`, "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+      : ["--user", `${uid}:${gid}`, "--group-add", String(TRAINING_INPUTS_GID), "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         ...DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS, "--pids-limit", "512",
         "--tmpfs", `/tmp:rw,nosuid,nodev,size=1g,uid=${uid},gid=${gid},mode=1777`, "--tmpfs", `/work:rw,nosuid,nodev,size=4g,uid=${uid},gid=${gid},mode=700`,
         "--tmpfs", `/home/training:rw,nosuid,nodev,size=1g,uid=${uid},gid=${gid},mode=700`];

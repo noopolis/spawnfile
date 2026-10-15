@@ -22,6 +22,7 @@ it("launches one immutable container, streams a verified persisted completion an
   const create = docker.calls.find((args) => args[2] === "create")!;
   expect(create).toContain("/opt/training/bin/train"); expect(create).toContain("HOME=/home/training");
   expect(create).toContain("--user"); expect(create).toContain(`${process.getuid!()}:${process.getgid!()}`);
+  expect(create.slice(create.indexOf("--group-add"), create.indexOf("--group-add") + 2)).toEqual(["--group-add", "2000"]);
   expect(create).toContain("--security-opt=seccomp=unconfined"); expect(create).toContain("--security-opt=apparmor=unconfined");
   expect(create.some((value) => value.startsWith("/work:") && value.includes(`uid=${process.getuid!()}`))).toBe(true);
   expect(create).toContain(image); expect(create).not.toContain("--privileged");
