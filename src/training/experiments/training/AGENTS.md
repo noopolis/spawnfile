@@ -65,7 +65,8 @@ when the trial owner recorded a passing preDeferralStatus. Capture that verdict
 only in the opt-in path; default reports and rewards stay unchanged. Keep the
 trial failed, honor all measurement/cleanup guards, bind checkpoint identity and
 use the same policy in callbacks, held-out means and operator exports.
-`failed` still means the machine broke and still refuses to produce a number.
+`failed` remains unscorable; only explicit native-infrastructure failures allow
+subject replacement.
 
 Evaluation services preserve injected grader runtimes alongside judges and embeddings.
 
@@ -118,3 +119,12 @@ Repeat zero retains legacy checkpoint keys; additional repeats use a distinct
 JSON tuple namespace. Bind nondefault repeat counts into checkpoint identity.
 Report aligned per-trial scores and descriptive sample standard error; rescores
 replace measurements without adding samples. Missing repeats alone execute on resume.
+
+Opt-in trialRetries (authored budget.trial_retries, 0..3) replaces only execution=failed
+trials explicitly classified failureKind=native-infrastructure, after confirmed
+shutdown and settled host work. Legacy unclassified failures are ineligible.
+retry.ts retains the
+logical callback/repeat key and checkpoint.ts reserves distinct replacement entries
+with failed IDs and causes. Failed captures remain unscorable; successful captures
+and errored measurements are never repeated. Retry count survives resume; replacements
+share cancellation, slot admission and the original callback/held-out worker.

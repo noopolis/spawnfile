@@ -125,6 +125,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     }
     if (test !== undefined) {
       const report = await trainAgent({ testRepeats,
+        trialRetries: args.training?.budget?.trial_retries,
         concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined,
         slotsFile: args.flags['slots-file'] ? resolve(io.cwd, one(args, 'slots-file')) : undefined, id, baseline: native.candidate, train: dataset, validation, test,
         validationGroups: args.flags['validation-group'], native: base,
@@ -148,7 +149,8 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       io.stdout(`${JSON.stringify({ status: 'completed', index: join(native.out, 'invocation.json'), ...index,
         evaluations: report.optimizer.provenance.evaluations, proposals: report.optimizer.provenance.proposals,
         costs: journal.summary(), estimatedApiEquivalentUsd: costPlan?.apiEquivalentUsd })}\n`);
-      return report.trials.filter((trial) => trial.phase === 'test' && trial.candidateId === report.selected.id)
+      return report.trials.filter((trial) => trial.phase === 'test' && trial.candidateId === report.selected.id
+        && !report.retries?.some(retry => retry.failedTrialId === trial.id))
         .every((trial) => (report.rescores?.findLast(score => score.runId === trial.id)?.status ?? trial.status) === 'pass') ? 0 : 1;
     }
     const evaluation = await freezeCriteria(dataset, native.evaluation, native.registry);

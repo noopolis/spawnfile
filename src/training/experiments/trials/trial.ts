@@ -41,6 +41,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   let prepared: PreparedTrial | undefined;
   let error: string | undefined;
   let execution: TrialReport['execution'] = 'completed';
+  let failureKind: TrialReport['failureKind'];
   let sinkFailed = false;
   let closed = false;
   let observationTail = Promise.resolve();
@@ -67,6 +68,12 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     artifacts: { ...await collectOutputs(record.outputs ?? {}, paths.workspace, `${options.id}/${events.length}`), ...await prepared?.collect?.() } });
   const live = createLiveMonitor({ checks: record.live.checks, registry, evaluation: evaluationServices,
     persist: entry => persist('live.evaluation', entry), stop: why => control.stop(why, 'decisive'), signal: control.signal });
+  const fail = (kind: NonNullable<TrialReport['failureKind']>) => {
+    execution = 'failed';
+    // Never discard a decisive witness or repeat any already completed native work.
+    failureKind = live.decisive ? 'behavioral'
+      : turns.some(turn => turn.native.status === 'completed' || turn.native.blocked === 'awaiting-external-input') ? 'measurement' : kind;
+  };
   const evaluate = (state: EvaluationSnapshot) => ({ ...evaluationServices, snapshot: state, results: {}, scores: {}, signal: control.signal });
   try {
     await persist('trial.started', { id: options.id, phase: options.phase, candidateId: options.candidateId,
@@ -124,6 +131,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         // demote it; an uncertain, hung, crashed or cancelled turn never reaches it.
         execution = native.status === 'cancelled' ? 'interrupted'
           : native.blocked === 'awaiting-external-input' ? 'deferred' : 'failed';
+        if (execution === 'failed') fail('native-infrastructure');
         error = native.error; break;
       }
       if (checks.some(check => check.status !== 'pass' || check.finality !== 'final')) { execution = 'interrupted'; error = 'Turn gate is not satisfied'; break; }
@@ -134,6 +142,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     error = caught instanceof Error ? caught.message : String(caught);
     const abortedByPolicy = control.cause === 'decisive' && caught instanceof Error && caught.name === 'AbortError';
     execution = control.cause === 'operator' || control.cause === 'deadline' || abortedByPolicy ? 'interrupted' : 'failed';
+    if (execution === 'failed') fail(observationFailure ? 'measurement' : 'native-infrastructure');
     diagnostic = subjectStartupDiagnostic(caught);
     const capture = diagnostic ? subjectStartupCapture(caught) : undefined;
     // The adapter's own copy can be runtime-local; the operator's trial directory outlives it.
@@ -164,7 +173,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   const unevidenced = nativeStop?.unevidenced
     ? `Native trial unscorable for want of terminal evidence (${nativeStop.unevidenced})${failedWake ? ` on wake ${failedWake}` : ''}` : undefined;
   if (execution === 'deferred' && (unproven || unevidenced || control.signal.aborted)) {
-    execution = 'failed';
+    fail('native-infrastructure');
     // The deferral is the subject's outcome; this demotion is the machine's. While
     // they shared one message, an unprovable closure published the subject's own
     // "delivery blocked awaiting external input" as the reason a trial was
@@ -177,7 +186,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     await control.owned(drainObservations(() => observationTail));
     if (observationFailure) throw new Error(observationFailure);
   } catch (caught) {
-    error = `Observation closure failed: ${String(caught)}`; execution = 'failed'; control.stop(error);
+    error = `Observation closure failed: ${String(caught)}`; fail('measurement'); control.stop(error);
   }
   closed = true;
   try {
@@ -186,7 +195,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     let liveGates: EvaluationResult[] = [];
     try { finalSnapshot = await control.owned(snapshot()); }
     catch (caught) {
-      error = `Final collection failed: ${String(caught)}`; execution = 'failed'; control.stop(error);
+      error = `Final collection failed: ${String(caught)}`; fail('measurement'); control.stop(error);
       finalSnapshot = { trialId: options.id, recordId: record.id, closed, subjectUsage: subjectUsage(), events: structuredClone(events),
         coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {}, artifacts: {} };
     }
@@ -197,8 +206,10 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         await persist('terminal.evaluation.skipped', { reason: 'Selected decisive mechanical failure', witness: live.decisive });
       } else evaluation = await control.owned(evaluatePlan(record.effectiveStages, evaluate(finalSnapshot), registry));
     } catch (caught) {
-      error = `Final evaluation failed: ${String(caught)}`; execution = 'failed'; control.stop(error);
+      error = `Final evaluation failed: ${String(caught)}`; fail('measurement'); control.stop(error);
     }
+    // Closing live checks can establish a decisive witness after an earlier failure.
+    if (execution === 'failed' && live.decisive) failureKind = 'behavioral';
     const finalStop = await control.receipt();
     if (control.signal.aborted && execution === 'completed') execution = 'interrupted';
     // Subject totals were frozen at native closure; judge failures are separate work.
@@ -221,6 +232,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       recordId: record.id, durationMs: performance.now() - started,
       subject: { adapterId: adapter.id, requestedModel: options.model, isolation: adapter.capabilities.isolation },
       ...(execution === 'deferred' && options.retainDeferredStatus ? { preDeferralStatus } : {}),
+      ...(failureKind ? { failureKind } : {}),
       paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
       expectedTurns: inputs.length, turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),
       stop: structuredClone(finalStop), ...(diagnostic ? { diagnostic: structuredClone(diagnostic) } : {}), ...(error ? { error } : {}) };

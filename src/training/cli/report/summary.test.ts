@@ -2,6 +2,7 @@ import { afterEach, expect, it } from 'vitest';
 import { rm } from 'node:fs/promises';
 import type { RescoreReport } from '../../experiments/index.js';
 import { recordedGrade, reportFixture } from './fixture.js';
+import { renderTrainingMarkdown } from './markdown.js';
 import { summarizeTraining } from './summary.js';
 
 const roots: string[] = [];
@@ -155,4 +156,22 @@ it('refuses mismatched evaluated manifests and sealed round attribution', async 
   report.trials[0]!.candidate = report.baseline;
   report.trials.find(trial => trial.phase === 'test')!.round = 2;
   expect(() => summarizeTraining(report)).toThrow('search round');
+});
+
+it('reports retry causes and excludes replaced infrastructure failures from means without dropping their measurements', async () => {
+  const { report } = await fixture();
+  const replacement = report.trials.find(trial => trial.phase === 'test' && trial.candidateId === report.selected.id)!;
+  const failed = { ...structuredClone(replacement), id: 'infra-failed', execution: 'failed' as const, error: 'wake execution claim was lost' };
+  report.trials.unshift(failed);
+  report.retries = [{ failedTrialId: failed.id, replacementTrialId: replacement.id, cause: failed.error, attempt: 1 }];
+  const summary = summarizeTraining(report);
+  expect(summary.candidates.find(entry => entry.selected)!.splits.test.meanScore).toBe(0.7);
+  const measurements = summary.candidates.find(entry => entry.selected)!.splits.test.examples.flatMap(example => example.measurements);
+  expect(measurements.find(value => value.trialId === failed.id)).toMatchObject({ score: null, scoreUnavailable: expect.stringContaining('infrastructure') });
+  expect(summary.retries).toEqual(report.retries);
+  const markdown = renderTrainingMarkdown(summary, 'bundle', {});
+  expect(markdown).toContain('Infrastructure retries');
+  expect(markdown).toContain('infra-failed');
+  expect(markdown).toContain(replacement.id);
+  expect(markdown).toContain(failed.error);
 });

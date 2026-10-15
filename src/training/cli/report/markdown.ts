@@ -34,6 +34,10 @@ export function renderTrainingMarkdown(summary: TrainingSummary, bundle: string,
           measurement.evaluationId, split === 'test' ? 'post-selection' : measurement.round ?? 'not recorded', number(measurement.score), measurement.status, number(measurement.durationMs),
           `${measurement.fidelity.measurement}; ${measurement.fidelity.execution}; historical unverified; isolation ${measurement.fidelity.declaredIsolation ?? 'unknown'}`])
           : [[value.label, split, example.id, 'not run', 'none', 'not recorded', 'unknown', 'not run', 'unknown', 'unverified']])))), '',
+    ...(summary.retries?.length ? ['## Infrastructure retries', '',
+      table(['Failed trial', 'Replacement trial', 'Retry', 'Cause'], summary.retries.map(retry =>
+        [retry.failedTrialId, retry.replacementTrialId, retry.attempt, retry.cause])), '',
+      'Failed captures remain listed above with unknown scores; only their replacements enter means.', ''] : []),
     '## Failing checks', '', summary.failureSummary.length ? table(['Check', 'Verdict', 'Affected trials'],
       summary.failureSummary.map(value => [value.check, value.status, value.trials])) : 'No non-passing checks recorded.', '',
     ...summary.failingChecks.map(value => `- ${cell(labels.get(value.candidateId))}/${cell(value.exampleId)} (${value.split}), ${cell(value.check)}: ${value.status}. ${cell(value.reason)}`), '',

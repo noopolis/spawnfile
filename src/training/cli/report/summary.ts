@@ -105,8 +105,9 @@ function splitScores(report: TrainingReport, candidateId: string, split: Split, 
   const examples = report.partitions[split].map(id => {
     const measurements = trials.filter(trial => trial.candidateId === candidateId && trial.phase === split && trial.recordId === id)
       .map(trial => measurement(trial, rescore?.(trial), report.scoring));
-    const complete = measurements.length > 0 && measurements.every(value => value.score !== null);
-    return { id, meanScore: complete ? mean(measurements.map(value => value.score!)) : null, measurements };
+    const effective = measurements.filter(value => !report.retries?.some(retry => retry.failedTrialId === value.trialId));
+    const complete = effective.length > 0 && effective.every(value => value.score !== null);
+    return { id, meanScore: complete ? mean(effective.map(value => value.score!)) : null, measurements };
   });
   const complete = examples.length > 0 && examples.every(value => value.meanScore !== null);
   return { complete, meanScore: complete ? mean(examples.map(value => value.meanScore!)) : null,
@@ -160,6 +161,7 @@ export function summarizeTraining(report: TrainingReport) {
       }),
   }));
   return { schema: 'paideia.training-export.v1' as const, id: report.id, selectedCandidateId: report.selected.id,
+    ...(report.retries?.length ? { retries: report.retries } : {}),
     baselineCandidateId: report.baseline.id, candidates: entries, rounds: report.optimizer.provenance.rounds ?? [], roundScores,
     unattributedSearchTrialIds: report.trials.filter(trial => trial.phase !== 'test' && trial.round === undefined).map(trial => trial.id),
     heldOut: { ...(report.heldOut.some(arm => arm.trialScores !== undefined) ? { arms: report.heldOut } : {}), complete, pairs, pairedExamples: deltas.length, meanDelta, standardDeviation,

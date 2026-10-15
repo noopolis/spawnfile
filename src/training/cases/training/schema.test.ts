@@ -168,3 +168,10 @@ it('validates deferred scoring without adding defaults to existing configuration
     expect(() => validateTrainingConfiguration({ ...config, scoring })).toThrow('scoring');
   }
 });
+
+it.each([-1, 4, 1.5, '1', null, true])('refuses authored trial_retries=%s', trial_retries => {
+  expect(() => validateTrainingConfiguration({ ...config, budget: { trial_retries } })).toThrow('budget.trial_retries');
+});
+it.each([0, 1, 3])('accepts authored trial_retries=%s', trial_retries => {
+  expect(validateTrainingConfiguration({ ...config, budget: { trial_retries } }).budget).toEqual({ trial_retries });
+});
