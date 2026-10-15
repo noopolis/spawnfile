@@ -220,6 +220,13 @@ const createContainerTargets = async (
 
 export const picoClawAdapter: RuntimeAdapter = {
   assertSupportedModelTarget(target) {
+    if (target.reasoningEffort !== undefined) {
+      throw new SpawnfileError(
+        "validation_error",
+        "PicoClaw runtime does not support reasoning_effort; only Daimon Codex and Grok engines support it"
+      );
+    }
+
     if (target.endpoint) {
       if (
         target.endpoint.compatibility === "anthropic" &&

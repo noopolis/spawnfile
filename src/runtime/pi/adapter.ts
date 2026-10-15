@@ -149,6 +149,13 @@ const assertSupportedPiSurfaces = (surfaces: ResolvedAgentSurfaces | undefined):
 
 export const piAdapter: RuntimeAdapter = {
   assertSupportedModelTarget(target) {
+    if (target.reasoningEffort !== undefined) {
+      throw new SpawnfileError(
+        "validation_error",
+        "Pi runtime does not support reasoning_effort; only Daimon Codex and Grok engines support it"
+      );
+    }
+
     if (target.endpoint) {
       if (target.provider !== "custom" && target.provider !== "local") {
         throw new SpawnfileError(

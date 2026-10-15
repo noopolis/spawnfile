@@ -193,6 +193,13 @@ const createContainerTargets = async (
 
 export const openClawAdapter: RuntimeAdapter = {
   assertSupportedModelTarget(target) {
+    if (target.reasoningEffort !== undefined) {
+      throw new SpawnfileError(
+        "validation_error",
+        "OpenClaw runtime does not support reasoning_effort; only Daimon Codex and Grok engines support it"
+      );
+    }
+
     if (target.endpoint) {
       if (target.auth.method === "claude-code" || target.auth.method === "codex") {
         throw new SpawnfileError(
