@@ -17,7 +17,7 @@ spend mutations; no live key or network required.
 
 HTTPS only; configured paid prices are positive and zero caps block dispatch even
 when floating-point estimates underflow. Each HTTP attempt owns a fresh timeout;
-caller cancellation stays terminal. Retry network/timeouts with bounded 5xx backoff.
+caller cancellation stays terminal. Retry network/timeouts, 408, 429, 499 and 5xx with bounded backoff (408/499 are proxy-side drops of a valid request).
 State groups use a pool (default 8, configured 1–32); split batches stay sequential.
 Stop admission and drain started work on failure before exposing receipts.
 HTTP 402 is a terminal payment error, like 401 authentication failure: never

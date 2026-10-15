@@ -149,7 +149,7 @@ it('requires HTTPS before any credential-bearing dispatch', () => {
   expect(fetch).not.toHaveBeenCalled();
 });
 
-it.each([401, 402, 403, 422, 429, 500, 529])('cancels unread HTTP %i bodies before retry or return', async status => {
+it.each([401, 402, 403, 408, 422, 429, 499, 500, 529])('cancels unread HTTP %i bodies before retry or return', async status => {
   const cancelled: number[] = [], signals: AbortSignal[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
     expect(cancelled).toHaveLength(signals.length);
@@ -164,9 +164,9 @@ it.each([401, 402, 403, 422, 429, 500, 529])('cancels unread HTTP %i bodies befo
   const backend = createTypeSafeDecision({ model, env, fetch, retryBaseMs: 0 });
   if (status === 401) await expect(backend.score(requests(1))).rejects.toThrow('authentication failed');
   else if (status === 402) await expect(backend.score(requests(1))).rejects.toThrow('payment failed');
-  else if (status === 429 || status >= 500) await expect(backend.score(requests(1))).rejects.toThrow('retry attempts exhausted');
+  else if ([408, 429, 499].includes(status) || status >= 500) await expect(backend.score(requests(1))).rejects.toThrow('retry attempts exhausted');
   else expect(await backend.score(requests(1))).toMatchObject([{ status: 'missing' }]);
-  const count = status === 429 || status >= 500 ? 3 : 1;
+  const count = [408, 429, 499].includes(status) || status >= 500 ? 3 : 1;
   expect(fetch).toHaveBeenCalledTimes(count);
   expect(cancelled).toEqual(Array.from({ length: count }, (_, i) => i + 1));
   expect(signals.every(signal => signal.aborted)).toBe(true);
