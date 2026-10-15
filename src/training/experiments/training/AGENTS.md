@@ -107,3 +107,9 @@ belong to native measurement persistence, independent of final optimizer selecti
 completed checkpoint resume must retain rejected evaluated proposals.
 
 resolveTrainingPartitions preserves explicit validation dataset identity and rejects competing group controls. Split checks still bind all three roles.
+
+Held-out test repeats (1..8, default 1) use fresh native trials per case/arm.
+Repeat zero retains legacy checkpoint keys; additional repeats use a distinct
+JSON tuple namespace. Bind nondefault repeat counts into checkpoint identity.
+Report aligned per-trial scores and descriptive sample standard error; rescores
+replace measurements without adding samples. Missing repeats alone execute on resume.

@@ -96,11 +96,14 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
 }
 
 export function projectTrainingReport(report: TrainingReport, budget?: TrialProjectionOptions['budget']): ViewerData {
-  return projectTrials({ id: report.id, title: 'Completed training experiment', phase: 'final-test', status: 'completed',
+  const data = projectTrials({ id: report.id, title: 'Completed training experiment', phase: 'final-test', status: 'completed',
     updatedAt: 'Recorded completion', baseline: report.baseline, trials: report.trials, optimizer: report.optimizer, budget,
     costs: report.costs, costPlan: report.costPlan, rescores: report.rescores,
     cases: Object.entries(report.partitions).flatMap(([phase, ids]) => ids.map((id) => ({ id,
       split: phase as 'train' | 'validation' | 'test' }))) });
+  if (report.heldOut.some(arm => arm.trialScores !== undefined)) data.heldOut = report.heldOut.map(({ candidateId, meanScore, trialScores, standardError }) =>
+    ({ candidateId, meanScore, trialScores, standardError }));
+  return data;
 }
 
 export function projectComparisonReport(report: ComparisonReport): ViewerData {

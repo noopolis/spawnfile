@@ -1,3 +1,4 @@
+import { testRepeatCount } from '../../contracts/training-config.js';
 import type { CheckNode, ResolvedDataset } from '../../contracts/dataset.js';
 import { builtinEvaluatorDefinitions, validateCostDatasetSplit, projectDatasetCost, type CostDataset, type CostRecord } from '../../cases/index.js';
 import { resolveTrainingPartitions } from '../training/index.js';
@@ -22,6 +23,7 @@ export interface TrainingCostOptions<Dataset = ResolvedDataset> {
   optimizerModel?: string;
   judges: Readonly<Record<string, PlannedInferenceRoute & { citationRepairs?: 0 | 1 }>>;
   optimizerRoute?: PlannedInferenceRoute;
+  testRepeats?: number;
   maxTrials: number;
   maxProposals: number;
   assumptions?: Partial<CostAssumptions>;
@@ -58,6 +60,8 @@ export interface TrainingCostPlan {
 
 /** Pure planning over resolved cases. Does not construct an adapter or touch credentials. */
 export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | CostDataset>): TrainingCostPlan {
+  const testRepeats = testRepeatCount(options.testRepeats);
+  if (options.mode === 'comparison' && testRepeats !== 1) throw new Error('Comparison does not support test repeats');
   const project = (dataset: ResolvedDataset | CostDataset) => dataset.schema === 'paideia.cost-dataset.v1' ? dataset : projectDatasetCost(dataset);
   const train = project(options.train), test = project(options.test);
   const validation = options.validation ? project(options.validation) : undefined;
@@ -76,7 +80,7 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
     throw new Error('Cost planning requires nonempty training, validation and test partitions');
   }
   validateCostDatasetSplit(partition.train, test, partition.validation);
-  const reservedTestTrials = test.records.length * 2;
+  const reservedTestTrials = test.records.length * 2 * testRepeats;
   const metricCalls = options.mode === 'comparison' ? 2 * (partition.train.records.length + partition.validation.records.length) : options.maxTrials - reservedTestTrials;
   if (options.mode === 'comparison' && metricCalls + reservedTestTrials > options.maxTrials) throw new Error('Comparison budget cannot cover both arms on every case');
   if (metricCalls < partition.validation.records.length) throw new Error('Trial budget cannot cover baseline validation and two held-out passes');
@@ -130,7 +134,7 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
     if (!route) throw new Error(`Missing judge route ${name}`);
     const perCall = assumptions.judges?.[name] ?? assumptions.judge;
     const maxPerMetric = Math.max(...developmentCounts.map(counts => counts[name] ?? 0));
-    const testCalls = 2 * testCounts.reduce((sum, counts) => sum + (counts[name] ?? 0), 0);
+    const testCalls = 2 * testRepeats * testCounts.reduce((sum, counts) => sum + (counts[name] ?? 0), 0);
     const attempts = 1 + route.citationRepairs;
     if (route.citationRepairs) warnings.add(`Judge ${name} reserves one citation repair per check; valid quality failures, authentication/quota failures and malformed JSON are not retried.`);
     const developmentCalls = options.mode === 'comparison' ? 2 * developmentCounts.reduce((sum, counts) => sum + (counts[name] ?? 0), 0) : metricCalls * maxPerMetric;

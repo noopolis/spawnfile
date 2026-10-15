@@ -1,3 +1,4 @@
+import { testRepeatCount } from '../../contracts/training-config.js';
 import { MutationQueue } from '../../platform/mutations/index.js';
 import { loadTrialSlots } from '../concurrency/index.js';
 import type { TrialSlot } from '../../contracts/trial-slot.js';
@@ -19,10 +20,11 @@ import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
 import { freezeCriteria } from './criteria.js';
 import { trainingFeedback } from './feedback.js';
-import { evaluateHeldOut } from './held-out.js';
+import { evaluateHeldOut, type HeldOutScore } from './held-out.js';
 import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
 export interface TrainingOptions {
+  testRepeats?: number;
   concurrency?: number;
   slotsFile?: string;
   slots?: readonly TrialSlot[];
@@ -54,7 +56,7 @@ export interface TrainingReport {
   optimizer: DspyResult;
   partitions: { train: string[]; validation: string[]; test: string[] };
   trials: TrialReport[];
-  heldOut: { candidateId: string; meanScore: number; trialIds: string[]; evaluationIds?: string[] }[];
+  heldOut: HeldOutScore[];
   /** Separate measurements over an original native capture, never additional trials. */
   rescores?: RescoreReport[];
   /** Optional host reporting, never optimizer feedback or a subscription invoice. */
@@ -65,6 +67,7 @@ export interface TrainingReport {
 }
 export async function trainAgent(options: TrainingOptions): Promise<TrainingReport> {
   const started = performance.now();
+  const testRepeats = testRepeatCount(options.testRepeats);
   if ('maxRunRequests' in options) throw new Error('Run-wide Grok request admission is not implemented; maxRunRequests cannot be enforced');
   const { concurrency, pool, slots } = await loadTrialSlots(options);
   const progress = options.onProgress;
@@ -189,8 +192,9 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   // Freeze selection BEFORE the sealed test can execute or become feedback.
   const frozen = [...new Map([options.baseline, selected].map(candidate => [candidate.id, candidate])).values()];
   await options.onProgress?.({ type: 'selection.frozen', payload: { selectedId: selected.id, baselineId: options.baseline.id, optimizer } });
-  const heldOut = await evaluateHeldOut({ candidates: frozen, caseIds: options.test.records.map(record => record.id), concurrency,
-    trial: (candidate, caseId) => trial(options.test, caseId, 'test', candidate),
+  const heldOut = await evaluateHeldOut({ candidates: frozen, caseIds: options.test.records.map(record => record.id), concurrency, testRepeats,
+    trial: (candidate, caseId, repeat) => trial(options.test, caseId, 'test', candidate, undefined,
+      repeat === 0 ? undefined : `test-repeat:${JSON.stringify([candidate.id, caseId, repeat])}`),
     measurement: report => ({ id: measured(report).id, score: trialScore(measured(report)) }) });
   const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer,
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),

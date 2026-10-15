@@ -8,6 +8,7 @@ import { trialDetails } from './cockpit/evidence.js';
 import type { TrialReport } from '../src/experiments/index.js';
 import type { DspyResult } from '../src/optimization/index.js';
 import { summarizeCosts } from '../src/experiments/costs/index.js';
+import { projectViewerData } from './projection.js';
 import { projectTrials, projectTrainingReport } from './index.js';
 
 const roots: string[] = [];
@@ -79,9 +80,11 @@ describe('stored native report projection', () => {
         ], captures: trials.map((trial) => ({ caseId: 'case', split: 'validation', captureId: trial.id })),
         generations: [{ model: 'observed-model', modelBasis: 'requested-assumption', usage: null }] } };
     const report = { schema: 'paideia.training.v1' as const, id: 'opt', baseline: candidate, selected: candidate,
-      optimizer, partitions: { train: ['train'], validation: ['case'], test: ['sealed'] }, trials, heldOut: [],
+      optimizer, partitions: { train: ['train'], validation: ['case'], test: ['sealed'] }, trials, heldOut: [{ candidateId: candidate.id, meanScore: 0.5, trialIds: ['a', 'b'],
+        evaluationIds: ['a', 'b'], trialScores: [0, 1], standardError: 0.5 }],
       costs: summarizeCosts(trials, { subjectModel: 'gpt-5.5' }) };
     const data = projectTrainingReport(report, { maxMetricCalls: 6, maxProposals: 2 });
+    expect(projectViewerData(data).heldOut).toEqual([{ candidateId: candidate.id, meanScore: 0.5, trialScores: [0, 1], standardError: 0.5 }]);
     expect(data.candidates.map((entry) => entry.id)).toEqual(['GEPA 0: native-candidate', 'GEPA 1: native-candidate']);
     expect(data.candidates.map((entry) => entry.nativeId)).toEqual(['native-candidate', 'native-candidate']);
     expect(data.candidates[1]!.parentIds).toEqual(['GEPA 0: native-candidate']);

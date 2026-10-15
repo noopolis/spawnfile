@@ -35,6 +35,7 @@ export interface ViewerData {
   usage: ViewerUsage[];
   costs?: ViewerCosts;
   activity?: ViewerActivity;
+  heldOut?: { candidateId: string; meanScore: number; trialScores?: number[]; standardError?: number | null }[];
   optimizer?: {
     name: string;
     status: string;

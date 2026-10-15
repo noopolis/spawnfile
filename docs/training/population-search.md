@@ -61,7 +61,8 @@ is `rounds * (keep + variants) * max_attempts`. An explicit cap must be at least
 a smaller cap if the derived value exceeds it. Planning and realization both
 consume this cap. Insufficient remaining proposals or trials ends search early.
 Omitted `training.budget.max_trials` and `--max-trials` derive a complete search:
-`(1 + variants * rounds) * (train cases + validation cases) + 2 * test cases`.
+`(1 + variants * rounds) * (train cases + validation cases) + 2 * test cases * test_repeats`.
+`training.budget.test_repeats` defaults to 1 and accepts integers from 1 to 8.
 Internal holdouts split the authored train cases without increasing their total.
 For two train cases, one validation case, four variants and three rounds, with
 one test case, the default is 41 trials (39 optimizer evaluations and two test

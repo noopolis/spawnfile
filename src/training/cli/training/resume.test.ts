@@ -7,6 +7,7 @@ import { main } from '../commands.js';
 import { loadInvocationViewer } from '../viewer.js';
 import type { InvocationIndex } from '../types.js';
 import { openExperimentStore } from '../../storage/index.js';
+import { trainingDigest } from '../../experiments/training/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -87,4 +88,62 @@ training:
   expect(view.trials).toHaveLength(nativeCalls);
   expect(view.costs?.observed?.groups.find(group => group.role === 'subject')?.entryCount).toBe(nativeCalls);
   expect(view.costs?.observed?.groups.find(group => group.role === 'optimizer')?.entryCount).toBe(generations);
+}, 60000);
+
+it('runs only missing held-out repeats after partial completion, including a settled unpublished checkpoint entry', async () => {
+  const f = await cliFixture(); roots.push(f.root);
+  await writeFile(join(f.root, 'train.yaml'), `${datasetText([{ id: 'train', group: 'a' }, { id: 'selection', group: 'b' }])}
+training:
+  models:
+    reflection: { provider: grok-subscription, model: reflection }
+  optimizer: { model: reflection }
+  budget: { max_trials: 16, max_proposals: 1, test_repeats: 3, timeout_ms: 20000 }
+  validation_groups: [b]
+  test: test.yaml
+`);
+  await writeFile(join(f.root, 'test.yaml'), datasetText([{ id: 'sealed-a', group: 'sealed-a' }, { id: 'sealed-b', group: 'sealed-b' }]));
+  f.dependencies.modelInference = () => f.dependencies.inference!(20000);
+  const argv = ['train', '--train', 'train.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md',
+    '--bridge-command', relative(f.root, f.bridge)];
+  const forbidden = () => { throw new Error('dry-run opened model'); };
+  expect(await main([...argv, '--dry-run'], f.io, { adapter: forbidden, modelInference: forbidden })).toBe(0);
+  const plan = JSON.parse(f.stdout.at(-1)!);
+  expect(plan.budget).toMatchObject({ metricCalls: 4, reservedTestTrials: 12 });
+  let finished = 0;
+  const first = await main(argv, { ...f.io, stdout(text) {
+    f.stdout.push(text);
+    const event = JSON.parse(text);
+    if (event.type === 'trial.finished' && event.phase === 'test' && ++finished === 2) throw new Error('controlled sealed interruption');
+  } }, f.dependencies);
+  expect(first).toBe(2); expect(finished).toBe(2);
+  expect(f.observedInstructions).toHaveLength(6); // four optimizer trials + two sealed repeats
+  const path = join(f.root, 'out/checkpoint/training.json');
+  const saved = JSON.parse(await readFile(path, 'utf8'));
+  const sealed = Object.values(saved.state.entries).filter((entry: unknown) => (entry as { report: { phase: string } }).report.phase === 'test') as { id: string; report?: unknown }[];
+  expect(sealed).toHaveLength(2); expect(sealed[0]!.id).not.toBe(sealed[1]!.id);
+  // Model a crash after immutable publication but before checkpoint completion.
+  delete sealed[1]!.report;
+  saved.digest = trainingDigest(saved.state);
+  await writeFile(path, JSON.stringify(saved));
+  f.stderr.length = 0;
+  expect(await main([...argv, '--resume'], f.io, f.dependencies)).toBe(0);
+  expect(f.stderr).toEqual([]); expect(f.observedInstructions).toHaveLength(16);
+  const index = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));
+  const store = await openExperimentStore(join(f.root, 'out'));
+  const report = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId] })).toString());
+  const tests = report.trials.filter((trial: { phase: string }) => trial.phase === 'test');
+  expect(tests).toHaveLength(12); expect(new Set(tests.map((trial: { id: string }) => trial.id)).size).toBe(12);
+  for (const previous of sealed) expect(tests.some((trial: { id: string }) => trial.id === previous.id)).toBe(true);
+  for (const arm of report.heldOut) {
+    expect(arm.trialIds).toHaveLength(6); expect(arm.trialScores).toHaveLength(6); expect(arm.standardError).toBe(0);
+    for (const recordId of ['sealed-a', 'sealed-b']) {
+      expect(tests.filter((trial: { candidateId: string; recordId: string }) => trial.candidateId === arm.candidateId && trial.recordId === recordId)).toHaveLength(3);
+    }
+  }
+  const markdown = await readFile(join(f.root, 'out/REPORT.md'), 'utf8');
+  expect(markdown).toContain('Trial standard error');
+  const view = await (await loadInvocationViewer(join(f.root, 'out')))();
+  expect(view.heldOut?.map(arm => arm.trialScores?.length)).toEqual([6, 6]);
+  expect(await main([...argv, '--resume'], f.io, f.dependencies)).toBe(0);
+  expect(f.observedInstructions).toHaveLength(16);
 }, 60000);
