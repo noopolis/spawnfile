@@ -60,6 +60,11 @@ state. Ordinary training identity and measurement-repair behavior stay unchanged
 `trialScore` scores a `deferred` trial, which carries its own quiescence proof and
 can only be a `fail`, so a subject that ended its turn without doing the work
 becomes a zero the optimizer can learn from instead of an infrastructure error.
+Opt-in scoring.deferred=stage-score retains the final numeric stage reward only
+when the trial owner recorded a passing preDeferralStatus. Capture that verdict
+only in the opt-in path; default reports and rewards stay unchanged. Keep the
+trial failed, honor all measurement/cleanup guards, bind checkpoint identity and
+use the same policy in callbacks, held-out means and operator exports.
 `failed` still means the machine broke and still refuses to produce a number.
 
 Evaluation services preserve injected grader runtimes alongside judges and embeddings.

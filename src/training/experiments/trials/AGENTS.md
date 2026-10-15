@@ -87,3 +87,8 @@ model-identity or historical-fidelity attestations. Old captures retain unknowns
 Stored native reports retain a cloned evaluated candidate manifest and optional
 optimizer round before durable evaluation publication. Preserve rejected proposals
 and round attribution through replay; sealed tests have no search round.
+
+When retainDeferredStatus is selected, record preDeferralStatus from the combined
+terminal/live/turn gates before appending the delivery witness. Training owns
+reward policy; never turn a deferred delivery into pass. Default report bytes
+retain their existing shape when the flag is absent.

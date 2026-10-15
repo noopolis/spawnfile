@@ -156,3 +156,15 @@ it.each([0, -1, 9, 1.5, '3', null, true])('refuses authored test_repeats=%s', te
 it.each([1, 3, 8])('accepts authored test_repeats=%s', test_repeats => {
   expect(validateTrainingConfiguration({ ...config, budget: { test_repeats } }).budget).toEqual({ test_repeats });
 });
+
+it('validates deferred scoring without adding defaults to existing configuration', () => {
+  expect(validateTrainingConfiguration(config)).toEqual(config);
+  for (const scoring of [{}, { deferred: 'zero' }, { deferred: 'stage-score' }]) {
+    const authored = { ...config, scoring };
+    expect(parseDatasetYaml(stringify(dataset(authored))).dataset.training).toEqual(authored);
+  }
+  for (const scoring of [null, 'stage-score', [], { deferred: null }, { deferred: true },
+    { deferred: 1 }, { deferred: 'pass' }, { deferred: 'stage-score', unknown: true }]) {
+    expect(() => validateTrainingConfiguration({ ...config, scoring })).toThrow('scoring');
+  }
+});

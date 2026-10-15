@@ -64,6 +64,34 @@ records:
       prompt: Explain the supplied evidence plainly.
 ```
 
+`training.scoring.deferred` accepts `zero` (the default) or `stage-score`:
+
+```yaml
+training:
+  # Alongside the existing models/optimizer controls:
+  scoring:
+    deferred: stage-score
+```
+
+`stage-score` lets optimization rank a graded artifact even when another delivery
+in the same native wake remains deferred. It uses the final stage's `score.lower`
+only after acknowledged shutdown, confirmed quiescence and settled host work, and
+only when **all terminal, live and turn gates passed before the deferral witness**.
+The native trial still reports `fail`; the CLI still exits nonzero for a deferred
+selected test trial. Train/validation callbacks, frozen held-out means and local
+report exports use the same policy. A failing atomic writing grade used only as a
+score term retains its numeric score; the explicit stage gate owns the verdict.
+
+Failed or unknown gates, decisive failures and legacy deferred reports without the
+pre-deferral verdict still score zero. Missing score coverage and atomic measurement
+errors remain unscorable and throw; infrastructure failures remain unscorable.
+A deferred trial without a final stage score receives zero, never an implicit one.
+Omission or explicit `zero` preserves existing rewards and native report shape.
+The opt-in records `preDeferralStatus` at trial finalization and `scoring` on the
+training report; it binds checkpoint identity, so changing policy requires a new run.
+These paths are covered with deterministic native/provider fixtures, not a new live
+newsroom optimization acceptance run.
+
 The names under `models` are reusable references. Judges and the optimizer select
 a primary name and ordered fallback names. A fallback must differ from the primary
 and every referenced model must exist. Provider names currently accepted by this

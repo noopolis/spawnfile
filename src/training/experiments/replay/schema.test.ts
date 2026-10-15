@@ -12,6 +12,21 @@ import { trialScore } from '../training/index.js';
 import { summarizeCosts } from '../costs/index.js';
 import { createTypeSafeDecision } from '../../inference/decision/index.js';
 
+test('replay validates optional pre-deferral verdicts and preserves legacy report shape', async () => {
+  const { store, options, report } = await fixture();
+  const legacy = capturedTrial(await store.readReplay(options.runId, options.access)).report;
+  expect(legacy).not.toHaveProperty('preDeferralStatus');
+  expect(legacy).toStrictEqual(report);
+  const legacyBytes = JSON.stringify(trialReportSchema.parse(report));
+  expect(JSON.stringify(trialReportSchema.parse({ ...report, preDeferralStatus: undefined }))).toBe(legacyBytes);
+  for (const preDeferralStatus of ['pass', 'fail', 'unknown', 'error', 'skipped'] as const) {
+    expect(trialReportSchema.parse({ ...report, preDeferralStatus }).preDeferralStatus).toBe(preDeferralStatus);
+  }
+  for (const preDeferralStatus of ['completed', '', null, true, 1, {}]) {
+    expect(() => trialReportSchema.parse({ ...report, preDeferralStatus })).toThrow();
+  }
+});
+
 test('replay preserves atomic acceptance-gate failures without fabricating a grade', async () => {
   const { store, options, report } = await fixture(report => {
     const atomic = { status: 'error' as const, finality: 'final' as const, reason: 'Gate failed', evidence: [],

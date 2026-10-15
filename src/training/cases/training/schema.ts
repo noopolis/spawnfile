@@ -9,7 +9,7 @@ function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_IN
 /** Validate controls without executing templates or contacting declared providers. */
 export function validateTrainingConfiguration(value: unknown, path = '$.training'): TrainingConfiguration {
   const config = object(value, path);
-  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'test', 'validation', 'validation_groups', 'seed'], path);
+  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'scoring', 'test', 'validation', 'validation_groups', 'seed'], path);
   const models = object(config.models, `${path}.models`);
   if (!Object.keys(models).length) fail(`${path}.models`, 'requires a named model');
   for (const [name, value] of Object.entries(models)) {
@@ -168,6 +168,11 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
       if (cache.directory !== undefined) safePath(cache.directory, `${path}.cache.directory`);
     } else if (cache.namespace !== undefined || cache.directory !== undefined) fail(`${path}.cache`, 'namespace and directory require persistent mode');
     if (cache.max_entries !== undefined) integer(cache.max_entries, `${path}.cache.max_entries`, 1, 10_000);
+  }
+  if (config.scoring !== undefined) {
+    const scoring = object(config.scoring, `${path}.scoring`);
+    fields(scoring, ['deferred'], `${path}.scoring`);
+    if (scoring.deferred !== undefined) oneOf(scoring.deferred, ['zero', 'stage-score'], `${path}.scoring.deferred`);
   }
   if (config.recovery !== undefined) {
     const recovery = object(config.recovery, `${path}.recovery`);

@@ -133,6 +133,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
         proposal: bridgeProposal(args.training?.optimizer),
         search: populationSearch(args.training?.optimizer),
+        scoring: args.training?.scoring,
         checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2, ...(fork ? {fork} : {})},
         onProgress: async (event) => {
           await journal.observe(event);

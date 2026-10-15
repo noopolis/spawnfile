@@ -40,3 +40,6 @@ rescoring cannot invent a new native execution duration.
 Replay validates and retains evaluated manifests, matching candidateId, and
 optional nonnegative search rounds; reject search attribution on sealed tests.
 Failed-grade decisionAccounting uses the same allowlisted receipt schema as grades.
+
+Retain optional preDeferralStatus with the same verdict vocabulary as status.
+Legacy reports omit it; stripping it breaks cached recovery and deferred rewards.

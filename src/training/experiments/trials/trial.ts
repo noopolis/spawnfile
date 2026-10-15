@@ -205,13 +205,14 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     if (observationFailure && finalSnapshot.subjectUsage) finalSnapshot.subjectUsage.status = 'incomplete';
     const gates = [result(evaluation.status, 'Terminal plan'), ...liveGates,
       ...(live.decisive ? [live.decisive] : []), ...turns.flatMap(turn => turn.checks)];
+    const preDeferralStatus = combine('all', gates).status;
     if (execution === 'deferred') {
       // The subject closed its own execution and left the delivery unanswered: a final
       // failing witness in its own right, so the trial is scored and never passes. The
       // measured checks keep their own verdicts and weights — a missing artifact stays
       // missing rather than becoming a zero — and an errored plan still outranks it, so
       // an evaluation that could not measure is never reported as a behavioural zero.
-      if (combine('all', gates).status !== 'error') {
+      if (preDeferralStatus !== 'error') {
         gates.push(result('fail', error ?? 'Native delivery remains deferred awaiting external input'));
       }
     } else if (execution !== 'completed' && !live.decisive) gates.push(result('error', error ?? control.reason ?? 'Incomplete native execution'));
@@ -219,6 +220,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       candidateId: options.candidateId, datasetDigest: options.datasetDigest, planDigest: options.planDigest,
       recordId: record.id, durationMs: performance.now() - started,
       subject: { adapterId: adapter.id, requestedModel: options.model, isolation: adapter.capabilities.isolation },
+      ...(execution === 'deferred' && options.retainDeferredStatus ? { preDeferralStatus } : {}),
       paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
       expectedTurns: inputs.length, turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),
       stop: structuredClone(finalStop), ...(diagnostic ? { diagnostic: structuredClone(diagnostic) } : {}), ...(error ? { error } : {}) };

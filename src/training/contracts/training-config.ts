@@ -45,7 +45,12 @@ export interface TrainingJudge extends TrainingRoute {
 export interface TrainingComparison {
   candidate: { name: string; replacements: { resource: string; source: string }[] };
 }
+export interface TrainingScoring {
+  /** Closed deferred deliveries remain failures; optionally retain measured stage reward. */
+  deferred?: 'zero' | 'stage-score';
+}
 export interface TrainingConfiguration {
+  scoring?: TrainingScoring;
   comparison?: TrainingComparison;
   models: Record<string, TrainingModel>;
   judges?: Record<string, TrainingJudge>;
