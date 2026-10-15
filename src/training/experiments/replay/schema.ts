@@ -92,7 +92,8 @@ export const trialReportSchema = z.object({
   durationMs: z.number().finite().nonnegative().optional(),
   subject: z.object({ adapterId: identity, requestedModel: identity, isolation: z.string() }).optional(),
   paths: z.object({ root: z.string(), workspace: z.string(), control: z.string(), runtimeHome: z.string() }),
-  status: verdict, execution: z.enum(['completed', 'deferred', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
+  status: verdict, preDeferralStatus: verdict.optional(),
+  execution: z.enum(['completed', 'deferred', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
   expectedTurns: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   turns: z.array(z.object({ id: identity, checks: z.array(result), native: z.object({
     status: z.enum(['completed', 'failed', 'cancelled']), blocked: z.literal('awaiting-external-input').optional(),

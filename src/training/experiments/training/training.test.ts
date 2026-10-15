@@ -313,3 +313,48 @@ it('binds opt-in deferred rewards into checkpoint identity while zero retains th
   await expect(TrainingCheckpoint.open({ ...options, scoring: { deferred: 'zero' } }, datasets)).resolves.toBeDefined();
   await expect(TrainingCheckpoint.open({ ...options, scoring: { deferred: 'stage-score' } }, datasets)).rejects.toThrow('identity');
 });
+
+it.each([false, true])('recovers a persisted deferral-only stage score from a populated checkpoint (cached report: %s)', async cached => {
+  const { options, events } = await fixture();
+  options.train = resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id: 'deferred',
+    stages: [{ id: 'quality', checks: [
+      { id: 'ready', eval: 'equals', input: 'output.text', value: 'ready' },
+      { id: 'perfect', eval: 'equals', input: 'output.text', value: 'perfect' },
+    ], gate: { passed: 'ready' }, score: { linear: { ready: 1, perfect: 1 } } }],
+    records: ['Alpha', 'Beta'].map(id => ({ id, group: id, input: { prompt: 'Write' } })),
+  })));
+  options.test = { ...options.train, id: 'test', records: [{ ...options.train.records[0]!, id: 'Gamma', group: 'Gamma' }] };
+  options.scoring = { deferred: 'stage-score' };
+  options.checkpoint = { directory: join(options.bridge.cwd, 'deferred-checkpoint'), identity: 'deferred', resume: false };
+  const start = vi.spyOn(options.native.adapter, 'start').mockResolvedValue({
+    run: async () => ({ status: 'failed', blocked: 'awaiting-external-input', text: 'ready', usage: null,
+      coverage: [{ channel: 'output', completeness: 'complete', ordering: 'source' }] }),
+    stop: async reason => ({ state: 'acknowledged', scope: 'native-handle', quiescence: 'confirmed',
+      remoteWork: 'unknown', reason, detail: 'closed deferred fixture' }),
+  });
+  const measured: { score: number; captureId: string }[] = [];
+  vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    measured.push(await request.evaluate({ caseId: 'Alpha', split: 'train', components: request.components },
+      new AbortController().signal, 'deferred-callback'));
+    throw new Error('Simulated optimizer interruption after durable capture');
+  });
+  await expect(trainAgent(options)).rejects.toThrow('Simulated optimizer interruption');
+  expect(measured[0]!.score).toBe(0.5);
+  const path = join(options.checkpoint.directory, 'training.json');
+  const saved = JSON.parse(await readFile(path, 'utf8'));
+  expect(saved.state.entries['deferred-callback'].report).toMatchObject({
+    execution: 'deferred', status: 'fail', preDeferralStatus: 'pass',
+  });
+  if (!cached) {
+    delete saved.state.entries['deferred-callback'].report;
+    await writeFile(path, JSON.stringify({ state: saved.state, digest: trainingDigest(saved.state) }));
+  }
+  options.checkpoint.resume = true;
+  await expect(trainAgent(options)).rejects.toThrow('Simulated optimizer interruption');
+  expect(measured).toHaveLength(2);
+  expect(measured[1]).toMatchObject({ score: 0.5, captureId: measured[0]!.captureId });
+  expect(start).toHaveBeenCalledOnce();
+  expect(events.filter(event => event.type === 'trial.reused')).toHaveLength(1);
+  const restored = JSON.parse(await readFile(path, 'utf8'));
+  expect(restored.state.entries['deferred-callback'].report.preDeferralStatus).toBe('pass');
+});
