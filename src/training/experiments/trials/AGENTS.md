@@ -10,6 +10,11 @@ bytes and record any deliberate environment reconstruction.
 
 Public exports live in index.ts. Keep adjacent tests and required guides when extracting cohesive modules. Run targeted tests and retain90% per-file coverage on all four metrics; use real native/DSPy acceptance evidence separately from deterministic facade tests.
 
+Scratch release requires confirmed native closure and an allocated subject path.
+Before removal, a bounded walk adds owner write/search only to owned directories;
+it never follows symlinks or changes file permissions. Foreign-owned directories
+and traversal-limit breaches are reported rather than widened or silently skipped.
+
 Judge response audits use the existing protected trial event sink. They are not
 native observations and never enter subject snapshots. Persistence failure must
 prevent a durable success report and cannot trigger citation repair.
