@@ -10,6 +10,16 @@ bytes and record any deliberate environment reconstruction.
 
 Public exports live in index.ts. Keep adjacent tests and required guides when extracting cohesive modules. Run targeted tests and retain90% per-file coverage on all four metrics; use real native/DSPy acceptance evidence separately from deterministic facade tests.
 
+Scratch release requires confirmed native closure (no subject process alive) and
+an allocated subject path. The closure gate must exclude concurrent subject writers.
+Before removal, a bounded walk adds owner write/search only to owned directories;
+each mode change uses an O_NOFOLLOW/O_DIRECTORY handle whose fstat ownership and
+dev/ino match the checked directory. Never chmod by path or change file permissions.
+Node's public directory enumeration remains path-based; ancestor swaps still need
+a writer the closure gate excludes. Do not claim race-freedom against other writers.
+Foreign-owned/replaced directories and traversal-limit breaches are reported rather
+than widened or silently skipped.
+
 Judge response audits use the existing protected trial event sink. They are not
 native observations and never enter subject snapshots. Persistence failure must
 prevent a durable success report and cannot trigger citation repair.
