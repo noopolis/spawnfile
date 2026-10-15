@@ -72,7 +72,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     execution = 'failed';
     // Never discard a decisive witness or repeat any already completed native work.
     failureKind = live.decisive ? 'behavioral'
-      : turns.some(turn => turn.native.status === 'completed') ? 'measurement' : kind;
+      : turns.some(turn => turn.native.status === 'completed' || turn.native.blocked === 'awaiting-external-input') ? 'measurement' : kind;
   };
   const evaluate = (state: EvaluationSnapshot) => ({ ...evaluationServices, snapshot: state, results: {}, scores: {}, signal: control.signal });
   try {

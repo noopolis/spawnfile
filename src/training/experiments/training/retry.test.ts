@@ -316,3 +316,20 @@ it.each(['host', 'stop', 'quiescence', 'interrupted', 'legacy'])('does not repla
   expect(await retryTrial({ key: 'unsafe', maximum: 3, execute })).toBe(report);
   expect(execute).toHaveBeenCalledOnce();
 });
+
+it('does not replace a deferred native result whose collection failed afterwards', async () => {
+  const { options, events } = await fixture(); options.trialRetries = 3;
+  let collections = 0;
+  options.native.prepareEnvironment = async () => ({ collect: async () => {
+    if (++collections === 1) throw new Error('collector unavailable');
+    return {};
+  } });
+  const { counts } = native(options, 1, 'Alpha', true);
+  optimizer();
+  await expect(trainAgent(options)).rejects.toThrow();
+  const report = events.find(event => event.type === 'trial.finished')!.payload as import('../trials/index.js').TrialReport;
+  expect(report).toMatchObject({ execution: 'failed', failureKind: 'measurement' });
+  expect(report.turns[0]!.native.blocked).toBe('awaiting-external-input');
+  expect(counts.get('Alpha')).toBe(1);
+  expect(events.filter(event => event.type === 'trial.retry')).toHaveLength(0);
+});
