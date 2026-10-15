@@ -52,6 +52,60 @@ test('terminal sealing settles admission and requires an unchanged generation', 
   expect(transport.state()).toEqual({ state: 'idle' });
 });
 
+test.each([
+  { pending: 1, deferred: 1, closes: true },
+  { pending: 2, deferred: 1, closes: false }, // Extra pending work, even if absent from activity.
+  { pending: 0, deferred: 1, closes: false },
+  { pending: 1, deferred: 0, closes: false },
+  { pending: 1, deferred: 2, closes: false },
+  { pending: 2, deferred: 2, closes: false }, // Equal counts cannot stand in for selected receipts.
+  { pending: 0, deferred: 0, closes: false },
+])('selected deferred receipt reconciles pending=$pending deferred=$deferred (closes: $closes)', async ({ pending, deferred, closes }) => {
+  const transport = createTransportDelivery({ accept: async () => accepted } as unknown as NativeHost, 'agent:writer');
+  const run = transport.begin('task', source);
+  await transport.accept(request);
+  // Observe the live execution before Daimon clears its binding on deferral.
+  run.observe({ ...receiptFixture(), state: 'running' }, activityFixture(true), available);
+  const receipt = { ...receiptFixture(), state: 'accepted' as const, deferred: true, execution_id: undefined };
+  const activity = { ...activityFixture(), items: [{ ...receipt, active: false }] };
+  run.observe(receipt, activity, { ...available, agents: [{ ...available.agents[0]!, pending, deferred }] });
+  // This delivery appears in both control reads but counts only once.
+  expect(run.evidence.selectedDeliveries).toHaveLength(1);
+  expect(run.closed([])).toBe(false); // A deferral never substitutes for a closed trace.
+  expect(run.closed([traceFixture()])).toBe(closes);
+  expect(run.seal(run.generation(), [traceFixture()])).toBe(closes);
+  run.finish();
+});
+
+test('two selected deferred identities close, but an unrelated or undisposed receipt keeps closure open', async () => {
+  const transport = createTransportDelivery({ accept: async (value: unknown) => {
+    const request = value as NativeWakeRequest;
+    return { ...accepted, delivery_id: request.delivery_id, acceptance_id: request.delivery_id };
+  } } as unknown as NativeHost, 'agent:writer');
+  const run = transport.begin('task', { kind: 'transport', deliveryIdPrefix: 'trial:' });
+  const receipts = ['trial:wake', 'trial:peer'].map(delivery_id => ({ ...receiptFixture(), delivery_id,
+    acceptance_id: delivery_id, state: 'accepted' as const, deferred: true, execution_id: undefined }));
+  for (const row of receipts) await transport.accept({ ...request, delivery_id: row.delivery_id });
+  const primary = receipts[0]!;
+  const active = { ...activityFixture(true), items: receipts.map(row => ({ ...row, active: true, state: 'running' as const, deferred: false })),
+    executions: [{ ...activityFixture(true).executions![0]!, delivery_ids: receipts.map(row => row.delivery_id) }] };
+  run.observe(primary, active, available);
+  const activity = { ...activityFixture(), items: receipts.map(row => ({ ...row, active: false })) };
+  const availability = { ...available, agents: [{ ...available.agents[0]!, pending: 2, deferred: 2 }] };
+  run.observe(primary, activity, availability);
+  expect(run.evidence.selectedDeliveries).toHaveLength(2);
+  expect(run.closed([traceFixture()])).toBe(true);
+  for (const deferred of [true, false]) {
+    const extra = { ...primary, delivery_id: 'unrelated', acceptance_id: 'unrelated', deferred, active: false };
+    run.observe(primary, { ...activity, items: [...activity.items, extra] }, availability);
+    expect(run.closed([traceFixture()])).toBe(false);
+  }
+  // Even a selected receipt cannot borrow its peer's deferred disposition.
+  run.observe(primary, { ...activity, items: [{ ...receipts[1]!, deferred: false, active: false }] }, availability);
+  expect(run.closed([traceFixture()])).toBe(false);
+  run.finish();
+});
+
 test('rejections are forwarded and do not poison a later genuine acceptance', async () => {
   const host = { accept: vi.fn().mockResolvedValue({ state: 'rejected', code: 'delivery_conflict' }) } as unknown as NativeHost;
   const transport = createTransportDelivery(host, 'agent:writer');

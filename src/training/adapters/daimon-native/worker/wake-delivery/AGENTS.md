@@ -11,8 +11,11 @@ Admission starts before awaiting the host. Terminal sealing requires no pending
 admissions and an unchanged generation across control reads and evidence collection.
 Start sealed before the first arm. At sealing, reconcile every armed acceptance
 for the agent and every agent activity row, including unselected work; require
-observed terminal disposition (or selected closed deferral) and native pending zero.
-Missing rows or pending work keep polling to the deadline. Execution history never
+observed terminal disposition (or selected closed deferral). Native pending includes
+deferrals: pending and deferred must both equal the unique selected deliveries
+still accepted and deferred. Extra or inconsistent pending work keeps closure open;
+fixtures must model this production count, including on deferred continuations.
+Missing rows or unaccounted pending work keep polling to the deadline. Execution history never
 makes a requeued, non-deferred receipt closed.
 Retain cumulative selected receipts, execution histories and observed batches;
 validate all their closed traces and usage before success. Historical snapshots
