@@ -2,7 +2,7 @@ import { open, readFile, mkdir, rename, link, unlink, chmod } from 'node:fs/prom
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { CandidateManifest } from '../candidates/index.js';
-import { openExperimentStore, type ExperimentStore } from '../storage/index.js';
+import { externalizeEvaluationJson, openExperimentStore, type ExperimentStore } from '../storage/index.js';
 import type { InvocationIndex } from './types.js';
 import { reserveOutput } from './training/index.js';
 import { exportTrainingReport, isTrainingReport } from './report/index.js';
@@ -31,7 +31,8 @@ export async function persistResult(options: {
   await options.store.createRun({ schema: 'paideia.run.v1', id: options.id, datasetId: options.datasetId,
     datasetRole: phase, candidateId: options.candidate.id, planDigest: options.planDigest,
     ...(options.optimizerBudget ? { metadata: { optimizerBudget: options.optimizerBudget } } : {}) });
-  const report = await options.store.putBlob(options.id, JSON.stringify(options.report), 'evaluator');
+  const persistedReport = await externalizeEvaluationJson(options.store, options.id, options.report);
+  const report = await options.store.putBlob(options.id, JSON.stringify(persistedReport), 'evaluator');
   const candidate = await options.store.putBlob(options.id, JSON.stringify(options.candidate), 'evaluator');
   if (isTrainingReport(options.report) && options.report.selected.id !== options.candidate.id) {
     throw new Error('Training export selection does not match the frozen summary candidate');

@@ -45,3 +45,16 @@ repair copies verified development captures through these public store methods.
 `blobContentPath` names where `putBlob` stored content, so an operator can be
 given a path that outlives the run. Naming is all it does; reads still go
 through `readBlob` and its visibility gate.
+
+`externalizeEvaluationJson` replaces atomicGrading with versioned blob references;
+canonical bytes deduplicate aggregate/stage copies in the existing blob store.
+Each blob retains run/visibility authorization and the 64 MiB bound.
+`hydrateEvaluationJson` restores detail through digest-verified readBlob;
+missing/corrupt content fails closed. Legacy inline JSON remains readable.
+Evaluations and events use this codec internally; replay hydrates authorized data
+after verifying enclosing digests. Returned digests identify persisted wire bytes,
+including references. Direct JSON blob consumers explicitly hydrate after readBlob.
+Verify codec, replay, checkpoint and CLI report tests; mutation-check inline size
+regression and same-length valid-JSON corruption.
+Publication retries compare hydrated legacy/compact payloads after integrity checks,
+preserving original bytes and duplicate-event/evaluation idempotence across formats.

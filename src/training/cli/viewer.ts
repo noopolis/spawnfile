@@ -6,7 +6,7 @@ import type { TrialReport, TrainingReport } from '../experiments/index.js';
 import { summarizeCosts, type CostReport, type ModelPrice, type TrainingCostPlan } from '../experiments/costs/index.js';
 import type { DspyResult } from '../optimization/index.js';
 import type { RescoreReport } from '../experiments/replay/index.js';
-import { openExperimentStore, type ExperimentStore } from '../storage/index.js';
+import { hydrateEvaluationJson, openExperimentStore, type ExperimentStore } from '../storage/index.js';
 import { projectComparisonReport, projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../../viewer/index.js';
 import type { CliIO } from './types.js';
 import { readCliText } from './datasets.js';
@@ -35,7 +35,7 @@ export async function loadInvocationViewer(root: string): Promise<() => Promise<
     const candidate = JSON.parse((await store.readBlob(index.candidate, access)).toString()) as CandidateManifest;
     validateCandidate(candidate);
     if (candidate.id !== index.candidateId) throw new Error('Stored invocation candidate does not match its identity');
-    const report = JSON.parse((await store.readBlob(index.report, access)).toString());
+    const report = await hydrateEvaluationJson(store, JSON.parse((await store.readBlob(index.report, access)).toString()), access);
     if (index.outcome === 'failed') return loadFailureView(report, index, store);
     if (index.command === 'train') {
       if (report.schema === 'paideia.comparison.v1') {

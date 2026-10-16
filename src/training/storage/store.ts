@@ -4,6 +4,7 @@ import { assertIdentity, contentDigest, digestName, identity, jsonBytes } from '
 import { immutableWrite, initializeStoreRoot, readStored, safeStorePath } from './filesystem.js';
 import { appendJournal, readJournal } from './journal.js';
 import { assertRunAccess, canReadVisibility, validateManifest, validateVisibility } from './permissions.js';
+import { externalizeEvaluationJson, hydrateEvaluationJson } from './evaluation-json.js';
 
 interface BlobMetadata extends BlobReference { visibility: Visibility }
 const queues = new Map<string, Promise<unknown>>();
@@ -33,7 +34,7 @@ export async function openExperimentStore(rootPath: string): Promise<ExperimentS
     assertRunAccess(manifest, access);
     return manifest;
   }
-  return {
+  const store: ExperimentStore = {
     async createRun(manifest) {
       validateManifest(manifest);
       await immutableWrite(await runPath(manifest.id, 'manifest.json'), jsonBytes({ manifest, digest: identity(manifest) }));
@@ -78,23 +79,43 @@ export async function openExperimentStore(rootPath: string): Promise<ExperimentS
       return bytes;
     },
     async appendEvent(runId, event, visibility = 'raw') {
-      await readRun(runId);
+      const manifest = await readRun(runId);
       jsonBytes(event.payload);
       const path = await runPath(runId, 'events.jsonl');
-      return serialized(path, () => appendJournal(path, event, visibility));
+      const payload = await externalizeEvaluationJson(store, runId, event.payload, visibility);
+      return serialized(path, () => appendJournal(path, { ...event, payload }, visibility, async (left, right) => {
+        const access: ReadAccess = { audience: 'operator', phase: 'test', frozenCandidateIds: [manifest.candidateId] };
+        return jsonBytes(await hydrateEvaluationJson(store, left, access)) === jsonBytes(await hydrateEvaluationJson(store, right, access));
+      }));
     },
     async appendEvaluation(runId, evaluation, visibility = 'evaluator') {
-      await readRun(runId);
+      const manifest = await readRun(runId);
       assertIdentity(evaluation.id);
       jsonBytes(evaluation.report);
       validateVisibility(visibility);
-      const body = { ...evaluation, visibility };
-      await immutableWrite(await runPath(runId, 'evaluations', `${digestName(contentDigest(evaluation.id))}.json`), jsonBytes({ ...body, digest: identity(body) }));
+      const path = await runPath(runId, 'evaluations', `${digestName(contentDigest(evaluation.id))}.json`);
+      let previous: StoredEvaluation | undefined;
+      try {
+        previous = JSON.parse((await readStored(path)).toString('utf8')) as StoredEvaluation;
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      if (previous) {
+        const { digest, ...body } = previous;
+        if (identity(body) !== digest || previous.id !== evaluation.id) throw new Error('Stored evaluation integrity mismatch');
+        const access: ReadAccess = { audience: 'operator', phase: 'test', frozenCandidateIds: [manifest.candidateId] };
+        if (previous.visibility !== visibility || jsonBytes(await hydrateEvaluationJson(store, previous.report, access)) !== jsonBytes(evaluation.report)) {
+          throw new Error('Immutable stored identity already has different bytes');
+        }
+        return;
+      }
+      const report = await externalizeEvaluationJson(store, runId, evaluation.report, visibility);
+      const body = { ...evaluation, report, visibility };
+      await immutableWrite(path, jsonBytes({ ...body, digest: identity(body) }));
     },
     async readReplay(runId, access) {
       const manifest = await authorize(runId, access);
       const journal = await readJournal(await runPath(runId, 'events.jsonl'));
-      const events = journal.events.filter(event => canReadVisibility(event.visibility, access));
+      const events = await Promise.all(journal.events.filter(event => canReadVisibility(event.visibility, access))
+        .map(async event => ({ ...event, payload: await hydrateEvaluationJson(store, event.payload, access) })));
       const directory = await runPath(runId, 'evaluations');
       let names: string[];
       try { names = await readdir(directory); }
@@ -105,7 +126,8 @@ export async function openExperimentStore(rootPath: string): Promise<ExperimentS
         const { digest, ...body } = report;
         assertIdentity(report.id);
         if (identity(body) !== digest || name !== `${digestName(contentDigest(report.id))}.json`) throw new Error('Stored evaluation integrity mismatch');
-        if (canReadVisibility(report.visibility, access)) evaluations.push(report);
+        if (canReadVisibility(report.visibility, access)) evaluations.push({ ...report,
+          report: await hydrateEvaluationJson(store, report.report, access) });
       }
       const redactedMetadata = manifest.metadata !== undefined && !canReadVisibility('evaluator', access);
       const { metadata: _metadata, ...publicManifest } = manifest;
@@ -113,4 +135,5 @@ export async function openExperimentStore(rootPath: string): Promise<ExperimentS
         ignoredTailBytes: journal.ignoredTailBytes, redactedEvents: journal.events.length - events.length };
     },
   };
+  return store;
 }

@@ -18,3 +18,7 @@ weaken exact resume, launch native agents, choose providers or deploy anything.
 - Test genuine GEPA restart, corruption/phase/identity rejection, failed judge-only
   repair, unchanged parent bytes and cumulative costs. Follow inherited size and
   coverage limits; runtime bugs still belong to their runtime owners.
+
+Verify parent checkpoint digests over wire bytes before hydrating grading blob
+references through the parent store. Import referenced blobs with their original
+run permissions; inline legacy checkpoints remain valid. Sealed parents stay refused.
