@@ -32,7 +32,8 @@ export async function readJournal(path: string): Promise<JournalRead> {
   }
   return { events, ignoredTailBytes: bytes.length - boundary, totalBytes: bytes.length };
 }
-export async function appendJournal(path: string, event: { id: string; payload: unknown }, visibility: Visibility): Promise<'appended' | 'duplicate'> {
+export async function appendJournal(path: string, event: { id: string; payload: unknown }, visibility: Visibility,
+  equivalent?: (left: unknown, right: unknown) => Promise<boolean>): Promise<'appended' | 'duplicate'> {
   assertIdentity(event.id);
   validateVisibility(visibility);
   const lockPath = `${path}.lock`;
@@ -45,7 +46,8 @@ export async function appendJournal(path: string, event: { id: string; payload: 
     if (previous.ignoredTailBytes) throw new Error('Journal has an interrupted tail; preserve evidence and recover explicitly');
     const existing = previous.events.find(item => item.id === event.id);
     if (existing) {
-      if (jsonBytes(existing.payload) !== jsonBytes(event.payload) || existing.visibility !== visibility) throw new Error('Conflicting replay of an event identity');
+      if (existing.visibility !== visibility || (jsonBytes(existing.payload) !== jsonBytes(event.payload) &&
+          !(await equivalent?.(existing.payload, event.payload)))) throw new Error('Conflicting replay of an event identity');
       return 'duplicate';
     }
     const body = { id: event.id, sequence: previous.events.length + 1, visibility, payload: event.payload };

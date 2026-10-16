@@ -56,3 +56,8 @@ Real GEPA regression coverage must verify rejected candidate files/patches,
 round attribution and successful completed resume without new native trials.
 
 Explicit --validation datasets flow through execution, costs and repair without repartitioning; groups and explicit validation cannot compete.
+
+Invocation report blobs externalize atomic grading through storage's JSON codec.
+Viewer reads hydrate after summary blob authorization; missing/corrupt detail
+fails closed. Operator REPORT.md/REPORT.json exports consume the full inline
+report and preserve scores/evidence. Legacy inline report blobs remain readable.

@@ -133,3 +133,12 @@ logical callback/repeat key and checkpoint.ts reserves distinct replacement entr
 with failed IDs and causes. Failed captures remain unscorable; successful captures
 and errored measurements are never repeated. Retry count survives resume; replacements
 share cancellation, slot admission and the original callback/held-out worker.
+
+Checkpoint persistence externalizes atomicGrading through storage's public JSON
+codec under each native trial's protected manifest; full reports stay in memory.
+Digest compact wire state before publication and verify it before hydration.
+Restore sealed detail with the checkpoint's frozen candidate identities.
+Legacy inline states retain their identity; subsequent writes compact them.
+Checkpoints and grading blobs remain bounded at 64 MiB. Missing/mismatched blobs
+block resume. Adjacent payload tests exercise 38 large trials, corruption and
+completed legacy resume without native execution.

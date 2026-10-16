@@ -10,6 +10,7 @@ import type { RescoreReport } from '../replay/index.js';
 import type { TrialReport } from '../trials/index.js';
 import type { CandidateManifest } from '../../candidates/index.js';
 import type { TrainingOptions } from './training.js';
+import { externalizeEvaluationJson, hydrateEvaluationJson, type ExperimentStore } from '../../storage/index.js';
 
 interface Entry { id: string; retry?: Omit<TrialRetry, 'replacementTrialId'>; report?: TrialReport; rescores?: RescoreReport[]; pendingRescoreId?: string }
 interface State {
@@ -25,7 +26,9 @@ export const trainingDigest = (value: unknown) => createHash('sha256').update(JS
 export class TrainingCheckpoint {
   private readonly mutations = new MutationQueue();
   private readonly restored: Set<string>;
-  private constructor(private readonly path: string, private state: State) { this.restored = new Set(Object.keys(state.entries)); }
+  private constructor(private readonly path: string, private state: State, private readonly store: ExperimentStore) {
+    this.restored = new Set(Object.keys(state.entries));
+  }
   get inheritedTrialIds() { return [...this.state.lineage?.inheritedTrialIds ?? []]; }
   get optimizer() { return this.state.optimizer; }
   get rescores() { return Object.values(this.state.entries).flatMap(entry => entry.rescores ?? []); }
@@ -81,7 +84,8 @@ export class TrainingCheckpoint {
       if (saved.state.identity !== (importing ? importing.trainingIdentity : identity) || trainingDigest(saved.state) !== saved.digest) {
         throw new Error('Training checkpoint identity or integrity mismatch');
       }
-      state = saved.state;
+      state = await hydrateEvaluationJson(options.native.store, saved.state, { audience: 'evaluator', phase: 'test',
+        frozenCandidateIds: Object.values(saved.state.entries).flatMap(entry => entry.report ? [entry.report.candidateId] : []) });
       if (importing) {
         if (!Number.isSafeInteger(state.recoveries) || state.recoveries < 0 || state.recoveries > (options.checkpoint.maxRecoveryAttempts ?? 2)) {
           throw new Error('Parent measurement recovery counter is invalid');
@@ -95,7 +99,7 @@ export class TrainingCheckpoint {
           inheritedTrialIds: Object.values(state.entries).map(entry => entry.id) } };
       }
     }
-    const checkpoint = new TrainingCheckpoint(path, state);
+    const checkpoint = new TrainingCheckpoint(path, state, options.native.store);
     if (create) await checkpoint.save(true);
     return checkpoint;
   }
@@ -148,9 +152,16 @@ export class TrainingCheckpoint {
     this.state.optimizer = optimizer; await this.save();
   }
   private async save(create = false) {
+    const entries: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(this.state.entries)) {
+      entries[key] = await externalizeEvaluationJson(this.store, entry.id, entry);
+    }
+    const state = { ...this.state, entries };
+    const bytes = JSON.stringify({ state, digest: trainingDigest(state) });
+    if (Buffer.byteLength(bytes) > 67_108_864) throw new Error('Training checkpoint exceeds 64 MiB');
     const temp = `${this.path}.${randomUUID()}.tmp`;
     const file = await open(temp, 'wx', 0o600);
-    try { await file.writeFile(JSON.stringify({ state: this.state, digest: trainingDigest(this.state) })); await file.sync(); }
+    try { await file.writeFile(bytes); await file.sync(); }
     finally { await file.close(); }
     try { if (create) await link(temp, this.path); else await rename(temp, this.path); }
     finally { await unlink(temp).catch(() => undefined); }

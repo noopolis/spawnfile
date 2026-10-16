@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import type { CandidateManifest } from '../../candidates/index.js';
 import { candidateComponents, deriveCandidate } from '../../candidates/index.js';
 import type { ResolvedDataset } from '../../contracts/dataset.js';
-import { openExperimentStore, type ExperimentStore } from '../../storage/index.js';
+import { hydrateEvaluationJson, openExperimentStore, type ExperimentStore } from '../../storage/index.js';
 import { capturedTrial } from '../replay/index.js';
 import { trainingDigest } from '../training/index.js';
 import type { TrialReport } from '../trials/index.js';
@@ -29,6 +29,8 @@ export async function readParentCheckpoints(receipt: MeasurementRepairReceipt) {
   if (!Number.isSafeInteger(training.state.recoveries) || training.state.recoveries < 0 || !training.state.entries || !Array.isArray(host.entries)) {
     throw new Error('Parent checkpoint bookkeeping is invalid');
   }
+  training.state = await hydrateEvaluationJson(await openExperimentStore(receipt.parent.root), training.state,
+    { audience: 'operator', phase: 'replay' });
   return { directory, command, training, host };
 }
 

@@ -34,3 +34,11 @@ Mutation-check both original and rescored failure attribution.
 Infrastructure retry receipts list original/replacement IDs and causes. Preserve all
 failed measurements with unknown scores and cost receipts; exclude replaced failed
 attempts from split/round means. Replacements alone supply held-out samples.
+
+Report export receives hydrated reports. Preserve identical Markdown/JSON summaries
+for inline and blob-backed grading; the invocation's protected report blob uses
+storage's compact wire format. Payload tests compare complete hydrated evidence,
+exported summaries and viewer replay across a report exceeding 64 MiB inline.
+Boundary tests keep masked atomic errors unscorable, retain nonempty receipts and
+reject missing/same-length-corrupt detail before replay or hydrated stored export.
+Mutation-check viewer hydration removal and compact data passed to report export.
