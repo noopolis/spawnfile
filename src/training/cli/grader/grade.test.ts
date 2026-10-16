@@ -1,3 +1,8 @@
+import { CliDatasets } from '../datasets.js';
+import { runValidate } from './validate.js';
+import { runCalibrate } from './calibrate.js';
+import { createEvaluationRegistry, evaluatePlan } from '../../evaluation/index.js';
+import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -248,4 +253,65 @@ it('emits sanitized accounting for paid grading failure before returning nonzero
   expect(JSON.parse(stdout[0]!)).toMatchObject({ schema: 'paideia.grader-failure.v1', status: 'failed', command: 'grade',
     decisionAccounting: { requests: 1, inputTokens: 100, usd: 0.1, receipts: [{ status: 200 }] } });
   expect(stderr.join('')).toContain('infrastructure unavailable');
+});
+
+async function identityFixture() {
+  const root = await mkdtemp(join(tmpdir(), 'fixed-questions-')); roots.push(root);
+  const graderFile = join(root, 'fixed.yaml'), outputFile = join(root, 'article.json'), groundingFile = join(root, 'grounding.md');
+  await writeFile(graderFile, stringify({ schema: 'paideia.grader.v1', id: 'fixed', calibration: 'identity',
+    context: { grounding: { description: 'Frozen human facts' } }, model: { backend: 'typesafe', name: 'jev-1.13.0' }, max_spend_usd: 0.5,
+    questions: Array.from({ length: 6 }, (_, i) => ({ id: `q${i}`, ask: `Reader question ${i}?`,
+      type: 'yes-no', expected: i % 2 ? 'no' : 'yes', reads: ['output.body', 'context.grounding'] })),
+    score: { method: 'weighted', pass_at: 0.75 } }));
+  await writeFile(outputFile, '{"body":["There are 10 items."]}'); await writeFile(groundingFile, 'Exactly 10 items.');
+  vi.stubEnv('TYPESAFE_API_KEY', 'FAKE_TEST_KEY');
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+    const body = JSON.parse(init!.body as string) as { state: string; questions: Record<string, unknown> };
+    expect(JSON.parse(body.state)).toEqual({ 'output.body': ['There are 10 items.'], 'context.grounding': 'Exactly 10 items.' });
+    expect(Object.keys(body.questions)).toHaveLength(6);
+    return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.keys(body.questions).map((key, i) => [key,
+      { type: 'noul', noul: i % 2 ? 0.1 : 0.9 }])), usage: { input_tokens: 120, output_tokens: 1 } });
+  });
+  vi.stubGlobal('fetch', fetch);
+  const provider = vi.fn(() => { throw new Error('No teacher or extractor allowed'); });
+  return { root, graderFile, outputFile, groundingFile, contextFiles: { grounding: groundingFile }, fetch, provider };
+}
+it('grades captured files through the real TypeSafe transport with six fixed questions, identity and accounting', async () => {
+  const f = await identityFixture();
+  expect(await runValidate(f.graderFile)).toEqual({ status: 'valid', calibration: false });
+  expect(f.fetch).not.toHaveBeenCalled();
+  const result = await runGrade(f, { provider: f.provider });
+  expect(result).toMatchObject({ status: 'pass', score: 0.9, coverage: 1, backendBilling: 'api',
+    identity: { calibration: { mode: 'identity' } }, decisionAccounting: { requests: 1, inputTokens: 120 } });
+  expect(f.provider).not.toHaveBeenCalled(); expect(f.fetch).toHaveBeenCalledOnce();
+  const stdout: string[] = [];
+  const io = { cwd: f.root, stdout: (line: string) => stdout.push(line), stderr: (line: string) => { throw new Error(line); } };
+  expect(await main(['grader', 'grade', '--grader', 'fixed.yaml', '--output', 'article.json', '--context', 'grounding=grounding.md'], io)).toBe(0);
+  expect(JSON.parse(stdout[0]!)).toMatchObject({ status: 'pass', identity: { calibration: { mode: 'identity' } } });
+  expect(await runGrade({ ...f, maxSpendUsd: 0 })).toMatchObject({ status: 'unknown', coverage: 0,
+    decisions: Array.from({ length: 6 }, () => ({ status: 'missing', reason: 'spend cap' })), decisionAccounting: { requests: 0 } });
+  await expect(runCalibrate({ graderFile: f.graderFile })).rejects.toThrow('no fitted calibration');
+});
+it('resolves per-record grading, freezes source files, and evaluates grounding without exposing it as subject input', async () => {
+  const f = await identityFixture();
+  await writeFile(join(f.root, 'facts.md'), 'There are 10 items.');
+  await writeFile(join(f.root, 'data.yaml'), stringify({ schema: 'paideia.dataset.v1', id: 'cases',
+    records: [{ id: 'r', input: { prompt: 'Write.' }, outputs: { article: 'article.json' }, context: { grounding: 'Exactly 10 items.' }, checks: [
+      { id: 'length', eval: 'word-count', input: 'artifact:article#/body', min: 4, max: 4 },
+      { id: 'values', eval: 'values-in-source', input: 'artifact:article#/body', source: ['context:grounding', 'facts.md'] },
+      { id: 'reader', eval: 'grader', grader: 'fixed.yaml', input: 'artifact:article', context: { grounding: 'context:grounding' } },
+    ] }] }));
+  const datasets = new CliDatasets({}, f.root);
+  const resolved = datasets.load('data.yaml', false);
+  const graders = await datasets.buildGraders({ provider: f.provider }, true);
+  const record = resolved.records[0]!;
+  expect(record.input).toEqual({ prompt: 'Write.' });
+  await writeFile(join(f.root, 'facts.md'), 'Mutated');
+  expect(await datasets.readCriterion('facts.md')).toBe('There are 10 items.');
+  const result = await evaluatePlan(record.effectiveStages, evaluationContext({ graders, readText: name => datasets.readCriterion(name),
+    snapshot: snapshot({ context: record.context!, artifacts: { article: artifact(JSON.parse(await readFile(f.outputFile, 'utf8'))) } }) }), createEvaluationRegistry());
+  expect(result.status).toBe('pass'); expect(result.checks.reader).toMatchObject({ grading: { score: 0.9 } });
+  expect(f.provider).not.toHaveBeenCalled(); expect(f.fetch).toHaveBeenCalledOnce();
+  await writeFile(f.graderFile, (await readFile(f.graderFile, 'utf8')).replace('Reader question 0?', 'Changed question?'));
+  await expect(datasets.buildGraders({}, true)).rejects.toThrow('changed after dataset resolution');
 });

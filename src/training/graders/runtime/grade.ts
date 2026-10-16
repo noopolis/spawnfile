@@ -13,6 +13,7 @@ import type { GradeOptions, GradeResult } from './types.js';
 
 function goodProbability(question: DecisionQuestion, result: DecisionResult): number | undefined {
   if (result.status !== 'ok' || !result.probabilities) return undefined;
+  if (Object.keys(result.probabilities).length !== optionsFor(question).length) throw new Error(`Invalid decision probabilities: ${question.id}`);
   const values = optionsFor(question).map(option => result.probabilities![String(option)]);
   if (values.some(value => !Number.isFinite(value) || value! < 0 || value! > 1) ||
     Math.abs(values.reduce<number>((sum, value) => sum + value!, 0) - 1) > 1e-5) {
@@ -30,6 +31,7 @@ export async function gradeOutput(options: GradeOptions): Promise<GradeResult> {
 
 async function gradeOutputInternal(options: GradeOptions, receipts: DecisionRequestReceipt[]): Promise<GradeResult> {
   const { grader, calibration, signal } = options;
+  const identityMode = grader.calibration === 'identity' && calibration.identity.mode === 'identity';
   signal?.throwIfAborted();
   if (grader.gates.some(gate => 'check' in gate && options.gateOutcomes?.[gate.id] === 'fail')) {
     return { ...aggregateGrader(grader, expandInstances(grader, options.output, options.context), {}, options.gateOutcomes),
@@ -72,7 +74,7 @@ async function gradeOutputInternal(options: GradeOptions, receipts: DecisionRequ
   const requestsByModel = new Map<string, DecisionRequest[]>();
   for (const instance of instances) {
     if (instance.state !== 'ready') continue;
-    if (selectedModel(instance.questionId).backend !== 'teacher' && checked.notCalibrated.includes(instance.questionId)) { escalate(instance); continue; }
+    if (!identityMode && selectedModel(instance.questionId).backend !== 'teacher' && checked.notCalibrated.includes(instance.questionId)) { escalate(instance); continue; }
     const question = questions.get(instance.questionId)!;
     const id = selectedId(instance.questionId);
     const requests = requestsByModel.get(id) ?? [];
@@ -101,8 +103,8 @@ async function gradeOutputInternal(options: GradeOptions, receipts: DecisionRequ
     if (raw === undefined) continue;
     const fitted = calibration.questions[instance.questionId]!;
     const teacherModel = selectedModel(instance.questionId).backend === 'teacher';
-    const pGood = teacherModel ? raw : applyPlatt(raw, fitted.params!);
-    if (!teacherModel && inEscalationBand(pGood, fitted.band!)) escalate(instance);
+    const pGood = identityMode || teacherModel ? raw : applyPlatt(raw, fitted.params!);
+    if (!identityMode && !teacherModel && inEscalationBand(pGood, fitted.band!)) escalate(instance);
     else outcomes[instance.key] = { pGood };
   }
   const calls = planCallAdmission(instances.filter(instance => outcomes[instance.key]?.escalated)
@@ -138,7 +140,7 @@ function resultIdentity(options: GradeOptions, identity = options.calibration.id
   return {
     backendBilling: billing.size > 1 ? 'mixed' : billing.has('subscription') ? 'subscription' : billing.has('api') ? 'api' : 'local',
     identity: { calibration: identity, calibrationDigest: stableDigest(calibration), escalation: stableDigest(grader.escalate),
-      teacherPolicy: stableDigest({ escalation: teacherPolicyDigest(grader.teachers.find(t => t.id === grader.escalate.to)!),
+      teacherPolicy: stableDigest({ escalation: grader.calibration === 'identity' ? null : teacherPolicyDigest(grader.teachers.find(t => t.id === grader.escalate.to)!),
         uncalibrated: grader.uncalibrated }),
       scoringPolicy: stableDigest({ version: 'paideia.grading.v1', questions: grader.questions, gates: grader.gates, score: grader.score }) } };
 }

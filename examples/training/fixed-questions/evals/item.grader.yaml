@@ -1,0 +1,41 @@
+schema: paideia.grader.v1
+id: item-reader
+calibration: identity
+context:
+  grounding: { description: Frozen human-authored facts for this case }
+model: { backend: typesafe, name: jev-1.13.0 }
+max_spend_usd: 0.50
+questions:
+  - id: quantity
+    type: yes-no
+    ask: Does the article tell the reader that the delivery contains 10 items?
+    expected: 'yes'
+    weight: 2
+    reads: [context.grounding, output.body]
+  - id: price
+    type: yes-no
+    ask: Does the article tell the reader the total price is USD 25?
+    expected: 'yes'
+    reads: [context.grounding, output.body]
+  - id: recipient
+    type: yes-no
+    ask: Does the article identify the recipient as the community library?
+    expected: 'yes'
+    reads: [context.grounding, output.body]
+  - id: delivered
+    type: yes-no
+    ask: Does the article say the delivery has already arrived?
+    expected: 'no'
+    reads: [context.grounding, output.body]
+  - id: timing
+    type: yes-no
+    ask: Does the article explain that delivery is planned for Monday?
+    expected: 'yes'
+    reads: [context.grounding, output.body]
+  - id: supported
+    type: yes-no
+    ask: Are all factual assertions in the article supported by the grounding?
+    expected: 'yes'
+    weight: 2
+    reads: [context.grounding, output.body]
+score: { method: weighted, pass_at: 0.8 }

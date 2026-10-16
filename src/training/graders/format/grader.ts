@@ -27,7 +27,7 @@ export const graderSchema = z.strictObject({
   schema: z.literal('paideia.grader.v1'), id: identifier,
   golden: z.union([z.string().min(1), labelsSchema.extend({ grader: identifier.optional() })]), calibration: z.string().min(1),
   context: z.record(identifier, z.strictObject({ description: z.string(), rows: rowsSchema.optional() })).default({}),
-  teachers: z.array(z.strictObject({ id: identifier, provider, model: z.string().min(1), effort: z.string().min(1).optional() })).min(1),
+  teachers: z.array(z.strictObject({ id: identifier, provider, model: z.string().min(1), effort: z.string().min(1).optional() })),
   model: modelSchema.optional(),
   max_spend_usd: z.number().finite().nonnegative().optional(),
   models: z.array(namedModelSchema).min(1).max(4).optional(),
@@ -73,8 +73,21 @@ function validateStructure(grader: Grader): void {
     if (teachers.has(teacher.id)) throw new Error(`$.teachers.${i}.id: duplicate teacher`);
     teachers.add(teacher.id);
   });
-  if (!teachers.has(grader.escalate.to)) throw new Error('$.escalate.to: unknown teacher');
+  if (grader.calibration !== 'identity' && !teachers.size) throw new Error('$.teachers: requires at least one teacher');
+  if (grader.calibration !== 'identity' && !teachers.has(grader.escalate.to)) throw new Error('$.escalate.to: unknown teacher');
   const models = decisionModels(grader);
+  if (grader.calibration === 'identity' && (grader.models !== undefined || models.length !== 1 || models[0]!.backend === 'teacher' ||
+    grader.teachers.length || grader.escalate.to !== 'none' || grader.uncalibrated !== 'refuse')) {
+    throw new Error('$.calibration: identity requires one decision model, no teachers or escalation, and uncalibrated: refuse');
+  }
+  if (grader.calibration === 'identity' && models[0]!.backend === 'typesafe' && grader.max_spend_usd === undefined) {
+    throw new Error('$.max_spend_usd: identity TypeSafe grading requires an explicit spend cap');
+  }
+  if (grader.calibration === 'identity' && (typeof grader.golden === 'string' || grader.golden.labels.length ||
+    Object.keys(grader.golden.labelers).length || !('between' in grader.escalate) ||
+    grader.escalate.between[0] !== 0 || grader.escalate.between[1] !== 1 || grader.escalate.max_calls_per_trial !== undefined)) {
+    throw new Error('$.calibration: identity cannot declare golden labels or escalation');
+  }
   const modelIds = new Set<string>();
   for (const model of models) {
     if (modelIds.has(model.id)) throw new Error(`$.models.${model.id}: duplicate model id`);
@@ -103,6 +116,11 @@ function validateStructure(grader: Grader): void {
 
 /** Parsing preserves recognized future methods; executable validation refuses them. */
 export function parseGrader(value: unknown): Grader {
+  // Only explicit identity mode supplies the unused legacy authoring fields.
+  if (value && typeof value === 'object' && 'calibration' in value && value.calibration === 'identity') {
+    value = { golden: { schema: 'paideia.labels.v1', labelers: {}, labels: [] },
+      teachers: [], escalate: { to: 'none', between: [0, 1] }, ...value };
+  }
   const grader = parseSchema(graderSchema, value);
   validateStructure(grader);
   if (typeof grader.golden !== 'string') parseLabels({ ...grader.golden, grader: grader.golden.grader ?? grader.id }, grader);
@@ -118,7 +136,7 @@ export async function loadGrader(filename: string): Promise<Grader> {
   const grader = validateGrader(parseGraderYaml(await readFile(filename, 'utf8')));
   const directory = path.dirname(path.resolve(filename));
   const loaded = { ...grader, golden: typeof grader.golden === 'string' ? path.resolve(directory, grader.golden) : grader.golden,
-    calibration: path.resolve(directory, grader.calibration) };
+    calibration: grader.calibration === 'identity' ? 'identity' : path.resolve(directory, grader.calibration) };
   rememberSourceDirectory(loaded, directory);
   return loaded;
 }

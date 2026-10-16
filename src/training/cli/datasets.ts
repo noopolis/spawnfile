@@ -66,7 +66,7 @@ export class CliDatasets {
       if (runtime.definitionDigest !== binding.definitionDigest || ('kind' in runtime ? runtime.templatesDigest !== binding.templatesDigest || binding.kind !== 'atomic' : runtime.calibrationDigest !== binding.calibrationDigest)) {
         throw new Error(`Grader or calibration changed after dataset resolution: ${filename}`);
       }
-      if (requireExclusions && !('kind' in runtime)) for (const excluded of this.loaded.values()) {
+      if (requireExclusions && !('kind' in runtime) && runtime.grader.calibration !== 'identity') for (const excluded of this.loaded.values()) {
         if (!runtime.calibration.identity.exclusions.some(item => item.digest === excluded.sourceDigest.replace(/^sha256:/, ''))) {
           throw new Error(`Grader calibration must exclude dataset ${excluded.sourceName}; internal validation requires excluding the whole training dataset`);
         }

@@ -135,6 +135,8 @@ export interface EvaluationResult {
   judgeFailure?: JudgeFailure;
   score?: number;
   evidence: EvidenceReference[];
+  /** Deterministic measurements over the referenced text bytes. */
+  mechanicalEvidence?: { count?: number; found?: number; total?: number; missing?: string[] };
   children?: EvaluationResult[];
   grading?: GradeResult;
   atomicGrading?: AtomicGradeResult;

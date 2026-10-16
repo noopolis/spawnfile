@@ -10,3 +10,5 @@ export { projectDatasetCost } from './cost-projection.js';
 export type { CostDataset, CostRecord } from './cost-projection.js';
 
 export type { GraderBinding } from './grader.js';
+
+export { isTextSelector, textSelectors } from './text-checks.js';

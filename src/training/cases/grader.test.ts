@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { createCalibrationIdentity, parseGrader, sha256 } from '../graders/index.js';
@@ -84,7 +85,41 @@ describe('grader resolution', () => {
     for (const input of ['output.text', 'artifact:other']) {
       expect(() => resolve({}, { ...grader, gates: [{ id: 'bad-input', check: { eval: 'equals', input, value: 'x' } }] })).toThrow('graded artifact article');
     }
+    expect(() => resolve({}, { ...grader, gates: [{ id: 'wrong-array', check: { eval: 'word-count', input: ['artifact:article#/body', 'artifact:other'], min: 1 } }] })).toThrow('graded artifact article');
     expect(resolve({}, { ...grader, gates: [{ id: 'bound-input', check: { eval: 'equals', input: 'artifact:article#/body', value: [] } }] }).sharedStages).toHaveLength(1);
     expect(() => resolve({}, { ...grader, gates: [{ id: 'bad', check: { eval: 'unknown' } }] })).toThrow('unsupported evaluator');
   });
+});
+
+it('resolves explicit identity grading with per-record protected context and no calibration sidecar', () => {
+  const fixed = parseGrader({ schema: 'paideia.grader.v1', id: 'fixed', calibration: 'identity',
+    context: { evidence: { description: 'Human frozen grounding' } },
+    model: { backend: 'typesafe', name: 'jev-1.13.0' }, max_spend_usd: 1,
+    questions: [{ id: 'q', type: 'yes-no', ask: 'Does the answer give the count?', expected: 'yes', reads: ['context.evidence', 'output.body'] }],
+    score: { method: 'weighted', pass_at: 0.8 } });
+  const resolved = resolve({ context: { evidence: 'context:grounding' } }, fixed);
+  expect(resolved.sharedStages[0]!.checks[0]!.grader_binding).toMatchObject({ calibrationDigest: sha256('identity') });
+  expect(resolved.criterionFileDigests).toEqual({ 'rubrics/report.yaml': `sha256:${sha256(stringify(fixed))}` });
+});
+
+
+it('resolves the three-family example and distinct fixed question sets on separate records', async () => {
+  const root = 'examples/fixed-questions/evals/';
+  const source = await readFile(`${root}delivery.paideia.yaml`, 'utf8');
+  const graderSource = await readFile(`${root}item.grader.yaml`, 'utf8');
+  const options = { readCriterionFile: () => graderSource, registry: { judges: { prose: { version: 'test' } } } };
+  const resolved = resolveDataset(parseDatasetYaml(source, { sourceName: '/project/delivery.paideia.yaml' }), options);
+  expect(resolved.records[0]!.effectiveStages[0]!.checks.map(node => node.eval)).toEqual(['word-count', 'values-in-source', 'grader', 'llm-rubric']);
+  const first = { ...check, grader: 'first.yaml', context: { evidence: 'context:grounding' } };
+  const second = { ...structuredClone(first), grader: 'second.yaml' };
+  const fixed = parseGrader({ ...grader, calibration: 'identity', teachers: [], golden: { schema: 'paideia.labels.v1', labels: [], labelers: {} },
+    escalate: { to: 'none', between: [0, 1] } });
+  const files = { 'first.yaml': stringify(fixed), 'second.yaml': stringify({ ...fixed, questions: [{ ...fixed.questions[0], ask: 'A distinct question?', expected: 'no' }] }) };
+  const cases = resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id: 'd', records: [
+    { id: 'a', input: { prompt: 'Task A' }, outputs: { article: 'a.json' }, context: { grounding: 'Facts A' }, checks: [first] },
+    { id: 'b', input: { prompt: 'Task B' }, outputs: { article: 'b.json' }, context: { grounding: 'Facts B' }, checks: [second] },
+  ] })), { readCriterionFile: name => files[name as keyof typeof files] });
+  expect(cases.records.map(record => record.context!.grounding)).toEqual(['Facts A', 'Facts B']);
+  expect(cases.records.map(record => record.effectiveStages[0]!.checks[0]!.grader)).toEqual(expect.arrayContaining([expect.stringContaining('first.yaml'), expect.stringContaining('second.yaml')]));
+  expect(cases.criterionFileDigests['first.yaml']).not.toBe(cases.criterionFileDigests['second.yaml']);
 });

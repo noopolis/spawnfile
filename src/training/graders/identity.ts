@@ -7,6 +7,7 @@ import { questionDefinitionDigest, allQuestions, decisionModels, optionsFor, par
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const interval = z.tuple([probability, probability]).refine(([lo, hi]) => lo <= hi, 'unordered interval');
 export const calibrationIdentitySchema = z.strictObject({
+  mode: z.literal('identity').optional(),
   questions: z.record(identifier, digest),
   expansion: z.array(z.tuple([identifier, digest])),
   promptTemplateVersion: z.string().min(1),
@@ -60,9 +61,11 @@ export function createCalibrationIdentity(grader: Grader, supplied: Omit<Calibra
   const questions = allQuestions(grader);
   return parseSchema(calibrationIdentitySchema, {
     ...supplied,
+    ...(grader.calibration === 'identity' ? { mode: 'identity' } : {}),
     ...(grader.models ? { models: stableDigest(decisionModels(grader)) } : {}),
     escalation: stableDigest(grader.escalate),
-    escalationTeacher: teacherPolicyDigest(grader.teachers.find(teacher => teacher.id === grader.escalate.to)!),
+    escalationTeacher: grader.calibration === 'identity' ? stableDigest(null)
+      : teacherPolicyDigest(grader.teachers.find(teacher => teacher.id === grader.escalate.to)!),
     uncalibrated: grader.uncalibrated,
     expansion: questions.map(question => [question.id, questionDefinitionDigest(grader, question)]),
     questions: Object.fromEntries(questions.map(question => [question.id, questionDefinitionDigest(grader, question)])),
@@ -98,11 +101,13 @@ export function checkCalibration(grader: Grader, calibration: CalibrationFile, i
       refusals.push(`calibration identity mismatch: modelIdentities.${id}`);
     }
   }
+  const identityMode = grader.calibration === 'identity' && calibration.identity.mode === 'identity';
+  if (grader.calibration !== 'identity' && calibration.identity.mode) refusals.push('calibration mode mismatch');
   const notCalibrated = allQuestions(grader).filter(question => calibration.questions[question.id]?.status !== 'calibrated').map(question => question.id);
-  if (options.quality !== false && grader.uncalibrated === 'refuse') {
+  if (!identityMode && options.quality !== false && grader.uncalibrated === 'refuse') {
     for (const id of notCalibrated) refusals.push(`question ${id}: ${calibration.questions[id]?.failures.join(', ') || 'not calibrated'}`);
   }
-  if (options.quality !== false) {
+  if (!identityMode && options.quality !== false) {
     const forced = allQuestions(grader).filter(question => {
       const id = calibration.questions[question.id]?.model ?? 'default';
       return models.find(model => model.id === id)?.backend === 'teacher' ||

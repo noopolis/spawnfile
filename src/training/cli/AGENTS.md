@@ -61,3 +61,6 @@ Invocation report blobs externalize atomic grading through storage's JSON codec.
 Viewer reads hydrate after summary blob authorization; missing/corrupt detail
 fails closed. Operator REPORT.md/REPORT.json exports consume the full inline
 report and preserve scores/evidence. Legacy inline report blobs remain readable.
+
+Fixed graders with explicit identity calibration have no labeled corpus and need no
+calibration exclusions. Keep definition/mode digests and dataset split guards intact.

@@ -60,3 +60,7 @@ all declared context bindings, dimension budgets and resolved acceptance gates b
 native work; keep runtime/provider construction out of resolution.
 
 Optional record.lineage is a unique nonempty ancestor list preserved in execution and cost projections; reject any ancestor crossing train/validation/test roles.
+
+Fixed legacy graders may explicitly select calibration: identity, with no calibration
+sidecar. Freeze its mode digest and definition bytes. context:name binds protected
+record context; values-in-source file sources use the same frozen criterion loader.

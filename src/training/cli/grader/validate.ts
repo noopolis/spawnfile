@@ -7,6 +7,7 @@ import { readExclusions } from './exclusions.js';
 
 export async function runValidate(graderFile: string, dependencies: GraderDependencies = {}, signal?: AbortSignal): Promise<{ status: 'valid'; calibration: boolean }> {
   const grader = await loadGrader(graderFile);
+  if (grader.calibration === 'identity') return { status: 'valid', calibration: false };
   const loaded = await loadLabels(grader.golden, grader);
   validateStoredVotes(grader, loaded.labels, { resolved: true });
   let source: string;

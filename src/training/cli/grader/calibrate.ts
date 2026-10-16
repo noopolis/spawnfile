@@ -29,6 +29,7 @@ async function calibrate(options: CalibrateOptions, dependencies: GraderDependen
   calibrationFile: string; reportFile: string; calibration: CalibrationFile; code: 0 | 1; decisionAccounting?: DecisionAccounting;
 }> {
   const grader = await loadGrader(options.graderFile);
+  if (grader.calibration === 'identity') throw new Error('Identity mode has no fitted calibration; select a calibration file first');
   dependencies = withDecisionBudget(grader, { ...dependencies, maxSpendUsd: options.maxSpendUsd ?? dependencies.maxSpendUsd });
   const loaded = await loadLabels(grader.golden, grader);
   validateStoredVotes(grader, loaded.labels, { resolved: true });

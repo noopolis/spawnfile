@@ -37,3 +37,6 @@ Dataset lineage names evidence ancestors across splits; authored validation path
 grader: failure/omission counts and template, unit text, nullable probability.
 Keep it structurally compatible with the grader's public feedback type; extraction,
 raw checks, identities and transport receipts never belong in this contract.
+
+EvaluationResult.mechanicalEvidence retains deterministic counts and missing values
+beside source-byte references; it does not assert semantic support or live finality.
