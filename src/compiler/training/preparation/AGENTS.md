@@ -18,6 +18,10 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 - Built preparations seal original image bytes in a protected witness for explicit
   captured-work repair. Optional compiler selects a separate full pinned native
   compiler distribution; the current package still owns launch/auth operations.
+- `image-layout.test.ts` reproduces the recipe's installed symlinks, imports the
+  paired public compiler from Paideia's module location, invokes real slot
+  preparation with a runtime contract fake, then deletes compiler/runtime peer
+  links independently to verify resolution fails. This checks Node layout without claiming a Docker run.
 - Exclude explicit generated Python coverage/cache files, not arbitrary dotfiles.
 - `scratch.ts` claims the private preparation directory. A launch that aborts
   past staging leaves it behind; `owner.json` records identity and host/PID before input writes. Recovery requires the same digest and ESRCH for that local PID, under an exclusive sibling recovery guard. Unknown ownership and stranded guards require manual inspection. Cleanup waits for all input jobs and makes sealed directories writable without following links; a provably stopped leftover from the *same* preparation digest

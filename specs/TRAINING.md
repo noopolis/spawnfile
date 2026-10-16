@@ -263,6 +263,29 @@ compatibility. This declaration is the author's assertion of implementation, not
 runtime conformance test. Authored launch still checks the immutable image label.
 Dry-run reports the plan only and does not verify an image's capability.
 
+The public `activateTrainingExecution` receiver validates the emitted session,
+reloads the selected canonical project and authoring plan, checks the source
+context and the complete authored dataset byte pins, then calls
+`lowerTrainingMoments` for every declared role. Registered integrations supply
+case authoring checks and private domain hooks; compiler, fresh rewind and slot
+reset operations are bound by the receiver, without an injected compiler
+implementation or external queue coordinator. Candidate editability is bound to
+the declared target files. The protected execution carries `sourceRoot`, selected
+from the unique declared input enclosing the project. Both preparation staging
+and container mount projection relocate this root; activation requires it for
+sessions and binds it into every candidate compilation. Resume identity includes
+the root. Nested project directories therefore retain repository-relative bundle
+inputs and Git identity.
+
+Lowered datasets and their moment evidence live at
+`<output>/.spawnfile-execution/moments`, separate from subject slot state, while
+`--out` remains the writable output mount. The receiver creates an exclusive
+activation receipt after lowering, binding the effective execution identity,
+canonical context and complete lowered file inventory. `--resume` reuses those
+files without executing case authoring again, and refuses absent/incomplete
+receipts, changed inputs, extra evidence files or altered lowered bytes.
+
+
 `datasetPins` binds every authored train/validation/test source path to the SHA-256
 of the exact bytes parsed during plan loading, including full override declarations.
 Preparation MUST verify these pins against staged Git/selected snapshot bytes on
@@ -980,7 +1003,11 @@ using code-point lexical order. All digests use the `sha256:` prefix. Absolute r
 do not affect this digest. The receiver must revalidate files and mappings before use.
 
 Resources disclose declaration digests and pins, not mounted or verified archives.
-The resource definition digest uses the compiler's recursively key-sorted JSON.
+The resource definition digest uses the compiler's recursively key-sorted JSON,
+with the declaring scope key projected to a project-relative POSIX path. Relocating
+the canonical project into a container MUST preserve resource identities. Generated
+bundle training recipe pins likewise project their cwd and input roots relative to
+the canonical project; ordinary compile cache keys remain unchanged.
 `pin` is the bundle SHA (declared, or hashed for an unpinned prebuilt tar), `bundle-key:<hex>`
 for a Spawnfile-built `files` or `dependencies` bundle (the dev cache key for the target
 architecture; nothing is built), `bundle-recipe:<hex>` for a `generated` bundle (that key with

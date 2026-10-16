@@ -81,10 +81,13 @@ RUN find /opt/training \( \( -type d ! -perm -0555 \) -o \( ! -type d ! -type l 
  && ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude \
  && ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia \
  && ln -s /opt/training/spawnfile/dist/cli/index.js /opt/training/bin/spawnfile \
+ && ln -s /opt/training/compiler /opt/training/paideia/node_modules/spawnfile \
  && mkdir -p /opt/training/integration/node_modules/@noopolis \
  && ln -s /opt/training/paideia /opt/training/integration/node_modules/@noopolis/paideia \
  && ln -s /opt/training/spawnfile /opt/training/integration/node_modules/spawnfile \
  && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/integration/node_modules/@noopolis/daimon \
+ && mkdir -p /opt/training/compiler/node_modules/@noopolis \
+ && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/compiler/node_modules/@noopolis/daimon \
  && mkdir -p /opt/training/spawnfile/node_modules/@noopolis \
  && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/spawnfile/node_modules/@noopolis/daimon
 

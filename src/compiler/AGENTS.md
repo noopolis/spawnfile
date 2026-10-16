@@ -104,6 +104,8 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
 ## Rules
 
 - Keep the compiler deterministic.
+- Generated bundle training pins may supply a project-relative identity root;
+  ordinary compile cache keys retain their existing absolute-path semantics.
 - Recording metadata is optional: only recording agents contribute to `recording.keep_ms`,
   `memory_mount_ids`, and `recording_mount_ids`. Reuse workspace git/bundle report pins in the distribution report,
   dropping host paths/URLs. Never resolve sources again for recording; off emits no fields.

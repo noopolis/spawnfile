@@ -61,3 +61,12 @@ not a manifest-pinned 1.0.34 build is refused at slot provisioning and again by
 the slot supervisor, by digest. `spawnfile/node_modules/@noopolis/daimon` links
 to the same install so the root entrypoint can import Daimon's public
 `/runtime` export for the broker projection.
+
+Paideia's own `node_modules/spawnfile` links to `/opt/training/compiler`, the
+declared paired compiler distribution. The integration-only package link cannot
+satisfy imports originating in Paideia. Keep peer installation omitted and test
+the actual symlink recipe through the preparation image-layout test.
+
+The paired `compiler/node_modules/@noopolis/daimon` also links to the native
+parent's same runtime install. Slot preparation imports `/runtime` from that
+compiler location; checking only the exported receiver misses this lazy load.

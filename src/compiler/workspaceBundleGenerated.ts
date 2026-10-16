@@ -68,9 +68,11 @@ const generatedRecipe = async (spec: GeneratedSpec, cwd: string, context: Bundle
       ? await runContainerStep({ argv: tool, dockerCommand: context.dockerCommand, image: spec.image, mounts: [[cwd, CONTAINER_WORKDIR]], name: bundleContainerName(), platform: context.platform, workdir: CONTAINER_WORKDIR }, TOOL_TIMEOUT_MS, `Generated bundle tool ${tool.join(" ")}`, cwd)
       : await runBundleCommand({ argv: tool, cwd, timeoutMs: TOOL_TIMEOUT_MS }, `Generated bundle tool ${tool.join(" ")}`)).digest("hex") : null
   })));
+  const identityPath = (directory: string) => context.identityRoot
+    ? path.relative(context.identityRoot, directory).split(path.sep).join("/") : directory;
   return {
-    command: spec.command, cwd, image: spec.image ?? null,
-    inputs: inputs.map((input) => ({ entries: filesIdentity(input), root: input.directory })),
+    command: spec.command, cwd: identityPath(cwd), image: spec.image ?? null,
+    inputs: inputs.map((input) => ({ entries: filesIdentity(input), root: identityPath(input.directory) })),
     tools
   };
 };

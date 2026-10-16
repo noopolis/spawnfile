@@ -83,11 +83,12 @@ type BundleFacts = Omit<CompileReportWorkspaceBundle, "id" | "agent_node_ids" | 
  * `bundle-recipe:<key>`, the same key with tools identified by argv only.
  * Nothing is installed, generated or executed.
  */
-export const pinWorkspaceBundle = async (resource: BundleResource, options: { architecture?: MoltnetTargetArchitecture; cacheDirectory?: string; dockerCommand?: string } = {}): Promise<string> => {
+export const pinWorkspaceBundle = async (resource: BundleResource, options: { architecture?: MoltnetTargetArchitecture; cacheDirectory?: string; dockerCommand?: string; identityRoot?: string } = {}): Promise<string> => {
   const base = path.dirname(resource.scope.key);
   if (resource.source !== undefined) return resource.sha256 ?? hashPrebuilt(path.resolve(base, resource.source));
   const plan = await planBundleBuild(resolveBundleBuildPaths(resource.build!, base), {
-    dockerCommand: options.dockerCommand ?? "docker", identity: "dev", outputReal: path.join(base, ".spawnfile-no-output"),
+    dockerCommand: options.dockerCommand ?? "docker", identity: "dev", identityRoot: options.identityRoot,
+    outputReal: path.join(base, ".spawnfile-no-output"),
     platform: `linux/${resolveBundleArchitecture(options.architecture)}`, workRoot: path.join(resolveWorkspaceBundleCacheDirectory(options.cacheDirectory), "work")
   }, { captureTools: false });
   // A generated bundle's build key includes captured tool output, which a pin never executes to obtain.

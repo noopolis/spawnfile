@@ -18,7 +18,9 @@ export const trainingExecutionSchema = z.object({
   authoring: trainingPlanSchema,
   datasetPins: z.array(z.object({ sourcePath: z.string().min(1), sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u) }).strict()),
   optimizer: trainingPlanOptimizerSchema,
+  session: z.object({ version: z.literal("spawnfile.training-session.v1"), slots: z.number().int().min(1).max(8) }).strict().optional(),
   args: z.array(z.string().min(1)),
+  sourceRoot: z.string().min(1).optional(),
   output: z.string().min(1)
 }).strict();
 export type TrainingExecution = z.infer<typeof trainingExecutionSchema>;
@@ -90,8 +92,13 @@ export const lowerTrainingExecution = async (options: LowerTrainingExecutionOpti
     if (!loaded) return invalid(`Authored dataset was not captured during plan loading: ${sourcePath}`);
     return { sourcePath, sha256: loaded.sha256 };
   });
+  const sourceRoots = declaration.inputs.map(input => path.resolve(path.dirname(trainingConfig), input.source))
+    .filter(root => project.root === root || project.root.startsWith(root + path.sep));
+  if (sourceRoots.length !== 1) return invalid("Training project requires one declared enclosing source input");
+  const sourceRoot = await realpath(sourceRoots[0]!);
   const execution = trainingExecutionSchema.parse({ version: "spawnfile.training-execution.v1", authoring: plan, datasetPins,
-    optimizer: { ...plan.optimizer, model: option(args, "--optimizer-model")! }, args, output });
+    ...(declaration.version === "spawnfile.training-container.v4" ? { session: { version: "spawnfile.training-session.v1", slots: declaration.slots } } : {}),
+    optimizer: { ...plan.optimizer, model: option(args, "--optimizer-model")! }, args, output, sourceRoot });
   return { execution, trainingConfig, trainingImage, declaration };
 };
 
@@ -120,7 +127,7 @@ export const mapTrainingExecution = (execution: TrainingExecution, map: (file: s
       args[index] = `${value.slice(0, split)}=${map(value.slice(split + 1))}`;
     }
   }
-  return trainingExecutionSchema.parse({ ...execution, datasetPins: execution.datasetPins.map(source), args, output: map(execution.output), authoring: {
+  return trainingExecutionSchema.parse({ ...execution, ...(execution.sourceRoot ? { sourceRoot: map(execution.sourceRoot) } : {}), datasetPins: execution.datasetPins.map(source), args, output: map(execution.output), authoring: {
     ...execution.authoring,
     ...(execution.authoring.preparation ? { preparation: { ...execution.authoring.preparation,
       ...(execution.authoring.preparation.history ? { history: map(execution.authoring.preparation.history) } : {}) } } : {}),
