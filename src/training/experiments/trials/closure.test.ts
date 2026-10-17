@@ -167,3 +167,33 @@ it('reconciles operator cancellation during the final stop receipt after a failu
     expect(report).not.toHaveProperty('failureKind');
   } finally { spy.mockRestore(); }
 });
+
+it.each(['returned', 'thrown'] as const)('retains the %s execution failure alongside final collection failure', async mode => {
+  const task = await setup(async () => {
+    if (mode === 'thrown') throw new Error('Native wake receipt JSON did not settle');
+    return { ...complete, status: 'failed', text: '', error: 'Native wake receipt JSON did not settle' };
+  });
+  let collections = 0;
+  task.options.prepare = async () => ({ instructions: 'fixture', collect: async () => {
+    // Returned failures must survive even when collection throws before runTrial
+    // reaches its native.status branch.
+    if (mode === 'returned' && ++collections === 1) throw new Error('first collection refused');
+    throw new Error('terminal receipt unavailable');
+  } });
+  const report = await runTrial(task.options);
+  expect(report.error).toContain('Native wake receipt JSON did not settle');
+  expect(report.error).toContain('Final collection failed: Error: terminal receipt unavailable');
+  if (mode === 'returned') expect(report.error).toContain('first collection refused');
+});
+
+it.each(['observation', 'evaluation'] as const)('keeps the original failure when final %s work fails too', async site => {
+  const task = await setup(async () => ({ ...complete, status: 'failed', text: '', error: 'original native failure' }));
+  const fail = async () => { throw new Error('finalizer unavailable'); };
+  const spy = site === 'observation' ? vi.spyOn(observationClosure, 'drainObservations').mockImplementation(fail)
+    : vi.spyOn(evaluation, 'evaluatePlan').mockImplementation(fail);
+  try {
+    const report = await runTrial(task.options);
+    expect(report.error).toContain('original native failure');
+    expect(report.error).toContain(site === 'observation' ? 'Observation closure failed' : 'Final evaluation failed');
+  } finally { spy.mockRestore(); }
+});

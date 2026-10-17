@@ -190,7 +190,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         { events: state.events.filter(event => event.wakeId === turn.id), context: state.context }));
     }
   } catch (caught) {
-    error = caught instanceof Error ? caught.message : String(caught);
+    error = [turns.at(-1)?.native.error, caught instanceof Error ? caught.message : String(caught)].filter(Boolean).join('; ');
     const abortedByPolicy = control.cause === 'decisive' && caught instanceof Error && caught.name === 'AbortError';
     execution = control.cause === 'operator' || control.cause === 'deadline' || abortedByPolicy ? 'interrupted' : 'failed';
     if (execution === 'failed') fail();
@@ -237,7 +237,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     await control.owned(drainObservations(() => observationTail));
     if (observationFailure) throw new Error(observationFailure);
   } catch (caught) {
-    error = `Observation closure failed: ${String(caught)}`; fail(); control.stop(error);
+    error = [error, `Observation closure failed: ${String(caught)}`].filter(Boolean).join('; '); fail(); control.stop(error);
   }
   closed = true;
   try {
@@ -246,7 +246,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     let liveGates: EvaluationResult[] = [];
     try { finalSnapshot = await control.owned(snapshot()); }
     catch (caught) {
-      error = `Final collection failed: ${String(caught)}`; fail(); control.stop(error);
+      error = [error, `Final collection failed: ${String(caught)}`].filter(Boolean).join('; '); fail(); control.stop(error);
       finalSnapshot = { trialId: options.id, recordId: record.id, closed, subjectUsage: subjectUsage(), events: structuredClone(events),
         coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles }, context: record.context ?? {}, artifacts: {} };
     }
@@ -257,7 +257,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         await persist('terminal.evaluation.skipped', { reason: 'Selected decisive mechanical failure', witness: live.decisive });
       } else evaluation = await control.owned(evaluatePlan(record.effectiveStages, evaluate(finalSnapshot), registry));
     } catch (caught) {
-      error = `Final evaluation failed: ${String(caught)}`; fail(); control.stop(error);
+      error = [error, `Final evaluation failed: ${String(caught)}`].filter(Boolean).join('; '); fail(); control.stop(error);
     }
     // Final collection or live checks can reveal behavior after an earlier failure.
     if (execution === 'failed') fail();

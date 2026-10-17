@@ -28,3 +28,13 @@ that historical tool result.
 
 Verify collection, malformed evidence and Grok tests here, plus parent worker and
 child multi-wake tests. Keep filesystem bounds and negative identity tests intact.
+
+Concurrent native JSON reads settle for at most one second, on a monotonic clock,
+with 25 ms polling. Retry syntax faults and torn JSONL only; retain size, identity,
+symlink and schema refusals. Errors name the file kind without its contents or the
+original parser message. Read-only host receipt/activity/availability calls use
+this policy too, including child HTTP observation routes; never replay acceptance
+or stop mutations. Empty/missing append-only ledgers are valid before the first
+row. An existing empty trace/usage/session file expected to contain closed work
+settles too; absence cannot erase a previously observed incomplete record. Terminal frames
+remain temp-file + fsync + rename + directory fsync with checked readback.

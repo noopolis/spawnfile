@@ -2,7 +2,7 @@ import { describeNativeFailure, executionClosed, claimedExecution, disposedWakeE
 export { describeNativeFailure, admittedExecutions, validateNativeFrame, executionClosed, claimedExecution, disposedWakeExecution, AMBIGUOUS_NATIVE_EXECUTION, AMBIGUOUS_WAKE_EXECUTION } from './evidence/index.js';
 import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
 import { dirname, join } from 'node:path';
-import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, wakeEvidenceFile, writeEvidence } from './evidence/index.js';
+import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, wakeEvidenceFile, writeEvidence, settleNativeRead } from './evidence/index.js';
 import { isGrokLaunch, type NativeLaunch, type NativeTaskClockEvidence } from '../receipt/index.js';
 import { createTransportDelivery, parseTransportSource, validateTransportExecutions, type TransportDeliverySource } from './wake-delivery/index.js';
 import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, NativeEvidenceSource, NativeHost,
@@ -25,6 +25,11 @@ export interface WorkerController {
 
 export function createWorkerController(host: NativeHost, config: NativeConfig, options: WorkerOptions,
   token: string, launch?: NativeLaunch, taskClock?: NativeTaskClockEvidence): WorkerController {
+  const observation = {
+    wakeReceipt: (auth: string | undefined, id: string) => settleNativeRead('wake acceptance receipt', () => host.wakeReceipt(auth, id)),
+    activityV2: (auth: string | undefined) => settleNativeRead('activity acceptance/batch snapshot', () => host.activityV2(auth)),
+    availability: (auth: string | undefined) => settleNativeRead('availability snapshot', () => host.availability(auth)),
+  };
   const agent = config.agents[0]!;
   if (agent.engine.kind === 'grok' && (!launch || !isGrokLaunch(launch))) throw new Error('Grok native trials require their Grok broker launch receipt');
   const grok = launch && isGrokLaunch(launch) ? launch : undefined;
@@ -62,7 +67,9 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
     return stopping;
   };
   return {
-    host, stop, ...(transport ? { transport } : {}),
+    // The HTTP observation routes used by child closure share the same readers.
+    host: { start: () => host.start(), stop: () => host.stop(), health: () => host.health(),
+      accept: value => host.accept(value), ...observation }, stop, ...(transport ? { transport } : {}),
     async run(wakeId, text, controls, expectedSource) {
       if (cancellation.signal.aborted) throw new Error('Worker accepts exactly one native trial delivery');
       const remaining = gate.begin(wakeId, text, controls, expectedSource);
@@ -115,7 +122,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           while (true) {
             if (cancellation.signal.aborted) throw new Error(timedOut ? 'Native trial deadline exceeded' : 'Native trial cancelled');
             [receipt, activity, availability] = await owned(Promise.all([
-              host.wakeReceipt(token, accepted.acceptance_id), host.activityV2(token), host.availability(token),
+              observation.wakeReceipt(token, accepted.acceptance_id), observation.activityV2(token), observation.availability(token),
             ]));
             if (!receipt || !activity || !availability) throw new Error('Authenticated native control evidence disappeared');
             if (receipt.delivery_id !== deliveryId || receipt.agent_id !== agent.id) throw new Error('Native receipt identity mismatch');
@@ -126,7 +133,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
             incoming?.observe(receipt, activity, availability, claimed);
             for (const row of activity.executions) if (row.agent_id === agent.id) history.add(row.execution_id);
             if (!activity.executions.length) {
-              const traces = await readClosedTraces(agent.runtimeHomePath, agent.id);
+              const traces = await readClosedTraces(agent.runtimeHomePath, agent.id, claimed !== undefined);
               // The runtime's own binding first; only for a delivery it has disposed
               // of, on a runtime admitting nothing, may this wake answer for the
               // execution that closed inside its own window instead.
@@ -134,9 +141,9 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
               if (claimed) {
                 executionId = executionClosed(activity, receipt, traces, agent.id, claimed);
                 if (executionId) {
-                  receipt = await owned(host.wakeReceipt(token, accepted.acceptance_id));
-                  activity = await owned(host.activityV2(token));
-                  availability = await owned(host.availability(token));
+                  receipt = await owned(observation.wakeReceipt(token, accepted.acceptance_id));
+                  activity = await owned(observation.activityV2(token));
+                  availability = await owned(observation.availability(token));
                   if (!receipt || !activity || !availability) throw new Error('Authenticated terminal control evidence disappeared');
                   if (receipt.delivery_id !== deliveryId) throw new Error('Native receipt identity mismatch');
                   incoming?.observe(receipt, activity, availability, claimed);

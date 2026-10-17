@@ -94,7 +94,7 @@ test('Grok worker loads the Grok runtime capability, sets engine-neutral limits 
       '--control-root', launch.controlRoot, '--token-file', launch.tokenFile, '--evidence', join(artifacts, 'evidence'),
       '--trial-id', 'unit-grok', '--timeout-ms', '900000', '--schedule-override', 'disabled'];
     await writeFile(launch.broker.usageLedgerPath, 'not json\n');
-    await expect(runDaimonNativeWorker(args)).rejects.toThrow(/valid JSON/);
+    await expect(runDaimonNativeWorker(args)).rejects.toThrow(/usage ledger JSON did not settle/);
     await rm(launch.broker.usageLedgerPath);
     await runDaimonNativeWorker(args);
     expect(engines).toEqual(['grok', 'grok']);
