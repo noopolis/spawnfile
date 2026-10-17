@@ -104,3 +104,7 @@ Unfinished collections always block; other collection/closure/evaluation failure
 are measurement failures, and decisive witnesses are behavioral failures. Operator
 and trial-deadline cancellation outrank finalization failures: execution stays
 interrupted without failureKind and is never replaceable.
+
+Retain the native execution error when collection fails before status handling.
+Observation closure, final collection and final evaluation errors append their
+stage to the earlier failure; none may replace the original cause.

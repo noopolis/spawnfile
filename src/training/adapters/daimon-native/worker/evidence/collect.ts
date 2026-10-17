@@ -1,12 +1,11 @@
 import { lstat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { readPrivateFile } from '../../receipt/index.js';
 import type { NativeCodexUsage, NativeEvidence, NativeEvidenceSource, NativeGrokUsage, NativeRequestUsage, NativeTrace, NativeTurnSeal } from '../types.js';
-import { object, timestamp, jsonLines, files } from './io.js';
+import { object, timestamp, jsonLines, files, readJson } from './io.js';
 import { parseNativeTurnSeal } from './seal.js';
 
-export async function readClosedTraces(runtimeHome: string, agentId: string): Promise<NativeTrace[]> {
-  return (await jsonLines(join(runtimeHome, 'telemetry', 'turns.ndjson'))).map(value => {
+export async function readClosedTraces(runtimeHome: string, agentId: string, settleEmpty = false): Promise<NativeTrace[]> {
+  return (await jsonLines(join(runtimeHome, 'telemetry', 'turns.ndjson'), 'closed trace telemetry', undefined, undefined, settleEmpty)).map(value => {
     const row = object(value);
     if (row.schema !== 'daimon.turn_trace.v1' || row.agent_id !== agentId || typeof row.turn_id !== 'string' ||
         !timestamp(row.started_at) || !timestamp(row.completed_at) || Date.parse(row.completed_at) < Date.parse(row.started_at) ||
@@ -33,9 +32,9 @@ export async function readClosedTraces(runtimeHome: string, agentId: string): Pr
 const wakeOwns = (wake: string, executionId: string | undefined, others: readonly string[]): boolean =>
   executionId === undefined ? !others.includes(wake) : wake === executionId;
 
-async function readUsage(file: string, agentId: string, executionId?: string, others: readonly string[] = []): Promise<NativeCodexUsage[]> {
+async function readUsage(file: string, agentId: string, settleEmpty: boolean): Promise<NativeCodexUsage[]> {
   const wakes = new Set<string>();
-  return (await jsonLines(file)).map(value => {
+  return (await jsonLines(file, 'token usage ledger', undefined, undefined, settleEmpty)).map(value => {
     const row = object(value);
     if (row.v !== 'noopolis.daimon.turn-usage.v1' || row.agent !== agentId || row.engine !== 'codex' ||
         typeof row.wake !== 'string' || !timestamp(row.at) ||
@@ -48,7 +47,7 @@ async function readUsage(file: string, agentId: string, executionId?: string, ot
       throw new Error('Native Codex token totals or cache subset are inconsistent');
     }
     return row as NativeCodexUsage;
-  }).filter(row => wakeOwns(row.wake, executionId, others));
+  });
 }
 
 /**
@@ -83,7 +82,7 @@ export async function readToolReceipts(runtimeHome: string, agentId: string, eng
   const entries = (await files(directory)).filter(name => /^[a-f0-9]{64}\.json$/u.test(name));
   if (entries.length > 2048) throw new Error('Native tool receipt count exceeds its bound');
   return Promise.all(entries.sort().map(async name => {
-    const row = object(JSON.parse(await readPrivateFile(join(directory, name), 65536)));
+    const row = object(await readJson(join(directory, name), 'tool receipt', 65536));
     if (row.agent_id !== agentId || row.engine !== engine || !['mcp', 'moltnet'].includes(String(row.kind)) ||
         typeof row.delivery_id !== 'string' || !timestamp(row.at)) throw new Error('Native tool receipt identity mismatch');
     if (row.kind === 'mcp' && (typeof row.server !== 'string' || typeof row.tool !== 'string' || typeof row.is_error !== 'boolean')) {
@@ -93,7 +92,7 @@ export async function readToolReceipts(runtimeHome: string, agentId: string, eng
   }));
 }
 
-async function readModelContexts(runtimeHome: string): Promise<NativeEvidence['modelContexts']> {
+async function readModelContexts(runtimeHome: string, settleEmpty: boolean): Promise<NativeEvidence['modelContexts']> {
   const contexts: NativeEvidence['modelContexts'] = [];
   let count = 0;
   const visit = async (directory: string, depth: number): Promise<void> => {
@@ -105,7 +104,7 @@ async function readModelContexts(runtimeHome: string): Promise<NativeEvidence['m
       if (entry.isDirectory()) { await visit(file, depth + 1); continue; }
       if (!name.endsWith('.jsonl')) continue;
       if (++count > 8) throw new Error('Native session count exceeds the isolated trial bound');
-      for (const value of await jsonLines(file)) {
+      for (const value of await jsonLines(file, 'Codex model context session', undefined, undefined, settleEmpty)) {
         const row = object(value);
         if (row.type !== 'turn_context') continue;
         const payload = object(row.payload);
@@ -131,9 +130,10 @@ export async function collectNativeEvidence(runtimeHome: string, usageFile: stri
   executionId: string | undefined, expectedModel: string, others: readonly string[] = [],
   source: NativeEvidenceSource = { engine: 'codex' }): Promise<NativeEvidence> {
   if (source.engine === 'grok') return collectGrokEvidence(runtimeHome, usageFile, source.requestsFile, agentId, executionId, expectedModel, others);
-  const [traces, usage, toolReceipts, modelContexts] = await Promise.all([
-    readClosedTraces(runtimeHome, agentId), readUsage(usageFile, agentId),
-    readToolReceipts(runtimeHome, agentId), readModelContexts(runtimeHome),
+  const traces = await readClosedTraces(runtimeHome, agentId);
+  const [usage, toolReceipts, modelContexts] = await Promise.all([
+    readUsage(usageFile, agentId, traces.length > 0),
+    readToolReceipts(runtimeHome, agentId), readModelContexts(runtimeHome, traces.length > 0),
   ]);
   if (modelContexts.some(row => row.model !== expectedModel)) throw new Error('Native model differs from the declared model');
   const accounting = trialAccounting({ traces, usage, toolReceipts, modelContexts });
@@ -143,8 +143,9 @@ export async function collectNativeEvidence(runtimeHome: string, usageFile: stri
 
 async function collectGrokEvidence(runtimeHome: string, usageFile: string, requestsFile: string, agentId: string,
   executionId: string | undefined, expectedModel: string, others: readonly string[]): Promise<NativeEvidence> {
-  const [traces, usage, requests, toolReceipts, seals] = await Promise.all([
-    readClosedTraces(runtimeHome, agentId), readGrokUsage(usageFile, agentId, undefined, expectedModel, []),
+  const traces = await readClosedTraces(runtimeHome, agentId);
+  const [usage, requests, toolReceipts, seals] = await Promise.all([
+    readGrokUsage(usageFile, agentId, undefined, expectedModel, [], traces.length > 0),
     readGrokRequests(requestsFile, agentId, undefined, expectedModel, []), readToolReceipts(runtimeHome, agentId, 'grok'),
     readSealedGrokTurnSeals(join(dirname(usageFile), 'turns.jsonl'), agentId, expectedModel),
   ]);
@@ -187,8 +188,8 @@ function dedupe<T>(rows: readonly { key: string; row: T }[]): T[] {
 }
 
 async function readGrokUsage(file: string, agentId: string, executionId: string | undefined, expectedModel: string,
-  others: readonly string[]): Promise<NativeGrokUsage[]> {
-  const rows = (await jsonLines(file)).map(value => {
+  others: readonly string[], settleEmpty = false): Promise<NativeGrokUsage[]> {
+  const rows = (await jsonLines(file, 'Grok usage ledger', undefined, undefined, settleEmpty)).map(value => {
     const row = object(value);
     if (row.v !== 'noopolis.daimon.turn-usage.v1' || row.agent !== agentId || row.engine !== 'grok' || typeof row.wake !== 'string' ||
         !timestamp(row.at) || typeof row.complete !== 'boolean' || typeof row.turn !== 'string' || !turnKey.test(row.turn) ||
@@ -213,7 +214,7 @@ async function readGrokUsage(file: string, agentId: string, executionId: string 
 
 async function readGrokRequests(file: string, agentId: string, executionId: string | undefined, expectedModel: string,
   others: readonly string[]): Promise<NativeRequestUsage[]> {
-  const rows = (await jsonLines(file)).map(value => {
+  const rows = (await jsonLines(file, 'Grok request ledger')).map(value => {
     const row = object(value);
     if (row.v !== 'noopolis.daimon.turn-requests.v1' || row.agent !== agentId || row.engine !== 'grok' || typeof row.wake !== 'string' ||
         !timestamp(row.at) || typeof row.turn !== 'string' || !turnKey.test(row.turn) ||
@@ -271,7 +272,7 @@ export async function readSealedGrokRequests(requestsFile: string, agentId: stri
 
 /** Broker-sealed terminal observations; validate before attribution and deduplicate replays. */
 export async function readSealedGrokTurnSeals(sealFile: string, agentId: string, expectedModel: string): Promise<NativeTurnSeal[]> {
-  const rows = (await jsonLines(sealFile, 4 * 1024 * 1024, 8192)).map(value => {
+  const rows = (await jsonLines(sealFile, 'Grok turn seal ledger', 4 * 1024 * 1024, 8192)).map(value => {
     const row = parseNativeTurnSeal(value, agentId, expectedModel);
     return { key: row.turn, row };
   });
