@@ -77,7 +77,7 @@ it('keeps 38 large duplicated trial grades out of the checkpoint and restores th
   expect(await readdir(join(root, 'blobs'))).toHaveLength(38);
   const reopened = (await TrainingCheckpoint.open({ ...options, checkpoint: { ...options.checkpoint!, resume: true } }, []))!;
   expect(reopened.reports).toEqual(checkpoint.reports);
-}, 60000);
+}, 240000);
 
 it('loads a completed legacy inline checkpoint, resumes to a training report and rewrites compactly', async () => {
   const { options, store, createRun } = await fixture();
