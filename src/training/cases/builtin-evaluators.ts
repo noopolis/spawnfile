@@ -1,3 +1,4 @@
+import { validateTextCheck } from './text-checks.js';
 import type { EvaluatorDefinition } from '../contracts/dataset.js';
 import { validateGraderParameters } from './grader.js';
 import { validatePredicate } from './turn-bindings.js';
@@ -57,6 +58,8 @@ function sequenceParameters(parameters: Readonly<Record<string, unknown>>, path:
   });
 }
 export const builtinEvaluatorDefinitions: Readonly<Record<string, EvaluatorDefinition>> = {
+  'word-count': descriptor('mechanical', ['input', 'ignore', 'min', 'max'], ['input'], validateTextCheck),
+  'values-in-source': descriptor('mechanical', ['input', 'source', 'ignore', 'max_missing'], ['input', 'source'], validateTextCheck),
   grader: descriptor('semantic', ['grader', 'input', 'context', 'grader_binding'], ['grader', 'input'], validateGraderParameters),
   equals: descriptor('mechanical', ['input', 'value'], ['input', 'value'], textParameters),
   'contains-any': descriptor('mechanical', ['input', 'values'], ['input', 'values'], (parameters, path) => {

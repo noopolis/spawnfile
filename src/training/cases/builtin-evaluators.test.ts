@@ -72,3 +72,30 @@ describe('trusted multi-wake binding authoring', () => {
     }
   });
 });
+
+it.each([
+  ['word-count', { input: 'artifact:article#/body', min: 0, max: 200, ignore: [] }],
+  ['word-count', { input: ['output.text', 'context:grounding'], max: 100 }],
+  ['values-in-source', { input: 'output.text', source: ['sources/facts.md', 'input:files'], max_missing: 0 }],
+])('accepts deterministic text check %s', (name, parameters) => expect(() => validate(name, parameters)).not.toThrow());
+
+it.each([
+  ['word-count', {}], ['word-count', { input: 'output.text' }],
+  ['word-count', { input: [], min: 1 }], ['word-count', { input: 'artifact:a#bad', min: 1 }],
+  ['word-count', { input: 'bad', min: 1 }], ['word-count', { input: 4, min: 1 }],
+  ['word-count', { input: 'output.text', min: -1 }], ['word-count', { input: 'output.text', max: 1.5 }],
+  ['word-count', { input: 'output.text', min: 2, max: 1 }],
+  ['word-count', { input: 'output.text', max: Infinity }],
+  ['word-count', { input: 'output.text', max: 1, unexpected: true }],
+  ['word-count', { input: 'output.text', min: 1, ignore: ['['] }],
+  ['word-count', { input: 'output.text', min: 1, ignore: [3] }],
+  ['word-count', { input: 'output.text', min: 1, ignore: 'x' }],
+  ['values-in-source', { input: 'output.text' }], ['values-in-source', { input: 'output.text', source: [] }],
+  ['values-in-source', { input: 'output.text', source: '../facts.md' }],
+  ['values-in-source', { input: 'output.text', source: '/facts.md' }],
+  ['values-in-source', { input: 'output.text', source: 'facts.md', max_missing: -1 }],
+  ['values-in-source', { input: 'output.text', source: 'facts.md', max_missing: 0.5 }],
+  ['values-in-source', { input: 'output.text', source: 'facts.md', unexpected: true }],
+])('rejects malformed deterministic check %s %j', (name, parameters) => expect(() => validate(name, parameters)).toThrow());
+
+it('rejects malformed source selectors', () => expect(() => validate('values-in-source', { input: 'output.text', source: 'artifact:a#bad' })).toThrow('source selector'));

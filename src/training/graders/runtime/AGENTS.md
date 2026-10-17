@@ -32,3 +32,7 @@ replace existing IDs or derive identity from price, check or measurement names.
 
 Expose one decisionAccountingSchema for successful and failed persisted results;
 keep the same strict receipt allowlist at both replay surfaces.
+
+Explicit identity calibration bypasses fitting/escalation only after identity checks;
+retain uncalibrated status and raw probability endpoints. Missing answers keep their
+weights. Reject extra probability keys as well as invalid values and totals.

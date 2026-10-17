@@ -1,3 +1,4 @@
+import { isTextSelector, textSelectors } from './text-checks.js';
 import { resolveGraderCheck } from './grader.js';
 import { createHash } from 'node:crypto';
 import type { CheckNode, Dataset, DatasetRegistry, LiveCheck, Stage } from '../contracts/dataset.js';
@@ -34,9 +35,10 @@ export function normalizeStages(plan: Pick<Dataset, 'checks' | 'stages'>, shorth
 function artifacts(node: CheckNode, context: PlanResolution, path: string): void {
   if (!context.artifacts) return;
   const names: string[] = [];
-  for (const key of ['input', 'evidence', 'reference']) {
-    const selector = node[key];
-    if (typeof selector === 'string' && selector.startsWith('artifact:')) names.push(selector.slice(9).split('#')[0]!);
+  for (const key of ['input', 'evidence', 'reference', 'source']) {
+    for (const selector of textSelectors(node[key])) {
+      if (typeof selector === 'string' && selector.startsWith('artifact:')) names.push(selector.slice(9).split('#')[0]!);
+    }
   }
   if (node.ending_at) names.push(string(object(node.ending_at, path).artifact, path));
   for (const name of names) if (!context.artifacts.has(name)) fail(path, `undeclared artifact ${name}`);
@@ -65,7 +67,8 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
     const sidecar = node.eval === 'json-schema' && typeof node.schema === 'string' ? node.schema :
       node.eval === 'llm-rubric' && node.rubric && typeof node.rubric === 'object' ?
         (node.rubric as { file?: string }).file : undefined;
-    if (sidecar) {
+    const sidecars = node.eval === 'values-in-source' ? textSelectors(node.source).filter(source => !isTextSelector(source)) : sidecar ? [sidecar] : [];
+    for (const sidecar of sidecars) {
       if (!context.readCriterionFile || !context.criterionFileDigests) fail(path, `criterion sidecar requires protected bytes: ${sidecar}`);
       const files = context.criterionFiles ??= new Map<string, Uint8Array>();
       let bytes = files.get(sidecar);

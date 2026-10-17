@@ -45,3 +45,7 @@ concurrency defaults to eight and accepts only integers 1–32.
 
 checkBinding is a public validation seam reused by both grader-file formats;
 resolved rulesets must also pass its accepted-call/argument-binding guards.
+
+calibration: identity explicitly selects raw probabilities for one non-teacher model;
+normalize unused legacy fields only in that mode. Reject labels, teacher escalation
+and missing TypeSafe spend caps. The reserved literal is never resolved as a path.

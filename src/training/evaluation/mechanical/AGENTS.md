@@ -23,3 +23,7 @@ Owns observable text, schema, tool, count, file and event relationship checks.
   normalization reference is not a cap, and it never authorizes a live hard stop.
 - Test missing/failed/reordered calls, stale receipts, changed bytes and truncated
   traces. Do not route negative tests around the default behavior.
+
+word-count and values-in-source own deterministic lexical text checks. Parameters
+come from the shared strict case descriptors; measured count/missing values persist
+in mechanicalEvidence beside byte references. Source absence stays unknown.

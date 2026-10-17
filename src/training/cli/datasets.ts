@@ -7,6 +7,7 @@ import { buildExecutableGradingRuntime, type GraderDependencies } from './grader
 import type { AtomicRuntime } from '../graders/atomic/index.js';
 import type { GraderBinding } from '../cases/index.js';
 import type { GradingRuntime } from '../graders/index.js';
+import { loadGrader } from '../graders/index.js';
 import { assertModelRequestAdmission } from '../inference/index.js';
 
 /** Visit logical check positions only; arbitrary evaluator parameters are data. */
@@ -61,12 +62,18 @@ export class CliDatasets {
     for (const dataset of this.loaded.values()) for (const check of graderChecks(dataset)) {
       const filename = check.grader as string;
       const binding = check.grader_binding as GraderBinding;
-      if (binding.kind !== 'atomic') assertModelRequestAdmission('native-grader', 'grader');
+      if (binding.kind !== 'atomic') {
+        const grader = await loadGrader(filename);
+        // Parsing requires an explicit spend cap for identity TypeSafe graders.
+        if (grader.calibration === 'identity' && grader.model?.backend === 'typesafe') {
+          assertModelRequestAdmission('typesafe', 'grader decisions', { purpose: 'decisions', model: grader.model.name });
+        } else assertModelRequestAdmission('native-grader', 'grader');
+      }
       const runtime = graders[filename] ?? await buildExecutableGradingRuntime(filename, dependencies);
       if (runtime.definitionDigest !== binding.definitionDigest || ('kind' in runtime ? runtime.templatesDigest !== binding.templatesDigest || binding.kind !== 'atomic' : runtime.calibrationDigest !== binding.calibrationDigest)) {
         throw new Error(`Grader or calibration changed after dataset resolution: ${filename}`);
       }
-      if (requireExclusions && !('kind' in runtime)) for (const excluded of this.loaded.values()) {
+      if (requireExclusions && !('kind' in runtime) && runtime.grader.calibration !== 'identity') for (const excluded of this.loaded.values()) {
         if (!runtime.calibration.identity.exclusions.some(item => item.digest === excluded.sourceDigest.replace(/^sha256:/, ''))) {
           throw new Error(`Grader calibration must exclude dataset ${excluded.sourceName}; internal validation requires excluding the whole training dataset`);
         }

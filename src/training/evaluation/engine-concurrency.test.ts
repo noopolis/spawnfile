@@ -208,6 +208,8 @@ describe('concurrent independent judges', () => {
       teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] }, metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } } };
     const cases: Record<string, CheckNode> = {
       grader: { eval: 'grader', grader: 'g', input: 'artifact:article', grader_binding: { definitionDigest: digest, calibrationDigest: digest, gates: [] } },
+      'word-count': { eval: 'word-count', input: 'output.text', min: 1 },
+      'values-in-source': { eval: 'values-in-source', input: 'output.text', source: 'output.text' },
       equals: { eval: 'equals', input: 'output.text', value: '4' },
       'contains-any': { eval: 'contains-any', input: 'artifact:article#/body', values: ['precise'] },
       'json-schema': { eval: 'json-schema', input: 'artifact:article', schema: { type: 'object' } },

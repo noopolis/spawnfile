@@ -53,3 +53,8 @@ prior invocations, and keep diagnostics outside the sanitized accounting result.
 buildExecutableGradingRuntime dispatches the protected public grader-file schema.
 Atomic construction lives in atomic/ and shares a route spend cap across trials;
 explicit host overrides may lower, never raise, the authored cap.
+
+Explicit identity-mode grading builds no teacher/extractor or labels/calibration IO.
+Persist the mode in result identity, reuse decision spend/accounting, and refuse
+calibrate rather than writing a file named identity. Offline check gates still need
+a real trial snapshot; a loose output file cannot establish trial evidence.

@@ -2,7 +2,7 @@ import type { CheckNode } from '../contracts/dataset.js';
 import type { GraderBinding } from '../cases/index.js';
 import { builtinEvaluatorDefinitions } from '../cases/index.js';
 import type { EvaluationRegistry, RegisteredEvaluator } from '../contracts/evaluation.js';
-import { evaluateSequence, evaluateText, evaluateTokenEfficiency, evaluateTool } from './mechanical/index.js';
+import { evaluateSequence, evaluateTextCheck, evaluateText, evaluateTokenEfficiency, evaluateTool } from './mechanical/index.js';
 import { evaluateGrader } from './grader.js';
 import { evaluateRubric } from './semantic/index.js';
 import { evaluateSimilarity } from './embedding/index.js';
@@ -17,6 +17,7 @@ export function isBuiltinMechanical(entry: RegisteredEvaluator | undefined): boo
 
 export function createEvaluationRegistry(custom: EvaluationRegistry = {}): EvaluationRegistry {
   const functions: Record<string, RegisteredEvaluator['evaluate']> = {
+    'word-count': evaluateTextCheck, 'values-in-source': evaluateTextCheck,
     equals: evaluateText, 'contains-any': evaluateText, 'json-schema': evaluateText,
     'tool-called': evaluateTool, 'tool-count': evaluateTool, 'tool-sequence': evaluateSequence,
     'token-efficiency': evaluateTokenEfficiency,

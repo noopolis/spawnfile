@@ -32,3 +32,5 @@ export type { CouncilTeacher, CouncilOptions, CouncilOutput, CheckReference,
   TeacherAnswer, TrapAssessment } from './references/index.js';
 export { generateTraps, validateTrap } from './traps/index.js';
 export type { Trap, TrapSet, TrapMutation } from './traps/index.js';
+
+export { createIdentityCalibration } from './identity-calibration.js';

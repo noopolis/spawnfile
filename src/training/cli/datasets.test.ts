@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { validateDatasetSplit } from '../cases/index.js';
 import { prepareCliInputs, prepareNative } from './native.js';
@@ -7,13 +7,13 @@ import { parseArguments } from './arguments.js';
 import { authoredArguments } from './training/index.js';
 import { CliDatasets } from './datasets.js';
 import { cliFixture } from './fixture.js';
-import { createCalibrationIdentity, loadGrader, loadLabels, sha256, stableDigest } from '../graders/index.js';
+import { createCalibrationIdentity, gradeOutput, loadGrader, loadLabels, sha256, stableDigest } from '../graders/index.js';
 import { DECISION_PROMPT_VERSION } from '../inference/decision/index.js';
 import type { CheckNode, InferenceProvider } from '../contracts/index.js';
 import type { DecisionBackend } from '../contracts/grading.js';
 
 const roots: string[] = [];
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 const rubricDataset = (file: string) => `schema: paideia.dataset.v1\nid: rubric\nrecords:\n  - id: item\n    input: {prompt: reply}\n    checks:\n      - id: checked\n        eval: llm-rubric\n        input: output.text\n        judge: quality\n        minimum: 0.5\n        rubric: {file: ${JSON.stringify(file)}}\n`;
 
@@ -108,6 +108,71 @@ it('rejects native grader routes in capped runs before constructing a backend, t
   expect(f.dependencies.grader.backend).not.toHaveBeenCalled();
   expect(f.dependencies.grader.provider).not.toHaveBeenCalled();
   expect(f.dependencies.adapter).not.toHaveBeenCalled();
+});
+
+it('admits capped identity TypeSafe grading through the declared evaluator ledger', async () => {
+  const f = await graderFixture(), policy = join(f.root, 'evaluator.json'), receiptPath = join(f.root, 'evaluator-requests.jsonl');
+  const model = 'jev-1.13.0';
+  const definition = { schema: 'paideia.grader.v1', id: 'fixed', calibration: 'identity',
+    model: { backend: 'typesafe', name: model }, max_spend_usd: 1,
+    questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }], score: { method: 'weighted' } };
+  await writeFile(f.graderFile, JSON.stringify(definition));
+  const routes = [{ purpose: 'decisions', provider: 'typesafe', model, maxRequests: 1, maxSpendUsd: 1 }];
+  const writePolicy = (selected = routes) => writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', routes: selected, receiptPath }));
+  await writePolicy();
+  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', policy);
+  vi.stubEnv('TYPESAFE_API_KEY', 'FAKE_TEST_KEY');
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+    const body = JSON.parse(init!.body as string) as { questions: Record<string, unknown> };
+    return Response.json({ model, answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { type: 'noul', noul: 0.9 }])),
+      usage: { input_tokens: 100, output_tokens: 1 } });
+  });
+  vi.stubGlobal('fetch', fetch);
+  const loader = new CliDatasets({}, f.root); loader.load('reports.yaml', true);
+  const runtime = (await loader.buildGraders({ provider: f.dependencies.grader.provider }, true))[f.graderFile]!;
+  if ('kind' in runtime) throw new Error('Expected fixed grader');
+  expect(await gradeOutput({ ...runtime, output: { body: 'Ten items.' } })).toMatchObject({ status: 'pass',
+    decisionAccounting: { requests: 1, inputTokens: 100 } });
+  const receipts = (await readFile(receiptPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  expect(receipts).toMatchObject([{ event: 'admitted', route: `decisions:typesafe:${model}`, chargedUsd: 0 },
+    { event: 'completed', route: `decisions:typesafe:${model}`, inputTokens: 100, outputTokens: 1 }]);
+  expect(receipts[0].reservedUsd).toBeGreaterThan(0);
+  expect(receipts[1].chargedUsd).toBeCloseTo(100 * 0.042 / 1e6, 12);
+  expect(receipts[1].id).toBe(receipts[0].id);
+  await expect(gradeOutput({ ...runtime, output: { body: 'Ten items.' } })).rejects.toThrow('Evaluator request cap exhausted');
+  const zeroLedger = join(f.root, 'zero-spend.jsonl');
+  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', receiptPath: zeroLedger,
+    routes: [{ ...routes[0]!, maxRequests: 10, maxSpendUsd: 0 }] }));
+  await expect(gradeOutput({ ...runtime, output: { body: 'Ten items.' } })).rejects.toThrow('Evaluator spend cap exhausted');
+  expect(await readFile(zeroLedger, 'utf8')).toBe('');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(f.dependencies.grader.provider).not.toHaveBeenCalled();
+  await writePolicy([{ ...routes[0]!, model: 'jev-9.0.0' }]);
+  await expect(loader.buildGraders({ backend: f.dependencies.grader.backend })).rejects.toThrow('unsupported typesafe');
+  expect(f.dependencies.grader.backend).not.toHaveBeenCalled();
+  await writeFile(f.graderFile, JSON.stringify({ ...definition, max_spend_usd: undefined }));
+  expect(() => new CliDatasets({}, f.root).load('reports.yaml', true)).toThrow('explicit spend cap');
+});
+
+it('keeps calibrated TypeSafe, teacher and local identity routes refused under the broker cap', async () => {
+  const f = await graderFixture(), original = JSON.parse(await readFile(f.graderFile, 'utf8'));
+  const policy = join(f.root, 'evaluator.json');
+  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', receiptPath: join(f.root, 'receipts.jsonl'),
+    routes: [{ purpose: 'decisions', provider: 'typesafe', model: 'jev-1.13.0', maxRequests: 1, maxSpendUsd: 1 }] }));
+  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', policy);
+  const definitions = [
+    { ...original, model: { backend: 'typesafe', name: 'jev-1.13.0' }, max_spend_usd: 1 },
+    { ...original, model: { backend: 'teacher', teacher: 'teacher' } },
+    { schema: 'paideia.grader.v1', id: 'fixed', calibration: 'identity', model: original.model, max_spend_usd: 1,
+      questions: original.questions, score: original.score },
+  ];
+  for (const definition of definitions) {
+    await writeFile(f.graderFile, JSON.stringify(definition));
+    const loader = new CliDatasets({}, f.root); loader.load('reports.yaml', false);
+    await expect(loader.buildGraders(f.dependencies.grader)).rejects.toThrow('unsupported native-grader');
+  }
+  expect(f.dependencies.grader.backend).not.toHaveBeenCalled();
+  expect(f.dependencies.grader.provider).not.toHaveBeenCalled();
 });
 
 it('rejects grader and calibration edits after resolution before constructing a subject', async () => {

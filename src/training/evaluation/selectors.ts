@@ -26,6 +26,11 @@ export function selectEvidence(selector: string, snapshot: EvaluationSnapshot): 
   }
   if (selector === 'input:files') return { found: true, value: snapshot.inputFiles,
     evidence: Object.entries(snapshot.inputFiles).map(([id, value]) => textReference('input', id, value)) };
+  if (selector.startsWith('context:')) {
+    const value = ownPath(snapshot.context, [selector.slice(8)]);
+    return { found: value !== undefined, value, evidence: value === undefined ? []
+      : [textReference('sidecar', selector, evidenceText(value))] };
+  }
   const match = /^artifact:([^#]+)(?:#(.*))?$/.exec(selector);
   if (!match) throw new Error(`Unsupported evidence selector ${selector}`);
   const artifact = snapshot.artifacts[match[1]!];
