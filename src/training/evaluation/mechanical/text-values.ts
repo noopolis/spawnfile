@@ -22,4 +22,7 @@ export function extractedNumbers(text: string): { raw: string; normalized: strin
 export function quotedSpans(text: string): string[] {
   return [...text.matchAll(/"([^"\r\n]+)"|“([^”\r\n]+)”/gu)].map(match => (match[1] ?? match[2])!);
 }
-export function normalizeQuote(text: string): string { return text.normalize('NFKC').replace(/\s+/gu, ' ').trim(); }
+export function normalizeQuote(text: string): string {
+  return text.normalize('NFKC').replace(/[‘’]/gu, "'").replace(/[“”]/gu, '"').replace(/[‐‑‒–—−]/gu, '-')
+    .replace(/\s+/gu, ' ').replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, '');
+}

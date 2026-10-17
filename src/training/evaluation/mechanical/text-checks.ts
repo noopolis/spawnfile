@@ -6,6 +6,13 @@ import { observedAbsence, selectEvidence, textReference } from '../selectors.js'
 import { extractedNumbers, normalizeQuote, quotedSpans, stripIgnored } from './text-values.js';
 
 type TextSelection = { text: string; evidence: EvidenceReference[] } | { failure: EvaluationResult };
+function textLeaves(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (typeof value === 'number' && Number.isFinite(value)) return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(textLeaves);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(textLeaves);
+  return [];
+}
 async function selectTexts(selectors: string[], context: EvaluationContext, sources = false): Promise<TextSelection> {
   const texts: string[] = [], evidence: EvidenceReference[] = [];
   for (const selector of selectors) {
@@ -20,10 +27,9 @@ async function selectTexts(selectors: string[], context: EvaluationContext, sour
       return { failure: { ...result(missingInput ? 'fail' : 'unknown', `Missing ${selector}`, context.snapshot.closed),
         ...(missingInput ? { score: 0 } : {}), evidence: [...evidence, ...selected.evidence] } };
     }
-    const value = selector === 'input:files' ? Object.values(selected.value as Record<string, string>) : selected.value;
-    const strings = Array.isArray(value) ? value : [value];
-    if (strings.some(item => typeof item !== 'string')) return { failure: result('error', `Text selector requires a string or array of strings: ${selector}`, context.snapshot.closed) };
-    texts.push(...strings as string[]); evidence.push(...selected.evidence);
+    const strings = textLeaves(selected.value);
+    if (!strings.length) return { failure: result('error', `Text selector requires string or number leaves: ${selector}`, context.snapshot.closed) };
+    texts.push(...strings); evidence.push(...selected.evidence);
   }
   return { text: texts.join('\n'), evidence };
 }
@@ -46,7 +52,7 @@ export async function evaluateTextCheck(check: CheckNode, context: EvaluationCon
   const available = new Set(extractedNumbers(source).map(value => value.normalized));
   const missing = numbers.filter(value => !available.has(value.normalized)).map(value => value.raw);
   const normalizedSource = normalizeQuote(source);
-  missing.push(...quotes.filter(value => !normalizedSource.includes(normalizeQuote(value))).map(value => `"${value}"`));
+  missing.push(...quotes.filter(value => !normalizeQuote(value) || !normalizedSource.includes(normalizeQuote(value))).map(value => `"${value}"`));
   const total = numbers.length + quotes.length, found = total - missing.length;
   return { ...result(missing.length <= ((check.max_missing as number | undefined) ?? 0) ? 'pass' : 'fail',
     `values-in-source: ${found}/${total}; missing: ${JSON.stringify(missing)}`, context.snapshot.closed),

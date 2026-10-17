@@ -41,6 +41,32 @@ it('retains every occurrence, reports missing values, applies ignores to both te
   expect(await evaluateNode({ ...values, ignore: ['secret "[^"]+"'] }, context('secret "hidden"', 'empty'), registry)).toMatchObject({ status: 'pass', score: 1, mechanicalEvidence: { total: 0 } });
 });
 
+it('matches quote edge punctuation and typography while keeping inner text exact', async () => {
+  const article = '"disguised coup," “...steady  growth!” "it’s a turn—around"';
+  expect(await evaluateNode(values, context(article, 'disguised coup. steady\ngrowth; it\'s a turn-around.'), registry))
+    .toMatchObject({ status: 'pass', mechanicalEvidence: { found: 3, total: 3 } });
+  expect(await evaluateNode(values, context('"a \'promise\'—kept"', 'a ‘promise’-kept'), registry)).toMatchObject({ status: 'pass' });
+  expect(await evaluateNode(values, context('“a "promise"—kept”', 'a “promise”-kept'), registry)).toMatchObject({ status: 'pass' });
+  for (const quote of ['absent quote,', 'disguised, coup', 'Disguised coup', '...']) {
+    expect(await evaluateNode(values, context(`"${quote}"`, 'disguised coup.'), registry))
+      .toMatchObject({ status: 'fail', mechanicalEvidence: { found: 0, total: 1, missing: [`"${quote}"`] } });
+  }
+});
+
+it('collects structured string and number leaves in document order on inputs and sources', async () => {
+  const keyNumbers = [{ label: 'Total items', value: 10, unused: null }, { label: 'Price', value: 2.5,
+    nested: ['"steady growth"', { note: 'confirmed', enabled: true }] }];
+  expect(await evaluateNode({ ...words, min: 9, max: 9 }, context(keyNumbers), registry))
+    .toMatchObject({ status: 'pass', mechanicalEvidence: { count: 9 } });
+  expect(await evaluateNode(values, context(keyNumbers, { facts: [10, { amount: 2.5, quote: 'steady growth' }] }), registry))
+    .toMatchObject({ status: 'pass', mechanicalEvidence: { found: 3, total: 3 } });
+  expect(await evaluateNode(values, context([{ first: 20, second: [10, { third: 30 }] }], 'unrelated'), registry))
+    .toMatchObject({ status: 'fail', mechanicalEvidence: { missing: ['20', '10', '30'] } });
+  expect(await evaluateNode({ ...words, min: 1, max: 1 }, context(42), registry)).toMatchObject({ status: 'pass' });
+  expect(await evaluateNode(values, context({ field12: 'no numbers', flag: false }, 'nothing'), registry))
+    .toMatchObject({ status: 'pass', mechanicalEvidence: { total: 0 } });
+});
+
 it('reads multiple protected source files/selectors and keeps their evidence', async () => {
   const ctx = context('10 "found"', '10');
   ctx.readText = async name => { expect(name).toBe('source.md'); return 'found'; };
@@ -52,7 +78,9 @@ it('reads multiple protected source files/selectors and keeps their evidence', a
 
 it('never turns missing or malformed evidence into a pass', async () => {
   for (const check of [words, values]) {
-    for (const body of [4, null, {}, ['ok', 5]]) expect((await evaluateNode(check, context(body), registry)).status).toBe('error');
+    for (const body of [null, {}, [], true, { flag: false, nothing: null }, NaN, Infinity]) {
+      expect((await evaluateNode(check, context(body), registry)).status).toBe('error');
+    }
     const absent = context(''); absent.snapshot.artifacts = {};
     expect((await evaluateNode(check, absent, registry)).status).toBe('unknown');
     absent.snapshot.subjectUsage = { status: 'complete', usage: null };

@@ -40,6 +40,12 @@ backends are also supported. TypeSafe requires an explicit `max_spend_usd`, incl
 zero to prohibit dispatch. Existing transport admission, shared command budgets,
 retry accounting and sanitized paid failure receipts apply unchanged.
 
+Broker-capped native training admits identity-mode TypeSafe graders only with an
+explicit authored spend cap and a declared evaluator `decisions:typesafe:<model>`
+route. Calls reserve and charge USD in the evaluator request ledger, sharing the
+route's request/spend limits across trials. Calibrated legacy graders, teacher
+routes and other identity backends retain their existing admission restrictions.
+
 The result records `identity.calibration.mode: identity`, question definitions,
 backend identity and prompt version. Question calibration status is `uncalibrated`;
 all labeled-observation counts are zero. No fitted accuracy is implied. Raw 0 and 1
@@ -125,8 +131,13 @@ calibration exclusion digests; split and sealed-test access rules still apply.
 ```
 
 Both reject unknown parameters. `input` is one selector or a nonempty selector
-list. Each selection must be a string or array of strings; `input:files` uses its
-file values. Available selectors are `output.text`, `artifact:name#/pointer`,
+list. Selections accept strings, finite numbers and nested objects/arrays. Both
+checks collect string/number leaves depth-first in document order (array order and
+JavaScript object property order), joining them with newlines; keys, booleans and
+nulls are ignored. A selection with no string/number leaves is an error; an empty
+string is valid. This applies to source selectors too. For example, `key_numbers:
+[{label: Total items, value: 10}]` contributes `Total items` then `10`.
+`input:files` uses its file values. Available selectors are `output.text`, `artifact:name#/pointer`,
 `input:files` and `context:name`. Lists join with newlines. Missing input is unknown
 unless the existing completed-subject artifact-absence proof establishes failure.
 Missing source is unknown even when subject execution is complete. Invalid text
@@ -158,8 +169,12 @@ groups, dot decimals, signs, leading/trailing zeros, percent signs and the curre
 USD/$, EUR/€, GBP/£ and JPY/¥. Units remain significant: 25%, 25, USD25 and EUR25 are
 different. Integer normalization uses strings, preserving large integers exactly.
 Numbers match whole tokens, never digit substrings. Double-quoted spans match a
-case-sensitive substring after NFKC and whitespace normalization; source quotation
-marks are not required. Spelled numbers, locale decimal commas, unit conversion,
+case-sensitive substring after NFKC, collapsed whitespace, straightened curly
+quotes/apostrophes and normalized Unicode dashes on both sides. Leading/trailing
+punctuation is trimmed: `"disguised coup,"` matches `disguised coup.`. Inner text
+and punctuation otherwise remain exact; `"disguised, coup"` does not match.
+Punctuation-only quotes fail. Source quotation marks are not required.
+Spelled numbers, locale decimal commas, unit conversion,
 scientific notation and semantic entailment are unsupported.
 
 Known false-positive classes: dates can share numeric fragments despite different
