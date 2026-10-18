@@ -72,6 +72,8 @@ it("mounts four slot roots and the exact read-only descriptor document during la
   });
   const status = await launchTrainingContainer({ ...f, image, timeoutMs: 5000, process: docker.process, streams: { stdout: vi.fn(), stderr: vi.fn() } });
   expect(status).toBe(0); expect(seen).toBe(true);
+  const seed = docker.calls.find(args => args[2] === "container" && args[3] === "create" && args.some(value => value.endsWith("-output-seed")))!;
+  expect(seed.slice(-2), "brokered output ownership guarantee").toEqual(["2000", "2000"]);
   expect(docker.calls.find(args => args[2] === "create")).toContain("PAIDEIA_MODEL_REQUEST_CAP=broker");
   await writeFile(declaration, JSON.stringify(brokerDeclaration(1)));
   await expect(launchTrainingContainer({ ...f, image, timeoutMs: 5000, process: docker.process,

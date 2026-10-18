@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmod, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS } from "../../../shared/index.js";
 import { parseTrainingBrokerDeclaration } from "../broker/declaration.js";
@@ -9,6 +9,7 @@ import { TRAINING_BROKER_ENTRYPOINT, trainingBrokerMounts, trainingBrokerSecurit
 import { parseDetachedContainerInspect } from "../../runProjectDocker.js";
 import { mapTrainingExecution, trainingExecutionSchema, TRAINING_EXECUTION_FILE, TRAINING_EXECUTION_CAPABILITY_LABEL, TRAINING_EXECUTION_VERSION, type TrainingExecution } from "../execution.js";
 import { verifyCanonicalPins } from "../preparation/inputs.js";
+import { removeTrainingPreparationScratch } from "../preparation/scratch.js";
 import type { TrainingContext } from "../contract.js";
 import { trainingImageSchema } from "./contract.js";
 import { prepareTrainingEvaluators } from "./evaluators.js";
@@ -19,6 +20,7 @@ import { hashJson } from "../preparation/files.js";
 import { parseTrainingMappedPreparation } from "../preparation/contract.js";
 import { persistTrainingGrokCredential } from "./grokWriteback.js";
 import { nativeTrainingSlotsDocument } from "./nativeSlots.js";
+import { createTrainingOutputVolume, trainingOutputVolumeEnabled } from "./outputVolume.js";
 
 // The image bakes /run/training/inputs as 0:2000 0750 for brokered worker isolation; the
 // non-brokered host-uid evaluator joins that group so it can still traverse its own inputs.
@@ -37,6 +39,7 @@ const inspectFormat = "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Co
 export const launchTrainingContainer = async (options: LaunchTrainingContainerOptions): Promise<number> => {
   if (options.signal?.aborted) return 130;
   const image = trainingImageSchema.parse(options.image);
+  const volumeEnabled = trainingOutputVolumeEnabled();
   const uid = process.getuid?.(), gid = process.getgid?.();
   if (uid === undefined || gid === undefined || uid === 0) throw Error("Training requires an explicit non-root local user");
   const configBytes = await readFile(options.configPath, "utf8");
@@ -77,19 +80,20 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
   const interrupt = (): void => { interrupted = true; controller.abort(); };
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, options.timeoutMs);
   options.signal?.addEventListener("abort", interrupt, { once: true });
-  process.once("SIGINT", interrupt); process.once("SIGTERM", interrupt);
+  process.on("SIGINT", interrupt); process.on("SIGTERM", interrupt);
   if (options.signal?.aborted) interrupt();
   const prefix = ["--context", prepared.config.dockerContext];
-  const call = async (args: string[], cleanup = false, stream = false) => {
+  const call = async (args: string[], cleanup = false, stream = false, cleanupTimeoutMs = 10_000) => {
     if (!cleanup && controller.signal.aborted) throw Error("Container operation cancelled");
     return execute([...prefix, ...args], {
-    timeoutMs: cleanup ? 10_000 : Math.max(1, deadline - Date.now()),
+    timeoutMs: cleanup ? cleanupTimeoutMs : Math.max(1, deadline - Date.now()),
     ...(cleanup ? {} : { signal: controller.signal }), ...(stream ? options.streams : {})
   }); };
   const name = `spawnfile-training-${randomUUID()}`;
   const labels = { "com.spawnfile.training.owner": name };
   let privateRoot: string | undefined, containerId: string | undefined, creationAttempted = false, startAttempted = false;
   let expectedImage: string | undefined, lastLine = "", closureVerified = false;
+  let outputVolume: ReturnType<typeof createTrainingOutputVolume> | undefined;
   try {
     const endpoint = await execute(["context", "inspect", prepared.config.dockerContext, "--format", "{{json .Endpoints.docker.Host}}"], { timeoutMs: 10_000, signal: controller.signal });
     if (endpoint.code !== 0 || !/^unix:\/\//u.test(JSON.parse(endpoint.stdout))) throw Error("Training requires an explicitly selected local Unix Docker context");
@@ -109,8 +113,14 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const executionFile = path.join(privateRoot, "execution.json");
     if (execution) await writeFile(executionFile, JSON.stringify(trainingExecutionSchema.parse(execution)), { mode: 0o444, flag: "wx" });
     const evaluators = await prepareTrainingEvaluators(privateRoot, prepared.config, prepared.args);
+    if (volumeEnabled) {
+      outputVolume = createTrainingOutputVolume({ name, image: expectedImage, host: prepared.config.output.source, scratch: privateRoot,
+        uid, gid, runtimeUid: prepared.config.broker ? 2000 : uid, runtimeGid: prepared.config.broker ? 2000 : gid,
+        context: prepared.config.dockerContext, call: (args, cleanup) => call(args, cleanup, false, 120_000), stderr: options.streams.stderr });
+      await outputVolume.seed();
+    }
     const mounts = [...evaluators.mounts, ...prepared.config.inputs.map((entry) => `type=bind,src=${entry.source},dst=${entry.destination},readonly`),
-      `type=bind,src=${prepared.config.output.source},dst=/run/training/output`,
+      outputVolume?.mount ?? `type=bind,src=${prepared.config.output.source},dst=/run/training/output`,
       `type=bind,src=${contextFile},dst=/run/paideia/context.json,readonly`,
       ...execution ? [`type=bind,src=${executionFile},dst=${TRAINING_EXECUTION_FILE},readonly`] : [],
       ...options.preparationPath ? [`type=bind,src=${options.preparationPath},dst=/run/paideia/preparation.json,readonly`] : [],
@@ -165,6 +175,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const terminal = await call(["inspect", "--format", "{{json .State}}", containerId]);
     const state = JSON.parse(terminal.stdout) as { Running?: unknown; ExitCode?: unknown };
     if (terminal.code !== 0 || state.Running !== false || !Number.isInteger(state.ExitCode) || result.code !== state.ExitCode) throw Error("Training container final state is unverified");
+    await outputVolume?.export();
     if (state.ExitCode !== 0 && state.ExitCode !== 1) return state.ExitCode as number;
     const receipt = JSON.parse(lastLine) as { status?: unknown; index?: unknown };
     if (receipt.status !== "completed" || typeof receipt.index !== "string" || !receipt.index.startsWith("/run/training/output/") || path.posix.normalize(receipt.index) !== receipt.index) throw Error("Training exited without a valid final receipt");
@@ -176,8 +187,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     if (timedOut) throw Error("Container training exceeded command deadline");
     throw error;
   } finally {
-    clearTimeout(timer); options.signal?.removeEventListener("abort", interrupt);
-    process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
+    clearTimeout(timer);
     try {
       if (creationAttempted) {
         // A timed-out create may still have created our uniquely labelled container.
@@ -186,6 +196,14 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
           const id: unknown = JSON.parse(found.stdout.split("\n")[0]!);
           if (typeof id !== "string" || parseDetachedContainerInspect(found.stdout, id, labels, name).imageId !== expectedImage || (containerId && /^[a-f0-9]{64}$/u.test(containerId) && id !== containerId)) throw Error("Refusing cleanup of unverified training container");
           try {
+            if (startAttempted) {
+              const current = await call(["inspect", "--format", "{{json .State}}", id], true);
+              if (current.code !== 0) throw Error("Cannot verify training writer state");
+              if (JSON.parse(current.stdout).Running === true) {
+                const stopped = await call(["stop", "--time", "5", id], true);
+                if (stopped.code !== 0) throw Error("Cannot stop training output writer");
+              }
+            }
             if (startAttempted && prepared.config.broker && privateRoot) {
               await persistTrainingGrokCredential(id, prepared.config.broker.bootstrap, privateRoot, call);
             }
@@ -201,6 +219,16 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
           closureVerified = true;
         }
       }
-    } finally { if (privateRoot && (!creationAttempted || closureVerified)) await rm(privateRoot, { recursive: true, force: true }); }
+    } finally {
+      try {
+        const closed = !creationAttempted || closureVerified;
+        try { if (closed) await outputVolume?.export(); }
+        finally { await outputVolume?.dispose(closed); }
+      } finally {
+        options.signal?.removeEventListener("abort", interrupt);
+        process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", interrupt);
+        if (privateRoot && (!creationAttempted || closureVerified) && (!outputVolume || outputVolume.safeToCleanup())) await removeTrainingPreparationScratch(privateRoot);
+      }
+    }
   }
 };

@@ -38,19 +38,19 @@ it("runs and resumes the no-flag authoring path through preparation and the actu
       const mount = args.find(arg => arg.endsWith("dst=/run/paideia/execution.json,readonly"))!;
       receiptMounted = mount !== undefined;
       if (mount) receipt = JSON.parse(await readFile(mount.split(",").find(part => part.startsWith("src="))!.slice(4), "utf8"));
-      output = args.find(arg => arg.endsWith("dst=/run/training/output"))!.split(",").find(part => part.startsWith("src="))!.slice(4);
+      output = docker.output().host;
       expect(args).toContain("/run/training/inputs/project/training/train.yaml");
       expect(args).toContain("--editable");
       consumerHandoff = args[args.indexOf("--spawnfile-execution") + 1] === "/run/paideia/execution.json";
     }
-    if (args[2] === "start") await writeFile(path.join(output, "index.json"), "{}");
+    if (args[2] === "start") await writeFile(path.join(docker.output().live, "index.json"), "{}");
     return undefined;
   }); state.run = docker.process;
   const streams = { stdout: (value: string) => stdout.push(value), stderr: (value: string) => stderr.push(value) };
   expect(await runCli(["train", root, "--agent", "writer"], { streams }), stderr.join("\n")).toBe(0);
   expect(receiptMounted, "execution receipt mount guarantee").toBe(true);
   expect(consumerHandoff, "execution consumer handoff guarantee").toBe(true);
-  expect(stderr).toEqual([]);
+  expect(stderr).toEqual([expect.stringMatching(/^Training output uses VM-local volume .+; host checkpoints update at exit\.$/u)]);
   expect(output).toContain(path.join(defaultTrainingOutputRoot(root), "agent%3Awriter"));
   expect(receipt).toMatchObject({ optimizer, output: "/run/training/output", authoring: {
     agent: { id: "agent:writer" }, graders: [{ sourcePath: "/run/training/inputs/project/training/writing.grader.yaml" }],
@@ -74,8 +74,8 @@ it("rejects missing, wrong-version and failed execution capability probes before
     let output = "";
     const docker = dockerFixture(async args => {
       if (args[2] === "image" && args.at(-1)?.includes("com.spawnfile.training.execution")) return { ...probe, stderr: "" };
-      if (args[2] === "create") output = args.find(arg => arg.endsWith("dst=/run/training/output"))!.split(",").find(part => part.startsWith("src="))!.slice(4);
-      if (args[2] === "start") await writeFile(path.join(output, "index.json"), "{}");
+      if (args[2] === "create") output = docker.output().host;
+      if (args[2] === "start") await writeFile(path.join(docker.output().live, "index.json"), "{}");
       return undefined;
     }); state.run = docker.process;
     expect(await runCli(["train", root], { streams: { stdout() {}, stderr: value => stderr.push(value) } }), "execution compatibility guarantee").toBe(1);
@@ -110,7 +110,7 @@ it("rejects a dataset changed after lowering on a direct launch before any Docke
     inputs: [{ source: root, destination: "/run/training/inputs/project" }],
     output: { source: path.join(outside, "output"), destination: "/run/training/output" }, auth: [] }));
   const docker = dockerFixture(async args => {
-    if (args[2] === "start") await writeFile(path.join(outside, "output/index.json"), "{}");
+    if (args[2] === "start") await writeFile(path.join(docker.output().live, "index.json"), "{}");
     return undefined;
   }); state.run = docker.process;
   const result = await runCli(["train", root, "--training-config", path.join(root, "launch.json"),
@@ -134,8 +134,8 @@ it("creates fresh direct-launch output with explicit and disjoint defaults", asy
   const args = ["train", root, "--training-config", path.join(root, "launch.json"), "--training-image", executionImage];
   let output = "";
   const docker = dockerFixture(async args => {
-    if (args[2] === "create") output = args.find(arg => arg.endsWith("dst=/run/training/output"))!.split(",").find(part => part.startsWith("src="))!.slice(4);
-    if (args[2] === "start") await writeFile(path.join(output, "index.json"), "{}");
+    if (args[2] === "create") output = docker.output().host;
+    if (args[2] === "start") await writeFile(path.join(docker.output().live, "index.json"), "{}");
     return undefined;
   }); state.run = docker.process;
   const streams = { stdout() {}, stderr: (value: string) => stderr.push(value) };
