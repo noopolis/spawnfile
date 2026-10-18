@@ -26,6 +26,8 @@ Owns the local live/replay experiment interface, separate from website/.
   scoring only. They expose recorded identities, verdicts, evidence references,
   coverage and usage; omit prompts, outputs, tool payloads and judge reasons.
   GEPA lineage links recorded validation captures to native candidate identities.
+  Carry the authored deferred-scoring policy into live, completed and failed
+  projections so displayed optimizer rewards match the supplied training policy.
 - `projection.ts` strips undeclared fields and bounds arrays, bytes and check
   depth. Callers must redact summary text and filter sealed phases before load.
 - `page.ts` delegates escaped HTML/SVG to the cockpit. Charts distinguish raw

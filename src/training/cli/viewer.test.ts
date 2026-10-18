@@ -10,9 +10,33 @@ import type { RescoreReport } from '../experiments/replay/index.js';
 import type { TrialReport } from '../experiments/index.js';
 import type { DspyResult } from '../optimization/index.js';
 import { summarizeCosts } from '../experiments/costs/index.js';
+import * as viewer from '../../viewer/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
+
+it('publishes the configured deferred stage reward in live and failed snapshots', async () => {
+  const f = await evaluated(false);
+  const trial = f.report.trials[0]!;
+  trial.status = 'fail'; trial.execution = 'deferred'; trial.preDeferralStatus = 'pass';
+  trial.evaluation.stages = [{ id: 'quality', checks: [], gate: { status: 'pass', finality: 'final', reason: 'filed', evidence: [] },
+    score: { finality: 'final', lower: 0.7, upper: 0.7, assessedWeight: 1, missingWeight: 0 } }];
+  // Exercise actual persisted projections; HTTP transport owns no scoring policy.
+  let load!: Parameters<typeof viewer.startViewer>[0]['load'];
+  const transport = vi.spyOn(viewer, 'startViewer').mockImplementation(async options => {
+    load = options.load;
+    return { port: 0, url: 'http://127.0.0.1:0', close: async () => undefined };
+  });
+  const live = await startLiveViewer({ port: 0, io: f.io,
+    store: f.store, id: 'deferred-live', datasetId: 'dataset', planDigest: 'plan', baseline: f.candidate,
+    cases: [{ id: trial.recordId, split: 'train' }], testCases: [], scoring: { deferred: 'stage-score' } });
+  try {
+    await live.observe({ type: 'trial.finished', payload: trial });
+    expect((await load()).trials[0]!.score).toBe(0.7);
+    await live.observe({ type: 'experiment.failed', payload: {} });
+    expect((await load()).trials[0]!.score).toBe(0.7);
+  } finally { await live.close(); transport.mockRestore(); }
+});
 
 async function evaluated(view = true) {
   const fixture = await cliFixture(); roots.push(fixture.root);

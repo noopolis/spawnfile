@@ -64,6 +64,8 @@ before asynchronous work; native attempt capacity is reserved before validation.
 Journal mutations serialize complete read/change/publish transactions. Capture
 provenance compares identities independent of completion order. Drain callbacks on
 shutdown; incomplete host work retains its owned home and never claims settled work.
+Keep the first callback failure through shutdown; sibling cancellation is secondary
+evidence and must never replace the initiating diagnostic.
 Population mode is enabled only by `search`. It uses the same strict callbacks,
 complete validation captures and selected-score verification as legacy GEPA.
 The host additionally verifies per-case vectors, round lineage, declared edit scope

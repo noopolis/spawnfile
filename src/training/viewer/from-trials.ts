@@ -22,6 +22,7 @@ export interface TrialProjectionOptions {
   costs?: CostReport;
   costPlan?: TrainingCostPlan;
   rescores?: readonly RescoreReport[];
+  scoring?: TrainingReport['scoring'];
 }
 
 function checkView(check: EvaluationResult, fallback: string, weights?: Record<string, number>): ViewerCheck {
@@ -37,8 +38,8 @@ function checkView(check: EvaluationResult, fallback: string, weights?: Record<s
     children: (check.children ?? []).map((child, index) => checkView(child, `${fallback}/${index}`)) };
 }
 
-function displayedScore(trial: TrialReport | RescoreReport): number | null {
-  try { return trialScore(trial); } catch { return null; }
+function displayedScore(trial: TrialReport | RescoreReport, scoring?: TrainingReport['scoring']): number | null {
+  try { return trialScore(trial, scoring); } catch { return null; }
 }
 
 /** Observable presentation fields only: never subject output, prompts, context, tool args/results or judge reasons. */
@@ -49,7 +50,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
     schema: 'paideia.viewer.v1', experiment: { id: options.id, title: options.title, phase: options.phase,
       status: options.status, updatedAt: options.updatedAt }, cases: options.cases,
     trials: options.trials.map((trial) => ({ id: trial.id, caseId: trial.recordId, candidateId: trial.candidateId,
-      status: `${measurement(trial).status} (${measurement(trial) === trial ? '' : `rescored; original ${trial.status}; `}${trial.execution}; host work ${trial.hostWork})`, score: displayedScore(measurement(trial)),
+      status: `${measurement(trial).status} (${measurement(trial) === trial ? '' : `rescored; original ${trial.status}; `}${trial.execution}; host work ${trial.hostWork})`, score: displayedScore(measurement(trial), options.scoring),
       coverage: [...trial.snapshot.coverage],
       checks: measurement(trial).evaluation.stages.map((stage) => ({ id: stage.id, label: stage.id, status: stage.gate.status,
         score: stage.score?.lower ?? null, evidenceIds: stage.gate.evidence.map((reference) => reference.id),
@@ -98,7 +99,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
 export function projectTrainingReport(report: TrainingReport, budget?: TrialProjectionOptions['budget']): ViewerData {
   const data = projectTrials({ id: report.id, title: 'Completed training experiment', phase: 'final-test', status: 'completed',
     updatedAt: 'Recorded completion', baseline: report.baseline, trials: report.trials, optimizer: report.optimizer, budget,
-    costs: report.costs, costPlan: report.costPlan, rescores: report.rescores,
+    costs: report.costs, costPlan: report.costPlan, rescores: report.rescores, scoring: report.scoring,
     cases: Object.entries(report.partitions).flatMap(([phase, ids]) => ids.map((id) => ({ id,
       split: phase as 'train' | 'validation' | 'test' }))) });
   if (report.heldOut.some(arm => arm.trialScores !== undefined)) data.heldOut = report.heldOut.map(({ candidateId, meanScore, trialScores, standardError }) =>

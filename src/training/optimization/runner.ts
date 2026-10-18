@@ -77,7 +77,9 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
           callbackAbort.throwIfAborted();
           await running!.write(encodeMessage({ schema: DSPY_SCHEMA, kind: 'response', id: message.id, result }));
         } catch (error) {
-          protocolFailure = error instanceof Error ? error : new Error(String(error));
+          // Stopping one failed callback aborts its siblings. Their cancellation
+          // must not replace the failure that initiated shutdown.
+          protocolFailure ??= error instanceof Error ? error : new Error(String(error));
           throw protocolFailure;
         }
       },

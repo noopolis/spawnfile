@@ -15,3 +15,4 @@ scoped process-group cancellation. It never interprets vendor JSON or chooses au
 remains one ordered lane for native observations. Pending lines take the next free
 lane, so a slow callback cannot block unused capacity. Each callback has its own abort
 signal; shutdown waits for all lanes, reporting noncooperative callbacks as errors.
+Preserve the first protocol failure when aborted siblings reject during shutdown.

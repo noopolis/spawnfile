@@ -107,6 +107,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         ...validation?.records.map(record => ({ id: record.id, split: 'validation' as const })) ?? []],
       testCases: test?.records.map((record) => ({ id: record.id, split: 'test' })) ?? [],
       comparison,
+      scoring: args.training?.scoring,
       budget: test === undefined || comparison ? undefined : { maxMetricCalls: metricCalls, maxProposals },
       costs: { subjectModel: native.model, prices: costConfig.prices, costPlan },
     });
@@ -179,7 +180,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         const failureId = `failure-${attemptId}`;
         const report = createFailureReport({ id: failureId, command: args.command as 'train' | 'evaluate',
           baseline: native.candidate, comparison, progressRunId: journal.runId, ...diagnostic, trials: journal.reports(),
-          costs: journal.costs(), costPlan, rescores: journal.rescores() });
+          costs: journal.costs(), costPlan, rescores: journal.rescores(), scoring: args.training?.scoring });
         await persistResult({ root: native.out, store, id: failureId, command: report.command,
           datasetId: dataset.id, planDigest: dataset.sharedPlanDigest, candidate: native.candidate,
           report, trialIds: report.view.trials.map(trial => trial.id), outcome: 'failed', replaceIndex:Boolean(args.flags.resume) });
