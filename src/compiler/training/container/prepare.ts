@@ -77,7 +77,7 @@ export const prepareTrainingContainer = async (raw: unknown, context: TrainingCo
       mappedArgs[index] = String(port);
     }
   }
-  if (config.broker) {
+  {
     const flags = mappedArgs.filter(arg => arg === "--concurrency" || arg.startsWith("--concurrency="));
     if (flags.length > 1) throw Error("Training accepts one --concurrency value");
     const flag = flags[0];
