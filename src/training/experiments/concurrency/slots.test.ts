@@ -14,6 +14,50 @@ function barrier() {
 const slots: TrialSlot[] = Array.from({ length: 4 }, (_, index) => ({ index, workerUid: 2200 + index,
   roots: { workspace: `/slots/${index}` }, ports: { base: 20000 + index * 100, count: 100 } }));
 
+it.each([1, 2, 4, 8])('loads %i v2 shared-uid native descriptors and queues the next trial', async count => {
+  const root = await mkdtemp(join(tmpdir(), 'native-slots-'));
+  const native = Array.from({ length: count }, (_, index) => ({ index, workerUid: 501,
+    isolation: 'shared-uid' as const, roots: {}, ports: { base: 20000 + index * 100, count: 100 } }));
+  try {
+    const file = join(root, 'slots.json');
+    await writeFile(file, JSON.stringify({ schema: 'spawnfile.training-slots.v2', slots: native }), { mode: 0o444 });
+    const loaded = await loadTrialSlots({ slotsFile: file });
+    expect(loaded.concurrency).toBe(count); expect(loaded.slots).toEqual(native);
+    const leases = await Promise.all(native.map(() => loaded.pool!.acquire()));
+    let started = false;
+    const waiting = loaded.pool!.acquire().then(lease => { started = true; return lease; });
+    await Promise.resolve(); expect(started).toBe(false);
+    leases[0]!.release(true);
+    const next = await waiting; expect(next.slot).toEqual(native[0]); next.release(true);
+    for (const lease of leases.slice(1)) lease.release(true);
+    await expect(loadTrialSlots({ slotsFile: file, concurrency: count + 1 })).rejects.toThrow();
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('keeps v1 identity rules and v2 wire discrimination while rejecting native overlapping ports and malformed roots', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'native-slot-schema-'));
+  const native = { index: 0, workerUid: 501, isolation: 'shared-uid' as const, roots: {}, ports: { base: 20000, count: 100 } };
+  try {
+    const file = join(root, 'slots.json');
+    for (const document of [
+      { schema: 'spawnfile.training-slots.v1', slots: [native] },
+      { schema: 'spawnfile.training-slots.v2', slots },
+      { schema: 'spawnfile.training-slots.v2', slots: [{ ...native, isolation: 'unknown' }] },
+    ]) {
+      await writeFile(file, JSON.stringify(document)); await chmod(file, 0o444);
+      await expect(loadTrialSlots({ slotsFile: file })).rejects.toThrow();
+      await chmod(file, 0o600);
+    }
+    for (const patch of [{ index: 0 }, { ports: { base: 20099, count: 100 } }]) {
+      await expect(loadTrialSlots({ slots: [native, { ...native, index: 1, ports: { base: 20100, count: 100 }, ...patch }] })).rejects.toThrow('disjoint');
+    }
+    for (const patch of [{ workerUid: 0 }, { roots: { workspace: 'relative' } }, { ports: { base: 65535, count: 2 } }]) {
+      await expect(loadTrialSlots({ slots: [{ ...native, ...patch }] })).rejects.toThrow();
+    }
+    await expect(loadTrialSlots({ slots: [slots[0]!, { ...native, index: 1, workerUid: slots[0]!.workerUid, ports: { base: 20100, count: 100 } }] })).rejects.toThrow('disjoint');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 it('admits four barrier-controlled trials, holds the fifth, and reuses only a released lease', async () => {
   const pool = new SlotPool(slots);
   const started: number[] = [], finished: number[] = [];
