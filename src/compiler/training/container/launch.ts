@@ -18,6 +18,7 @@ import { repairEnvelopeSchema } from "../repair/contract.js";
 import { hashJson } from "../preparation/files.js";
 import { parseTrainingMappedPreparation } from "../preparation/contract.js";
 import { persistTrainingGrokCredential } from "./grokWriteback.js";
+import { nativeTrainingSlotsDocument } from "./nativeSlots.js";
 
 // The image bakes /run/training/inputs as 0:2000 0750 for brokered worker isolation; the
 // non-brokered host-uid evaluator joins that group so it can still traverse its own inputs.
@@ -121,6 +122,10 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
       const slotsFile = path.join(privateRoot, "slots.json");
       await writeFile(slotsFile, `${JSON.stringify(trainingSlotsDocument(prepared.config.slots))}\n`, { mode: 0o444, flag: "wx" });
       mounts.push(`type=bind,src=${slotsFile},dst=${TRAINING_SLOTS_FILE},readonly`);
+    } else {
+      const slotsFile = path.join(privateRoot, "slots.json");
+      await writeFile(slotsFile, `${JSON.stringify(nativeTrainingSlotsDocument(prepared.config.slots, uid))}\n`, { mode: 0o444, flag: "wx" });
+      mounts.push(`type=bind,src=${slotsFile},dst=${TRAINING_SLOTS_FILE},readonly`);
     }
     // A brokered Grok slot runs the launcher, the broker and the model's own worker uid inside this container, so it
     // starts as root with the production Daimon capability set instead of the host user with no capabilities at all.
@@ -128,9 +133,9 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
       ? [...await trainingBrokerSecurityArgs(privateRoot), "--pids-limit", "2048",
         ...trainingBrokerTmpfsTargets(prepared.config.slots).flatMap((entry) => ["--tmpfs", `${entry.path}:rw,nosuid,nodev,size=${entry.size},mode=${entry.mode}`])]
       : ["--user", `${uid}:${gid}`, "--group-add", String(TRAINING_INPUTS_GID), "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-        ...DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS, "--pids-limit", "512",
-        "--tmpfs", `/tmp:rw,nosuid,nodev,size=1g,uid=${uid},gid=${gid},mode=1777`, "--tmpfs", `/work:rw,nosuid,nodev,size=4g,uid=${uid},gid=${gid},mode=700`,
-        "--tmpfs", `/home/training:rw,nosuid,nodev,size=1g,uid=${uid},gid=${gid},mode=700`];
+        ...DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS, "--pids-limit", String(512 * prepared.config.slots),
+        "--tmpfs", `/tmp:rw,nosuid,nodev,size=${prepared.config.slots}g,uid=${uid},gid=${gid},mode=1777`, "--tmpfs", `/work:rw,nosuid,nodev,size=${4 * prepared.config.slots}g,uid=${uid},gid=${gid},mode=700`,
+        "--tmpfs", `/home/training:rw,nosuid,nodev,size=${prepared.config.slots}g,uid=${uid},gid=${gid},mode=700`];
     const args = ["create", "--name", name, "--label", `com.spawnfile.training.owner=${name}`,
       "--init", "--read-only", ...privilege,
       "--env", "HOME=/home/training", "--workdir", "/work", "--entrypoint", broker ? TRAINING_BROKER_ENTRYPOINT : "/opt/training/bin/train",
