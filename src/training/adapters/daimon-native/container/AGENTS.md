@@ -39,3 +39,9 @@ With a leased SubjectStart, verify the project-written launch receipt's broker
 slot/uid, workspace/home/control/ledger/preflight paths and control port against
 that descriptor before launching or copying the receipt. Never rewrite digest-bound
 projection inputs to make a mismatched receipt pass.
+
+Shared-uid v2 leases admit Codex only, bind workerUid to the evaluator's effective
+uid and always bound the host control port. Optional named roots pin both source
+and target for workspace/runtimeHome/memory/transport/state, or controlRoot.
+Unknown roots fail closed; empty roots retain the existing per-trial path policy.
+Grok retains the existing broker-evidence checks and cannot use a shared-uid lease.

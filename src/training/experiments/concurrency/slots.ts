@@ -9,6 +9,12 @@ const slotSchema = z.object({
   roots: z.record(z.string().min(1), z.string().refine(isAbsolute)),
   ports: z.object({ base: z.number().int().min(1024).max(65535), count: z.number().int().positive() }).strict(),
 }).strict();
+const sharedUidSlotSchema = slotSchema.extend({ isolation: z.literal('shared-uid') });
+const provisionedSlotSchema = z.union([slotSchema, sharedUidSlotSchema]);
+const slotsDocumentSchema = z.discriminatedUnion('schema', [
+  z.object({ schema: z.literal('spawnfile.training-slots.v1'), slots: z.array(slotSchema).min(1).max(8) }).strict(),
+  z.object({ schema: z.literal('spawnfile.training-slots.v2'), slots: z.array(sharedUidSlotSchema).min(1).max(8) }).strict(),
+]);
 export const trialConcurrency = (value: number): number => z.number().int().min(1).max(8).parse(value);
 
 export async function loadTrialSlots(options: { concurrency?: number; slotsFile?: string; slots?: readonly TrialSlot[] } = {}) {
@@ -19,8 +25,7 @@ export async function loadTrialSlots(options: { concurrency?: number; slotsFile?
     try {
       const info = await stat(path);
       if ((info.mode & 0o222) !== 0) throw new Error('Trial slot descriptor file must be read-only');
-      const document = z.object({ schema: z.literal('spawnfile.training-slots.v1'), slots: z.array(slotSchema).min(1).max(8) }).strict()
-        .parse(JSON.parse(await readFile(path, 'utf8')));
+      const document = slotsDocumentSchema.parse(JSON.parse(await readFile(path, 'utf8')));
       slots = document.slots;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT' || options.slotsFile) throw error;
@@ -30,11 +35,13 @@ export async function loadTrialSlots(options: { concurrency?: number; slotsFile?
     if ((options.concurrency ?? 1) > 1) throw new Error('Concurrent trials require provisioned slot descriptors');
     return { concurrency: 1, pool: undefined, slots: undefined };
   }
-  const parsed = z.array(slotSchema).min(1).max(8).parse(slots);
+  const parsed = z.array(provisionedSlotSchema).min(1).max(8).parse(slots);
   for (const [i, slot] of parsed.entries()) {
-    if (slot.ports.base + slot.ports.count > 65536 || !Object.keys(slot.roots).length) throw new Error('Invalid slot roots or port block');
+    const sharedUid = 'isolation' in slot && slot.isolation === 'shared-uid';
+    if (slot.ports.base + slot.ports.count > 65536 || !sharedUid && !Object.keys(slot.roots).length) throw new Error('Invalid slot roots or port block');
     for (const prior of parsed.slice(0, i)) {
-      if (prior.index === slot.index || prior.workerUid === slot.workerUid ||
+      const sharedIdentity = sharedUid && 'isolation' in prior && prior.isolation === 'shared-uid';
+      if (prior.index === slot.index || prior.workerUid === slot.workerUid && !sharedIdentity ||
           prior.ports.base < slot.ports.base + slot.ports.count && slot.ports.base < prior.ports.base + prior.ports.count) {
         throw new Error('Slot indices, worker identities and port blocks must be disjoint');
       }
