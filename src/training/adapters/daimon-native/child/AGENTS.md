@@ -6,8 +6,11 @@ copy subscription authentication, claim fresh-container or held-out exclusion,
 or replace native evidence. The caller prepares credential ingress via its owner.
 
 Fresh actual workspace/home paths must match the compiled launch. Stop confirms
-only matching closed native work, idle activity, acknowledged native stop and
-observed child exit. Uncertain cancellation fails closed; outer container teardown
+only idle native activity, acknowledged native stop, clean observed child exit
+and disappearance of its owned process group. Start the worker
+as that group's leader. Only ESRCH proves group absence; inspection failure stays
+unknown. After leader reap, observe only: numeric PID/PGID reuse forbids signaling.
+Uncertain cancellation fails closed; outer container teardown
 remains the caller's responsibility. Tests use real child/loopback fixtures but
 must not claim actual authenticated model acceptance from those fixtures.
 

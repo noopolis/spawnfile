@@ -48,16 +48,31 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token, launch.delivery);
   const diagnostics = await childDiagnostics(nativeTrialArtifactsRoot(launch, trialId), trialId, launch.configSha256,
     childSecrets(launch, env, token));
+  const group = process.platform !== 'win32';
   const child = spawn(process.execPath, nativeChildArguments(launch, trialId, timeoutMs), {
-    cwd: dirname(launch.workerRoot), env, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: dirname(launch.workerRoot), env, detached: group, stdio: ['ignore', 'pipe', 'pipe'],
   });
+  const pid = child.pid;
+  let reaped = false;
   let exited = false; let exitCode: number | null = null; let exitSignal: NodeJS.Signals | null = null; let ready = false; let failure = false; let buffer = ''; let bytes = 0;
   child.once('error', () => { failure = true; });
+  child.once('exit', () => { reaped = true; });
   child.once('close', (code, signal) => { exited = true; exitCode = code; exitSignal = signal; });
+  const groupGone = (): boolean => {
+    // Only ESRCH proves absence. Unsupported inspection and EPERM stay unknown.
+    if (!group || pid === undefined) return false;
+    try { process.kill(-pid, 0); return false; }
+    catch (error) { return (error as NodeJS.ErrnoException).code === 'ESRCH'; }
+  };
+  const send = (signal: NodeJS.Signals): void => {
+    // Reaping ends signaling authority: a retained numeric PID/PGID can be reused.
+    if (pid === undefined || reaped) return;
+    try { process.kill(group ? -pid : pid, signal); } catch { /* Closure observation decides, never signal success. */ }
+  };
   const consume = (chunk: Buffer, stdout: boolean) => {
     diagnostics.append(chunk, stdout);
     bytes += chunk.length;
-    if (bytes > 1_048_576) { failure = true; child.kill('SIGTERM'); return; }
+    if (bytes > 1_048_576) { failure = true; send('SIGTERM'); return; }
     if (!stdout) return;
     buffer += chunk.toString('utf8');
     for (;;) {
@@ -104,9 +119,10 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   let diagnosed: SubjectStartupDiagnostic | undefined;
   /**
    * Closure is one question — is anything still running or still spending? — and
-   * it is the conjunction of three independent live proofs: the runtime admits no
+   * it is the conjunction of four independent live proofs: the runtime admits no
    * execution of this agent's, it sealed and acknowledged its own stop, and the
-   * owned child exited (decided below, after the kill escalation).
+   * owned child exited cleanly, and its process group disappeared (decided below,
+   * after the kill escalation). Escaped descendants and remote work stay unknown.
    *
    * It used to demand a fourth: that the last delivery's terminal frame bind to a
    * resolved execution. That was interrogating another service's inbox
@@ -159,12 +175,16 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     let cause: StopUnconfirmed | undefined;
     try { cause = await proveClosure(); }
     catch { cause = 'activity-unreadable'; /* Uncertain native work requires outer-container termination. */ }
-    if (!exited) child.kill('SIGTERM');
+    if (!exited) send('SIGTERM');
     const until = Date.now() + 2000;
-    while (!exited && Date.now() < until) await pause(20);
-    if (!exited) { child.kill('SIGKILL'); const forced = Date.now() + 1000; while (!exited && Date.now() < forced) await pause(20); }
+    while ((!exited || !groupGone()) && Date.now() < until) await pause(20);
+    if (!exited || !groupGone()) {
+      send('SIGKILL');
+      const forced = Date.now() + 1000;
+      while ((!exited || !groupGone()) && Date.now() < forced) await pause(20);
+    }
     await diagnostics.save(exitCode, exitSignal);
-    cause ??= !exited ? 'child-running' : exitCode === 0 ? undefined : 'child-exit';
+    cause ??= !exited || !groupGone() ? 'child-running' : exitCode === 0 ? undefined : 'child-exit';
     const confirmed = cause === undefined;
     // A worker that died mid-turn published nothing: startup owns the only
     // other route this record takes, and the protected file it is built from
@@ -186,8 +206,8 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       ...(scored ? { evidenced: scored.wakeId } : {}),
       ...(wakes.length ? { wakes: wakes.map(entry => ({ wakeId: entry.wakeId, ...(entry.unevidenced ? { unevidenced: entry.unevidenced } : {}) })) } : {}),
       detail: !confirmed ? `Native child closure unconfirmed (${cause}); caller must stop the shared container`
-        : evidence ? `Idle native runtime, acknowledged native stop and worker exit; no terminal evidence to score this trial (${evidence})${last ? ` on wake ${last.wakeId}` : ''}`
-          : `Closed native execution, idle runtime, acknowledged native stop and worker exit${scored === last ? '' : `; scored from wake ${scored!.wakeId}, not wake ${last!.wakeId} (${last!.unevidenced})`}` };
+        : evidence ? `Idle native runtime, acknowledged native stop, worker exit and process group gone; no terminal evidence to score this trial (${evidence})${last ? ` on wake ${last.wakeId}` : ''}`
+          : `Closed native execution, idle runtime, acknowledged native stop, worker exit and process group gone${scored === last ? '' : `; scored from wake ${scored!.wakeId}, not wake ${last!.wakeId} (${last!.unevidenced})`}` };
   })();
   try {
     while (!ready) {

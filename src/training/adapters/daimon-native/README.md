@@ -225,8 +225,12 @@ Child research callbacks live at `execution.externalInputs` and receive
 cannot be combined with child execution. Stopping cancels pending HTTP and
 research callbacks and prevents a subsequent wake.
 
-Normal closure requires matching completed native execution evidence, idle native
-activity, acknowledged native stop and an observed clean worker exit. Cancellation,
+Closure requires idle native activity, acknowledged native stop, an observed clean
+worker exit and observed disappearance of the owned process group. The worker's
+`quiescence: unknown` / `parent-container-owner` frame is only a native stop
+acknowledgement; the parent adapter derives the confirmed receipt after these checks.
+Only ESRCH establishes group absence. The parent never signals after leader reap;
+surviving descendants or denied inspection leave closure unknown. Cancellation,
 crash or forced termination without that evidence remains `quiescence: unknown`;
 the experiment must fail and the caller stops the whole shared container. No safe
 continuation after uncertain cancellation or remote-model cancellation is claimed.

@@ -63,7 +63,7 @@ executions:hostStopped&&mode.endsWith('-busy-seal')?[{agent_id:launch.agent.id,e
 // host.stop() against a 5s deadline and memoizes whatever it got.
 const settleStop=()=>{hostStopped=true;stopOutcome=stopOutcome??(mode==='bad-stop'||mode.endsWith('-stop-unknown')
 ?{schema:'paideia.daimon-native.stop.v1',state:'unknown',quiescence:'unknown',error:'unit native shutdown deadline exceeded'}
-:{schema:'paideia.daimon-native.stop.v1',state:'acknowledged',quiescence:'unknown'});return stopOutcome;};
+:{schema:'paideia.daimon-native.stop.v1',state:'acknowledged',quiescence:'unknown',containmentVerification:'parent-container-owner'});return stopOutcome;};
 const server=http.createServer(async(req,res)=>{if(req.headers.authorization!=='Bearer '+token){res.writeHead(401);res.end();return;}
 if(req.url==='/v2/activity'&&hostStopped&&mode.endsWith('-unanswerable')){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:'native_host_unavailable'}));return;}
 res.writeHead(200,{'content-type':'application/json'});

@@ -280,6 +280,13 @@ confirmed native shutdown; ambiguous closure blocks retry. Behavioral failures,
 deferred deliveries, interruptions and successfully captured trials with errored
 measurements are never replacement triggers. Measurement recovery remains separate.
 
+For native child execution, the parent verifies idle native activity, acknowledged
+native stop, clean worker exit and process-group disappearance. A worker's
+`parent-container-owner` stop frame alone never authorizes replacement. Historical
+unknown receipts are not upgraded on resume. Retained tool events, output, usage
+or incomplete admission evidence still veto replacement, regardless of a zero
+trace count or an infrastructure error message.
+
 Failed infrastructure reports remain persisted with unknown scores; only the final
 replacement supplies the optimizer reward or held-out sample. Exhaustion preserves
 the existing infrastructure error instead of supplying a zero. The training report
@@ -299,6 +306,12 @@ successful captures, including publication before checkpoint completion. As with
 ordinary trials, a reserved attempt without verifiable stored terminal evidence
 blocks resume; it is never presumed stopped or repeated. Separate authored
 `comparison` runs refuse nonzero retry controls.
+
+After selection freezes, resume reuses that exact optimizer result and every
+settled successful capture. It revisits failed infrastructure entries through the
+same retry gate and remaining replacement budget; it neither reselects nor
+regrades completed trials. A failed measurement with attributable subject behavior
+continues to block, even when another failure in the same run was replaceable.
 
 ## Held-out test repeats
 
