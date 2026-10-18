@@ -1,3 +1,4 @@
+import { dockerFixture } from "../container/fixtures.test-helper.js";
 import { readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -125,12 +126,14 @@ it("carries the packaged build declaration through preparation to the authored l
       process: docker.process, timeoutMs: 1000, packageRoot: f.own, streams: { stdout() {}, stderr() {} } };
     const prepared = await prepareTraining(options); if ("dryRun" in prepared) throw Error("actual preparation expected");
     let created = false;
-    const failure = await launchTrainingContainer({ ...options, ...prepared, process: async (args, opts) => {
+    const launcher = dockerFixture(async args => {
       if (args[2] === "create") { created = true; return { code: 1, stdout: "", stderr: "gate reached" }; }
       if (args[2] === "inspect") return { code: 1, stdout: "", stderr: "not created" };
-      if (args[2] === "container") return { code: 0, stdout: "", stderr: "" };
-      return docker.process(args, opts);
-    } }).then(() => undefined, (error: Error) => error);
+      return undefined;
+    });
+    const failure = await launchTrainingContainer({ ...options, ...prepared, process: (args, opts) =>
+      args[2] === "image" ? docker.process(args, opts) : launcher.process(args, opts)
+    }).then(() => undefined, (error: Error) => error);
     expect(created, "packaged execution handoff guarantee").toBe(declared);
     expect(failure?.message).toContain(declared ? "gate reached" : "requires an image implementing --spawnfile-execution");
     expect(docker.calls.filter(args => args[2] === "build")).toHaveLength(1);

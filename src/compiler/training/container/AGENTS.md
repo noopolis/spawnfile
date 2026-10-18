@@ -20,3 +20,31 @@
 - Authored launches verify dataset bytes and the immutable image's explicit execution capability label before container creation, then pass --spawnfile-execution to its entrypoint. Never auto-label arbitrary integrations as compatible.
 
 - Explicit validation dataset paths receive the same mount coverage validation as train/test. The image consumer lowers moments inside the training container via the public moments API.
+
+- `outputVolume.ts` owns a launch-labelled local Docker output volume by default
+  on every supported local context. `outputCopy.ts` is the bounded, dependency-free
+  Node copier run in the same verified image. Seed all existing output, including
+  fresh-run prelaunch files and resume checkpoints; use the native host uid/gid
+  or broker organization uid/gid 2000. Export assigns host ownership and retains
+  modes, symlinks, hardlinks, timestamps and empty directories. Never follow source
+  symlinks. Helpers have no network, socket mount, added capabilities or privileges;
+  retain only default CHOWN/DAC_OVERRIDE/FOWNER/FSETID to copy private runtime files.
+- Output copies are limited to 1,000,000 entries, depth 64 and 64 GiB of unique
+  regular-file data plus link text. Each export Docker operation has a separate
+  120-second deadline, unaffected by cancellation or the training deadline. A
+  helper is ownership-verified and removed before publishing its staged output.
+  The stopped writer's output reaches the host before final receipt verification;
+  failure and cancellation export only after verified writer removal. Unknown
+  ownership/closure or export failure retains the volume and prints recovery.
+- `SPAWNFILE_TRAINING_OUTPUT_STORAGE=bind` is the explicit compatibility opt-out
+  for reliable bind-mount hosts; unset or `volume` uses VM-local output everywhere
+  so switching local Docker contexts never silently changes filesystem behavior.
+  Other values refuse before Docker. Auth and budget volumes remain separate.
+- Durability is at exit: the host output is a snapshot, not a live checkpoint
+  feed. SIGINT/SIGTERM and command cancellation export during cleanup. SIGKILL,
+  host/VM crashes and power loss cannot run cleanup; the labelled volume remains
+  on the Docker daemon for recovery (VM disk loss still loses it). A host crash
+  during the two-rename publication can leave the previous host output under the
+  private scratch `output-before-export`; the volume remains authoritative until
+  export and cleanup finish. Do not concurrently edit/replace host output or run
+  another launch against it. No periodic checkpoint export is promised.

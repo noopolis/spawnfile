@@ -75,7 +75,7 @@ it.each([2, 3])("serializes concurrent cleanup with expiry %i first, without cal
   let active = 0, maximum = 0;
   const published: string[] = [], scratch = new Set<string>();
   vi.spyOn(fs, "rename").mockImplementation(async (from, to) => {
-    expect(to).toBe(first.profile);
+    if (to !== first.profile) return rename(from, to);
     maximum = Math.max(maximum, ++active);
     try {
       published.push(await readFile(from, "utf8"));

@@ -1,3 +1,4 @@
+import { dockerFixture } from "../compiler/training/container/fixtures.test-helper.js";
 import { chmod, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -10,26 +11,21 @@ import { runCli } from "./runCli.js";
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 it("runs cold, warm and exact-resume through the actual public command and existing launcher", async () => {
-  const f = await preparationFixture(); roots.push(f.root); const docker = imageDocker(); let name = "", output = "", preparation = "";
-  const id = "b".repeat(64), calls: string[][] = [];
-  state.run = async (args, options) => {
+  const f = await preparationFixture(); roots.push(f.root); const docker = imageDocker(); let preparation = "";
+  const calls: string[][] = [];
+  const launcher = dockerFixture(async args => {
+    if (args[2] === "create") preparation = args.find(value => value.includes("dst=/run/paideia/preparation.json"))!.split(",").find(value => value.startsWith("src="))!.slice(4);
+    if (args[2] === "start") await writeFile(path.join(launcher.output().live, "index.json"), "{}");
+    return undefined;
+  });
+  state.run = (args, options) => {
     calls.push([...args]);
-    const result = (stdout: string) => ({ code: 0, stdout, stderr: "" });
-    if (args[2] === "create") {
-      name = args[args.indexOf("--name") + 1]!;
-      output = args.find(value => value.includes("dst=/run/training/output"))!.split(",").find(value => value.startsWith("src="))!.slice(4);
-      preparation = args.find(value => value.includes("dst=/run/paideia/preparation.json"))!.split(",").find(value => value.startsWith("src="))!.slice(4);
-      return result(id);
-    }
-    if (args[2] === "start") { await writeFile(path.join(output, "index.json"), "{}"); options.stdout?.('{"status":"completed","index":"/run/training/output/index.json"}'); return result(""); }
-    if (args[2] === "inspect") return result(args[4] === "{{json .State}}" ? JSON.stringify({ Running: false, ExitCode: 0 }) : [id, `/${name}`, image, { "com.spawnfile.training.owner": name }].map(value => JSON.stringify(value)).join("\n"));
-    if (args[2] === "rm" || args[2] === "container") return result("");
-    return docker.process(args, options);
+    return args[2] === "image" || args[2] === "build" ? docker.process(args, options) : launcher.process(args, options);
   };
   const errors: string[] = [];
   const args = () => ["train", f.context.project.root, "--training-config", f.configPath, "--train", f.args[1]!, "--out", path.join(f.root, f.config.output.source)];
   const run = (extra: string[] = []) => runCli([...args(), ...extra], { streams: { stdout() {}, stderr: value => errors.push(value) } });
-  expect(await run(), errors.join("\n")).toBe(0); expect(errors).toEqual([]);
+  expect(await run(), errors.join("\n")).toBe(0); expect(errors).toEqual([expect.stringMatching(/^Training output uses VM-local volume .+; host checkpoints update at exit\.$/u)]);
   expect(JSON.parse(await readFile(preparation, "utf8")).imageId).toBe(image);
   expect(await run(["--resume"])).toBe(0);
   f.config.output.source = "warm"; await f.save(); expect(await run(), errors.join("\n")).toBe(0);
