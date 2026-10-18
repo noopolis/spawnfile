@@ -99,7 +99,7 @@ export function runProcess(options: ProcessOptions): RunningProcess {
     return stopping;
   };
   const rejectProtocol = (error: unknown): void => {
-    failure = error instanceof Error ? error.message : String(error);
+    failure ??= error instanceof Error ? error.message : String(error);
     void stop('observation or output failure');
   };
   const enqueue = (line: string): void => {

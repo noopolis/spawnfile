@@ -234,3 +234,21 @@ it('aborts every concurrent callback and waits for their cleanup', async () => {
   expect(cleaned).toBe(4);
   expect(started).toBe(4);
 });
+
+it('preserves the initiating failure when concurrent callbacks reject during cancellation', async () => {
+  let started = 0;
+  let ready!: () => void;
+  const allStarted = new Promise<void>(resolve => { ready = resolve; });
+  const child = runProcess(options('for(let i=0;i<3;i++)console.log(i);setInterval(()=>{},10)', {
+    callbackConcurrency: 3,
+    onLine: async (line, signal) => {
+      if (++started === 3) ready();
+      await allStarted;
+      if (line === '1') throw new Error('initial failure');
+      await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true }));
+      throw new Error('secondary cancellation');
+    },
+  }));
+  expect((await child.completion).error).toBe('initial failure');
+  expect(started).toBe(3);
+});
