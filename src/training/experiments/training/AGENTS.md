@@ -133,6 +133,9 @@ logical callback/repeat key and checkpoint.ts reserves distinct replacement entr
 with failed IDs and causes. Failed captures remain unscorable; successful captures
 and errored measurements are never repeated. Retry count survives resume; replacements
 share cancellation, slot admission and the original callback/held-out worker.
+CLI retry tests interrupt the frozen two-arm sealed comparison after a failed
+report publishes, then resume only eligible replacements. Raw worker-only stop
+frames and observed tools remain vetoes; exhaustion survives repeated resumes.
 
 Checkpoint persistence externalizes atomicGrading through storage's public JSON
 codec under each native trial's protected manifest; full reports stay in memory.
