@@ -8,6 +8,8 @@ Failure reports retain a validated development-only view and protected diagnosti
 references. Their cost projection includes all observed calls without test identities.
 Replay verifies trial manifests with no sealed-test authorization; changing a case
 label in an index or report must never grant access to a sealed trial.
+Failure projection receives the same authored scoring policy as training callbacks;
+deferred delivery keeps its failed verdict even when its stage reward is retained.
 
 Exercise generation failure, duplicate completion, settled success and replay of
 persisted projections. Displaying progress never triggers inference.

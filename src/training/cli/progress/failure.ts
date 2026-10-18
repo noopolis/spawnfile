@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CandidateManifest } from '../../candidates/index.js';
-import type { CostReport, TrainingCostPlan, TrialReport } from '../../experiments/index.js';
+import type { CostReport, TrainingCostPlan, TrainingReport, TrialReport } from '../../experiments/index.js';
 import type { ExperimentStore } from '../../storage/index.js';
 import { projectTrials, projectViewerData, type ViewerData } from '../../../viewer/index.js';
 import type { InvocationIndex } from '../types.js';
@@ -23,13 +23,14 @@ export function createFailureReport(options: {
   progressRunId: string; diagnosticId: string; trials: readonly TrialReport[];
   costs: CostReport; costPlan?: TrainingCostPlan;
   rescores?: readonly RescoreReport[];
+  scoring?: TrainingReport['scoring'];
   comparison?: { candidate: CandidateManifest; name: string };
 }): CliFailureReport {
   const trials = options.trials.filter(trial => trial.phase !== 'test');
   const cases = [...new Map(trials.map(trial => [trial.recordId, { id: trial.recordId, split: trial.phase }])).values()];
   const view = projectTrials({ id: options.id, title: 'Failed experiment; partial development results', phase: 'replay',
     status: 'failed', updatedAt: new Date().toISOString(), baseline: options.baseline, comparison: options.comparison, cases, trials,
-    costs: options.costs, costPlan: options.costPlan,
+    costs: options.costs, costPlan: options.costPlan, scoring: options.scoring,
     rescores: options.rescores?.filter(score => score.original.phase !== 'test') });
   // The cost projection keeps every observed call, including sealed work, while
   // omitting call/trial identities and provider text. Do not expose usage sources.

@@ -6,6 +6,7 @@ import { openExperimentStore } from '../../storage/index.js';
 import { cliFixture } from '../fixture.js';
 import { main } from '../commands.js';
 import type { TrainingReport } from '../../experiments/index.js';
+import { loadInvocationViewer } from '../viewer.js';
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -58,4 +59,44 @@ it.each([undefined, 'zero', 'stage-score'] as const)('threads YAML deferred scor
   const exported = JSON.parse(await readFile(join(f.root, 'out/REPORT.json'), 'utf8'));
   expect(exported.candidates[0].splits.train.meanScore).toBe(expected);
   expect(exported.candidates[0].splits.test.examples[0].measurements[0]).toMatchObject({ score: expected, status: 'fail' });
+  const view = await (await loadInvocationViewer(join(f.root, 'out')))();
+  expect(view.trials.every(trial => trial.score === expected)).toBe(true);
+});
+
+it('preserves stage rewards in the failed invocation viewer after concurrent metric callbacks', async () => {
+  const f = await cliFixture(); roots.push(f.root);
+  await writeFile(join(f.root, 'train.yaml'), JSON.stringify({ schema: 'paideia.dataset.v1', id: 'train',
+    stages: [{ id: 'filed', checks: [{ id: 'article', eval: 'equals', input: 'output.text', value: 'BAD' }],
+      gate: { passed: 'article' }, score: { linear: { article: 1 } } }],
+    records: ['a', 'b'].map(id => ({ id, group: id, input: { prompt: 'Write' } })),
+    training: { models: { reflect: { provider: 'ollama', model: 'offline' } }, optimizer: { model: 'reflect' },
+      scoring: { deferred: 'stage-score' } },
+  }));
+  await writeFile(join(f.root, 'test.yaml'), JSON.stringify({ schema: 'paideia.dataset.v1', id: 'test',
+    stages: [{ id: 'filed', checks: [{ id: 'article', eval: 'equals', input: 'output.text', value: 'BAD' }],
+      gate: { passed: 'article' }, score: { linear: { article: 1 } } }], records: [{ id: 'c', group: 'c', input: { prompt: 'Write' } }],
+  }));
+  vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    await Promise.all((['train', 'validation'] as const).map(async split => {
+      const caseId = (split === 'train' ? request.trainCaseIds : request.validationCaseIds)[0]!;
+      const result = await request.evaluate({ caseId, split, components: request.components }, new AbortController().signal);
+      expect(result.score).toBe(1);
+    }));
+    throw new Error('optimizer stopped after durable metrics');
+  });
+  const adapter = f.dependencies.adapter!;
+  expect(await main(['train', '--train', 'train.yaml', '--test', 'test.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md'], f.io, {
+    ...f.dependencies, adapter: (runtime, options) => {
+      const base = adapter(runtime, options);
+      return { ...base, start: async input => {
+        const session = await base.start(input);
+        return { ...session, run: async (turn, signal) => ({ ...await session.run(turn, signal),
+          status: 'failed', blocked: 'awaiting-external-input' }) };
+      } };
+    },
+  })).toBe(2);
+  const view = await (await loadInvocationViewer(join(f.root, 'out')))();
+  expect(view.experiment.status).toBe('failed');
+  expect(view.trials).toHaveLength(2);
+  expect(view.trials.every(trial => trial.score === 1 && trial.status.startsWith('fail (deferred;'))).toBe(true);
 });

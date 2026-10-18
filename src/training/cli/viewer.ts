@@ -77,6 +77,7 @@ export async function startLiveViewer(options: {
   baseline: CandidateManifest; cases: ViewerData['cases']; testCases: ViewerData['cases'];
   comparison?: { candidate: CandidateManifest; name: string };
   budget?: { maxMetricCalls: number; maxProposals: number };
+  scoring?: TrainingReport['scoring'];
   costs?: { subjectModel: string; prices?: readonly ModelPrice[]; costPlan?: TrainingCostPlan };
 }) {
   const runId = `viewer-${options.id}`;
@@ -98,7 +99,7 @@ export async function startLiveViewer(options: {
     try {
       const data = projectTrials({ id: options.id, title: options.comparison ? `Authored comparison: ${options.comparison.name}` : 'Live native experiment', phase: frozen ? 'final-test' : 'train',
         status, updatedAt: new Date().toISOString(), baseline: options.baseline, comparison: options.comparison, cases,
-        trials: status === 'failed' ? trials.filter(trial => trial.phase !== 'test') : trials, optimizer, budget: options.budget,
+        trials: status === 'failed' ? trials.filter(trial => trial.phase !== 'test') : trials, optimizer, budget: options.budget, scoring: options.scoring,
         rescores: status === 'failed' ? rescores.filter(score=>score.original.phase!=='test') : rescores,
         costs: options.costs === undefined ? undefined : summarizeCosts([...new Map([...trials, ...sealedTrials.values()].map(trial => [trial.id, trial])).values()], { ...options.costs,
           rescores: [...new Map([...rescores, ...sealedRescores.values()].map(score => [score.id, score])).values()], optimizerGenerations: generations.snapshot() }),
