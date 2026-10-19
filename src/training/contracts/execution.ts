@@ -219,7 +219,15 @@ export interface SubjectStart {
   signal?: AbortSignal;
 }
 
+export interface SubjectEvidence {
+  adapterId: string;
+  /** Adapter-owned typed payload; core consumers must not interpret runtime identities. */
+  payload: unknown;
+}
+
 export interface SubjectTurnResult {
+  /** Only evidence admitted by the adapter, never unbound frames. */
+  evidence?: SubjectEvidence;
   status: 'completed' | 'failed' | 'cancelled';
   /** Adapter-bound terminal admission evidence. Null means unobserved, never zero. */
   admission?: {

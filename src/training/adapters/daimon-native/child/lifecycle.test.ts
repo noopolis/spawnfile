@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { createDaimonNativeAdapter } from '../index.js';
+import { createDaimonNativeAdapter, type NativeTurnEvidence } from '../index.js';
 import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
 import { verifyChildSandbox } from './sandbox.js';
@@ -21,6 +21,10 @@ it('runs a real fresh worker child with explicit environment, observed native us
   expect(env).toMatchObject({ fresh: true, home: f.launch.projections.find(row => row.role === 'home')!.target, transport: 'unit-transport-value' });
   const result = await session.run({ id: 'task', text: 'Assigned work' });
   expect(result).toMatchObject({ status: 'completed', usage: { inputTokens: 100, outputTokens: 20, cachedInputTokens: 40 } });
+  const evidence = result.evidence!.payload as NativeTurnEvidence;
+  expect(result.evidence!.adapterId).toBe('daimon-native');
+  expect(evidence.wakes).toEqual([{ wakeId: 'task', executionId: expect.any(String),
+    executionIds: [evidence.wakes[0]!.executionId], evidenceFile: join(f.launch.controlRoot, 'evidence.1.json') }]);
   expect(await session.stop('Finished')).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', remoteWork: 'unknown' });
   expect(await session.stop('Again')).toMatchObject({ state: 'acknowledged' });
   expect(() => process.kill(env.pid, 0)).toThrow();
@@ -40,6 +44,10 @@ it('keeps sourced child continuation, immutable callback identity and accumulate
   const adapter = createDaimonNativeAdapter({ execution }); policy.maxDeliveries = 999;
   const session = await adapter.start(f.input); const result = await session.run({ id: 'task', text: 'Work' });
   expect(result).toMatchObject({ status: 'completed', usage: { inputTokens: 200, outputTokens: 40 } });
+  const wakes = (result.evidence!.payload as NativeTurnEvidence).wakes;
+  expect(wakes.map(wake => wake.wakeId)).toEqual(['task', 'answer']);
+  expect(wakes.map(wake => wake.evidenceFile)).toEqual([1, 2].map(i => join(f.launch.controlRoot, `evidence.${i}.json`)));
+  expect(new Set(wakes.flatMap(wake => wake.executionIds)).size).toBe(2);
   const context = next.mock.calls[0] as unknown as [Record<string, unknown>];
   expect(context[0]?.executionId).toMatch(/^child:/u); expect(context[0]).not.toHaveProperty('containerName');
   expect(await session.stop('Finished')).toMatchObject({ quiescence: 'confirmed' });
@@ -99,6 +107,7 @@ it('refuses a foreign trial frame as evidence without doubting the runtime it ca
   const result = await session.run({ id: 'task', text: 'Work' });
   expect(result.status).toBe('failed');
   expect(result.error).toContain('Native terminal evidence identity mismatch');
+  expect(result.evidence).toBeUndefined();
   const receipt = await session.stop('Finished');
   expect(receipt).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed', unevidenced: 'terminal-unbound' });
   expect(receipt.unconfirmed).toBeUndefined();

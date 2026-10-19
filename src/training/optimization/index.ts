@@ -4,3 +4,6 @@ export { DspyOptimizationError, type DspyFailureEvidence, type DspyOptimizationO
 export type { DspyEvaluation, DspyEvaluateParams, DspyGenerateParams, DspyResult } from './protocol.js';
 export { readDspyCheckpointEvidence } from './checkpoint.js';
 export type { DspyRestoredEvidence } from './types.js';
+
+export { bridgeExecutionIdentity } from './bridge-identity.js';
+export type { BridgeIdentityContext } from './bridge-identity.js';

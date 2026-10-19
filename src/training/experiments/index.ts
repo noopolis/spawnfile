@@ -1,5 +1,5 @@
 export { runTrial } from './trials/index.js';
-export type { TrialOptions, TrialReport, TrialPaths, PreparedTrial, TrialEvent } from './trials/index.js';
+export type { TrialOutcome, TrialOptions, TrialReport, TrialPaths, PreparedTrial, TrialEvent } from './trials/index.js';
 export { runStoredTrial, type StoredTrialOptions, type NativePreparationContext } from './trials/index.js';
 export { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './trials/index.js';
 export { trainAgent, type TrainingOptions, type TrainingReport } from './training/index.js';
@@ -11,4 +11,4 @@ export * from './costs/index.js';
 
 export { compareCandidates, type ComparisonOptions, type ComparisonReport } from "./comparison/index.js";
 
-export { loadTrialSlots, trialConcurrency, SlotPool, type SlotLease, type TrialSlot } from './concurrency/index.js';
+export { loadTrialSlots, trialConcurrency, slotPort, SlotPool, type SlotLease, type TrialSlot } from './concurrency/index.js';

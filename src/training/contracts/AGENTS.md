@@ -40,3 +40,5 @@ raw checks, identities and transport receipts never belong in this contract.
 
 EvaluationResult.mechanicalEvidence retains deterministic counts and missing values
 beside source-byte references; it does not assert semantic support or live finality.
+
+SubjectTurnResult.evidence carries an adapter ID and opaque payload; native execution IDs stay in adapter-owned types.

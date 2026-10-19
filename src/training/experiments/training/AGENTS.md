@@ -145,3 +145,5 @@ Legacy inline states retain their identity; subsequent writes compact them.
 Checkpoints and grading blobs remain bounded at 64 MiB. Missing/mismatched blobs
 block resume. Adjacent payload tests exercise 38 large trials, corruption and
 completed legacy resume without native execution.
+
+Preparation port tests exercise trainAgent through stored-trial preparation with cloned slot descriptors, including insufficient capacity before subject start.

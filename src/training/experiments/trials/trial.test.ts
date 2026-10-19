@@ -5,6 +5,7 @@ import { parseAtomicGrader, type AtomicRuntime } from '../../graders/atomic/inde
 import { parseCheckTemplates, parseDecomposition } from '../../graders/decomposition/index.js';
 import { artifact } from '../../testing/index.js';
 import { trialScore } from '../training/index.js';
+import type { TrialOutcome } from './types.js';
 import type { Observation } from '../../contracts/execution.js';
 import { captureObservation } from '../../capture/index.js';
 import { createEvaluationRegistry, result } from '../../evaluation/index.js';
@@ -344,4 +345,37 @@ describe('deferred stage rewards', () => {
     expect(failed.evaluation.checks.writing!.atomicGrading!.status).toBe('error');
     expect(() => trialScore(failed, scoring)).toThrow('atomic grading measurement');
   });
+});
+
+it('passes only returned turns to collect, absent before return and partial during subsequent live snapshots', async () => {
+  const evidence = { adapterId: 'test-native', payload: { executions: ['admitted-1', 'admitted-2'], files: ['/protected/frame'] } };
+  const calls: (TrialOutcome | undefined)[] = [];
+  const task = await setup(async (input, turn) => {
+    await input.onObservation({ id: turn.id, trialId: input.trialId, wakeId: turn.id, type: 'output',
+      source: 'fixture', seq: turn.id === 'first' ? 1 : 2, timestamp: new Date().toISOString(), text: 'DONE' });
+    return { ...complete, evidence };
+  });
+  task.options.record.turns = [{ id: 'first', input: { prompt: 'one' } }, { id: 'second', input: { prompt: 'two' } }];
+  task.options.prepare = async () => ({ instructions: '', collect: async outcome => {
+    calls.push(structuredClone(outcome));
+    // Mutating collector-owned data cannot change retained native evidence.
+    if (outcome) outcome.turns[0]!.native.evidence = undefined;
+    return {};
+  } });
+  const report = await runTrial(task.options);
+  expect(report.status).toBe('pass');
+  expect(calls[0]).toBeUndefined();
+  expect(calls.some(call => call?.turns.length === 1)).toBe(true);
+  expect(calls.at(-1)?.turns.map(turn => turn.id)).toEqual(['first', 'second']);
+  for (const call of calls.filter(call => call !== undefined)) {
+    expect(call.turns.every(turn => JSON.stringify(turn.native.evidence) === JSON.stringify(evidence))).toBe(true);
+  }
+  expect(report.turns[0]!.native.evidence).toEqual(evidence);
+});
+
+it('keeps no-argument collectors compatible', async () => {
+  const task = await setup(); let collected = 0;
+  task.options.prepare = async () => ({ instructions: '', collect: async () => { collected++; return {}; } });
+  expect((await runTrial(task.options)).status).toBe('pass');
+  expect(collected).toBeGreaterThan(0);
 });

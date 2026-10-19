@@ -135,3 +135,16 @@ it('validates provisioner identity and preserves serial legacy defaults', async 
   expect(await loadTrialSlots()).toEqual({ concurrency: 1, pool: undefined, slots: undefined });
   await expect(loadTrialSlots({ concurrency: 2 })).rejects.toThrow('require provisioned');
 });
+
+
+it('maps zero-based leased port offsets and rejects every out-of-block index', async () => {
+  const lease = await new SlotPool(slots).acquire();
+  expect(lease.port(0)).toBe(slots[0]!.ports.base);
+  expect(lease.port(slots[0]!.ports.count - 1)).toBe(slots[0]!.ports.base + slots[0]!.ports.count - 1);
+  for (const index of [-1, slots[0]!.ports.count, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    expect(() => lease.port(index)).toThrow(RangeError);
+  }
+  lease.slot.ports.base = 1;
+  expect(lease.port(0)).toBe(slots[0]!.ports.base);
+  lease.release(true);
+});

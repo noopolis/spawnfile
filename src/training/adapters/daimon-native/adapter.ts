@@ -1,3 +1,6 @@
+import { join } from 'node:path';
+import { nativeTrialArtifactsRoot } from './receipt/index.js';
+import { admittedNativeEvidence, type NativeTurnEvidence } from './outcome.js';
 import { boundedTransportCall, requestTransportDelivery, transportTerminalBinding, verifyPreparedTransport,
   type NativeExecutionHandle, type NativeTransportDelivery, type PreparedTransportDelivery } from './transport/index.js';
 import { startOwnedChild, type NativeChildExecution } from './child/index.js';
@@ -49,6 +52,10 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             workerRequest<T>(docker, owned.name, path, body, ms, signal, launch.host.port),
         }));
       const observer = createNativeObserver(input, launch.projections.find(row => row.role === 'home')!.source, launch.agent.id, launch.agent.engine);
+      const evidence: NativeTurnEvidence = { schema: 'paideia.daimon-native.evidence.v1', wakes: [] };
+      const admittedDeliveries = new Set<string>();
+      let attributionInvalid = false;
+      let ordinal = 0;
       let used = false;
       let stopped = false;
       const sessionCancellation = new AbortController();
@@ -64,6 +71,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
           let done = false;
           let terminal: TerminalEvidence | undefined;
           let failure: unknown;
+          const deliveryOrdinal = ++ordinal;
           const body = { wakeId: turn.id, text: turn.text, ...(controls ? { controls } : {}) };
           const response = (transport
             ? requestTransportDelivery(container.request, { ...body, source: transport.source }, transport, deadline, cancelled.signal)
@@ -77,9 +85,20 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             if (failure) throw failure;
             if (!terminal || terminal.schema !== 'paideia.daimon-native.trial.v1' || terminal.trialId !== input.trialId ||
                 terminal.wakeId !== turn.id || terminal.agentId !== launch.agent.id || terminal.model !== launch.agent.model ||
-                terminal.configSha256 !== launch.configSha256) throw new Error('Native terminal evidence identity mismatch');
+                terminal.configSha256 !== launch.configSha256) {
+              if (terminal) attributionInvalid = true;
+              throw new Error('Native terminal evidence identity mismatch');
+            }
             const binding = transport ? transportTerminalBinding(terminal, transport.source) : 'bound';
-            if (binding === 'conflict') throw new Error('Native transport terminal evidence identity mismatch');
+            if (binding === 'conflict') {
+              attributionInvalid = true;
+              throw new Error('Native transport terminal evidence identity mismatch');
+            }
+            let admitted: NativeTurnEvidence['wakes'][number] | undefined;
+            try { admitted = admittedNativeEvidence(terminal, launch, input.trialId, turn.id, deliveryOrdinal,
+              join(nativeTrialArtifactsRoot(launch, input.trialId), 'evidence.json'), transport?.source, admittedDeliveries);
+            } catch (error) { attributionInvalid = true; throw error; }
+            if (admitted) evidence.wakes.push(admitted);
             if (terminal.blocked && terminal.status !== 'failed') throw new Error('Blocked native terminal cannot claim completion');
             const admission = terminal.status === 'failed' && !terminal.blocked ? nativeAdmission(terminal) : undefined;
             await observer.checkpoint(observedWakeId);
@@ -129,6 +148,10 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
           } finally { for (const source of signals) source.removeEventListener('abort', abort); }
       };
       return { stop, async run(turn, signal) {
+        const result = await run(turn, signal);
+        return { ...result, ...(!attributionInvalid && evidence.wakes.length ? { evidence: { adapterId: 'daimon-native', payload: structuredClone(evidence) } } : {}) };
+      } };
+      async function run(turn: { id: string; text: string }, signal?: AbortSignal): Promise<SubjectTurnResult> {
         if (used || stopped) throw new Error('Native Daimon session permits one delivery');
         used = true;
         const combined = AbortSignal.any([sessionCancellation.signal, input.signal, signal].filter((value): value is AbortSignal => value !== undefined));
@@ -173,7 +196,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             admission: unknownNativeAdmission(),
             coverage: weakestNativeCoverage(coverages) };
         }
-      } };
+      }
     },
   };
 }

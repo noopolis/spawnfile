@@ -172,3 +172,9 @@ read instead.
 `grants/` binds evaluator inference grants (judges and DSPy optimizer) to Daimon's
 public control client and client-config renderer behind a Paideia-owned pin.
 
+
+Turn evidence publishes every admitted wake, its execution IDs (including delivery revisits from the worker-admitted trial ledger) and runtime-local protected per-wake evidence file. Unbound frames are never published. Consumers use NativeTurnEvidence rather than re-parsing worker frames.
+
+Consumer bootstraps may spawn `worker/cli.js` beneath `launch.workerRoot` as the supported child entry, forwarding the arguments produced by nativeChildArguments (replace only the bootstrap entry). The CLI runs the public worker lifecycle; importing worker/index.js alone does not start it.
+
+A session attribution conflict suppresses all published turn evidence, including earlier wakes. A continuation without a closed execution preserves earlier admitted evidence. Test the exact collect() payload through two deliveries.
