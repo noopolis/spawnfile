@@ -100,7 +100,10 @@ export interface MoltnetMessageFilter {
 }
 export interface MoltnetSqliteInspection extends MoltnetInspection {
   /** Filtered messages ordered by stored created_at TEXT, then id, like Moltnet room history. */
-  orderedMessages: MoltnetMessage[];
+  orderedMessages: Array<MoltnetMessage & {
+    /** Store-local SQLite rowid (append order), before filtering; may contain gaps. */
+    appendIndex: number;
+  }>;
   /** All stored registrations, independent of message filters; no credential material. */
   registrations: Array<{ agentId: string; networkId: string; actorUid: string }>;
   /** Active rooms only, with sorted member IDs. Labels and policies remain caller-owned. */
@@ -156,9 +159,12 @@ export const inspectMoltnetSqlite = async (
     for (const row of database.prepare("SELECT agent_id, updated_at FROM attachment_delivery_cursors").all()) {
       check(sqliteText(row, "updated_at"), "moltnet-event", `Attachment cursor ${row.agent_id} has a future updated_at`);
     }
+    const appendPositions = new Map(database.prepare("SELECT id, rowid AS append_index FROM messages").all()
+      .map(row => [sqliteText(row, "id"), sqliteInteger(row, "append_index")]));
     const orderedMessages = messages.filter((message) =>
       (filter.room === undefined || message.target.room_id === filter.room)
       && (filter.sender === undefined || message.from.id === filter.sender))
+      .map(message => ({ ...message, appendIndex: appendPositions.get(message.id)! }))
       .sort((a, b) => a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1
         : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     const registrations = Object.values(snapshot.agents).map(agent => ({
