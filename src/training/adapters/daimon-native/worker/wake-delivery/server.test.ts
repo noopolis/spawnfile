@@ -201,8 +201,9 @@ test('bridge wake HTTP preserves rejection responses and enforces admission, aut
 test.skipIf(!daimon)('wake status, body and Retry-After match the installed Daimon HTTP route for every acceptance outcome (skipped only when @noopolis/daimon/runtime is absent)', async () => {
   // Execute the installed route and its helpers verbatim, without running the CLI,
   // constructing a native runtime, starting an engine or binding a TCP listener.
-  const source = await readFile('node_modules/@noopolis/daimon/src/runtime/cli.ts', 'utf8');
-  const parsed = createSourceFile('cli.ts', source, ScriptTarget.ES2022, true);
+  // The published package ships only the compiled route, which is also what actually runs.
+  const source = await readFile('node_modules/@noopolis/daimon/dist/runtime/cli.js', 'utf8');
+  const parsed = createSourceFile('cli.js', source, ScriptTarget.ES2022, true);
   const names = ['handleRequest', 'authorized', 'readJson', 'bodyRecord', 'respond'];
   const declarations = parsed.statements.filter(node => isFunctionDeclaration(node) && names.includes(node.name?.text ?? ''));
   expect(declarations).toHaveLength(names.length);
