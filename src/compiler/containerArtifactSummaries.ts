@@ -103,6 +103,7 @@ export const createMoltnetSummary = (
 
   return {
     node_plans: moltnet.nodePlans.map((plan) => ({
+      ...(plan.sourceNodeId ? { node_id: plan.sourceNodeId } : {}),
       config_path: plan.configPath,
       ...(plan.credentialAgentId ? { credential_agent_id: plan.credentialAgentId } : {}),
       ...(plan.credentialId ? { credential_id: plan.credentialId } : {}),

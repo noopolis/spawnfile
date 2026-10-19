@@ -27,3 +27,4 @@ The compiler should hand resolved facts into this folder. This folder should not
   history and distribution reuse them. Off preserves the legacy pin shape and deduplication.
 - Capability keys should stay aligned with `specs/COMPILER.md` and `specs/SPEC.md`.
 - Keep report formatting separate from compiler orchestration.
+- Runtime `agent_paths` carries adapter-owned workspace/home/skill roots for shared instances. Moltnet node plans carry `node_id`, preserving attachment identity independently of member aliases.

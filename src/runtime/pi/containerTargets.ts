@@ -1,4 +1,5 @@
 import path from "node:path";
+import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
 
 import { listExecutionModelSecretNames } from "../../compiler/modelEnv.js";
 import type { ResolvedAgentNode } from "../../compiler/types.js";
@@ -66,6 +67,12 @@ export const createPiContainerTargets = async (
   }));
 
   return [{
+    agentPathsByNodeId: Object.fromEntries(agentInputs.map((input) => [input.id, {
+      workspacePath: `<instance-root>/workspace/agents/${input.slug}`,
+      homePath: `<instance-root>/runtime/agents/${input.slug}`,
+      skillRoots: CLI_ENGINE_SKILL_BASE_DIRECTORIES.map((root) =>
+        `<instance-root>/workspace/agents/${input.slug}/${path.posix.relative("workspace", root)}`)
+    }])),
     engineByNodeId,
     envFiles,
     files: [

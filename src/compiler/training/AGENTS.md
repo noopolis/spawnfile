@@ -23,3 +23,5 @@
 
 - `moments.ts` lowers every unique authored role/dataset/example through rewind, persists refusal reports and explicit Paideia datasets, and exposes fresh trial rewind with identity checks. Preparation hooks are declared names; org semantics stay in registered private integrations.
 - Register each lowering entry before timestamp normalization; normalization failures are per-example refusals with null lineage, and later examples must still run.
+- `compiledAgent.ts` validates the consumed compile-report projection and resolves exact agent IDs or names to host and container paths. Shared runtimes publish adapter-owned per-agent paths; missing associations refuse rather than infer layouts.
+- Public exports include the fixed training-image faketime library path and the offline SQLite inspector with ordered room/sender filtering.

@@ -10,3 +10,5 @@ export { TRAINING_SLOTS_FILE, TRAINING_SLOTS_VERSION, trainingSlotPaths, trainin
 
 export * from "./execution.js";
 export * from "./moments.js";
+export * from "./compiledAgent.js";
+export { TRAINING_FAKETIME_LIBRARY_PATH } from "./container/contract.js";

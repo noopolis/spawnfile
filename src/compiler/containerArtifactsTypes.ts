@@ -22,6 +22,7 @@ export interface ContainerEnvVariable {
 }
 
 export interface RuntimeTargetPlan {
+  agentPathsByNodeId?: import("../runtime/types.js").ContainerTarget["agentPathsByNodeId"];
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
   /** Passthrough of `ContainerTarget.engineByNodeId` (see `runtime/types.ts`), for
    * `containerArtifacts.ts` to stamp onto `ContainerRuntimeInstanceReport.engine_by_node_id`. */

@@ -16,6 +16,8 @@ export interface DiagnosticReport {
 }
 
 export interface ContainerRuntimeInstanceReport {
+  /** Per-agent paths for shared runtime instances; all paths are container absolute. */
+  agent_paths?: Record<string, { workspace_path: string; home_path: string | null; skill_roots: string[] }>;
   config_path: string;
   /** Per pi/daimon agent (keyed by node id, e.g. "agent:eleanor"): the resolved pi
    * engine kind (see `PI_ENGINE_KINDS` in `src/runtime/pi/appTemplate.ts`, e.g.
@@ -194,6 +196,7 @@ export interface ContainerPortMappingReport {
 }
 
 export interface ContainerMoltnetNodePlanSummary {
+  node_id?: string;
   config_path: string;
   credential_agent_id?: string;
   credential_id?: string;

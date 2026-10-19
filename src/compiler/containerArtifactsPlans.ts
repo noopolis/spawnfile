@@ -158,6 +158,14 @@ export const createRuntimeTargetPlans = async (
       const instancePaths = resolveInstancePaths(runtimeName, target.id, adapter.container);
       const portStride = adapter.container.portStride ?? 1;
       runtimePlans.push({
+        ...(target.agentPathsByNodeId ? { agentPathsByNodeId: Object.fromEntries(
+          Object.entries(target.agentPathsByNodeId).map(([id, paths]) => {
+            const expand = (value: string) => value.replaceAll("<instance-root>", instancePaths.instanceRoot)
+              .replaceAll("<workspace-path>", instancePaths.workspacePath);
+            return [id, { workspacePath: expand(paths.workspacePath),
+              homePath: paths.homePath === null ? null : expand(paths.homePath), skillRoots: paths.skillRoots.map(expand) }];
+          })
+        ) } : {}),
         configEnvBindings: resolveTargetConfigEnvBindings(adapter.container, target) ?? [],
         ...(target.engineByNodeId ? { engineByNodeId: target.engineByNodeId } : {}),
         ...(target.grokModelByNodeId ? { grokModelByNodeId: target.grokModelByNodeId } : {}),

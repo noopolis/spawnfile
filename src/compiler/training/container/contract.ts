@@ -2,6 +2,9 @@ import path from "node:path";
 import { z } from "zod";
 import { trainingEvaluatorRoutesSchema, trainingEvaluatorSecretsSchema } from "./evaluators.js";
 
+/** Fixed libfaketime symlink installed and mode-verified by the training image. */
+export const TRAINING_FAKETIME_LIBRARY_PATH = "/usr/local/lib/daimon/libfaketime.so.1" as const;
+
 const hostPath = z.string().min(1).refine((value) => path.isAbsolute(value) && !/[,\r\n\0]/u.test(value), "Expected an absolute bind path");
 const inputPath = z.string().regex(/^\/run\/training\/inputs\/[A-Za-z0-9._/-]+$/u).refine((value) => path.posix.normalize(value) === value && !value.endsWith("/"));
 export const trainingImageSchema = z.string().regex(/^(?:sha256:[a-f0-9]{64}|[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[a-f0-9]{64})$/u);

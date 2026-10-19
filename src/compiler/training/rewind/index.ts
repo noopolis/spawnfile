@@ -13,3 +13,6 @@ export { selectMemoryPrefix, parseMemoryLedger } from "./memory.js";
 export { rewindMoltnetJson } from "./moltnetJson.js";
 export { selectVolumeSnapshot } from "./volumes.js";
 export type * from "./types.js";
+export { inspectMoltnetSqlite } from "./moltnetSqlite.js";
+export type { MoltnetMessageFilter, MoltnetSqliteInspection } from "./moltnetSqlite.js";
+export type { MoltnetMessage } from "./moltnetSchemas.js";
