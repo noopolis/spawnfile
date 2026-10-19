@@ -93,3 +93,7 @@ prose constraints fail closed; exact text gates do not certify semantic complian
 Evaluation callbacks accept an optional nonnegative round from the bridge. Host
 journals bind it to callback identity; training persists it before export. Old
 callbacks may lack attribution; do not infer rounds from final candidate aggregates.
+
+bridgeExecutionIdentity(root, context) attests the explicitly selected canonical editable DSPy installation, supported console launcher/interpreter and package metadata, hashing bounded source plus lock bytes. It inspects metadata without importing bridge code or invoking inference. It is not dependency-byte attestation or a deployment permission.
+
+Bridge identity preserves the original clank.paideia.python-bridge.v1 namespace and hash domain; fixed-input compatibility tests pin the original private implementation output.

@@ -4,6 +4,7 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { childFixture } from './fixture.js';
+import { admittedNativeEvidence } from '../outcome.js';
 import { startOwnedChild } from './lifecycle.js';
 import { configFixture, launchFixture } from '../test-fixtures.js';
 import { createNativeObserver } from '../observations.js';
@@ -199,6 +200,12 @@ test('the persisted trial ledger counts all six executions once, including revis
   const root = await mkdtemp(join(tmpdir(), 'native-multi-accounting-'));
   try {
     const worker = await workerFrames(root, fixture.input.trialId, fixture.launch.configSha256);
+    const deliveries = new Set<string>();
+    const admitted = worker.frames.map((frame, index) => admittedNativeEvidence(frame, fixture.launch,
+      fixture.input.trialId, frame.wakeId, index + 1, join(root, 'control/evidence.json'), undefined, deliveries)!);
+    expect(admitted.map(row => row.executionId)).toEqual(worker.frames.map(frame => frame.executionId));
+    expect(new Set(admitted.flatMap(row => row.executionIds))).toEqual(new Set(worker.closed.map(row => row.executionId)));
+    expect(admitted.map(row => row.evidenceFile)).toEqual([1, 2, 3].map(i => join(root, `control/evidence.${i}.json`)));
     const observer = createNativeObserver(fixture.input, fixture.input.runtimeHomePath, fixture.launch.agent.id);
     const usages: (Usage | null)[] = [];
     for (let index = 0; index < worker.frames.length; index++) {

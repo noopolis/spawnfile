@@ -401,3 +401,9 @@ Request budget: `broker.limits.maxRequests` is enforced per broker turn by Daimo
 and is the only request cap. Paideia adds no trial-level request limit; a trial's
 upper bound is `(1 + external deliveries) × maxRequests`, with at most three
 external deliveries. Token and time budgets remain bounded by the launch limits.
+
+### Consumer child bootstrap
+
+`<launch.workerRoot>/worker/cli.js` is the supported child worker entry. A consumer bootstrap can spawn it with the worker arguments returned by `nativeChildArguments`, replacing only the bootstrap entry path. Preserve the explicit environment and owned-process containment. The `worker` module index is an import seam and does not start a worker.
+
+`SubjectTurnResult.evidence` contains adapter-owned `NativeTurnEvidence` when a frame was admitted. Its ordered `wakes` retain each closed execution, all execution IDs attributed by that frame and its worker-admitted trial ledger (including revisits), and the runtime-local protected per-wake file path. Paths in container execution belong to that container; they do not imply host accessibility. `PreparedTrial.collect(outcome?)` receives returned turns only; live collection may receive no outcome or a partial set.

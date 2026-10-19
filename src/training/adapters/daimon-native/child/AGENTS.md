@@ -205,3 +205,8 @@ worker's persisted Grok projection receipt and requires every caller-protected
 path, evaluator root and the control root to be an exact denied slot canary.
 Grok children require a persisted slot freshness store: a receipt must echo this
 trial's recycle nonce and exceed the last accepted generation, which then advances.
+
+The public child index exposes bindTerminalEvidence so adapter outcome publication uses the same frame admission as child closure.
+
+The multi-wake controller test pins published execution IDs against all closed
+executions, including revisits retained only in the worker-admitted trial ledger.

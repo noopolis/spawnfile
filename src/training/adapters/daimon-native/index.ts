@@ -34,3 +34,5 @@ export { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAu
  */
 export { readNativeTranscript, NATIVE_TRANSCRIPT_SCHEMA } from './transcript.js';
 export type { NativeTranscriptCapture, NativeTranscriptSession, NativeTranscriptText } from './transcript.js';
+
+export type { NativeTurnEvidence } from './outcome.js';

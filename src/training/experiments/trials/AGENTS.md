@@ -108,3 +108,5 @@ interrupted without failureKind and is never replaceable.
 Retain the native execution error when collection fails before status handling.
 Observation closure, final collection and final evaluation errors append their
 stage to the earlier failure; none may replace the original cause.
+
+PreparedTrial.collect(outcome?) receives cloned returned turns, including adapter evidence. Live snapshots before the first return omit outcome; later live snapshots contain only returned turns.

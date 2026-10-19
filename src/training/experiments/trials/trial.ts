@@ -108,7 +108,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         collectedBehavior ||= Object.values(captured).some(artifact => artifact.bytes.length > 0);
         artifacts = { ...artifacts, ...captured };
       }
-      const collected = await prepared?.collect?.();
+      const collected = await prepared?.collect?.(turns.length ? { turns: structuredClone(turns.map(({ id, native }) => ({ id, native }))) } : undefined);
       collectedBehavior ||= Object.values(collected ?? {}).some(artifact => artifact.bytes.length > 0);
       return { ...state, artifacts: { ...artifacts, ...collected } };
     } catch (error) { collectionFailed = true; throw error; }

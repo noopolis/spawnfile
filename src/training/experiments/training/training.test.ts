@@ -8,6 +8,7 @@ import { openExperimentStore } from '../../storage/index.js';
 import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import { createEvaluationRegistry } from '../../evaluation/index.js';
 import * as optimization from '../../optimization/index.js';
+import { slotPort } from '../index.js';
 import { TrainingCheckpoint, trainingDigest } from './checkpoint.js';
 import { trainAgent, type TrainingOptions } from './training.js';
 
@@ -357,4 +358,27 @@ it.each([false, true])('recovers a persisted deferral-only stage score from a po
   expect(events.filter(event => event.type === 'trial.reused')).toHaveLength(1);
   const restored = JSON.parse(await readFile(path, 'utf8'));
   expect(restored.state.entries['deferred-callback'].report.preDeferralStatus).toBe('pass');
+});
+
+it.each([1, 2])('resolves preparation ports through real training with %i provisioned ports', async count => {
+  const { options } = await fixture();
+  options.slots = [{ index: 0, workerUid: 2200, roots: { workspace: '/isolated/0' }, ports: { base: 20000, count } }];
+  let portFailure: unknown;
+  const prepare = vi.fn<NonNullable<TrainingOptions['native']['prepareEnvironment']>>(async (_paths, _signal, context) => {
+    expect(context.slot).toEqual(options.slots![0]);
+    expect(context.slot).not.toBe(options.slots![0]);
+    expect(slotPort(context.slot!, 0)).toBe(20000);
+    try { expect(slotPort(context.slot!, 1)).toBe(20001); }
+    catch (error) { portFailure = error; throw error; }
+    return {};
+  });
+  options.native.prepareEnvironment = prepare;
+  vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
+    await request.evaluate({ caseId: 'Alpha', split: 'train', components: { ...request.components } }, new AbortController().signal);
+    throw new Error('preparation verified');
+  });
+  await expect(trainAgent(options)).rejects.toThrow(count === 1 ? 'all slots quarantined' : 'preparation verified');
+  expect(prepare).toHaveBeenCalledOnce();
+  if (count === 1) expect(portFailure).toBeInstanceOf(RangeError);
+  else expect(portFailure).toBeUndefined();
 });

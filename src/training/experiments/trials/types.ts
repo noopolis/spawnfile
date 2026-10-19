@@ -5,11 +5,13 @@ import type { EvaluationContext, EvaluationRegistry, EvaluationResult, Evaluatio
 import type { FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectStartupDiagnostic, SubjectTurnResult } from '../../contracts/execution.js';
 
 export interface TrialPaths { root: string; workspace: string; control: string; runtimeHome: string }
+/** Completed turns so far; absent before any turn returns, partial during live observation. */
+export interface TrialOutcome { turns: readonly { id: string; native: SubjectTurnResult }[] }
 export interface PreparedTrial {
   instructions: string;
   tools?: readonly FixtureTool[];
   /** Trusted collector; acceptedCallId may only originate in authentic filing receipts. */
-  collect?: () => Promise<EvaluationSnapshot['artifacts']>;
+  collect?: (outcome?: TrialOutcome) => Promise<EvaluationSnapshot['artifacts']>;
 }
 export interface TrialEvent { type: string; payload: unknown }
 export interface TrialOptions {

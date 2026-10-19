@@ -52,7 +52,13 @@ export async function loadTrialSlots(options: { concurrency?: number; slotsFile?
   return { concurrency, pool: new SlotPool(parsed.slice(0, concurrency)), slots: parsed };
 }
 
-export interface SlotLease { slot: TrialSlot; release(confirmed: boolean): void }
+/** Resolve an offset from the descriptor supplied to native preparation. */
+export function slotPort(slot: TrialSlot, index: number): number {
+  if (!Number.isSafeInteger(index) || index < 0 || index >= slot.ports.count) throw new RangeError('Port index is outside the leased block');
+  return slot.ports.base + index;
+}
+
+export interface SlotLease { slot: TrialSlot; port(index: number): number; release(confirmed: boolean): void }
 interface Waiter { resolve(lease: SlotLease): void; reject(error: Error): void; signal?: AbortSignal; abort(): void }
 
 export class SlotPool {
@@ -80,7 +86,7 @@ export class SlotPool {
   }
   private lease(slot: TrialSlot): SlotLease {
     let released = false;
-    return { slot: structuredClone(slot), release: confirmed => {
+    return { slot: structuredClone(slot), port: index => slotPort(slot, index), release: confirmed => {
       if (released) throw new Error('Trial slot lease already released');
       released = true;
       if (confirmed) this.free.push(slot);
