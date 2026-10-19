@@ -83,3 +83,4 @@ compile would refuse for one agent, without emitting anything.
 `spawnfile validate` and reports every refusing agent by node id. Keep it in
 step with `compileAgent`/`createContainerTargets` by calling the same check
 functions, never a copy.
+- Container targets may publish `agentPathsByNodeId` with the same placeholders as configuration; compiler expansion reports these facts for offline consumers.

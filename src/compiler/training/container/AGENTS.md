@@ -48,3 +48,4 @@
   private scratch `output-before-export`; the volume remains authoritative until
   export and cleanup finish. Do not concurrently edit/replace host output or run
   another launch against it. No periodic checkpoint export is promised.
+- `contract.ts` exports `TRAINING_FAKETIME_LIBRARY_PATH`, the image-owned symlink for caller-scoped preloading; the public training barrel re-exports it.

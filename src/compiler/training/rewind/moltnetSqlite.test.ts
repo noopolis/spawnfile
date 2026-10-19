@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { materializeMoltnet } from "./moltnet.js";
 import { momentRecordSchema } from "../../../recording/index.js";
 import { openHistory } from "./history.js";
-import { inspectMoltnetSqlite } from "./moltnetSqlite.js";
+import { inspectMoltnetSqlite } from "../index.js";
 import type { InputContext } from "./types.js";
 
 const at = "2026-10-09T10:00:00.1Z", before = "2026-10-09T10:00:00Z", future = "2026-10-09T10:00:00.11Z";
@@ -223,7 +223,10 @@ describe("Moltnet SQLite rewind", () => {
     expect(new Set(findings.map((finding) => finding.class))).toEqual(new Set(["moltnet-message", "moltnet-room", "moltnet-event"]));
     expect(await readFile(output)).toEqual(bytes); expect(await readdir(context.destination)).toEqual(["moltnet.sqlite"]);
     await writeFile(`${output}-wal`, "uninspected bytes");
-    expect((await inspectMoltnetSqlite(output, at)).findings).toMatchObject([{ class: "moltnet-event", detail: expect.stringContaining("sidecar") }]);
+    expect(await inspectMoltnetSqlite(output, at)).toMatchObject({
+      registrations: [], rooms: [], nonCanonicalCredentialAgentIds: [],
+      findings: [{ class: "moltnet-event", detail: expect.stringContaining("sidecar") }]
+    });
     expect(await readFile(`${output}-wal`, "utf8")).toBe("uninspected bytes");
   });
 
@@ -238,4 +241,69 @@ describe("Moltnet SQLite rewind", () => {
     database.exec("ALTER TABLE messages ADD COLUMN later_edits TEXT"); database.close();
     await expect(materializeMoltnet(context)).rejects.toThrow("Unsupported Moltnet SQLite column messages.later_edits");
   });
+});
+
+
+it("returns room/sender-filtered messages in native history order while auditing excluded rows", async () => {
+  const { database, file } = await fixture();
+  room(database, "assignment"); room(database, "elsewhere");
+  message(database, "z", before); message(database, "a", before); message(database, "later", at);
+  message(database, "other-room", before, { kind: "room", room_id: "elsewhere" });
+  message(database, "other-sender", before);
+  database.prepare("UPDATE messages SET from_json = ? WHERE id = 'other-sender'")
+    .run(JSON.stringify({ type: "agent", id: "another" }));
+  message(database, "future-excluded", future, { kind: "room", room_id: "elsewhere" });
+  database.close(); const bytes = await readFile(file);
+  const result = await inspectMoltnetSqlite(file, at, { room: "assignment", sender: "writer" });
+  expect(result.orderedMessages.map(row => row.id)).toEqual(["later", "a", "z"]);
+  expect(result.messages).toBe(6);
+  expect(result.findings).toEqual([{ class: "moltnet-message", path: file, detail: "Message future-excluded is later than the moment" }]);
+  expect((await inspectMoltnetSqlite(file, at, { sender: "another" })).orderedMessages.map(row => row.id)).toEqual(["other-sender"]);
+  expect(await readFile(file)).toEqual(bytes);
+});
+it("audits cursor timestamps at nanosecond precision", async () => {
+  const { database, file } = await fixture();
+  database.prepare("INSERT INTO attachment_delivery_cursors VALUES ('caller', 0, ?)").run("2026-10-09T10:00:00.100000001Z");
+  database.close();
+  expect((await inspectMoltnetSqlite(file, at)).findings).toEqual([
+    { class: "moltnet-event", path: file, detail: "Attachment cursor caller has a future updated_at" }
+  ]);
+});
+it.each(["CREATE TABLE surprise (value TEXT)", "CREATE VIEW surprise AS SELECT id FROM messages",
+  "CREATE TRIGGER surprise AFTER INSERT ON messages BEGIN DELETE FROM rooms; END"])("inspector refuses undeclared objects: %s", async sql => {
+  const { database, file } = await fixture(); database.exec(sql); database.close();
+  await expect(inspectMoltnetSqlite(file, at)).rejects.toThrow(/Unsupported Moltnet SQLite/);
+});
+it("refuses malformed stored timestamps and an invalid cutoff even in an empty store", async () => {
+  const { database, file } = await fixture();
+  database.prepare("INSERT INTO attachment_delivery_cursors VALUES ('caller', 0, 'invalid')").run(); database.close();
+  await expect(inspectMoltnetSqlite(file, at)).rejects.toThrow();
+  await expect(inspectMoltnetSqlite(file, "invalid")).rejects.toThrow();
+});
+
+it("exposes only audit IDs for all registrations, active rooms, memberships and noncanonical credentials", async () => {
+  const { database, file } = await fixture();
+  room(database, "z-room"); room(database, "a-room"); room(database, "deleted", before, before);
+  database.prepare("INSERT INTO room_members VALUES ('a-room', 'alpha')").run();
+  const register = database.prepare("INSERT INTO agents VALUES (?, ?, ?, 'actor-uri', 'display', ?, ?, ?)");
+  register.run("z-agent", "network-b", "actor-z", "token:z-agent", before, before);
+  register.run("a-agent", "network-a", "actor-a", "synthetic-noncanonical-value", before, before);
+  register.run("empty", "network-a", "", "", before, before);
+  message(database, "excluded", before);
+  database.close(); const bytes = await readFile(file);
+  const result = await inspectMoltnetSqlite(file, at, { room: "absent", sender: "absent" });
+  expect(result.orderedMessages).toEqual([]);
+  expect(result.registrations).toEqual([
+    { agentId: "a-agent", networkId: "network-a", actorUid: "actor-a" },
+    { agentId: "empty", networkId: "network-a", actorUid: "" },
+    { agentId: "z-agent", networkId: "network-b", actorUid: "actor-z" }
+  ]);
+  expect(result.rooms).toEqual([
+    { id: "a-room", networkId: "news", memberIds: ["alpha", "writer"] },
+    { id: "z-room", networkId: "news", memberIds: ["writer"] }
+  ]);
+  expect(result.nonCanonicalCredentialAgentIds).toEqual(["a-agent", "empty"]);
+  expect(result.findings).toEqual([]);
+  expect(JSON.stringify(result)).not.toMatch(/credential_key|token:z-agent|synthetic-noncanonical-value|actor-uri|display/);
+  expect(await readFile(file)).toEqual(bytes);
 });

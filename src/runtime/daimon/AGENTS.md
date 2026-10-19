@@ -200,3 +200,4 @@ Per-agent execution/token ceilings use the runtime fuse epoch and remain beneath
 the shared runtime ceiling. The selected image must attest the pinned contract;
 never silently emit this policy for an older runtime. Spawnfile does not implement
 the queue, disposition tools, budget accounting, or execution authority.
+- Container targets publish per-agent workspace/runtime home/skill roots from the same configured agent paths. Brokered Grok has no native skill roots.

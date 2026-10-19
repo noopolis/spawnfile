@@ -8,6 +8,7 @@ import { readUtf8File, removeDirectory, writeUtf8File } from "../filesystem/inde
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "../runtime/daimon/contractManifest.js";
 const LOCAL_DAIMON_IMAGE_REPOSITORY = "127.0.0.1:54321/noopolis/spawnfile-runtime-daimon";
 
+import { resolveCompiledAgent } from "./training/index.js";
 import { compileProject } from "./compileProject.js";
 
 const temporaryDirectories: string[] = [];
@@ -23,6 +24,11 @@ describe("public Daimon host fixture", () => {
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-public-daimon-"));
     temporaryDirectories.push(outputDirectory);
     await compileProject(fixture, { outputDirectory });
+    const agent = await resolveCompiledAgent(outputDirectory, "public-host-agent");
+    const config = JSON.parse(await readUtf8File(agent.runtimeConfig));
+    expect(agent.containerPaths.workspace).toBe(config.agents[0].workspacePath);
+    expect(agent.containerPaths.home).toBe(config.agents[0].runtimeHomePath);
+    expect(agent.containerPaths.skillRoots).toEqual([".agents", ".codex"].map(root => `${config.agents[0].workspacePath}/${root}/skills`));
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
     expect(dockerfile).toContain("COPY --from=noopolis/spawnfile-runtime-daimon@sha256:3cbe3ac2ba2eac7e392c52957054197f5d5a5a673c88075fcd022fead703d3b3 ");
     expect(dockerfile).toContain('amd64) expected="sha256:a65852daef32f0b383d472fdf12c51366308b937e3acf95a4b2006662749ce87"');

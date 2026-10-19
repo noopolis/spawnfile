@@ -28,8 +28,9 @@ const configFrom = (files: Array<{ path: string; content: string }>) => JSON.par
 describe("Daimon wake recording config", () => {
   it("preserves the complete pre-recording target bytes when recording is off", async () => {
     const targets = await createDaimonContainerTargets([input()]);
-    // Captured from HEAD's config emitter before S2 using this exact input.
-    expect(createHash("sha256").update(JSON.stringify(targets)).digest("hex"))
+    // Preserve the pre-recording payload; additive report-only paths are tested in config.test.ts.
+    const payload = targets.map(({ agentPathsByNodeId: _paths, ...target }) => target);
+    expect(createHash("sha256").update(JSON.stringify(payload)).digest("hex"))
       .toBe("0124c7411d4afb164e4a95627493bc9b3d0ba0be21094ba95443c8fdbecd9465");
     expect(configFrom(targets[0]!.files).agents[0]).not.toHaveProperty("recording");
     expect(targets[0]!.persistentMounts!.some((mount) => mount.id.startsWith("daimon-recording-"))).toBe(false);

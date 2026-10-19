@@ -46,7 +46,15 @@ export interface ContainerTargetPersistentMount {
 
 export type RuntimeContainerConfigValueTransform = "bearer";
 
+export interface ContainerTargetAgentPaths {
+  workspacePath: string;
+  homePath: string | null;
+  skillRoots: string[];
+}
+
 export interface ContainerTarget {
+  /** Adapter-owned paths, using the same placeholders as emitted configuration. */
+  agentPathsByNodeId?: Record<string, ContainerTargetAgentPaths>;
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
   /**
    * Optional node id -> resolved engine kind map (currently only populated by

@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
-
 import { buildDistributionReport, createDistributionImageLabels, DISTRIBUTION_REPORT_OUTPUT_FILE, normalizeProjectLabelSlug, WORLD_BINDINGS_IMAGE_PATH } from "../distribution/index.js";
 import type { DistributionReport } from "../distribution/index.js";
 import type { CompileReport, ContainerPersistentMountReport } from "../report/index.js";
 import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity, type EmittedFile, type RuntimeContainerPackageOverrides } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
-
 import { createMoltnetSummary, createOrganizationSummary } from "./containerArtifactSummaries.js";
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import { createDockerIgnoreContent } from "./dockerBuildContext.js";
@@ -20,7 +18,6 @@ import { resolveWorkspaceResourceVolumes, type ResolvedTargetResourcePlan } from
 import { mergePersistentMounts } from "./containerPersistentMounts.js";
 import type { CompilePlan } from "./types.js";
 import { SIMFILE_WORLD_BINDINGS_VERSION, WORLD_BINDINGS_OUTPUT_FILE, type ResolvedWorldBindings } from "./worldBindings.js";
-
 export type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
 
 export interface ContainerArtifactOptions {
@@ -166,6 +163,11 @@ export const createContainerArtifacts = async (
     .map((plan) => {
       const telemetryMountIds = daimonTelemetryArtifacts.telemetryMountIdsByInstance.get(plan.id);
       return {
+        ...(plan.agentPathsByNodeId ? { agent_paths: Object.fromEntries(
+          Object.entries(plan.agentPathsByNodeId).map(([id, paths]) => [id, {
+            workspace_path: paths.workspacePath, home_path: paths.homePath, skill_roots: paths.skillRoots
+          }])
+        ) } : {}),
         config_path: plan.instancePaths.configPath,
         home_path: plan.instancePaths.homePath ?? null,
         id: plan.id,
@@ -273,7 +275,7 @@ export const createContainerArtifacts = async (
       mount: resource.mount,
       sharing: resource.sharing
     })),
-    runtimeInstances,
+    runtimeInstances: runtimeInstances.map(({ agent_paths: _paths, ...instance }) => instance),
     ...(worldBindingsEvidence ? { worldBindings: worldBindingsEvidence } : {})
   });
   const distributionLabels = createDistributionImageLabels(projectSlug, distributionReport.compile_fingerprint);

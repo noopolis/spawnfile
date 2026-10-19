@@ -165,6 +165,7 @@ describe("moltnetArtifacts", () => {
       expect(artifacts?.publishedPorts).toEqual([]);
       expect(artifacts?.nodePlans).toEqual([
         {
+          sourceNodeId: "agent-1",
           configPath:
             "/var/lib/spawnfile/moltnet/nodes/research-cell-local_lab-orchestrator.json",
           memberId: "orchestrator",
@@ -265,6 +266,7 @@ describe("moltnetArtifacts", () => {
 
     expect(artifacts?.nodePlans).toEqual([
       {
+        sourceNodeId: "agent-pi",
         configPath:
           "/var/lib/spawnfile/moltnet/nodes/research-cell-local_lab-assistant.json",
         memberId: "assistant",
@@ -554,6 +556,7 @@ describe("moltnetArtifacts", () => {
       }
     ]);
     expect(artifacts?.nodePlans).toContainEqual({
+      sourceNodeId: "agent-2",
       configPath: "/var/lib/spawnfile/moltnet/nodes/quality-cell-local_lab-reviewer.json",
       memberId: "reviewer",
       networkId: "local_lab"

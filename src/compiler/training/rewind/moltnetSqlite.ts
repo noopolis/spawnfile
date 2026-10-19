@@ -93,14 +93,33 @@ export const rewindMoltnetSqlite = async (file: string, at: string): Promise<Mol
 };
 
 /** Reopens on-disk SQLite read-only; no materializer state or cut helper supplies the verdict. */
-export const inspectMoltnetSqlite = async (file: string, at: string): Promise<MoltnetInspection> => {
+export interface MoltnetMessageFilter {
+  /** Room id, including messages addressed to threads in that room. */
+  room?: string;
+  sender?: string;
+}
+export interface MoltnetSqliteInspection extends MoltnetInspection {
+  /** Filtered messages ordered by stored created_at TEXT, then id, like Moltnet room history. */
+  orderedMessages: MoltnetMessage[];
+  /** All stored registrations, independent of message filters; no credential material. */
+  registrations: Array<{ agentId: string; networkId: string; actorUid: string }>;
+  /** Active rooms only, with sorted member IDs. Labels and policies remain caller-owned. */
+  rooms: Array<{ id: string; networkId: string | undefined; memberIds: string[] }>;
+  /** IDs whose stored credential is not the stable token:<agent-id> placeholder. Not secret values. */
+  nonCanonicalCredentialAgentIds: string[];
+}
+export const inspectMoltnetSqlite = async (
+  file: string, at: string, filter: MoltnetMessageFilter = {}
+): Promise<MoltnetSqliteInspection> => {
+  // Validate even empty stores; findings always audit the entire store, independent of filters.
+  compareInstants(at, at);
   for (const suffix of ["-wal", "-shm", "-journal"]) {
     const entry = await lstat(`${file}${suffix}`).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return null;
       throw error;
     });
     // The materialized database is checkpointed. Refuse sidecars before SQLite can recover or touch them.
-    if (entry) return { messages: 0, events: 0, findings: [{ class: "moltnet-event", path: `${file}${suffix}`,
+    if (entry) return { messages: 0, events: 0, orderedMessages: [], registrations: [], rooms: [], nonCanonicalCredentialAgentIds: [], findings: [{ class: "moltnet-event", path: `${file}${suffix}`,
       detail: "Materialized Moltnet SQLite has an uninspected journal/WAL sidecar" }] };
   }
   const database = await openSqlite(file, true);
@@ -134,6 +153,25 @@ export const inspectMoltnetSqlite = async (file: string, at: string): Promise<Mo
       check(sqliteText(row, "created_at"), "moltnet-event", `Attachment event ${row.event_id} is later than the moment`);
       findings.push(...inspectMoltnetEvent(moltnetEventSchema.parse(sqliteJson(row, "event_json")), at, file));
     }
-    return { messages: messages.length, events: events.length, findings };
+    for (const row of database.prepare("SELECT agent_id, updated_at FROM attachment_delivery_cursors").all()) {
+      check(sqliteText(row, "updated_at"), "moltnet-event", `Attachment cursor ${row.agent_id} has a future updated_at`);
+    }
+    const orderedMessages = messages.filter((message) =>
+      (filter.room === undefined || message.target.room_id === filter.room)
+      && (filter.sender === undefined || message.from.id === filter.sender))
+      .sort((a, b) => a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1
+        : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    const registrations = Object.values(snapshot.agents).map(agent => ({
+      agentId: agent.agent_id, networkId: agent.network_id, actorUid: agent.actor_uid
+    })).sort((a, b) => a.agentId < b.agentId ? -1 : a.agentId > b.agentId ? 1 : 0);
+    const rooms = Object.values(snapshot.rooms).filter(room => !Object.hasOwn(snapshot.removed_rooms, room.id))
+      .map(room => ({ id: room.id, networkId: room.network_id, memberIds: [...(room.members ?? [])].sort() }))
+      .sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    // Compare inside SQLite so this audit projection never reads credential values into its rows.
+    const nonCanonicalCredentialAgentIds = database.prepare(
+      "SELECT agent_id FROM agents WHERE credential_key IS NULL OR credential_key != 'token:' || agent_id ORDER BY agent_id"
+    ).all().map(row => sqliteText(row, "agent_id"));
+    return { messages: messages.length, events: events.length, findings, orderedMessages,
+      registrations, rooms, nonCanonicalCredentialAgentIds };
   } finally { database.close(); }
 };

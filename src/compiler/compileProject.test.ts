@@ -13,6 +13,7 @@ import {
   writeUtf8File
 } from "../filesystem/index.js";
 
+import { resolveCompiledAgent } from "./training/index.js";
 import { compileProject } from "./compileProject.js";
 import { TRUSTED_TEST_MOLTNET_RELEASE_AUTHORITY } from
   "../../fixtures/support/trustedMoltnetRelease.js";
@@ -978,6 +979,11 @@ describe("compileProject", () => {
         expect(container?.runtimes_installed).toEqual(["pi"]);
         expect(container?.runtime_instances).toEqual([
           {
+            agent_paths: Object.fromEntries(["mapper", "reviewer"].map(name => [`agent:${name}`, {
+              workspace_path: `/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/${name}`,
+              home_path: `/var/lib/spawnfile/instances/pi/pi-app/runtime/agents/${name}`,
+              skill_roots: [".agents", ".codex"].map(root => `/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/${name}/${root}/skills`)
+            }])),
             config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
             engine_by_node_id: {
               "agent:mapper": "pi",
@@ -1008,15 +1014,25 @@ describe("compileProject", () => {
             config_path:
               "/var/lib/spawnfile/moltnet/nodes/daimon-org-daimon_lab-mapper.json",
             member_id: "mapper",
+            node_id: "agent:mapper",
             network_id: "daimon_lab"
           },
           {
             config_path:
               "/var/lib/spawnfile/moltnet/nodes/daimon-review-team-daimon_lab-reviewer.json",
             member_id: "reviewer",
+            node_id: "agent:reviewer",
             network_id: "daimon_lab"
           }
         ]);
+        const distribution = JSON.parse(await readUtf8File(path.join(outputDirectory, "distribution-report.json")));
+        expect(distribution.runtime_instances[0]).not.toHaveProperty("agent_paths");
+        const resolved = await resolveCompiledAgent(outputDirectory, "mapper");
+        expect(resolved.containerPaths.workspace).toBe("/var/lib/spawnfile/instances/pi/pi-app/workspace/agents/mapper");
+        expect(resolved.moltnet).toHaveLength(1);
+        await expect(fileExists(resolved.runtimeConfig)).resolves.toBe(true);
+        await expect(fileExists(resolved.moltnet[0]!.nodeConfig)).resolves.toBe(true);
+        await expect(fileExists(resolved.moltnet[0]!.serverConfig!)).resolves.toBe(true);
         const nodeConfig = await readUtf8File(
           path.join(
             outputDirectory,

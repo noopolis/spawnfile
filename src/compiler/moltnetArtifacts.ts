@@ -289,6 +289,7 @@ export const generateMoltnetArtifacts = async (
       });
 
       nodePlans.push({
+        sourceNodeId: node.id,
         configPath: toContainerRootfsPath(configPath),
         ...(clientAuth.credentialAgentId
           ? { credentialAgentId: clientAuth.credentialAgentId }

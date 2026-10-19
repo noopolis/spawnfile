@@ -179,6 +179,12 @@ describe("Daimon memory lowering", () => {
     expect(start).toContain('[ -d "<instance-root>/runtime-homes/grok" ] || install -d -m 700 "<instance-root>/runtime-homes/grok"');
     expect(start).not.toMatch(/^install -d -m 700 "<instance-root>\/runtime-homes\/grok"/mu);
     expect(start).toContain('install -d -m 700 "<instance-root>/runtime-homes/codex"');
+    expect(target!.agentPathsByNodeId?.["agent:grok"]?.skillRoots).toEqual([]);
+    expect(target!.agentPathsByNodeId?.["agent:codex"]).toEqual({
+      workspacePath: "<workspace-path>/agents/codex",
+      homePath: "<instance-root>/runtime-homes/codex",
+      skillRoots: [".agents", ".codex"].map(root => `<workspace-path>/agents/codex/${root}/skills`)
+    });
   });
 
   it("omits Daimon's engine model selector when no execution model is declared", async () => {

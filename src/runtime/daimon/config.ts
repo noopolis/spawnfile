@@ -1,4 +1,5 @@
 import path from "node:path";
+import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
@@ -304,6 +305,11 @@ export const createDaimonContainerTargets = async (
   }
 
   return [{
+    agentPathsByNodeId: Object.fromEntries(configAgents.map((agent) => [agent.id, {
+      workspacePath: agent.workspacePath, homePath: agent.runtimeHomePath,
+      skillRoots: agent.engine.kind === "grok" ? [] : CLI_ENGINE_SKILL_BASE_DIRECTORIES.map(
+        (root) => path.posix.join(agent.workspacePath, path.posix.relative("workspace", root)))
+    }])),
     engineByNodeId,
     ...(hasGrok ? { grokModelByNodeId } : {}),
     ...(hasGrok && Object.keys(grokTurnLimitsByNodeId).length > 0 ? { grokTurnLimitsByNodeId } : {}),
