@@ -20,17 +20,17 @@ describe("runtime install selection", () => {
   it("resolves Daimon install selection from the pinned runtime image", async () => {
     await expect(resolveRuntimeInstallSelection("daimon")).resolves.toEqual({
       capabilityReceipt: undefined,
-      capabilityReceipts: { amd64: "sha256:a65852daef32f0b383d472fdf12c51366308b937e3acf95a4b2006662749ce87", arm64: "sha256:e5391f678c3013c53d4951f460170d17c0c1b9597994f96bd5f236faa78ab058" },
+      capabilityReceipts: { amd64: "sha256:26fe7ff328bb45fb6643b0792ab38b2658d5fcc3d2d8bd67d9848ea2987c04cc", arm64: "sha256:347da7c613ad3430e018de829587a6d686c498c6168ef4be6b8dd501fdb07ebb" },
       contractManifestSha256: "sha256:e39551277c6727c8807b1247e759f57addcee3f17f1405ebc927179647d64de6",
-      digest: "sha256:3cbe3ac2ba2eac7e392c52957054197f5d5a5a673c88075fcd022fead703d3b3",
+      digest: "sha256:2de3bd522ce88202b3295efa4f19c72c350e5e18c25ccba55e5acf3395e8569c",
       ecosystem: "node",
       image: "noopolis/spawnfile-runtime-daimon",
       installHint: "Copy a pinned Daimon runtime image.",
       kind: "container_image",
       runtimeName: "daimon",
-      runtimeRef: "7f9262fa943c557cf98464ff4e67dc3719a28948",
+      runtimeRef: "14d0298c00861f949bb6993d1af9751cde53319f",
       selectionSource: "runtime_registry_install",
-      tag: "0.2.0-7f9262f"
+      tag: "0.2.1-14d0298"
     });
   });
 
