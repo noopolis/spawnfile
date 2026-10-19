@@ -66,7 +66,7 @@ RUN echo "${AGY_CLI_SHA512}  /tmp/agy.tar.gz" | sha512sum -c - \
   && rm -rf /tmp/agy.tar.gz /tmp/agy-extract
 
 FROM agy_cli AS codex_registry
-ARG CODEX_CLI_VERSION=0.142.3
+ARG CODEX_CLI_VERSION=0.162.1
 ARG RUNTIME_ROOT=/opt/spawnfile/runtime-installs/daimon
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
   cd ${RUNTIME_ROOT} \
