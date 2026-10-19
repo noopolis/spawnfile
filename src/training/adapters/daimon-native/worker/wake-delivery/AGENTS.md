@@ -35,6 +35,6 @@ public observations explicit and never infer an execution from trace count here.
 HTTP conformance imports the optional installed runtime's real public parser,
 digest and rejection API. Test process wiring separately from private downstream
 clock stripping, which this package cannot assert through public exports.
-The status differential executes the installed route's source and helpers without
+The status differential executes the installed route's compiled JavaScript and helpers without
 starting its CLI or an engine. Match headers too: the current route has no
 Retry-After header and returns blocked retry_after_ms in the JSON body.
