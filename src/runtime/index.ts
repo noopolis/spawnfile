@@ -9,3 +9,4 @@ export * from "./types.js";
 export * from "./usageLedger.js";
 export * from "./usageLedgerRead.js";
 export * from "./usageRequestLedger.js";
+export * from "./daimonInstall.js";

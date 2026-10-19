@@ -1,3 +1,4 @@
+import { createDaimonInstallCommands } from "./daimonInstall.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { NOOPOLIS_RUN_ID_ENV, resolveNoopolisRunId } from "./common.js";
@@ -13,7 +14,7 @@ import {
   DAIMON_LOCAL_RUNTIME_IDENTITY_ENV,
   loadLocalDaimonRuntimeIdentity
 } from "./localDaimonAuthority.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER } from "./daimon/contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
 import {
   DAIMON_WAKE_FUSE_DIRECTORY,
   DAIMON_WAKE_FUSE_DIRECTORY_ENV
@@ -24,7 +25,6 @@ const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
 const LEGACY_DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
 const LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV =
   "SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT";
-const DAIMON_CAPABILITY_RECEIPT_FILE = "capability-receipt.json";
 const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
 const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
 const DAIMON_PACKAGE_NAME = "@noopolis/daimon";
@@ -158,20 +158,6 @@ const resolveDaimonRuntimeImageRef = async (
   };
 };
 
-/**
- * A published multi-architecture Daimon index embeds a different receipt per
- * platform (the packaged broker and pinned CLIs are per-architecture), so the
- * generated image checks the receipt pinned for the architecture it builds.
- */
-const createDaimonReceiptCheck = (receiptPath: string, receipt: string | DaimonCapabilityReceipts): string => {
-  const actual = `test -f ${receiptPath} && actual="$(sha256sum ${receiptPath} | awk '{print "sha256:" $1}')"`;
-  if (typeof receipt === "string") return `${actual} && test "$actual" = ${JSON.stringify(receipt)}`;
-  const cases = Object.entries(receipt)
-    .map(([architecture, digest]) => `${architecture}) expected=${JSON.stringify(digest)} ;;`)
-    .join(" ");
-  return `${actual} && arch="$(dpkg --print-architecture)" && case "$arch" in ${cases} *) echo "No pinned Daimon capability receipt for $arch" >&2; exit 1 ;; esac && test "$actual" = "$expected"`;
-};
-
 export interface RuntimeInstallRecipeOptions {
   /**
    * Compile-time-only local overrides for this runtime's install npm
@@ -257,15 +243,7 @@ export const createRuntimeInstallRecipe = async (
     case "daimon": {
       const daimonRuntime = await resolveDaimonRuntimeImageRef(selection);
       return {
-        commands: [
-          createDaimonReceiptCheck(`${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE}`, daimonRuntime.capabilityReceipt),
-          `test -f ${installRoot}/contract-manifest.json && test -f ${installRoot}/contract-manifest.sha256 && manifest="$(cat ${installRoot}/contract-manifest.sha256)" && test "$manifest" = ${JSON.stringify(DAIMON_CONTRACT_MANIFEST_SHA256)} && test "$(sha256sum ${installRoot}/contract-manifest.json | awk '{print "sha256:" $1}')" = "$manifest" && node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.manifest_sha256!==process.argv[2])process.exit(1)' ${installRoot}/${DAIMON_CAPABILITY_RECEIPT_FILE} "$manifest"`,
-          `ln -sf ${installRoot}/bin/daimon-runtime /usr/local/bin/daimon-runtime`,
-          `ln -sf ${installRoot}/bin/codex /usr/local/bin/codex`,
-          `install -o root -g root -m 0555 ${installRoot}/bin/grok /usr/local/bin/grok && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=${DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.x64.sha256} ;; arm64) expected=${DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.arm64.sha256} ;; *) exit 1 ;; esac && test "$(sha256sum /usr/local/bin/grok | awk '{print $1}')" = "$expected"`,
-          `ln -sf ${installRoot}/bin/agy /usr/local/bin/agy`,
-          `mkdir -p /opt/daimon/bin && install -o root -g root -m 0555 ${installRoot}/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=${DAIMON_GROK_ENGINE_BROKER.artifacts.x64Sha256} ;; arm64) expected=${DAIMON_GROK_ENGINE_BROKER.artifacts.arm64Sha256} ;; *) exit 1 ;; esac && test "$(sha256sum /opt/daimon/bin/daimon-engine-broker | awk '{print $1}')" = "$expected"`
-        ],
+        commands: createDaimonInstallCommands(installRoot, daimonRuntime.capabilityReceipt),
         copyCommands: [createRuntimeImageCopyCommand(daimonRuntime.image, installRoot)],
         env: {
           ...containerEnv,

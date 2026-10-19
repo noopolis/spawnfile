@@ -84,3 +84,9 @@ compile would refuse for one agent, without emitting anything.
 step with `compileAgent`/`createContainerTargets` by calling the same check
 functions, never a copy.
 - Container targets may publish `agentPathsByNodeId` with the same placeholders as configuration; compiler expansion reports these facts for offline consumers.
+
+`daimonInstall.ts` owns the receipt/manifest verification and CLI/broker
+installation commands shared by `container.ts` and the training-native parent
+renderer. Keep this one authority; never weaken parent verification or add
+separate evaluator CLI installations. Its adjacent tests execute verification
+against matching, missing and mismatched install files.
