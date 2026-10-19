@@ -97,7 +97,8 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             let admitted: NativeTurnEvidence['wakes'][number] | undefined;
             try { admitted = admittedNativeEvidence(terminal, launch, input.trialId, turn.id, deliveryOrdinal,
               join(nativeTrialArtifactsRoot(launch, input.trialId), 'evidence.json'), transport?.source, admittedDeliveries);
-            } catch (error) { attributionInvalid = true; throw error; }
+            // Evidence admission only withholds evidence from collect(); the turn's own verdict is unchanged.
+            } catch { attributionInvalid = true; }
             if (admitted) evidence.wakes.push(admitted);
             if (terminal.blocked && terminal.status !== 'failed') throw new Error('Blocked native terminal cannot claim completion');
             const admission = terminal.status === 'failed' && !terminal.blocked ? nativeAdmission(terminal) : undefined;
