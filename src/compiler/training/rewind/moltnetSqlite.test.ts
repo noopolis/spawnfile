@@ -256,11 +256,37 @@ it("returns room/sender-filtered messages in native history order while auditing
   database.close(); const bytes = await readFile(file);
   const result = await inspectMoltnetSqlite(file, at, { room: "assignment", sender: "writer" });
   expect(result.orderedMessages.map(row => row.id)).toEqual(["later", "a", "z"]);
+  expect(result.orderedMessages.map(row => row.appendIndex)).toEqual([3, 2, 1]);
   expect(result.messages).toBe(6);
   expect(result.findings).toEqual([{ class: "moltnet-message", path: file, detail: "Message future-excluded is later than the moment" }]);
   expect((await inspectMoltnetSqlite(file, at, { sender: "another" })).orderedMessages.map(row => row.id)).toEqual(["other-sender"]);
   expect(await readFile(file)).toEqual(bytes);
 });
+it("exposes native append positions for reversed inserts without changing timestamp order or filtering positions", async () => {
+  const stores = [];
+  for (const ids of [["z", "excluded", "a", "later"], ["later", "a", "excluded", "z"]]) {
+    const { database, file } = await fixture();
+    room(database, "assignment"); room(database, "elsewhere");
+    for (const id of ids) message(database, id, id === "later" ? at : before,
+      { kind: "room", room_id: id === "excluded" ? "elsewhere" : "assignment" });
+    // A deleted row leaves a gap: appendIndex must be the native rowid, not a dense rank.
+    database.prepare("DELETE FROM messages WHERE id = 'excluded'").run();
+    database.close(); const bytes = await readFile(file);
+    const all = await inspectMoltnetSqlite(file, at);
+    const filtered = await inspectMoltnetSqlite(file, at, { room: "assignment", sender: "writer" });
+    expect(filtered.orderedMessages).toEqual(all.orderedMessages);
+    expect(all.findings).toEqual([]);
+    expect(await readFile(file)).toEqual(bytes);
+    stores.push(all.orderedMessages);
+  }
+  const withoutPositions = stores.map(rows => rows.map(({ appendIndex, ...rest }) => rest));
+  expect(withoutPositions[0]).toEqual(withoutPositions[1]);
+  expect(stores.map(rows => rows.map(({ id, appendIndex }) => [id, appendIndex]))).toEqual([
+    [["later", 4], ["a", 3], ["z", 1]],
+    [["later", 1], ["a", 2], ["z", 4]]
+  ]);
+});
+
 it("audits cursor timestamps at nanosecond precision", async () => {
   const { database, file } = await fixture();
   database.prepare("INSERT INTO attachment_delivery_cursors VALUES ('caller', 0, ?)").run("2026-10-09T10:00:00.100000001Z");
