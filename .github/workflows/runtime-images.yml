@@ -5,6 +5,13 @@ on:
     paths:
       - "runtime-images/**"
       - "runtimes.yaml"
+      - "moltnet-releases.json"
+      - "src/runtime/daimonInstall.ts"
+      - "src/runtime/daimon/contractManifest.ts"
+      - "src/compiler/moltnetReleaseAuthority.ts"
+      - "src/compiler/moltnetReleaseDownload.ts"
+      - "scripts/publish-training-native.ts"
+      - "scripts/training-native-image.ts"
       - "src/runtime/container.ts"
       - "src/runtime/install.ts"
       - "src/runtime/daimon/contract-manifest.json"
@@ -18,6 +25,13 @@ on:
     paths:
       - "runtime-images/**"
       - "runtimes.yaml"
+      - "moltnet-releases.json"
+      - "src/runtime/daimonInstall.ts"
+      - "src/runtime/daimon/contractManifest.ts"
+      - "src/compiler/moltnetReleaseAuthority.ts"
+      - "src/compiler/moltnetReleaseDownload.ts"
+      - "scripts/publish-training-native.ts"
+      - "scripts/training-native-image.ts"
       - "src/runtime/container.ts"
       - "src/runtime/install.ts"
       - "src/runtime/daimon/contract-manifest.json"
@@ -275,3 +289,114 @@ jobs:
           name: daimon-runtime-identity
           path: ${{ runner.temp }}/daimon-runtime-identity.json
           if-no-files-found: ignore
+
+  training-native:
+    name: training native parent image
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    # Every ref publishes the same pinned tag, so serialize across refs: the
+    # tag-exists guard is check-then-write and must not race another run.
+    concurrency:
+      group: runtime-images-training-native-publish
+      cancel-in-progress: false
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: amd64,arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve publishing mode
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          should_push=false
+          push_latest=false
+
+          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/v* ]]; then
+            should_push=true
+            push_latest=true
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.push }}" == "true" ]]; then
+              should_push=true
+            fi
+            if [[ "${{ inputs.push_latest }}" == "true" ]]; then
+              push_latest=true
+            fi
+          fi
+
+          {
+            echo "push=${should_push}"
+            echo "latest=${push_latest}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check Docker Hub credentials
+        if: steps.publish.outputs.push == 'true'
+        shell: bash
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
+            echo "::error::DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets must be configured in noopolis/spawnfile to publish runtime images."
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        if: steps.publish.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build training native parent
+        shell: bash
+        env:
+          PUSH: ${{ steps.publish.outputs.push }}
+        run: |
+          set -euo pipefail
+          args=(--identity-out "${RUNNER_TEMP}/training-native-identity.json")
+          if [[ "${PUSH}" == "true" ]]; then
+            args+=(--push)
+          fi
+          node --import tsx scripts/publish-training-native.ts "${args[@]}" | tee "${RUNNER_TEMP}/training-native-publish.log"
+
+      - name: Record published identity
+        if: steps.publish.outputs.push == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "${RUNNER_TEMP}/training-native-identity.json"
+          {
+            echo "### Published training native parent"
+            echo '```json'
+            cat "${RUNNER_TEMP}/training-native-identity.json"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload published identity
+        if: steps.publish.outputs.push == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-native-identity
+          path: ${{ runner.temp }}/training-native-identity.json
+          if-no-files-found: error

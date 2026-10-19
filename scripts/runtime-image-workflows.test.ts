@@ -77,7 +77,7 @@ const resolveMode = (job: string, event: { name: string; ref: string; push?: boo
 };
 
 test("runtime images publish only on version-tag pushes or an explicit dispatch", () => {
-  for (const job of ["build", "daimon"]) {
+  for (const job of ["build", "daimon", "training-native"]) {
     assert.equal(resolveMode(job, { name: "push", ref: "refs/tags/v1.2.3" }).push, "true", job);
     assert.equal(resolveMode(job, { name: "push", ref: "refs/heads/main" }).push, "false", job);
     assert.equal(resolveMode(job, { name: "pull_request", ref: "refs/pull/1/merge" }).push, "false", job);
@@ -86,4 +86,18 @@ test("runtime images publish only on version-tag pushes or an explicit dispatch"
     assert.equal(resolveMode(job, { name: "workflow_dispatch", ref: "refs/tags/v1.2.3", push: false, latest: false }).push, "false", job);
   }
   assert.equal(resolveMode("daimon", { name: "workflow_dispatch", ref: "refs/tags/v1.2.3", push: false, latest: false }).latest, "false");
+});
+
+
+test("training-native uses pinned renderer, serialized publication, digest artifact and path triggers", async () => {
+  const workflow = await readFile(".github/workflows/runtime-images.yml", "utf8");
+  const job = section(workflow, "\n  training-native:\n");
+  for (const required of ["runtime-images-training-native-publish", "platforms: amd64,arm64",
+    "npm ci --ignore-scripts", "node --import tsx scripts/publish-training-native.ts",
+    "test -s", "actions/upload-artifact@v4", "if-no-files-found: error"]) assert.ok(job.includes(required), required);
+  assert.doesNotMatch(job, /args\+=\(--latest\)/u);
+  for (const trigger of ["scripts/publish-training-native.ts", "scripts/training-native-image.ts",
+    "src/runtime/daimonInstall.ts", "moltnet-releases.json"]) {
+    assert.equal(workflow.split(`- "${trigger}"`).length - 1, 2);
+  }
 });
