@@ -15,12 +15,12 @@
     "version": "1.1.22"
   },
   "codex": {
-    "executable_sha256": "sha256:d3be844c45c4fd89392536e56e1010963f94785592596b50cd0c45bb8a341406",
-    "version": "0.142.3"
+    "executable_sha256": "sha256:61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70",
+    "version": "0.162.1"
   },
   "daimon": {
-    "commit": "7f9262fa943c557cf98464ff4e67dc3719a28948",
-    "package_version": "0.2.0",
+    "commit": "14d0298c00861f949bb6993d1af9751cde53319f",
+    "package_version": "0.2.1",
     "source": "https://github.com/noopolis/daimon-harness.git"
   },
   "image": "noopolis/spawnfile-runtime-daimon",

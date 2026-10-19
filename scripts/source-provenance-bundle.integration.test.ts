@@ -41,7 +41,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
         : path.resolve(repository, "..", "daimon"),
       daimonSource = path.join(temporary, "actual-daimon-input");
     mkdirSync(daimonSource); cpSync(path.join(actualDaimon, "package.json"), path.join(daimonSource, "package.json")); cpSync(path.join(actualDaimon, "package-lock.json"), path.join(daimonSource, "package-lock.json"));
-    execFileSync("npm", ["run", "--silent", "prepare:linux-amd64-closure", "--", daimonSource, closure, "0.142.3"], { cwd: repository, stdio: "inherit" });
+    execFileSync("npm", ["run", "--silent", "prepare:linux-amd64-closure", "--", daimonSource, closure, "0.162.1"], { cwd: repository, stdio: "inherit" });
     const sourceTar = path.join(temporary, "source.tar"), dependencyTar = path.join(temporary, "dependencies.tar");
     execFileSync("npm", ["run", "--silent", "bundle:source-provenance", "--", actualDaimon, sourceTar], { cwd: repository, stdio: "ignore" });
     execFileSync("npm", ["run", "--silent", "bundle:source-provenance", "--", "--dependencies", closure, dependencyTar], { cwd: repository, stdio: "inherit" });
