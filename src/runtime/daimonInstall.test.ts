@@ -19,6 +19,8 @@ const fixture = () => {
   writeFileSync(path.join(root, "contract-manifest.json"), readFileSync(new URL("./daimon/contract-manifest.json", import.meta.url)));
   writeFileSync(path.join(root, "contract-manifest.sha256"), DAIMON_CONTRACT_MANIFEST_SHA256);
   // Portable local stand-ins for the Linux tools; hashes are calculated from actual fixture bytes.
+  // The CommonJS marker keeps the extensionless stub CommonJS even when TMPDIR sits inside an ESM package.
+  writeFileSync(path.join(root, "package.json"), '{"type":"commonjs"}\n');
   writeFileSync(path.join(root, "dpkg"), "#!/bin/sh\nprintf '%s\\n' amd64\n", { mode: 0o755 });
   writeFileSync(path.join(root, "sha256sum"), `#!${process.execPath}
 const fs=require('node:fs'),crypto=require('node:crypto');
