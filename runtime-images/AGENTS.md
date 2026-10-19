@@ -39,5 +39,5 @@ reads the Daimon image digest and architecture receipts from `runtimes.yaml`
 and Moltnet release assets/checksums from `moltnet-releases.json`. The Node 24
 Bookworm base is digest-pinned. CI builds amd64+arm64 on PRs; only version tags
 or explicit dispatch push publish `noopolis/spawnfile-training-native` under
-`<daimon-tag>-moltnet-<release>`. Existing tags refuse. Pin the printed/uploaded
+`<daimon-tag>-moltnet-<release>-r<recipe sha>`; an existing tag means identical bytes, so republishing reports it and never moves it. Pin the printed/uploaded
 `image_reference` digest in a training declaration's `image.build.nativeImage`.

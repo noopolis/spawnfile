@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
 import { tagExists } from "./publish-daimon-runtime.ts";
-import { readTrainingNativeInputs, renderTrainingNativeDockerfile } from "./training-native-image.ts";
+import { readTrainingNativeInputs, renderTrainingNativeDockerfile, trainingNativeTag } from "./training-native-image.ts";
 
 const repository = "noopolis/spawnfile-training-native";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -24,14 +24,26 @@ export const assertTrainingNativeTagAbsent = (reference: string, exists = tagExi
 
 export const publishTrainingNative = (options: { push: boolean; identityOut?: string }, run: Run = runDocker): void => {
   const inputs = readTrainingNativeInputs(root);
-  const reference = `${repository}:${inputs.tag}`;
-  if (options.push) assertTrainingNativeTagAbsent(reference);
+  const rendered = renderTrainingNativeDockerfile(
+    readFileSync(path.join(root, "runtime-images/training-native/Dockerfile"), "utf8"), inputs);
+  const tag = trainingNativeTag(inputs, rendered);
+  const reference = `${repository}:${tag}`;
+  const identity = (digest: string) => JSON.stringify({
+    image_reference: `${repository}@${digest}`, tag, daimon: inputs.daimon, moltnet: inputs.moltnet
+  }, null, 2);
+  if (options.push && tagExists(reference)) {
+    // Same tag means the same rendered recipe: report the published identity instead of rebuilding.
+    const raw = run(["buildx", "imagetools", "inspect", "--raw", reference]);
+    const digest = `sha256:${createHash("sha256").update(raw).digest("hex")}`;
+    if (options.identityOut) writeFileSync(options.identityOut, `${identity(digest)}\n`);
+    process.stdout.write(`${reference} is already published as ${repository}@${digest}\n`);
+    return;
+  }
   const directory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-training-native-"));
   try {
     const dockerfile = path.join(directory, "Dockerfile");
     const metadata = path.join(directory, "metadata.json");
-    writeFileSync(dockerfile, renderTrainingNativeDockerfile(
-      readFileSync(path.join(root, "runtime-images/training-native/Dockerfile"), "utf8"), inputs));
+    writeFileSync(dockerfile, rendered);
     // Push by digest first; the immutable tag is attached only after the build succeeds.
     const output = options.push
       ? `type=image,name=${repository},push-by-digest=true,name-canonical=true,push=true`
@@ -60,12 +72,8 @@ export const publishTrainingNative = (options: { push: boolean; identityOut?: st
     run(["buildx", "imagetools", "create", "--prefer-index=false", "-t", reference, `${repository}@${digest}`]);
     const tagged = run(["buildx", "imagetools", "inspect", "--raw", reference]);
     if (tagged !== raw) throw new Error("Published tag does not identify the built index");
-    const identity = JSON.stringify({
-      image_reference: `${repository}@${digest}`, tag: inputs.tag,
-      daimon: inputs.daimon, moltnet: inputs.moltnet
-    }, null, 2);
-    if (options.identityOut) writeFileSync(options.identityOut, `${identity}\n`);
-    process.stdout.write(`Published ${reference} as ${repository}@${digest}\n${identity}\n`);
+    if (options.identityOut) writeFileSync(options.identityOut, `${identity(digest)}\n`);
+    process.stdout.write(`Published ${reference} as ${repository}@${digest}\n${identity(digest)}\n`);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

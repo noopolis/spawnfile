@@ -5,7 +5,7 @@ import { parse as parseYaml } from "yaml";
 
 import { createDaimonInstallCommands } from "../src/runtime/daimonInstall.ts";
 import { assertTrainingNativeTagAbsent } from "./publish-training-native.ts";
-import { parseTrainingNativeInputs, readTrainingNativeInputs, renderTrainingNativeDockerfile } from "./training-native-image.ts";
+import { parseTrainingNativeInputs, readTrainingNativeInputs, renderTrainingNativeDockerfile, trainingNativeTag } from "./training-native-image.ts";
 
 const registry = () => parseYaml(readFileSync("runtimes.yaml", "utf8"));
 const release = () => JSON.parse(readFileSync("moltnet-releases.json", "utf8"));
@@ -16,6 +16,14 @@ test("reads checked-in authority pins and derives the release tag", () => {
   assert.deepEqual(inputs.daimon, registry().runtimes.daimon.install);
   assert.deepEqual(inputs.moltnet, release());
   assert.equal(inputs.tag, `${inputs.daimon.tag}-moltnet-${inputs.moltnet.release_version}`);
+});
+
+test("a recipe-only change derives a new release tag; identical recipes share one", () => {
+  const inputs = readTrainingNativeInputs(".");
+  const rendered = renderTrainingNativeDockerfile(template, inputs);
+  assert.match(trainingNativeTag(inputs, rendered), new RegExp(`^${inputs.tag.replaceAll(".", "\\.")}-r[a-f0-9]{12}$`, "u"));
+  assert.equal(trainingNativeTag(inputs, rendered), trainingNativeTag(inputs, renderTrainingNativeDockerfile(template, inputs)));
+  assert.notEqual(trainingNativeTag(inputs, rendered), trainingNativeTag(inputs, `${rendered}# changed\n`));
 });
 
 test("renders immutable sources, shared receipt/manifest/broker checks, and verified arch assets", () => {

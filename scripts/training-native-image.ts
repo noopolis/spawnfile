@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -24,9 +25,7 @@ export const parseTrainingNativeInputs = (registry: unknown, release: unknown) =
   const daimon = parsed.runtimes.daimon.install;
   const moltnet = parseTrustedMoltnetReleaseAuthority(release);
   for (const arch of ["amd64", "arm64"] as const) trustedMoltnetReleaseAsset(moltnet, arch);
-  const tag = `${daimon.tag}-moltnet-${moltnet.release_version}`;
-  if (!/^[\w][\w.-]{0,127}$/u.test(tag)) throw new Error("Derived training-native tag is invalid");
-  return { daimon, moltnet, tag };
+  return { daimon, moltnet, tag: `${daimon.tag}-moltnet-${moltnet.release_version}` };
 };
 
 export type TrainingNativeInputs = ReturnType<typeof parseTrainingNativeInputs>;
@@ -56,4 +55,14 @@ export const renderTrainingNativeDockerfile = (template: string, inputs: Trainin
   }
   if (result.includes("@@")) throw new Error("Unresolved native image template slot");
   return result;
+};
+
+/**
+ * The release tag names the pinned upstreams and the rendered recipe's content, so a
+ * recipe-only change gets a new tag and an existing tag always means identical bytes.
+ */
+export const trainingNativeTag = (inputs: TrainingNativeInputs, dockerfile: string): string => {
+  const tag = `${inputs.tag}-r${createHash("sha256").update(dockerfile).digest("hex").slice(0, 12)}`;
+  if (!/^[\w][\w.-]{0,127}$/u.test(tag)) throw new Error("Derived training-native tag is invalid");
+  return tag;
 };

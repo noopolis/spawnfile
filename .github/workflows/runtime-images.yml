@@ -326,26 +326,18 @@ jobs:
           set -euo pipefail
 
           should_push=false
-          push_latest=false
 
           if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/v* ]]; then
             should_push=true
-            push_latest=true
           fi
 
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             if [[ "${{ inputs.push }}" == "true" ]]; then
               should_push=true
             fi
-            if [[ "${{ inputs.push_latest }}" == "true" ]]; then
-              push_latest=true
-            fi
           fi
 
-          {
-            echo "push=${should_push}"
-            echo "latest=${push_latest}"
-          } >> "${GITHUB_OUTPUT}"
+          echo "push=${should_push}" >> "${GITHUB_OUTPUT}"
 
       - name: Check Docker Hub credentials
         if: steps.publish.outputs.push == 'true'

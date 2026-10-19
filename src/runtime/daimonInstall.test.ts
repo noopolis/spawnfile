@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 
@@ -11,7 +12,7 @@ const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })));
 
 const fixture = () => {
-  const root = mkdtempSync("/private/tmp/daimon-install-");
+  const root = mkdtempSync(path.join(os.tmpdir(), "daimon-install-"));
   directories.push(root);
   const receipt = JSON.stringify({ manifest_sha256: DAIMON_CONTRACT_MANIFEST_SHA256 });
   writeFileSync(path.join(root, "capability-receipt.json"), receipt);
