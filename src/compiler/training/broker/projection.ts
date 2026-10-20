@@ -7,6 +7,7 @@ import {
 import type { DaimonGrokRegistration } from "../../containerDaimonGrokWorkerRender.js";
 import type { TrainingBrokerDeclaration } from "./declaration.js";
 import { trainingSlotPaths } from "./paths.js";
+import { resolveTrainingGrokRegistration } from "./registration.js";
 
 /**
  * The slice of Daimon's public `@noopolis/daimon/runtime` export the slot
@@ -112,4 +113,19 @@ export const resolveTrainingGrokProjection = async (
     throw new SpawnfileError("runtime_error", "Daimon's Grok broker projection deny list differs from the provisioned sandbox profile");
   }
   return { projection, projectionSha256: daimon.grokBrokerProjectionSha256(projection) };
+};
+
+/**
+ * One slot's registration and projection, exactly as the root entrypoint binds
+ * them into that slot's preflight receipt. The entrypoint and the public lease
+ * both call this, so the digest a lease hands Paideia cannot drift from the
+ * one the supervisor certified.
+ */
+export const resolveTrainingSlotProjection = async (
+  declaration: TrainingBrokerDeclaration,
+  slot: number,
+  daimon: DaimonProjectionModule
+): Promise<TrainingGrokProjection & { registration: DaimonGrokRegistration }> => {
+  const registration = resolveTrainingGrokRegistration({ ...declaration, slot });
+  return { registration, ...await resolveTrainingGrokProjection(declaration, registration, daimon) };
 };

@@ -8,8 +8,7 @@ vi.mock("./declaration.js", () => ({ parseTrainingBrokerDeclaration: () => ({ sl
   bootstrap: "/var/lib/spawnfile/daimon/grok-bootstrap-auth" }) }));
 vi.mock("./paths.js", async importOriginal => ({ ...await importOriginal<typeof import("./paths.js")>(),
   assertTrainingSlotsDocument: () => {} }));
-vi.mock("./registration.js", () => ({ resolveTrainingGrokRegistration: () => ({ slot: 0 }) }));
-vi.mock("./projection.js", () => ({ resolveTrainingGrokProjection: async () => ({ projectionSha256: "test" }),
+vi.mock("./projection.js", () => ({ resolveTrainingSlotProjection: async () => ({ registration: { slot: 0 }, projectionSha256: "test" }),
   loadDaimonProjectionModule: async () => ({}) }));
 vi.mock("./runtime.js", () => ({ createTrainingSlotRuntime: () => ({}) }));
 vi.mock("./supervisor.js", () => ({ startTrainingSlot: async () => {}, createTrainingSlotSupervisor: () => ({}),
