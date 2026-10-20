@@ -54,3 +54,150 @@ export const DAIMON_GROK_WORKER_PROFILE_SAMPLES = [
     ]
   }
 ] as const;
+
+/** Daimon `grokWorkerSkillsSha256` / `renderGrokWorkerSkillsTree` samples; the Spawnfile mirror must reproduce them exactly. */
+export const DAIMON_GROK_WORKER_SKILLS_SAMPLES = [
+  {
+    "sha256": "74a407e0569e692f5f354dd8613d2b6411493440cadd9ad197fcad31a63b6b34",
+    "skills": [],
+    "tree": []
+  },
+  {
+    "sha256": "48f444624ff818f29446cbbdb2a3057f93fbf760b6c8fefb5d0914d50fa80f62",
+    "skills": [
+      {
+        "name": "review",
+        "files": [
+          {
+            "path": "SKILL.md",
+            "content": "---\nname: review\ndescription: Review a diff.\n---\n\nRead the diff first.\n"
+          }
+        ]
+      }
+    ],
+    "tree": [
+      {
+        "path": "skills",
+        "kind": "directory",
+        "uid": 0,
+        "gid": 0,
+        "mode": 365
+      },
+      {
+        "path": "skills/review",
+        "kind": "directory",
+        "uid": 0,
+        "gid": 0,
+        "mode": 365
+      },
+      {
+        "path": "skills/review/SKILL.md",
+        "kind": "file",
+        "uid": 0,
+        "gid": 0,
+        "mode": 292,
+        "content": "---\nname: review\ndescription: Review a diff.\n---\n\nRead the diff first.\n"
+      }
+    ]
+  },
+  {
+    "sha256": "0fd754e7ce8db521c404752446fa224b0e1389c21dbbc0985835e1734480a978",
+    "skills": [
+      {
+        "name": "zeta_notes",
+        "files": [
+          {
+            "path": "SKILL.md",
+            "content": "# Zeta été 🚀\n"
+          },
+          {
+            "path": "references/deep/guide.md",
+            "content": "nested\n"
+          },
+          {
+            "path": "references/a.md",
+            "content": ""
+          }
+        ]
+      },
+      {
+        "name": "alpha-1",
+        "files": [
+          {
+            "path": "SKILL.md",
+            "content": "alpha\r\n"
+          }
+        ]
+      }
+    ],
+    "tree": [
+      {
+        "path": "skills",
+        "kind": "directory",
+        "uid": 0,
+        "gid": 0,
+        "mode": 365
+      },
+      {
+        "path": "skills/alpha-1",
+        "kind": "directory",
+        "uid": 0,
+        "gid": 0,
+        "mode": 365
+      },
+      {
+        "path": "skills/alpha-1/SKILL.md",
+        "kind": "file",
+        "uid": 0,
+        "gid": 0,
+        "mode": 292,
+        "content": "alpha\r\n"
+      },
+      {
+        "path": "skills/zeta_notes",
+        "kind": "directory",
+        "uid": 0,
+        "gid": 0,
+        "mode": 365
+      },
+      {
+        "path": "skills/zeta_notes/SKILL.md",
+        "kind": "file",
+        "uid": 0,
+        "gid": 0,
+        "mode": 292,
+        "content": "# Zeta été 🚀\n"
+      },
+      {
+        "path": "skills/zeta_notes/references",
+        "kind": "directory",
+        "uid": 0,
+        "gid": 0,
+        "mode": 365
+      },
+      {
+        "path": "skills/zeta_notes/references/a.md",
+        "kind": "file",
+        "uid": 0,
+        "gid": 0,
+        "mode": 292,
+        "content": ""
+      },
+      {
+        "path": "skills/zeta_notes/references/deep",
+        "kind": "directory",
+        "uid": 0,
+        "gid": 0,
+        "mode": 365
+      },
+      {
+        "path": "skills/zeta_notes/references/deep/guide.md",
+        "kind": "file",
+        "uid": 0,
+        "gid": 0,
+        "mode": 292,
+        "content": "nested\n"
+      }
+    ]
+  }
+] as const;
