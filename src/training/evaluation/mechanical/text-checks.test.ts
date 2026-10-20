@@ -83,7 +83,7 @@ it('never turns missing or malformed evidence into a pass', async () => {
     }
     const absent = context(''); absent.snapshot.artifacts = {};
     expect((await evaluateNode(check, absent, registry)).status).toBe('unknown');
-    absent.snapshot.subjectUsage = { status: 'complete', usage: null };
+    absent.snapshot.subjectUsage = { status: 'complete', usage: null, settled: true };
     expect((await evaluateNode(check, absent, registry)).status).toBe('fail');
   }
   const absent = context('10'); absent.snapshot.context = {};

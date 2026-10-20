@@ -100,3 +100,18 @@ test('trial coverage includes unmetered or incomplete revisits independently of 
     }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('a failed attempt without a usage row keeps trial coverage partial: no row is not proof of no spend', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'native-ledger-retry-'));
+  try {
+    await mkdir(join(root, 'telemetry'));
+    const trace = traceFixture();
+    const usage = { v: 'noopolis.daimon.turn-usage.v1', agent: 'agent:writer', wake: executionId, engine: 'codex',
+      at: '2026-09-13T00:00:01.000Z', input: 10, output: 2, cache_read: 0, total: 12, complete: true };
+    await writeFile(join(root, 'telemetry/turns.ndjson'), [{ ...trace, turn_id: 'failed-attempt', status: 'failed' }, trace].map(row => JSON.stringify(row) + '\n').join(''));
+    await writeFile(join(root, 'usage.jsonl'), JSON.stringify(usage) + '\n');
+    const native = await collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1');
+    assert.equal(native.accounting?.coverage, 'partial');
+    assert.equal(nativeUsageCoverage(native, executionId), 'complete');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

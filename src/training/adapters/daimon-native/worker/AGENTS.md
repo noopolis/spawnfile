@@ -19,9 +19,10 @@ current availability is labelled separately from unavailable rendered allowances
 Install optional task-clock environment only inside the already-running worker;
 record the same origin/anchor in readiness and each terminal frame.
 Seal transport outcomes atomically against route admission; re-read control and
-native evidence whenever the admission generation changes. Preserve and validate
-every selected delivery's execution history, including separate batches and
-deferred revisits. Receipt completion alone never proves execution success.
+native evidence whenever the admission generation changes. Preserve every selected
+delivery's execution history, including separate batches and deferred revisits;
+judge the delivery by its settling execution (the receipt's execution_id) and
+keep earlier failed, retried attempts as evidence. Receipt completion alone never proves execution success.
 
 External continuations are opt-in, sourced, bounded to three deliveries and share
 one trial deadline. Deferred work is never success. Preserve per-wake evidence and

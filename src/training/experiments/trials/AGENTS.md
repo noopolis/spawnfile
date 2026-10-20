@@ -110,3 +110,8 @@ Observation closure, final collection and final evaluation errors append their
 stage to the earlier failure; none may replace the original cause.
 
 PreparedTrial.collect(outcome?) receives cloned returned turns, including adapter evidence. Live snapshots before the first return omit outcome; later live snapshots contain only returned turns.
+
+`subjectUsage.settled` attests the subject execution closed completed, host-settled and
+stop-proven, independent of token accounting; only it certifies an observed artifact absence.
+`status` still requires complete usage, so a retried trial can be settled with partial usage:
+absent required artifacts fail while token-efficiency stays unknown.

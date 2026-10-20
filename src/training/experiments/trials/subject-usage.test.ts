@@ -13,8 +13,8 @@ const native = (patch: Partial<SubjectTurnResult> = {}): SubjectTurnResult => ({
 const capture = (turns: SubjectTurnResult[], complete = true, expectedTurns = turns.length) => subjectUsageSnapshot(turns, { complete, expectedTurns });
 
 it('sums only native returned input/output totals; cached and reasoning tokens remain subsets', () => {
-  expect(capture([native()])).toEqual({ status: 'complete', usage });
-  expect(capture([native(), native()])).toEqual({ status: 'complete', usage: {
+  expect(capture([native()])).toEqual({ status: 'complete', settled: true, usage });
+  expect(capture([native(), native()])).toEqual({ status: 'complete', settled: true, usage: {
     inputTokens: 200, cachedInputTokens: 80, cacheWriteInputTokens: 40, cacheWrite5mInputTokens: 20,
     cacheWrite1hInputTokens: 20, outputTokens: 40, reasoningTokens: 10, source: 'paideia.subject.returned-turn-totals.v1' } });
   expect(capture([native()], false).status).toBe('incomplete');
@@ -25,9 +25,9 @@ it('sums only native returned input/output totals; cached and reasoning tokens r
 
 it('unknown native totals remain unknown and absent cache fields never become zero', () => {
   const partial = { inputTokens: 100, cachedInputTokens: null, outputTokens: null, reasoningTokens: null, source: 'partial' };
-  expect(capture([native({ usage: partial })])).toEqual({ status: 'incomplete', usage: partial });
+  expect(capture([native({ usage: partial })])).toEqual({ status: 'incomplete', settled: true, usage: partial });
   const known = { ...partial, outputTokens: 5 };
-  expect(capture([native({ usage: known }), native({ usage: known })])).toEqual({ status: 'complete', usage: {
+  expect(capture([native({ usage: known }), native({ usage: known })])).toEqual({ status: 'complete', settled: true, usage: {
     ...known, inputTokens: 200, outputTokens: 10, source: 'paideia.subject.returned-turn-totals.v1' } });
   expect(capture([native({ usage: partial }), native()]).usage).toMatchObject({ outputTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null });
   expect(capture([native(), native({ usage: null })])).toEqual({ status: 'incomplete', usage: null });
@@ -104,7 +104,7 @@ it('a real terminal judge outage preserves native totals for exact rescore witho
   } } };
   const report = await runTrial(task.options);
   expect(report.status).toBe('error'); expect(report.execution).toBe('completed');
-  expect(report.snapshot.subjectUsage).toEqual({ status: 'complete', usage });
+  expect(report.snapshot.subjectUsage).toEqual({ status: 'complete', settled: true, usage });
   const store = await openExperimentStore(task.options.root + '/capture');
   await store.createRun({ schema: 'paideia.run.v1', id: report.id, datasetId: 'suite', datasetRole: report.phase,
     candidateId: report.candidateId, planDigest: report.planDigest, recordId: report.recordId });
@@ -120,7 +120,7 @@ records: [{id: record, input: {prompt: must never execute}}]
   dataset.records[0]!.effectiveStages = [{ id: 'inspect', checks: [{ id: 'usage', eval: 'inspect' }] }];
   const rescored = await rescoreStoredTrial({ id: 'rescored', runId: report.id, store, access: { audience: 'evaluator', phase: 'replay' }, dataset, registry,
     evaluation: { judges: {}, embeddings: {}, readText: async () => { throw new Error('No text sidecars'); } } });
-  expect(rescored.status).toBe('pass'); expect(observed).toEqual({ status: 'complete', usage }); expect(nativeCalls).toBe(1);
+  expect(rescored.status).toBe('pass'); expect(observed).toEqual({ status: 'complete', settled: true, usage }); expect(nativeCalls).toBe(1);
 });
 
 it('failure during terminal grading does not overwrite the already closed subject measurement', async () => {
@@ -134,7 +134,7 @@ it('failure during terminal grading does not overwrite the already closed subjec
     async evaluate(_check, context) { captured = context.snapshot.subjectUsage; return result('pass', 'Closed native work'); } } });
   task.options.record.effectiveStages = [{ id: 'writing', checks: [{ id: 'inspect', eval: 'inspect' }] }];
   await expect(runTrial(task.options)).rejects.toThrow('persistence failed');
-  expect(captured).toEqual({ status: 'complete', usage });
+  expect(captured).toEqual({ status: 'complete', settled: true, usage });
 });
 
 it('carries runtime-reported notional USD once and refuses invalid values', () => {

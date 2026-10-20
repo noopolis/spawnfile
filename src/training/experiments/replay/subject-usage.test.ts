@@ -1,11 +1,12 @@
 import { expect, it } from 'vitest';
 import type { SubjectUsageSnapshot } from '../../contracts/evaluation.js';
-import { createEvaluationRegistry, result } from '../../evaluation/index.js';
+import { createEvaluationRegistry, evaluateNode, result } from '../../evaluation/index.js';
 import { subjectUsageSnapshot } from '../trials/index.js';
 import { fixture } from './fixture.js';
 import { capturedTrial } from './source.js';
 import { trialReportSchema } from './schema.js';
 import { rescoreStoredTrial } from './rescore.js';
+import { evaluationContext, snapshot } from '../../testing/index.js';
 
 async function captured() {
   return fixture(report => {
@@ -26,7 +27,7 @@ it('authenticates preserved subject totals and reuses them in explicit rescoring
   expect(seen).toEqual([task.report.snapshot.subjectUsage]);
   const replay = await task.store.readReplay('trial', task.options.access);
   expect(capturedTrial(replay).report.snapshot.subjectUsage).toEqual(task.report.snapshot.subjectUsage);
-  expect(task.report.snapshot.subjectUsage).toEqual({ status: 'complete', usage: { inputTokens: 10, cachedInputTokens: null, outputTokens: 2, reasoningTokens: null, source: 'fixture' } });
+  expect(task.report.snapshot.subjectUsage).toEqual({ status: 'complete', settled: true, usage: { inputTokens: 10, cachedInputTokens: null, outputTokens: 2, reasoningTokens: null, source: 'fixture' } });
 });
 
 it('legacy captures remain readable but never acquire invented usage evidence', async () => {
@@ -79,4 +80,16 @@ it('rejects a complete claim with truncated planned work before any replay evalu
     report.snapshot.subjectUsage = subjectUsageSnapshot(report.turns.map(row => row.native), { complete: true, expectedTurns: 1 });
   });
   await expect(rescoreStoredTrial(truncated.options)).rejects.toThrow('Subject usage');
+});
+
+it('a legacy complete capture without settlement still parses and never certifies an absent artifact', async () => {
+  const { report } = await captured();
+  const { settled: _settled, ...legacy } = report.snapshot.subjectUsage!;
+  const stored = { ...report, snapshot: { ...report.snapshot, subjectUsage: legacy } };
+  expect(trialReportSchema.parse(stored).snapshot.subjectUsage).toEqual(legacy);
+  const check = { eval: 'contains-any', input: 'artifact:none#/body', values: ['Filed'] };
+  const context = evaluationContext({ snapshot: snapshot({ subjectUsage: legacy }) });
+  expect((await evaluateNode(check, context, createEvaluationRegistry())).status).toBe('unknown');
+  // A capture that does attest settlement is authenticated against it, and a forged one is refused.
+  expect(() => trialReportSchema.parse({ ...stored, snapshot: { ...stored.snapshot, subjectUsage: { ...legacy, settled: false } } })).toThrow('Subject usage');
 });
