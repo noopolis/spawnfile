@@ -33,3 +33,11 @@ workspace files, auth, secrets, Moltnet credentials, or deployment state.
 Each runtime image should be usable with Docker multi-stage `COPY --from=...`.
 Prefer a `scratch` final stage when the artifact only needs to be copied into a
 generated Spawnfile organization image.
+
+`training-native/` owns the runnable training parent template. Its publisher
+reads the Daimon image digest and architecture receipts from `runtimes.yaml`
+and Moltnet release assets/checksums from `moltnet-releases.json`. The Node 24
+Bookworm base is digest-pinned. CI builds amd64+arm64 on PRs; only version tags
+or explicit dispatch push publish `noopolis/spawnfile-training-native` under
+`<daimon-tag>-moltnet-<release>-r<recipe sha>`; an existing tag means identical bytes, so republishing reports it and never moves it. Pin the printed/uploaded
+`image_reference` digest in a training declaration's `image.build.nativeImage`.
