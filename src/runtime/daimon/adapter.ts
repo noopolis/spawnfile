@@ -9,6 +9,7 @@ import {
   createSkillFiles
 } from "../common.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
+import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 
 import {
@@ -85,24 +86,14 @@ const daimonWorkspaceRestrictionWarning = (node: ResolvedAgentNode): string | un
 };
 
 /**
- * Workspace skill roots per Daimon engine.
- *
- * Codex and AGY keep both CLI-engine roots. A brokered Grok worker loads no
- * workspace skill at all: Grok 1.0.34 discovers `.agents/skills` (never
- * `.codex/skills`) only in a trusted folder, and Daimon keeps the workspace
- * untrusted (root-owned empty `trusted_folders.toml`) and replaces the system
- * prompt, whose fixed text references no skill. Emitting either root would ship
- * files nothing reads, so none are emitted and the declaration is reported.
+ * Workspace skill roots per Daimon engine: every engine gets both CLI-engine
+ * roots. Codex and AGY read them in place. A brokered Grok worker cannot (its
+ * workspace stays untrusted), so root provisioning renders the same
+ * `.agents/skills` tree into the worker's `$GROK_HOME/skills`, which Grok loads
+ * as user-scoped skills, and the broker attests it against `skillsSha256`
+ * before every turn (`containerDaimonGrokWorkerProvisioning.ts`).
  */
-export const daimonSkillBaseDirectories = (node: ResolvedAgentNode): readonly string[] =>
-  resolveDaimonEngine(node) === "grok" ? [] : CLI_ENGINE_SKILL_BASE_DIRECTORIES;
-
-const daimonGrokSkillWarning = (node: ResolvedAgentNode): string | undefined => {
-  if (resolveDaimonEngine(node) !== "grok" || node.skills.length === 0) return undefined;
-  return `Daimon Grok agent ${node.name} declares workspace skills (${node.skills.map((skill) => skill.name).sort().join(", ")}) `
-    + "that its brokered worker never loads: Grok discovers project skills only in a trusted workspace, and Daimon keeps the "
-    + "workspace untrusted and supplies instructions through the prompt. No skill files are emitted; move the guidance into the agent's docs.";
-};
+export const daimonSkillBaseDirectories = (_node: ResolvedAgentNode): readonly string[] => CLI_ENGINE_SKILL_BASE_DIRECTORIES;
 
 const daimonCodexPolicyError = (node: ResolvedAgentNode): string | undefined => {
   if (node.runtime.options.codex_policy === undefined) return undefined;
@@ -216,7 +207,7 @@ export const daimonAdapter: RuntimeAdapter = {
     const memoryVectorWarning = daimonMemoryVectorRecallWarning(node);
     const workspaceRestrictionWarning = daimonWorkspaceRestrictionWarning(node);
     const codexPolicyError = daimonCodexPolicyError(node);
-    const grokSkillWarning = daimonGrokSkillWarning(node);
+    const grokSkillsError = daimonGrokSkillsError(node, resolveDaimonEngine(node));
     return {
       capabilities: createAgentCapabilities(node, {
         mcpOutcome: "supported",
@@ -233,8 +224,8 @@ export const daimonAdapter: RuntimeAdapter = {
         ...(memorySelectionWarning ? [createDiagnostic("warn", memorySelectionWarning)] : []),
         ...(memoryVectorWarning ? [createDiagnostic("warn", memoryVectorWarning)] : []),
         ...(workspaceRestrictionWarning ? [createDiagnostic("warn", workspaceRestrictionWarning)] : []),
-        ...(grokSkillWarning ? [createDiagnostic("warn", grokSkillWarning)] : []),
-        ...(codexPolicyError ? [createDiagnostic("error", codexPolicyError)] : [])
+        ...(codexPolicyError ? [createDiagnostic("error", codexPolicyError)] : []),
+        ...(grokSkillsError ? [createDiagnostic("error", grokSkillsError)] : [])
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
@@ -248,6 +239,8 @@ export const daimonAdapter: RuntimeAdapter = {
     unsupportedAgentFeatures(node);
     const codexPolicyError = daimonCodexPolicyError(node);
     if (codexPolicyError) throw new SpawnfileError("validation_error", codexPolicyError);
+    const grokSkillsError = daimonGrokSkillsError(node, resolveDaimonEngine(node));
+    if (grokSkillsError) throw new SpawnfileError("validation_error", grokSkillsError);
     assertDaimonAgentOptions(nodeId, node);
     assertDaimonInstructionBounds(nodeId, node);
   },

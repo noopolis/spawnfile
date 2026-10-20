@@ -2,7 +2,9 @@ export { parseTrainingBrokerDeclaration, trainingBrokerDeclarationSchema, type T
 export { assertNotDesktopGrokAuth, desktopGrokAuthPaths, runTrainingBrokerEntrypoint, trainingChildArgv,
   TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV, TRAINING_GROK_GRANT_HOME_ROOT_ENV } from "./entrypoint.js";
 export { brokerProcessPlan, startBrokerProcesses, stopBrokerProcesses } from "./processes.js";
-export { loadDaimonProjectionModule, resolveTrainingGrokProjection, trainingOrganizationRuntimeConfig } from "./projection.js";
+export { loadDaimonProjectionModule, resolveTrainingGrokProjection, resolveTrainingSlotProjection, trainingOrganizationRuntimeConfig } from "./projection.js";
+export { recycleTrainingSlot, TRAINING_RECYCLE_DEFAULT_TIMEOUT_MS, TRAINING_RECYCLE_MAX_REPLY_BYTES,
+  type RecycleTrainingSlotOptions, type TrainingSlotRecycleReceipt } from "./recycleClient.js";
 export { renderTrainingBrokerProvisioning, renderTrainingIdentities, renderTrainingSlotProvisioning, trainingSlotDirectories } from "./provisioning.js";
 export { buildTrainingSlotReceipt, readGrokExecutableSha256, resolveBackingFilesystem, resolveTrainingCanaries } from "./receipt.js";
 export { resolveTrainingGrokDenyPaths, resolveTrainingGrokRegistration } from "./registration.js";

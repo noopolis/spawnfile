@@ -10,6 +10,11 @@ container that runs a brokered Grok subject beside the evaluator.
 - `declaration.ts` is the host's read-only `spawnfile.training-broker.v2` input.
   It is data, never code: no host executable or script is ever mounted, so the
   image's own Spawnfile distribution renders the provisioning from it.
+  Its optional `skills` carry the subject's declared skills (pinned at
+  preparation from the training context) in Daimon's engine-neutral form; the
+  entrypoint, supervisor and lease all resolve the projection from this one
+  input, so they bind the same `skillsSha256`. Absent means no skills and a
+  byte-identical declaration, registration and projection.
 - `registration.ts` builds clocked slot registrations and denies sibling roots, homes and clocks.
 - `clockProbe.ts` proves sibling clock masks with bubblewrap under the worker uid; its own clock must remain readable.
 - `provisioning.ts` renders the root bash program, delegating everything below
@@ -24,15 +29,27 @@ container that runs a brokered Grok subject beside the evaluator.
   no caller-supplied path or command) and owns `startTrainingSlot`, the only
   preflight publication after shared startup. Recycles serialize per slot; different
   slots overlap. Paideia must retain its exclusive slot lease throughout recycle.
+- `recycleClient.ts` is the public evaluator-side client of the supervisor verb: bounded reply, timeout/abort, exact slot/nonce/protocol echo, refusal reasons surfaced. Its tests drive the real `serveTrainingSlotSupervisor` socket with only ownership facts stubbed.
 - `receipt.ts` writes `noopolis.daimon.grok-slot-preflight.v2`.
 - `taskClock.ts` reclaims the clock subtree only during shared startup,
   and checks installed config bytes, clock modes, library identity and worker
   access before the receipt. `projection.ts` requires Daimon's projection v3
-  with `workerConfigVariant: "clocked"` and the selected digest.
+  with `workerConfigVariant: "clocked"` and the selected digest, and refuses a
+  projection whose `skillsSha256` differs from the provisioned skills tree
+  (a Daimon older than 0.2.2 ignores `skills` and lands here). Recycle
+  re-renders the tree into the slot's `$GROK_HOME/skills` with the production
+  worker renderer.
 - `seccompRoutes.ts` answers, from the pinned profile bytes alone, whether the
   worker uid may even attempt a namespace escape — the only honest way to say
   `seccomp` rather than `kernel` when a route is unavailable.
 - `entrypoint.ts`/`main.ts` are the image's root entrypoint.
+- `rootScript.ts` runs every generated root program (shared provisioning, slot
+  wipe, recycle provisioning, clock assertions) from a fresh `0700` directory's
+  `0600` script file. Never pass one as `bash -c <script>`: Linux caps one argv
+  element at 131072 bytes (`MAX_ARG_STRLEN`), a skills tree pushes a program
+  past it, and macOS does not enforce the cap. Never pipe it on stdin either: a
+  child that reads stdin would eat the rest of the program. Worker programs
+  embed each skills tree once, keyed by its digest, never once per slot.
 - `evaluatorSecrets.ts` boundedly copies readonly TypeSafe ingress into `/run/paideia` tmpfs before provisioning transfers ownership. Ingress stays root-only; the final directory/file are `2000:2000 0700/0600`. Never chmod/chown the host-bound leaf or put its bytes in the global environment/logs. The subject deny mask covers both paths.
 
 Local constraints:

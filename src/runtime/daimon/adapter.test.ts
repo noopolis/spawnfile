@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// Lowering is tested at a skills-capable pin; the pin guard itself is `grokSkillsSupport.test.ts`.
+vi.mock("./grokSkillsSupport.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./grokSkillsSupport.js")>();
+  return { ...original, daimonGrokSkillsError: (node: Parameters<typeof original.daimonGrokSkillsError>[0], engine: string) =>
+    original.daimonGrokSkillsError(node, engine, () => original.DAIMON_GROK_SKILLS_MIN_VERSION) };
+});
+
 
 import { createRootfsFiles } from "../../compiler/containerArtifactsRender.js";
 import { renderEntrypoint } from "../../compiler/containerEntrypointRender.js";
@@ -76,19 +83,12 @@ describe("daimonAdapter", () => {
     expect(compiled.files.some((file) => file.path.startsWith("workspace/skills/"))).toBe(false);
   });
 
-  it("emits no workspace skill root for a brokered Grok agent, never .codex/skills, and reports the declaration", async () => {
-    const grok = await daimonAdapter.compileAgent(createDaimonNode("grok", "Grok", "grok"));
-    const skillPaths = grok.files.map((file) => file.path).filter((filePath) => filePath.includes("/skills/"));
-    expect(skillPaths).toEqual([]);
-    expect(grok.files.some((file) => file.path.startsWith("workspace/.codex/"))).toBe(false);
-    expect(grok.diagnostics).toEqual(expect.arrayContaining([
-      expect.objectContaining({ level: "warn", message: expect.stringContaining("declares workspace skills (note)") })
-    ]));
-    for (const engine of ["codex", "agy"]) {
+  it("emits the same skill roots for every engine, Grok included, with no skill diagnostic", async () => {
+    for (const engine of ["codex", "agy", "grok"]) {
       const compiled = await daimonAdapter.compileAgent(createDaimonNode(engine, engine, engine));
       expect(compiled.files.map((file) => file.path).filter((filePath) => filePath.endsWith("/SKILL.md")))
         .toEqual(["workspace/.agents/skills/note/SKILL.md", "workspace/.codex/skills/note/SKILL.md"]);
-      expect(compiled.diagnostics.some((diagnostic) => diagnostic.message.includes("declares workspace skills"))).toBe(false);
+      expect(compiled.diagnostics.some((diagnostic) => /skill/iu.test(diagnostic.message))).toBe(false);
     }
   });
 

@@ -70,6 +70,8 @@ export interface ContainerTarget {
   grokModelByNodeId?: Record<string, { model: string; reasoningEffort: string }>;
   /** Daimon only: each brokered Grok agent's declared per-turn budget, for its broker registration. */
   grokTurnLimitsByNodeId?: Record<string, { maxRequests?: number; maxTokens?: number; timeoutMs?: number }>;
+  /** Daimon only: each brokered Grok agent's declared skills (absent for none), rendered into its worker `$GROK_HOME/skills`. */
+  grokSkillsByNodeId?: Record<string, { name: string; files: { path: string; content: string }[] }[]>;
   files: EmittedFile[];
   id: string;
   opaqueMountTargets?: string[];

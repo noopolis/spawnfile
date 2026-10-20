@@ -12,3 +12,6 @@ export * from "./execution.js";
 export * from "./moments.js";
 export * from "./compiledAgent.js";
 export { TRAINING_FAKETIME_LIBRARY_PATH } from "./container/contract.js";
+export * from "./subjectLease.js";
+export * from "./subjectDeclaration.js";
+export { recycleTrainingSlot, type RecycleTrainingSlotOptions, type TrainingSlotRecycleReceipt } from "./broker/recycleClient.js";

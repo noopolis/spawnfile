@@ -10,7 +10,7 @@ import { assertInputRoot, exactPath, fileIdentity, hashJson, sealTree, within } 
 import { planInputs, readBoundedJson, stageInput, verifyCanonicalPins } from "./inputs.js";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
 import { planMeasurementRepair, stageMeasurementRepair, validateMeasurementRepairOutput, writeTrainingWitness } from "../repair/index.js";
-import { prepareTrainingBroker } from "./broker.js";
+import { prepareTrainingBroker, trainingBrokerSkills } from "./broker.js";
 import { claimTrainingPreparationScratch, removeTrainingPreparationScratch } from "./scratch.js";
 
 function mappedReceipt(digest: string, image: string, config: ReturnType<typeof trainingPreparationSchema.parse>): TrainingMappedPreparation {
@@ -95,7 +95,8 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
   const digest = hashJson({ config, sources: inputs.map(input => ({ id: input.id, digest: input.digest })), image: imagePlan?.digest ?? config.image,
     canonical: options.context.project.sourceDigest,
     ...(options.execution ? { execution: trainingExecutionIdentity(options.execution) } : {}), ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
-  if (config.broker) await prepareTrainingBroker(config.broker, root, path.dirname(path.resolve(options.configPath)), false, config.slots);
+  const brokerSkills = config.broker ? await trainingBrokerSkills(options.context) : undefined;
+  if (config.broker) await prepareTrainingBroker(config.broker, root, path.dirname(path.resolve(options.configPath)), false, config.slots, brokerSkills);
   if (options.dryRun) return { digest, dryRun: true };
   options.signal?.throwIfAborted();
   const execute = (args: string[]) => options.process(args, { timeoutMs: options.timeoutMs, signal: options.signal });
@@ -141,7 +142,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
         if (inspected.code !== 0) throw Error("Training image is unavailable"); image = inspected.stdout.trim();
       }
       const mapped = mappedReceipt(digest, image, config);
-      const preparedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, true, config.slots) : undefined;
+      const preparedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, true, config.slots, brokerSkills) : undefined;
       const launch = trainingContainerConfigSchema.parse({ version: launchVersion, slots: config.slots, dockerContext: config.dockerContext,
         inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth, ...evaluatorConfig,
         ...(preparedBroker ? { broker: preparedBroker.launch } : {}) });
@@ -154,7 +155,7 @@ export async function prepareTraining(options: PrepareTrainingOptions): Promise<
         ...(repair ? { repair: { witness: repair.witness.digest, parent: repair.manifestDigest } } : {}) });
     } catch (error) { if (owned) await removeTrainingPreparationScratch(staging); throw error; }
   }
-  const expectedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, false, config.slots) : undefined;
+  const expectedBroker = config.broker ? await prepareTrainingBroker(config.broker, root, staging, false, config.slots, brokerSkills) : undefined;
   const expectedLaunch = trainingContainerConfigSchema.parse({ version: launchVersion, slots: config.slots, dockerContext: config.dockerContext,
     inputs: inputs.map((input, index) => ({ source: staged[index], destination: input.destination })), output: { source: output, destination: "/run/training/output" }, auth, ...evaluatorConfig,
     ...(expectedBroker ? { broker: expectedBroker.launch } : {}) });

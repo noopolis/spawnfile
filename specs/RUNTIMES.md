@@ -278,10 +278,15 @@ every mode is final; where a protected path sits under a private parent — the
 wake-acceptance store under the `0700 2000:2000` organization state directory —
 the mask is lifted to that parent rather than opening it with `o+x`.
 
-Workspace skills are not emitted for Grok agents: the worker workspace stays
-untrusted and Daimon overrides the system prompt, so Grok loads neither
-`.agents/skills` nor `.codex/skills`; a declared skill produces a compile
-warning.
+Grok agents get the same workspace skill roots as Codex. The worker workspace
+stays untrusted, so Grok does not read them in place; root provisioning renders
+the same skills into the worker's `$GROK_HOME/skills` (directories `root:root
+0555`, files `root:root 0444`, single link), which Grok loads as user-scoped
+skills, and `service.json` binds the tree as `skillsSha256` (v2 registration,
+v3 slot policy), which the broker attests before every turn. An agent with no
+skills renders nothing and keeps its registration byte-identical. This needs a
+Daimon >= 0.2.2 runtime image; training refuses a projection that does not
+carry the provisioned digest.
 
 Grok containers run with Docker's default seccomp profile plus bubblewrap's
 namespace syscalls (a pinned profile) and `apparmor=unconfined` unless a strict

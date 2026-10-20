@@ -12,6 +12,7 @@ import { MOUNT_AWARE_CLEAR_HELPER } from "../../containerDaimonBrokerRender.js";
 import { probeTrainingSiblingClock } from "./clockProbe.js";
 import { renderTrainingTaskClockAssertions } from "./taskClock.js";
 import { renderTrainingSlotProvisioning } from "./provisioning.js";
+import { runTrainingRootScript } from "./rootScript.js";
 import { buildTrainingSlotReceipt, readGrokExecutableSha256, resolveTrainingCanaries } from "./receipt.js";
 import type { TrainingSlotRuntime } from "./supervisor.js";
 import {
@@ -58,20 +59,20 @@ export const createTrainingSlotRuntime = (options: TrainingSlotRuntimeOptions): 
       // Root holds `CAP_CHOWN` and `CAP_DAC_READ_SEARCH` but not `CAP_DAC_OVERRIDE`, so it cannot delete
       // inside a directory it handed to the worker or the broker. Reclaim each tree first, then remove it.
       const script = renderTrainingSlotWipe(p.slot).join("\n");
-      await run(shell, ["--noprofile", "--norc", "-ceu", script], { maxBuffer: 1024 * 1024 }).catch((error: unknown) => {
+      await runTrainingRootScript(script, { shell, maxBuffer: 1024 * 1024 }).catch((error: unknown) => {
         const detail = error as { stderr?: string };
         throw new SpawnfileError("runtime_error", `Training slot wipe failed: ${(detail.stderr ?? "").slice(-1024).trim() || "no diagnostic"}`);
       });
     },
     provision: async () => {
-      const result = await run(shell, ["--noprofile", "--norc", "-ceu", script], { maxBuffer: 8 * 1024 * 1024 }).catch((error: unknown) => {
+      const result = await runTrainingRootScript(script, { shell, maxBuffer: 8 * 1024 * 1024 }).catch((error: unknown) => {
         const detail = error as { stderr?: string; stdout?: string };
         throw new SpawnfileError("runtime_error", `Training slot provisioning failed: ${(detail.stderr ?? detail.stdout ?? "").slice(-2048).trim()}`);
       });
       if (result.stdout.trim()) log(`provisioning: ${result.stdout.trim().slice(-2048)}`);
     },
     canaries: async () => {
-      await run(shell, ["--noprofile", "--norc", "-ceu", renderTrainingTaskClockAssertions(options.registration).join("\n")]);
+      await runTrainingRootScript(renderTrainingTaskClockAssertions(options.registration).join("\n"), { shell });
       return resolveTrainingCanaries({
       denyPaths: options.registration.denyPaths, probe, log, hostBindPaths: TRAINING_HOST_BIND_DENY_PATHS,
       sealedPaths: TRAINING_SEALED_DENY_PATHS,

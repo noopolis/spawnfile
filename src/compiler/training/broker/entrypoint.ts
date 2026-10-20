@@ -1,9 +1,9 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import os from "node:os";
-import { promisify } from "node:util";
 import { renderTrainingBrokerProvisioning } from "./provisioning.js";
+import { runTrainingRootScript } from "./rootScript.js";
 import { stageTrainingEvaluatorSecret } from "./evaluatorSecrets.js";
 import { startBrokerProcesses, stopBrokerProcesses } from "./processes.js";
 import { resetTrainingBrokerSlotAsOrganization } from "./reset.js";
@@ -12,8 +12,7 @@ import path from "node:path";
 import { SpawnfileError } from "../../../shared/index.js";
 import { DAIMON_GROK_ENGINE_BROKER } from "../../../runtime/daimon/contractManifest.js";
 import { parseTrainingBrokerDeclaration, type TrainingBrokerDeclaration } from "./declaration.js";
-import { loadDaimonProjectionModule, resolveTrainingGrokProjection, type DaimonProjectionModule } from "./projection.js";
-import { resolveTrainingGrokRegistration } from "./registration.js";
+import { loadDaimonProjectionModule, resolveTrainingSlotProjection, type DaimonProjectionModule } from "./projection.js";
 import { createTrainingSlotRuntime } from "./runtime.js";
 import { createTrainingSlotSupervisor, serveTrainingSlotSupervisor, startTrainingSlot } from "./supervisor.js";
 import {
@@ -86,15 +85,14 @@ export const runTrainingBrokerEntrypoint = async (options: TrainingEntrypointOpt
   const descriptors = trainingSlotDescriptors(declaration.slots);
   const document = JSON.parse(await readFile(TRAINING_SLOTS_FILE, "utf8"));
   assertTrainingSlotsDocument(document, declaration.slots);
-  const registrations = descriptors.map(p => resolveTrainingGrokRegistration({ ...declaration, slot: p.slot }));
   const daimon = await (options.loadDaimon ?? loadDaimonProjectionModule)();
   const reset = resetTrainingBrokerSlotAsOrganization;
-  const runtimes = await Promise.all(registrations.map(async registration => {
-    const { projectionSha256 } = await resolveTrainingGrokProjection(declaration, registration, daimon);
-    return createTrainingSlotRuntime({ declaration, registration, projectionSha256, reset });
-  }));
+  const slots = await Promise.all(descriptors.map(p => resolveTrainingSlotProjection(declaration, p.slot, daimon)));
+  const registrations = slots.map(slot => slot.registration);
+  const runtimes = slots.map(({ registration, projectionSha256 }) =>
+    createTrainingSlotRuntime({ declaration, registration, projectionSha256, reset }));
   await stageTrainingEvaluatorSecret();
-  await promisify(execFile)("/bin/bash", ["--noprofile", "--norc", "-ceu", renderTrainingBrokerProvisioning(registrations, declaration.maxRunRequests).join("\n")], { maxBuffer: 8 * 1024 * 1024 });
+  await runTrainingRootScript(renderTrainingBrokerProvisioning(registrations, declaration.maxRunRequests).join("\n"), { maxBuffer: 8 * 1024 * 1024 });
   const children = await startBrokerProcesses({ log });
   let server: ReturnType<typeof serveTrainingSlotSupervisor> | undefined;
   try {
