@@ -266,7 +266,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       execution = 'interrupted'; failureKind = undefined;
     }
     // Subject totals were frozen at native closure; judge failures are separate work.
-    if (observationFailure && finalSnapshot.subjectUsage) finalSnapshot.subjectUsage.status = 'incomplete';
+    if (observationFailure && finalSnapshot.subjectUsage) { finalSnapshot.subjectUsage.status = 'incomplete'; delete finalSnapshot.subjectUsage.settled; }
     const gates = [result(evaluation.status, 'Terminal plan'), ...liveGates,
       ...(live.decisive ? [live.decisive] : []), ...turns.flatMap(turn => turn.checks)];
     const preDeferralStatus = combine('all', gates).status;

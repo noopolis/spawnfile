@@ -158,7 +158,15 @@ export interface ArtifactSnapshot {
   acceptedCallId?: string;
 }
 /** Authoritative subject-only returned turn totals; never reconstructed from observations. */
-export interface SubjectUsageSnapshot { status: 'complete' | 'incomplete'; usage: Usage | null }
+export interface SubjectUsageSnapshot {
+  status: 'complete' | 'incomplete'; usage: Usage | null;
+  /**
+   * The subject execution closed completed, host-settled and stop-proven, whether or not every
+   * token was accounted for. Absent means not attested (legacy capture or uncertain run). It certifies an
+   * observed artifact absence; it never certifies usage, which only `status` does.
+   */
+  settled?: boolean;
+}
 export interface EvaluationSnapshot {
   trialId: string;
   recordId: string;

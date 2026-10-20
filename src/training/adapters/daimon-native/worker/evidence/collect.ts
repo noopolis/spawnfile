@@ -71,20 +71,10 @@ export function nativeUsageCoverage(native: NativeEvidence, executionId?: string
 
 /** All execution totals in the fresh trial ledger, independently of wake attribution. */
 function trialAccounting(native: NativeEvidence): NonNullable<NativeEvidence['accounting']> {
-  // Daimon writes a usage row for a failed attempt only when the engine reported usage
-  // (turnUsageLedger: "a row is written whenever the engine actually reported usage"), so a
-  // failed attempt with no row spent nothing the engine disclosed, e.g. a capacity rejection
-  // retried under a new execution. That is the ledger's own semantics, not fabricated zeros:
-  // such attempts add no row and do not degrade coverage. A completed trace without a row
-  // stays partial, and any row that exists must itself be complete.
-  const rowsComplete = native.usage.every(row => {
-    const traces = native.traces.filter(trace => trace.turn_id === row.wake);
-    const asCompleted = traces.map(trace => trace.status === 'failed' ? { ...trace, status: 'completed' as const } : trace);
-    return nativeUsageCoverage({ ...native, usage: [row], traces: asCompleted,
-      requests: native.requests?.filter(request => request.wake === row.wake) }, row.wake) === 'complete';
-  });
-  const traced = native.traces.every(trace => trace.status === 'failed' || native.usage.some(row => row.wake === trace.turn_id));
-  return { usage: native.usage, coverage: !native.usage.length ? 'absent' : rowsComplete && traced ? 'complete' : 'partial' };
+  const complete = native.traces.length === native.usage.length && native.usage.every(row =>
+    nativeUsageCoverage({ ...native, usage: [row], traces: native.traces.filter(trace => trace.turn_id === row.wake),
+      requests: native.requests?.filter(request => request.wake === row.wake) }, row.wake) === 'complete');
+  return { usage: native.usage, coverage: !native.usage.length ? 'absent' : complete ? 'complete' : 'partial' };
 }
 
 export async function readToolReceipts(runtimeHome: string, agentId: string, engine: NativeEvidenceSource['engine'] = 'codex'): Promise<Record<string, unknown>[]> {

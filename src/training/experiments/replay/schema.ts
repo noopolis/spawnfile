@@ -20,7 +20,7 @@ const subjectUsage = z.object({ status: z.enum(['complete', 'incomplete']), usag
   inputTokens: tokenCount, cachedInputTokens: tokenCount, outputTokens: tokenCount, reasoningTokens: tokenCount,
   cacheWriteInputTokens: tokenCount.optional(), cacheWrite5mInputTokens: tokenCount.optional(), cacheWrite1hInputTokens: tokenCount.optional(),
   source: z.string().min(1),
-}).nullable() });
+}).nullable(), settled: z.boolean().optional() });
 const judgeCall = z.object({ id: identity, judge: identity, providerId: identity, requestedModel: identity,
   failureDetail: z.literal('tool-call').optional(),
   failureKind: z.enum(['quota', 'transport', 'unavailable', 'authentication', 'auth-stale', 'protocol', 'invalid-response', 'cancelled', 'timeout', 'unsupported', 'unknown']).optional(),

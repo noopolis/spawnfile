@@ -26,7 +26,7 @@ it('authenticates preserved subject totals and reuses them in explicit rescoring
   expect(seen).toEqual([task.report.snapshot.subjectUsage]);
   const replay = await task.store.readReplay('trial', task.options.access);
   expect(capturedTrial(replay).report.snapshot.subjectUsage).toEqual(task.report.snapshot.subjectUsage);
-  expect(task.report.snapshot.subjectUsage).toEqual({ status: 'complete', usage: { inputTokens: 10, cachedInputTokens: null, outputTokens: 2, reasoningTokens: null, source: 'fixture' } });
+  expect(task.report.snapshot.subjectUsage).toEqual({ status: 'complete', settled: true, usage: { inputTokens: 10, cachedInputTokens: null, outputTokens: 2, reasoningTokens: null, source: 'fixture' } });
 });
 
 it('legacy captures remain readable but never acquire invented usage evidence', async () => {

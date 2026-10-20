@@ -43,11 +43,14 @@ export function subjectUsageSnapshot(turns: readonly SubjectTurnResult[], option
     }
     if (!validUsage(usage)) return missing;
   }
-  const complete = options.complete && options.expectedTurns > 0 && Number.isSafeInteger(options.expectedTurns) && turns.length === options.expectedTurns &&
-    usage.inputTokens !== null && usage.outputTokens !== null && turns.every(turn => {
-      const channels = turn.coverage.filter(row => row.channel === 'usage');
-      return turn.status === 'completed' && channels.length > 0 && channels.every(row => row.completeness === 'complete') &&
-        (!turn.stop || turn.stop.state === 'acknowledged' && turn.stop.quiescence === 'confirmed');
-    });
-  return { status: complete ? 'complete' : 'incomplete', usage };
+  // Settlement is the execution's closure: completed turns, host settled, stop proven. It
+  // deliberately omits usage coverage, which a retried attempt can leave partial.
+  const settled = options.complete && options.expectedTurns > 0 && Number.isSafeInteger(options.expectedTurns) &&
+    turns.length === options.expectedTurns && turns.every(turn => turn.status === 'completed' &&
+      (!turn.stop || turn.stop.state === 'acknowledged' && turn.stop.quiescence === 'confirmed'));
+  const complete = settled && usage.inputTokens !== null && usage.outputTokens !== null && turns.every(turn => {
+    const channels = turn.coverage.filter(row => row.channel === 'usage');
+    return channels.length > 0 && channels.every(row => row.completeness === 'complete');
+  });
+  return { status: complete ? 'complete' : 'incomplete', usage, ...(settled ? { settled } : {}) };
 }

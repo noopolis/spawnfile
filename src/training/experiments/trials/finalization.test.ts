@@ -276,18 +276,18 @@ it('fails the required artifact the completed execution was observed never to pr
   expect(report.status).toBe('fail');
   expect(trialScore(report)).toBe(0);
 
-  // Mutation, on the exact boundary the rule stands on: the same completed run whose usage
-  // channel is only partial can no longer attest complete coverage, so the absence is an
-  // observation nobody made and the trial goes back to unscorable.
-  const unattributed = await setup(async (input, turn) => { await delegated(input, turn);
+  // A retried execution can leave the usage channel partial (a failed attempt with no ledger row is
+  // not proof of no spend). The run is still closed, completed and stop-proven, so the absent
+  // artifact is a verdict, while usage stays honestly incomplete.
+  const retried = await setup(async (input, turn) => { await delegated(input, turn);
     return closedTurn([...observed.slice(0, 2), { channel: 'usage', completeness: 'partial', ordering: 'source' }]); });
-  unattributed.options.record = filing();
-  const unproven = await runTrial(unattributed.options);
-  expect(unproven.execution).toBe('completed');
-  expect(unproven.snapshot.subjectUsage!.status).toBe('incomplete');
-  expect(unproven.evaluation.stages[0]!.checks[0]!.status).toBe('unknown');
-  expect(unproven.status).toBe('unknown');
-  expect(() => trialScore(unproven)).toThrow('unscorable');
+  retried.options.record = filing();
+  const partialUsage = await runTrial(retried.options);
+  expect(partialUsage.execution).toBe('completed');
+  expect(partialUsage.snapshot.subjectUsage).toMatchObject({ status: 'incomplete', settled: true });
+  expect(partialUsage.evaluation.stages[0]!.checks[0]!.status).toBe('fail');
+  expect(partialUsage.status).toBe('fail');
+  expect(trialScore(partialUsage)).toBe(0);
 });
 
 it('keeps an execution that never closed an unmade observation rather than an observed absence', async () => {

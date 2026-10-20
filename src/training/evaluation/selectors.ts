@@ -50,13 +50,14 @@ export function selectEvidence(selector: string, snapshot: EvaluationSnapshot): 
  * observation it could not make. Only an artifact is collected by the host at
  * closure, so only its absence is something the run actually looked at: an empty
  * `output.text` is itself incomplete coverage and can never certify anything. The
- * trial must also be closed over a subject execution that is fully accounted for —
- * completed, host-settled, proven closed and completely covered — which is exactly
- * what `subjectUsage.status` attests and nothing else in the snapshot does. A legacy
- * capture without it, like every uncertain run, is never an observed absence.
+ * trial must also be closed over a subject execution that is completed, host-settled and
+ * stop-proven, which is what `subjectUsage.settled` attests. Token accounting is a
+ * separate claim (`status`): a retried attempt can leave usage partial without making
+ * the closed artifact collection any less observed. A legacy capture without the
+ * attestation, like every uncertain run, is never an observed absence.
  */
 export function observedAbsence(selector: string, snapshot: EvaluationSnapshot): boolean {
-  return selector.startsWith('artifact:') && snapshot.closed && snapshot.subjectUsage?.status === 'complete';
+  return selector.startsWith('artifact:') && snapshot.closed && snapshot.subjectUsage?.settled === true;
 }
 
 export function evidenceText(value: unknown): string {

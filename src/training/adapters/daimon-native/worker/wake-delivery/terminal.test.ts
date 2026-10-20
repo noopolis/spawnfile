@@ -16,7 +16,7 @@ function fixture() {
   return { evidence, native };
 }
 
-test('requires every selected execution, including a deferred revisit, to have a batch and completed telemetry', () => {
+test('a deferred revisit that settles another selected delivery still needs a batch and completed telemetry', () => {
   const { evidence, native } = fixture();
   evidence.selectedDeliveries![0]!.executionIds.push('second');
   evidence.batches![1]!.deliveryIds.push('first');

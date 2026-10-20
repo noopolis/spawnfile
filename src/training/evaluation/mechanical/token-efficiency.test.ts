@@ -31,7 +31,7 @@ describe('complete native subject token efficiency', () => {
     expect((await measure(Number.MAX_SAFE_INTEGER, 1)).score).toBeUndefined();
   });
   it('never rewards missing legacy, incomplete or provisional usage as zero', async () => {
-    for (const subjectUsage of [undefined, { status: 'incomplete' as const, usage }, { status: 'complete' as const, usage: null }]) {
+    for (const subjectUsage of [undefined, { status: 'incomplete' as const, usage }, { status: 'incomplete' as const, usage, settled: true }, { status: 'complete' as const, usage: null }]) {
       const evaluated = await evaluateNode(check, evaluationContext({ snapshot: snapshot({ subjectUsage }) }), registry);
       expect(evaluated).toMatchObject({ status: 'unknown', finality: 'final' }); expect(evaluated.score).toBeUndefined();
     }

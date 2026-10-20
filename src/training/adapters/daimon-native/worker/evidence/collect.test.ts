@@ -101,27 +101,17 @@ test('trial coverage includes unmetered or incomplete revisits independently of 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('trial coverage stays complete across a failed attempt Daimon retried, and honest about unmetered or incomplete ones', async () => {
+test('a failed attempt without a usage row keeps trial coverage partial: no row is not proof of no spend', async () => {
   const root = await mkdtemp(join(tmpdir(), 'native-ledger-retry-'));
   try {
     await mkdir(join(root, 'telemetry'));
     const trace = traceFixture();
     const usage = { v: 'noopolis.daimon.turn-usage.v1', agent: 'agent:writer', wake: executionId, engine: 'codex',
       at: '2026-09-13T00:00:01.000Z', input: 10, output: 2, cache_read: 0, total: 12, complete: true };
-    const failed = { ...trace, turn_id: 'failed-attempt', status: 'failed' };
-    const write = (traces: unknown[], rows: unknown[]) => Promise.all([
-      writeFile(join(root, 'telemetry/turns.ndjson'), traces.map(row => JSON.stringify(row) + '\n').join('')),
-      writeFile(join(root, 'usage.jsonl'), rows.map(row => JSON.stringify(row) + '\n').join(''))]);
-    const read = async () => (await collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1')).accounting?.coverage;
-    // Daimon meters a failed attempt only when the engine reported usage: no row, nothing disclosed.
-    await write([failed, trace], [usage]);
-    assert.equal(await read(), 'complete');
-    await write([failed, trace], [usage, { ...usage, wake: 'failed-attempt' }]);
-    assert.equal(await read(), 'complete');
-    await write([failed, trace], [usage, { ...usage, wake: 'failed-attempt', complete: false }]);
-    assert.equal(await read(), 'partial');
-    // A completed execution with no row is still unmetered work.
-    await write([{ ...trace, turn_id: 'done-unmetered' }, trace], [usage]);
-    assert.equal(await read(), 'partial');
+    await writeFile(join(root, 'telemetry/turns.ndjson'), [{ ...trace, turn_id: 'failed-attempt', status: 'failed' }, trace].map(row => JSON.stringify(row) + '\n').join(''));
+    await writeFile(join(root, 'usage.jsonl'), JSON.stringify(usage) + '\n');
+    const native = await collectNativeEvidence(root, join(root, 'usage.jsonl'), 'agent:writer', executionId, 'test-model-v1');
+    assert.equal(native.accounting?.coverage, 'partial');
+    assert.equal(nativeUsageCoverage(native, executionId), 'complete');
   } finally { await rm(root, { recursive: true, force: true }); }
 });

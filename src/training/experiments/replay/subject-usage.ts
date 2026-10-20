@@ -9,6 +9,6 @@ export function subjectUsageMatchesNative(report: Pick<TrialReport, 'snapshot' |
   const captured = subjectUsageSnapshot(report.turns.map(turn => turn.native), { expectedTurns: report.expectedTurns!,
     // This status attests the native boundary before judging. Later evaluator
     // failure can change overall execution/hostWork without changing native usage.
-    complete: report.snapshot.subjectUsage.status === 'complete' && report.stop?.state === 'acknowledged' && report.stop.quiescence === 'confirmed' });
+    complete: (report.snapshot.subjectUsage.status === 'complete' || report.snapshot.subjectUsage.settled === true) && report.stop?.state === 'acknowledged' && report.stop.quiescence === 'confirmed' });
   return isDeepStrictEqual(report.snapshot.subjectUsage, captured);
 }

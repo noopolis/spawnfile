@@ -62,7 +62,7 @@ describe('mechanical evidence', () => {
       evaluationContext({ snapshot: snapshot({ closed: false }) }), registry)).finality).toBe('provisional');
   });
   it('separates an absence the run observed from one it could not make', async () => {
-    const complete = { status: 'complete' as const, usage: null };
+    const complete = { status: 'complete' as const, usage: null, settled: true };
     const check = { eval: 'contains-any', input: 'artifact:none#/body', values: ['Filed'] };
     const accounted = evaluationContext({ snapshot: snapshot({ subjectUsage: complete }) });
     const failed = await evaluateNode(check, accounted, registry);
@@ -76,6 +76,10 @@ describe('mechanical evidence', () => {
       { subjectUsage: complete, closed: false }]) {
       expect((await evaluateNode(check, evaluationContext({ snapshot: snapshot(overrides) }), registry)).status).toBe('unknown');
     }
+    // Settlement, not token accounting, is what certifies the absence: a retried attempt can leave
+    // usage incomplete while the closed artifact collection is no less observed.
+    const partialUsage = { status: 'incomplete' as const, usage: null, settled: true };
+    expect((await evaluateNode(check, evaluationContext({ snapshot: snapshot({ subjectUsage: partialUsage }) }), registry)).status).toBe('fail');
     // An absent output is incomplete coverage by definition, so it can never certify absence.
     expect((await evaluateNode({ eval: 'equals', input: 'output.text', value: '4' },
       evaluationContext({ snapshot: snapshot({ coverage: [], subjectUsage: complete }) }), registry)).status).toBe('unknown');

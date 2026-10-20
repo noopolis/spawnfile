@@ -8,9 +8,9 @@ Wake traces and usage retain their execution attribution. The optional accountin
 member persists the cumulative trial ledger, including revisited executions; the
 observer emits each execution once. Older frames without accounting retain their
 original wake usage semantics. Complete trial usage requires a completed matching
-trace and complete non-estimated usage for every execution. A failed attempt with no usage row stays
-complete (Daimon meters a failed turn only when the engine reported usage); one with an
-incomplete row, or a completed execution without a row, is partial.
+trace and complete non-estimated usage for every execution. A failed attempt with no usage row keeps trial coverage partial:
+Daimon writes no row when an attempt dies before the engine reports usage, which is
+not proof it spent nothing.
 
 The complete native member already persists in each numbered wake evidence file
 and the terminal diagnostic observation. `modelContexts` records model and policy
