@@ -74,3 +74,24 @@ test('a failed settling execution still fails even after an earlier failed attem
   native.traces.find(row => row.turn_id === 'first')!.status = 'failed';
   expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow('Native execution failed');
 });
+
+test('a receipt whose execution is not among the delivery executions gets no retry excuse: every attempt is judged', () => {
+  const { evidence, native } = retried();
+  evidence.selectedDeliveries![0]!.receipt!.execution_id = 'not-listed';
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow('Native execution failed');
+});
+
+test('a non-settling revisit is judged by its trace only: completed without a usage row passes, usage coverage reports it', () => {
+  const { evidence, native } = fixture();
+  evidence.selectedDeliveries![0]!.executionIds.push('second');
+  evidence.batches![1]!.deliveryIds.push('first');
+  native.usage = native.usage.filter(row => row.wake !== 'second');
+  // 'second' still settles its own delivery, so its usage row stays mandatory there.
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow('token usage');
+  // Under 'first' alone, a completed non-settling attempt needs a trace, not a usage row.
+  evidence.selectedDeliveries![1]!.executionIds = [];
+  evidence.selectedDeliveries!.pop();
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).not.toThrow();
+  native.traces.splice(native.traces.findIndex(row => row.turn_id === 'second'), 1);
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow('terminal telemetry');
+});
