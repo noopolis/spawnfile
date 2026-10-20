@@ -143,3 +143,28 @@ jobs:
         run: npm publish --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  release:
+    name: create GitHub release
+    needs: publish
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # Runs only after npm publish succeeds; an existing release is left as is,
+      # so re-running a publish never fails here.
+      - name: Create GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists."
+            exit 0
+          fi
+
+          gh release create "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --verify-tag --generate-notes --title "${RELEASE_TAG}"
