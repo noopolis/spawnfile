@@ -1,7 +1,7 @@
 {
   "version": "spawnfile.moltnet-release-authority.v1",
-  "release_version": "v0.1.18",
-  "source_revision": "988c5284f45705beb3bf59a4a4c0008605ce609e",
+  "release_version": "v0.1.19",
+  "source_revision": "7f9900dfd89166e5ebb46ee82c0dc1492c4a89aa",
   "capabilities": [
     "daimon-bridge",
     "pi-bridge"
@@ -10,12 +10,12 @@
     {
       "architecture": "amd64",
       "asset": "moltnet_linux_amd64.tar.gz",
-      "asset_sha256": "sha256:92d356cd33841e89b6bc56c6e8c2c37d987124f35c896d033e8766eab09da2c5"
+      "asset_sha256": "sha256:e0564bccdf7adb92936f2c39b7491a465ae0799bf3de697fb594ea4244daf9c6"
     },
     {
       "architecture": "arm64",
       "asset": "moltnet_linux_arm64.tar.gz",
-      "asset_sha256": "sha256:40c1fae1c687a59a9e6d804ac28d00e925f318bd4e922accdca4402ceab88548"
+      "asset_sha256": "sha256:f40e9ab6190bb05e8a536baefe5fe0f4f7b7aa58d5475e7b6546abfad3c950a2"
     }
   ]
 }
