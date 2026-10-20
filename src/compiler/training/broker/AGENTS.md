@@ -10,6 +10,11 @@ container that runs a brokered Grok subject beside the evaluator.
 - `declaration.ts` is the host's read-only `spawnfile.training-broker.v2` input.
   It is data, never code: no host executable or script is ever mounted, so the
   image's own Spawnfile distribution renders the provisioning from it.
+  Its optional `skills` carry the subject's declared skills (pinned at
+  preparation from the training context) in Daimon's engine-neutral form; the
+  entrypoint, supervisor and lease all resolve the projection from this one
+  input, so they bind the same `skillsSha256`. Absent means no skills and a
+  byte-identical declaration, registration and projection.
 - `registration.ts` builds clocked slot registrations and denies sibling roots, homes and clocks.
 - `clockProbe.ts` proves sibling clock masks with bubblewrap under the worker uid; its own clock must remain readable.
 - `provisioning.ts` renders the root bash program, delegating everything below
@@ -29,7 +34,11 @@ container that runs a brokered Grok subject beside the evaluator.
 - `taskClock.ts` reclaims the clock subtree only during shared startup,
   and checks installed config bytes, clock modes, library identity and worker
   access before the receipt. `projection.ts` requires Daimon's projection v3
-  with `workerConfigVariant: "clocked"` and the selected digest.
+  with `workerConfigVariant: "clocked"` and the selected digest, and refuses a
+  projection whose `skillsSha256` differs from the provisioned skills tree
+  (a Daimon older than 0.2.2 ignores `skills` and lands here). Recycle
+  re-renders the tree into the slot's `$GROK_HOME/skills` with the production
+  worker renderer.
 - `seccompRoutes.ts` answers, from the pinned profile bytes alone, whether the
   worker uid may even attempt a namespace escape — the only honest way to say
   `seccomp` rather than `kernel` when a route is unavailable.

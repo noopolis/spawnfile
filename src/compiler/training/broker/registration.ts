@@ -14,6 +14,7 @@ import {
   renderDaimonGrokWorkerSandboxProfile,
   resolveDaimonGrokClockedWorkerConfig
 } from "../../../runtime/daimon/grokWorkerContract.js";
+import { resolveDaimonGrokWorkerSkills, type DaimonAgentSkill } from "../../../runtime/daimon/grokWorkerSkills.js";
 import {
   DAIMON_GROK_BASE_PROFILE_GRANTS,
   assertCanonicalRegisteredPath,
@@ -85,6 +86,8 @@ export interface TrainingGrokSlotInput {
    * ceiling exceeds the manifest defaults is refused as `invalid_request`.
    */
   limits?: { maxRequests: number; maxTokens: number; timeoutMs: number };
+  /** The declaration's skills; rendered into the slot's `$GROK_HOME/skills` and bound as `skillsSha256`. */
+  skills?: readonly DaimonAgentSkill[];
 }
 
 /**
@@ -111,7 +114,9 @@ export const resolveTrainingGrokRegistration = (input: TrainingGrokSlotInput): D
   for (const [label, value] of [["GROK_HOME", grokHome], ["profile", profilePath], ["events", eventsPath],
     ["workspace", p.workspace], ["runtime home", p.runtimeHome],
     ["usage ledger", p.usageLedger]] as const) assertCanonicalRegisteredPath(label, value);
+  const skills = resolveDaimonGrokWorkerSkills(input.skills);
   return {
+    ...(skills ? { skills } : {}),
     agentId: input.agentId,
     config: config.bytes,
     configVariant: "clocked",

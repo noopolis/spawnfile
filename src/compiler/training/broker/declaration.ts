@@ -61,7 +61,19 @@ export const trainingBrokerDeclarationSchema = z.strictObject({
    * datasets are held by DAC on their ancestor under both values, and a slot
    * that cannot prove that denial is refused whatever this says.
    */
-  unenforcedBindPolicy: z.enum(["refuse", "profile-only"]).default("refuse")
+  unenforcedBindPolicy: z.enum(["refuse", "profile-only"]).default("refuse"),
+  /**
+   * The subject's declared skills in Daimon's engine-neutral form (the
+   * compiled `.agents/skills` tree), omitted when it declares none. Root
+   * provisioning renders them into every slot's `$GROK_HOME/skills`, and the
+   * entrypoint, supervisor and lease all resolve the projection from this one
+   * read-only input, so they bind the same `skillsSha256`. Daimon's own parser
+   * (mirrored in `runtime/daimon/grokWorkerSkills.ts`) enforces the bounds.
+   */
+  skills: z.array(z.strictObject({
+    name: z.string().min(1).max(128),
+    files: z.array(z.strictObject({ path: z.string().min(1).max(1_024), content: z.string() })).min(1).max(64)
+  })).min(1).max(64).optional()
 }).strict();
 
 export type TrainingBrokerDeclaration = z.infer<typeof trainingBrokerDeclarationSchema>;

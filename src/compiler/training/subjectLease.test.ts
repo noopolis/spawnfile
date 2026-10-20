@@ -7,9 +7,10 @@ import { z } from "zod";
 
 import { DAIMON_GROK_ENGINE_BROKER } from "../../runtime/daimon/contractManifest.js";
 import { resolveDaimonGrokClockedWorkerConfig } from "../../runtime/daimon/grokWorkerContract.js";
+import { daimonGrokWorkerSkillsSha256, type DaimonAgentSkill } from "../../runtime/daimon/grokWorkerSkills.js";
 import { parseTrainingBrokerDeclaration } from "./broker/declaration.js";
 import { trainingSlotsDocument, trainingSlotPaths } from "./broker/paths.js";
-import { resolveTrainingGrokProjection, type DaimonProjectionModule } from "./broker/projection.js";
+import { resolveTrainingGrokProjection, resolveTrainingSlotProjection, type DaimonProjectionModule } from "./broker/projection.js";
 import { buildTrainingSlotReceipt } from "./broker/receipt.js";
 import { resolveTrainingGrokRegistration } from "./broker/registration.js";
 import { TRAINING_SUPERVISOR_PROTOCOL } from "./broker/supervisor.js";
@@ -29,7 +30,7 @@ const scratch = (): string => {
   return root;
 };
 
-const declarationInput = (slots: number) => ({
+const declarationInput = (slots: number, extra: Record<string, unknown> = {}) => ({ ...extra,
   version: "spawnfile.training-broker.v2", slots, engine: "grok", agentId: "agent:reporter", model: "grok-4.6", reasoningEffort: "high",
   architecture: "arm64", limits: { maxRequests: 48, maxTokens: 2_500_000, timeoutMs: 1_800_000 },
   bootstrap: "/var/lib/spawnfile/daimon/grok-bootstrap-auth", organizationUid: 2000, seccompProfileSha256: "a".repeat(64)
@@ -45,6 +46,7 @@ const daimon: DaimonProjectionModule = {
       workerConfigVariant: options.workerConfigVariant, workerConfigSha256: resolveDaimonGrokClockedWorkerConfig("grok-4.6", "high", slot).sha256,
       taskClock: { ...clock, directoryPath: clock.slotDirectoryPattern.replace("{slot}", String(slot)),
         timestampFilePath: clock.slotFilePattern.replace("{slot}", String(slot)) },
+      ...(options.skills ? { skillsSha256: daimonGrokWorkerSkillsSha256(options.skills as DaimonAgentSkill[]) } : {}),
       config, options
     } as unknown as ReturnType<DaimonProjectionModule["resolveOrganizationGrokBrokerProjection"]>;
   },
@@ -66,13 +68,13 @@ const supervisor = async (answer: (request: { slot: number; nonce: string }) => 
 const recycled = (generation = 5) => (request: { slot: number; nonce: string }) => ({ ok: true, verb: "recycle", slot: request.slot,
   generation, nonce: request.nonce, receipt: trainingSlotPaths(request.slot).preflightReceipt, durationMs: 610 });
 
-const grok = async (overrides: Partial<LeaseTrainingSubjectOptions> = {}, slots = 4, answer = recycled()) => {
+const grok = async (overrides: Partial<LeaseTrainingSubjectOptions> = {}, slots = 4, answer = recycled(), extra: Record<string, unknown> = {}) => {
   const declarationFile = path.join(scratch(), "training-broker.json");
-  writeFileSync(declarationFile, JSON.stringify(declarationInput(slots)));
+  writeFileSync(declarationFile, JSON.stringify(declarationInput(slots, extra)));
   const peer = await supervisor(answer);
   const options: LeaseTrainingSubjectOptions = { slot: 2, engine: "grok", agentId: "agent:reporter", signal: new AbortController().signal,
     freshness: { expectedNonce: nonce, minGeneration: 5 }, loadDaimon: async () => daimon, connect: peer.connect, declarationFile, ...overrides };
-  return { lease: () => leaseTrainingSubject(options), peer, declaration: parseTrainingBrokerDeclaration(declarationInput(slots)) };
+  return { lease: () => leaseTrainingSubject(options), peer, declaration: parseTrainingBrokerDeclaration(declarationInput(slots, extra)) };
 };
 
 // Paideia 0.1.1 `grokBrokerLaunchSchema` and its `assertGrokBroker` checks, restated structurally (not a dependency).
@@ -133,6 +135,18 @@ describe("leaseTrainingSubject for a brokered Grok slot", () => {
       // Each slot denies its siblings, so registrations differ across a multi-slot pool.
       if (slots > 1) expect(result.broker!.denyPaths).toContain(trainingSlotPaths(0).root);
     }
+  });
+
+  it("binds the declared skills into the same projection digest the entrypoint and supervisor bind", async () => {
+    const skills = [{ name: "review", files: [{ path: "SKILL.md", content: "Review the diff.\n" }] }];
+    const { lease, declaration } = await grok({ slot: 1 }, 2, recycled(), { skills });
+    const result = await lease();
+    const bound = await resolveTrainingSlotProjection(declaration, 1, daimon);
+    expect(bound.registration.skills!.sha256).toBe(daimonGrokWorkerSkillsSha256(skills));
+    expect(bound.projection.skillsSha256).toBe(bound.registration.skills!.sha256);
+    expect(result.broker!.projectionSha256).toBe(bound.projectionSha256);
+    const { lease: bareLease } = await grok({ slot: 1 }, 2);
+    expect((await bareLease()).broker!.projectionSha256).not.toBe(result.broker!.projectionSha256);
   });
 
   it("refuses a receipt outside the leased slot and a generation below the floor", async () => {
