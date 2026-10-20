@@ -72,10 +72,11 @@ describe('prepareNativeSubject', () => {
       subject => { subject.workspace = { source: '/run/training/slots/0/workspace', target: '/run/training/slots/0/workspace' };
         (subject.roots as Record<string, string>).workspace = '/run/training/slots/0/workspace'; },
       subject => { (subject.ports as Record<string, number>).control = 20001; },
+      subject => { delete (subject.ports as Record<string, number>).control; },
     ];
     for (const patch of patches) {
       const { freshness, options } = grokOptions(input => { const subject = grokSubject(input.freshness!); patch(subject); return subject; });
-      await expect(prepareNativeSubject({ ...options, freshness })).rejects.toThrow(/leased slot|escape the leased/u);
+      await expect(prepareNativeSubject({ ...options, freshness })).rejects.toThrow(/leased slot|escape the leased|integer control port/u);
     }
   });
 
@@ -126,6 +127,8 @@ describe('prepareNativeSubject', () => {
     await expect(run({ ...subject, broker: grokSubject(minted).broker })).rejects.toThrow('no broker slot evidence');
     await expect(run({ ...subject, generation: 1 })).rejects.toThrow('no broker slot evidence');
     await expect(run({ ...subject, ports: { control: 20300 } })).rejects.toThrow('port escapes');
+    await expect(run({ ...subject, ports: {} as ProvisionedSubject['ports'] })).rejects.toThrow('integer control port');
+    await expect(run({ ...subject, ports: undefined as unknown as ProvisionedSubject['ports'] })).rejects.toThrow('integer control port');
     await expect(run(subject, { ...codexLease(), workerUid: process.geteuid!() + 1 })).rejects.toThrow('shared-uid slot');
   });
 

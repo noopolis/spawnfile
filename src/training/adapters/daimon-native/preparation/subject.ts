@@ -36,6 +36,7 @@ export async function prepareNativeSubject(options: PrepareNativeSubjectOptions)
   if (result.roots.workspace !== result.workspace.source || result.roots.home !== homes[0]!.source) {
     throw new Error('Provisioned subject roots differ from its workspace and home projection');
   }
+  if (!Number.isSafeInteger(result.ports?.control)) throw new Error('Provisioned subject must declare an integer control port');
   const host = { bindHost: '127.0.0.1' as const, port: result.ports.control };
   if (!freshness) {
     if (result.broker !== undefined || result.generation !== undefined) throw new Error('A Codex subject carries no broker slot evidence');
