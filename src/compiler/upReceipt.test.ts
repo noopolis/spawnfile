@@ -299,14 +299,14 @@ describe("buildUpReceipt", () => {
     upResult.report.container!.moltnet!.release = {
       ...upResult.report.container!.moltnet!.release!,
       capabilities: ["daimon-bridge", "pi-bridge"],
-      release_version: "v0.1.18"
+      release_version: "v0.1.19"
     } as never;
 
     const receipt = await buildUpReceipt(fixtureDirectory, upResult);
 
     expect(receipt.moltnet_release).toMatchObject({
       capabilities: ["daimon-bridge", "pi-bridge"],
-      release_version: "v0.1.18"
+      release_version: "v0.1.19"
     });
     // A published release must never acquire local-development provenance.
     expect(receipt.moltnet_release).not.toHaveProperty("development");
