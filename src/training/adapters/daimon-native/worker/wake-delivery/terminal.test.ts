@@ -53,3 +53,24 @@ test.each(['failed', 'completed'] as const)('an unsampled %s execution cannot di
   expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer'))
     .toThrow('terminal trace omitted execution ownership');
 });
+
+function retried() {
+  const { evidence, native } = fixture();
+  evidence.selectedDeliveries![0]!.executionIds = ['first-attempt', 'first'];
+  evidence.batches!.unshift({ executionId: 'first-attempt', deliveryIds: ['first'], observedAt: '2026-10-11T00:00:00Z' });
+  native.traces.unshift({ ...traceFixture(), turn_id: 'first-attempt', status: 'failed' });
+  return { evidence, native };
+}
+
+test('a failed attempt followed by a completed Daimon retry settles the delivery and stays recorded', () => {
+  const { evidence, native } = retried();
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).not.toThrow();
+  expect(native.traces.find(row => row.turn_id === 'first-attempt')?.status).toBe('failed');
+  expect(evidence.selectedDeliveries![0]!.executionIds).toContain('first-attempt');
+});
+
+test('a failed settling execution still fails even after an earlier failed attempt', () => {
+  const { evidence, native } = retried();
+  native.traces.find(row => row.turn_id === 'first')!.status = 'failed';
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow('Native execution failed');
+});
