@@ -1,4 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// Lowering is tested at a skills-capable pin; the pin guard itself is `grokSkillsSupport.test.ts`.
+vi.mock("./grokSkillsSupport.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./grokSkillsSupport.js")>();
+  return { ...original, daimonGrokSkillsError: (node: Parameters<typeof original.daimonGrokSkillsError>[0], engine: string) =>
+    original.daimonGrokSkillsError(node, engine, () => original.DAIMON_GROK_SKILLS_MIN_VERSION) };
+});
+
 
 import { createRootfsFiles } from "../../compiler/containerArtifactsRender.js";
 import { renderEntrypoint } from "../../compiler/containerEntrypointRender.js";

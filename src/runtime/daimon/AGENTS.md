@@ -210,5 +210,10 @@ render as `grokSkillsByNodeId`; a Grok agent with none is absent there, so its
 registration, `service.json` and provisioning stay byte-identical. The layout
 is deliberately outside the contract manifest (Daimon's choice), so the
 manifest pin does not move. A `skillsSha256` in `service.json` needs a Daimon
->= 0.2.2 broker: the 0.2.1 parser refuses the unknown key, so a Grok agent with
-skills needs the runtime image re-pinned to a 0.2.2 build.
+>= 0.2.2 broker: the 0.2.1 parser refuses the unknown key and the whole broker
+fails to start. `grokSkillsSupport.ts` therefore refuses a skill-declaring Grok
+agent while `runtimes.yaml` pins Daimon < 0.2.2 (from its
+`<version>-<commit>` tag), and any skill Daimon's parser would refuse, in
+`preflightAgent` (`spawnfile validate`), as a compile error diagnostic and in
+`createDaimonContainerTargets`. The local runtime identity carries no version,
+so it does not lift the guard.

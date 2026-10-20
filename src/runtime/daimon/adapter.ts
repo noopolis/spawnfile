@@ -9,6 +9,7 @@ import {
   createSkillFiles
 } from "../common.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
+import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 
 import {
@@ -206,6 +207,7 @@ export const daimonAdapter: RuntimeAdapter = {
     const memoryVectorWarning = daimonMemoryVectorRecallWarning(node);
     const workspaceRestrictionWarning = daimonWorkspaceRestrictionWarning(node);
     const codexPolicyError = daimonCodexPolicyError(node);
+    const grokSkillsError = daimonGrokSkillsError(node, resolveDaimonEngine(node));
     return {
       capabilities: createAgentCapabilities(node, {
         mcpOutcome: "supported",
@@ -222,7 +224,8 @@ export const daimonAdapter: RuntimeAdapter = {
         ...(memorySelectionWarning ? [createDiagnostic("warn", memorySelectionWarning)] : []),
         ...(memoryVectorWarning ? [createDiagnostic("warn", memoryVectorWarning)] : []),
         ...(workspaceRestrictionWarning ? [createDiagnostic("warn", workspaceRestrictionWarning)] : []),
-        ...(codexPolicyError ? [createDiagnostic("error", codexPolicyError)] : [])
+        ...(codexPolicyError ? [createDiagnostic("error", codexPolicyError)] : []),
+        ...(grokSkillsError ? [createDiagnostic("error", grokSkillsError)] : [])
       ],
       files: [
         ...createDocumentFiles("workspace", node.docs),
@@ -236,6 +239,8 @@ export const daimonAdapter: RuntimeAdapter = {
     unsupportedAgentFeatures(node);
     const codexPolicyError = daimonCodexPolicyError(node);
     if (codexPolicyError) throw new SpawnfileError("validation_error", codexPolicyError);
+    const grokSkillsError = daimonGrokSkillsError(node, resolveDaimonEngine(node));
+    if (grokSkillsError) throw new SpawnfileError("validation_error", grokSkillsError);
     assertDaimonAgentOptions(nodeId, node);
     assertDaimonInstructionBounds(nodeId, node);
   },

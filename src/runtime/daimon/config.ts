@@ -1,5 +1,6 @@
 import path from "node:path";
 import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
+import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
@@ -264,6 +265,10 @@ export const createDaimonContainerTargets = async (
     .filter((agent) => agent.engine.kind === "grok" && agent.engine.model !== undefined && agent.engine.reasoningEffort !== undefined)
     .map((agent) => [agent.id, { model: agent.engine.model!, reasoningEffort: agent.engine.reasoningEffort! }]));
   // The compiled `.agents/skills` tree, in Daimon's engine-neutral form: root provisioning renders it into the worker's `$GROK_HOME/skills`.
+  for (const input of agents) {
+    const refused = daimonGrokSkillsError(input.value, engineByNodeId[input.id]!);
+    if (refused) throw new SpawnfileError("validation_error", refused);
+  }
   const grokSkillsByNodeId = Object.fromEntries(agents
     .filter((input) => engineByNodeId[input.id] === "grok" && input.value.skills.length > 0)
     .map((input) => [input.id, daimonAgentSkillsFromResolved(input.value.skills)]));
