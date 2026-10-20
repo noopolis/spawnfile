@@ -170,6 +170,7 @@ export const createRuntimeTargetPlans = async (
         ...(target.engineByNodeId ? { engineByNodeId: target.engineByNodeId } : {}),
         ...(target.grokModelByNodeId ? { grokModelByNodeId: target.grokModelByNodeId } : {}),
         ...(target.grokTurnLimitsByNodeId ? { grokTurnLimitsByNodeId: target.grokTurnLimitsByNodeId } : {}),
+        ...(target.grokSkillsByNodeId ? { grokSkillsByNodeId: target.grokSkillsByNodeId } : {}),
         envFiles: resolveTargetEnvFiles(instancePaths.configPath, target),
         packages: resolveTargetPackages(target, targetInputs),
         id: target.id,

@@ -200,4 +200,15 @@ Per-agent execution/token ceilings use the runtime fuse epoch and remain beneath
 the shared runtime ceiling. The selected image must attest the pinned contract;
 never silently emit this policy for an older runtime. Spawnfile does not implement
 the queue, disposition tools, budget accounting, or execution authority.
-- Container targets publish per-agent workspace/runtime home/skill roots from the same configured agent paths. Brokered Grok has no native skill roots.
+- Container targets publish per-agent workspace/runtime home/skill roots from the same configured agent paths, Grok included.
+
+`grokWorkerSkills.ts` mirrors Daimon 0.2.2's `parseAgentSkills`,
+`grokWorkerSkillsSha256` and `renderGrokWorkerSkillsTree`, pinned to
+Daimon-rendered `DAIMON_GROK_WORKER_SKILLS_SAMPLES` like the profile mirror.
+`config.ts` hands each skill-declaring Grok agent's skills to the broker
+render as `grokSkillsByNodeId`; a Grok agent with none is absent there, so its
+registration, `service.json` and provisioning stay byte-identical. The layout
+is deliberately outside the contract manifest (Daimon's choice), so the
+manifest pin does not move. A `skillsSha256` in `service.json` needs a Daimon
+>= 0.2.2 broker: the 0.2.1 parser refuses the unknown key, so a Grok agent with
+skills needs the runtime image re-pinned to a 0.2.2 build.

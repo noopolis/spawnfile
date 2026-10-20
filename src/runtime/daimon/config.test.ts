@@ -179,12 +179,25 @@ describe("Daimon memory lowering", () => {
     expect(start).toContain('[ -d "<instance-root>/runtime-homes/grok" ] || install -d -m 700 "<instance-root>/runtime-homes/grok"');
     expect(start).not.toMatch(/^install -d -m 700 "<instance-root>\/runtime-homes\/grok"/mu);
     expect(start).toContain('install -d -m 700 "<instance-root>/runtime-homes/codex"');
-    expect(target!.agentPathsByNodeId?.["agent:grok"]?.skillRoots).toEqual([]);
+    expect(target!.agentPathsByNodeId?.["agent:grok"]?.skillRoots).toEqual([".agents", ".codex"].map(root => `<workspace-path>/agents/grok/${root}/skills`));
     expect(target!.agentPathsByNodeId?.["agent:codex"]).toEqual({
       workspacePath: "<workspace-path>/agents/codex",
       homePath: "<instance-root>/runtime-homes/codex",
       skillRoots: [".agents", ".codex"].map(root => `<workspace-path>/agents/codex/${root}/skills`)
     });
+  });
+
+  it("hands only a skill-declaring Grok agent's skills to the broker render, in Daimon's engine-neutral form", async () => {
+    const grok = (slug: string, skills?: ResolvedAgentNode["skills"]) => ({ emittedFiles: [], id: `agent:${slug}`, kind: "agent" as const, slug, value: createPiTestNode({
+      execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } },
+      runtime: { name: "daimon", options: { engine: "grok" } }, ...(skills ? { skills } : {})
+    }) });
+    const [target] = await createDaimonContainerTargets([grok("grok"), grok("bare", []),
+      { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode() }]);
+    const note = createPiTestNode().skills[0]!;
+    expect(target!.grokSkillsByNodeId).toEqual({ "agent:grok": [{ name: note.name, files: [{ path: "SKILL.md", content: note.content }] }] });
+    const [unskilled] = await createDaimonContainerTargets([grok("bare", [])]);
+    expect(unskilled).not.toHaveProperty("grokSkillsByNodeId");
   });
 
   it("omits Daimon's engine model selector when no execution model is declared", async () => {

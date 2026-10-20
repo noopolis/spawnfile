@@ -1,5 +1,6 @@
 import path from "node:path";
 import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
+import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
@@ -262,6 +263,10 @@ export const createDaimonContainerTargets = async (
   const grokModelByNodeId = Object.fromEntries(configAgents
     .filter((agent) => agent.engine.kind === "grok" && agent.engine.model !== undefined && agent.engine.reasoningEffort !== undefined)
     .map((agent) => [agent.id, { model: agent.engine.model!, reasoningEffort: agent.engine.reasoningEffort! }]));
+  // The compiled `.agents/skills` tree, in Daimon's engine-neutral form: root provisioning renders it into the worker's `$GROK_HOME/skills`.
+  const grokSkillsByNodeId = Object.fromEntries(agents
+    .filter((input) => engineByNodeId[input.id] === "grok" && input.value.skills.length > 0)
+    .map((input) => [input.id, daimonAgentSkillsFromResolved(input.value.skills)]));
   const hasAgy = configAgents.some((agent) => agent.engine.kind === "agy");
   const hasGrok = configAgents.some((agent) => agent.engine.kind === "grok");
   const agyRuntimeHomeMounts = configAgents
@@ -307,12 +312,13 @@ export const createDaimonContainerTargets = async (
   return [{
     agentPathsByNodeId: Object.fromEntries(configAgents.map((agent) => [agent.id, {
       workspacePath: agent.workspacePath, homePath: agent.runtimeHomePath,
-      skillRoots: agent.engine.kind === "grok" ? [] : CLI_ENGINE_SKILL_BASE_DIRECTORIES.map(
+      skillRoots: CLI_ENGINE_SKILL_BASE_DIRECTORIES.map(
         (root) => path.posix.join(agent.workspacePath, path.posix.relative("workspace", root)))
     }])),
     engineByNodeId,
     ...(hasGrok ? { grokModelByNodeId } : {}),
     ...(hasGrok && Object.keys(grokTurnLimitsByNodeId).length > 0 ? { grokTurnLimitsByNodeId } : {}),
+    ...(Object.keys(grokSkillsByNodeId).length > 0 ? { grokSkillsByNodeId } : {}),
     files: [
       ...agents.flatMap((input) => input.emittedFiles.map((file) => moveWorkspaceFile(file, input.slug))),
       { content: serializedConfig, path: DAIMON_CONFIG_FILE },
