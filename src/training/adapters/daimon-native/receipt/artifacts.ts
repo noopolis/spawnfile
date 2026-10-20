@@ -26,5 +26,8 @@ export const grokTrialArtifactsDirectory = 'paideia-trials';
  */
 export function nativeTrialArtifactsRoot(launch: NativeLaunch, trialId: string): string {
   if (!isGrokLaunch(launch)) return launch.controlRoot;
-  return join(launch.controlRoot, grokTrialArtifactsDirectory, `trial-${sha256(trialId).slice(0, 32)}`);
+  return join(launch.controlRoot, grokTrialArtifactsDirectory, nativeTrialLeaf(trialId));
 }
+
+/** One trial's directory name: a digest, so a caller-supplied identity can never escape or collide. */
+export const nativeTrialLeaf = (trialId: string): string => `trial-${sha256(trialId).slice(0, 32)}`;

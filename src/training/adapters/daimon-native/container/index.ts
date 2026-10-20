@@ -3,3 +3,4 @@ export type { DockerCommand, DockerResult, ContainerInspection } from './docker.
 export { startOwnedContainer } from './lifecycle.js';
 export { loadNativeLaunch, nativeMounts } from './manifest.js';
 export { containerSecurityOptions, grokContainerUnsupported, sandboxChecks, sandboxPreflightSchema } from './preflight.js';
+export { assertLeasedLaunch } from './slot.js';

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { rm } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { experimentSlotFreshnessFile, type GrokSlotFreshnessStore } from '../adapters/daimon-native/index.js';
 import { parseArguments } from './arguments.js';
 import { prepareNative, resourceMappings } from './native.js';
 import { cliFixture } from './fixture.js';
@@ -45,15 +47,40 @@ describe('explicit native resource and inference selection', () => {
     const prepareEnvironment = vi.fn(async () => ({ tools: [] }));
     const native = await prepareNative(parseArguments(['evaluate', 'data.yaml', '--spawnfile-context', context.path, '--out', 'out']), f.io,
       { ...f.dependencies, spawnfile: { id: 'fixture', version: '1', subjectRoot: context.root, createAdapter, prepareEnvironment } }, 1000);
-    expect(createAdapter).toHaveBeenCalledWith(context.context, { model: 'gpt-5.5', timeoutMs: 1000 });
+    expect(createAdapter).toHaveBeenCalledWith(context.context, { model: 'gpt-5.5', timeoutMs: 1000, grokSlots: expect.any(Object) });
     expect(native.subjectRoot).toBe(context.root);
     const paths = { root: f.root, workspace: f.root, control: f.root, runtimeHome: f.root };
     const signal = new AbortController().signal;
     const trial = { id: 'trial', phase: 'train' as const, record: native.datasets.load('data.yaml', false).records[0]!,
       candidate: native.candidate, resources: {} };
     expect(await native.prepareEnvironment!(paths, signal, trial)).toEqual({ tools: [] });
-    expect(prepareEnvironment).toHaveBeenCalledWith(paths, signal, trial, context.context);
+    const grokSlots = (createAdapter.mock.calls[0] as unknown as [unknown, { grokSlots: GrokSlotFreshnessStore }])[1].grokSlots;
+    expect(prepareEnvironment).toHaveBeenCalledWith(paths, signal, trial, context.context, { grokSlots });
     expect(native.evaluation.graders).toEqual({});
     await native.closeInference();
+  });
+  it('owns one slot freshness store per experiment in its output state, shared by preparation and the adapter across resume', async () => {
+    const f = await cliFixture(), context = await contextFixture(); roots.push(f.root, context.root);
+    const seen: GrokSlotFreshnessStore[] = [];
+    const integration = { id: 'fixture', version: '1', createAdapter: vi.fn((_context: unknown, options: { grokSlots: GrokSlotFreshnessStore }) => {
+      seen.push(options.grokSlots); return f.dependencies.adapter!('daimon', { model: 'gpt-5.5', timeoutMs: 1000 });
+    }), prepareEnvironment: vi.fn(async (..._args: unknown[]) => ({})) };
+    const args = parseArguments(['evaluate', 'data.yaml', '--spawnfile-context', context.path, '--out', 'out']);
+    const first = await prepareNative(args, f.io, { ...f.dependencies, spawnfile: integration }, 1000);
+    const paths = { root: f.root, workspace: f.root, control: f.root, runtimeHome: f.root };
+    const trial = { id: 'trial', phase: 'train' as const, record: first.datasets.load('data.yaml', false).records[0]!, candidate: first.candidate, resources: {} };
+    await first.prepareEnvironment!(paths, new AbortController().signal, trial);
+    expect((integration.prepareEnvironment.mock.calls[0]![4] as { grokSlots: unknown }).grokSlots).toBe(seen[0]);
+    await mkdir(first.out, { recursive: true });
+    const minted = await seen[0]!.request(3);
+    await seen[0]!.accept(3, { nonce: minted.expectedNonce, generation: 9 });
+    expect(JSON.parse(await readFile(join(f.root, 'out', experimentSlotFreshnessFile), 'utf8')).slots['3']).toEqual({ lastGeneration: 9 });
+    await first.closeInference();
+    // A resumed invocation on the same output keeps the floor and never replays the old receipt.
+    const resumed = await prepareNative(args, f.io, { ...f.dependencies, spawnfile: integration }, 1000);
+    expect(seen[1]).not.toBe(seen[0]);
+    await expect(seen[1]!.accept(3, { nonce: minted.expectedNonce, generation: 10 })).rejects.toThrow('stale');
+    expect((await seen[1]!.request(3)).minGeneration).toBe(10);
+    await resumed.closeInference();
   });
 });

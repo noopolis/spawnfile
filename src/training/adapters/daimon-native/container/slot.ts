@@ -11,6 +11,7 @@ export function assertLeasedLaunch(launch: NativeLaunch, slot: TrialSlot): void 
         !Number.isSafeInteger(slot.ports.count) || slot.ports.count < 1 || slot.ports.base + slot.ports.count > 65536) {
       throw new Error('Invalid native leased port block');
     }
+    if (!Number.isSafeInteger(launch.host.port)) throw new Error('Native control port must be an integer');
     if (launch.host.port < slot.ports.base || launch.host.port >= slot.ports.base + slot.ports.count) {
       throw new Error('Native control port escapes the leased slot');
     }
@@ -46,6 +47,7 @@ export function assertLeasedLaunch(launch: NativeLaunch, slot: TrialSlot): void 
   for (const [name, path] of Object.entries(paths)) {
     if (slot.roots[name] !== path) throw new Error(`Native launch differs from leased slot root: ${name}`);
   }
+  if (!Number.isSafeInteger(launch.host.port)) throw new Error('Native control port must be an integer');
   if (launch.workspace.target !== paths.workspace || launch.projections[0]!.target !== paths.runtimeHome ||
       launch.host.port < slot.ports.base || launch.host.port >= slot.ports.base + slot.ports.count) {
     throw new Error('Native launch paths or control port escape the leased slot');

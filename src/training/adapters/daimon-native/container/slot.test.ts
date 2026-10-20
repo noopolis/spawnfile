@@ -21,6 +21,7 @@ it('admits a shared-uid Codex lease through manifest loading and always checks i
       await expect(loadNativeLaunch({ ...f.input, slot })).rejects.toThrow('port escapes');
     }
     f.launch.host.port = slot.ports.base;
+    expect(() => assertLeasedLaunch({ ...f.launch, host: { ...f.launch.host, port: undefined as unknown as number } }, slot)).toThrow('integer');
     for (const ports of [{ base: NaN, count: 100 }, { base: slot.ports.base, count: NaN },
       { base: 0, count: 65536 }, { base: 65535, count: 2 }, { base: slot.ports.base, count: 0 }]) {
       expect(() => assertLeasedLaunch(f.launch, { ...slot, ports })).toThrow('Invalid native leased port block');
@@ -80,6 +81,9 @@ it('binds every native receipt identity, projection and control port to the leas
     }
     for (const base of [launch.host.port - 1, launch.host.port + 1]) {
       expect(() => assertLeasedLaunch(launch, { ...slot, ports: { base, count: 1 } })).toThrow('escape');
+    }
+    for (const port of [undefined, NaN, 1.5]) {
+      expect(() => assertLeasedLaunch({ ...launch, host: { ...launch.host, port: port as number } }, slot)).toThrow('integer');
     }
     expect(() => assertLeasedLaunch({ ...launch, workspace: { ...launch.workspace, target: '/wrong' } }, slot)).toThrow('escape');
     expect(() => assertLeasedLaunch({ ...launch, projections: [{ ...launch.projections[0]!, target: '/wrong' }] }, slot)).toThrow('escape');

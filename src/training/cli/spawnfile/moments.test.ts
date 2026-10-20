@@ -38,10 +38,11 @@ async function fixture() {
     await Promise.all([paths.workspace, paths.runtimeHome, paths.control].map(path => mkdir(path)));
     return paths;
   }
-  return { ...f, integration, trial, moment, prepare, paths, signal: new AbortController().signal };
+  const services = { grokSlots: { request: vi.fn(), accept: vi.fn() } };
+  return { ...f, integration, trial, moment, prepare, paths, services, signal: new AbortController().signal };
 }
 it('dispatches each authored moment to fresh isolated trial state and preserves legacy preparation', async () => {
-  const f = await fixture(), run = spawnfileEnvironment(f.integration, f.context);
+  const f = await fixture(), run = spawnfileEnvironment(f.integration, f.context, f.services);
   const first = await f.paths(), second = await f.paths();
   expect(await run(first, f.signal, f.trial)).toEqual({});
   expect(await run(second, f.signal, { ...f.trial, id: 'other' })).toEqual({});
@@ -50,11 +51,14 @@ it('dispatches each authored moment to fresh isolated trial state and preserves 
   await expect(run(first, f.signal, f.trial)).rejects.toThrow('not fresh');
   await run(second, f.signal, { ...f.trial, record: { ...f.trial.record, setup: undefined } });
   expect(f.integration.prepareEnvironment).toHaveBeenCalledOnce();
+  // Both legacy preparation and moment hooks receive the experiment's own services, unchanged.
+  expect(vi.mocked(f.integration.prepareEnvironment).mock.calls[0]![4]).toBe(f.services);
+  expect(vi.mocked(f.prepare).mock.calls[0]![5]).toBe(f.services);
 });
 it.each(['role', 'example', 'agent', 'projectRoot', 'group', 'lineage', 'extra'] as const)('rejects authored metadata mutation %s before calling a hook', async key => {
   const f = await fixture();
   (f.trial.record.setup!.trainingMoment as Record<string, unknown>)[key] = 'invalid';
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), f.signal, f.trial)).rejects.toThrow();
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), f.signal, f.trial)).rejects.toThrow();
   expect(f.prepare).not.toHaveBeenCalled();
 });
 it.each([
@@ -62,7 +66,7 @@ it.each([
 ] as const)('rejects authored %s in evaluation phase %s before calling a hook', async (role, phase) => {
   const f = await fixture();
   f.moment.role = role; f.moment.example = `${role}:${f.trial.record.id}`;
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), f.signal, { ...f.trial, phase })).rejects.toThrow('identity mismatch');
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), f.signal, { ...f.trial, phase })).rejects.toThrow('identity mismatch');
   expect(f.prepare).not.toHaveBeenCalled();
 });
 it('requires authored train rewind evidence when evaluating an internal validation holdout', async () => {
@@ -74,13 +78,13 @@ it('requires authored train rewind evidence when evaluating an internal validati
     await writeFile(file, JSON.stringify(evidence));
     return result;
   } };
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), f.signal, { ...f.trial, phase: 'validation' })).rejects.toThrow('evidence mismatch');
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), f.signal, { ...f.trial, phase: 'validation' })).rejects.toThrow('evidence mismatch');
   expect(f.prepare).toHaveBeenCalledOnce();
 });
 it.each(['missing', 'inherited'])('requires an own declared hook (%s)', async mode => {
   const f = await fixture();
   f.integration.momentPreparations = mode === 'missing' ? undefined : Object.create({ 'fixture/rewind': f.prepare });
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), f.signal, f.trial)).rejects.toThrow('Undeclared');
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), f.signal, f.trial)).rejects.toThrow('Undeclared');
 });
 it.each(['receipt', 'refused', 'leak', 'link', 'oversized', 'directory'])('rejects invalid preparation evidence: %s', async mutation => {
   const f = await fixture(), original = f.prepare;
@@ -94,15 +98,15 @@ it.each(['receipt', 'refused', 'leak', 'link', 'oversized', 'directory'])('rejec
     if (mutation === 'directory') { await rm(join(root, 'moment.json')); await mkdir(join(root, 'moment.json')); }
     return result;
   } };
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), f.signal, f.trial)).rejects.toThrow();
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), f.signal, f.trial)).rejects.toThrow();
 });
 it('rejects cancellation before and after hook work', async () => {
   const f = await fixture(), controller = new AbortController(); controller.abort();
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), controller.signal, f.trial)).rejects.toThrow();
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), controller.signal, f.trial)).rejects.toThrow();
   expect(f.prepare).not.toHaveBeenCalled();
   const next = new AbortController();
   f.integration.momentPreparations = { 'fixture/rewind': async (...args) => { const result = await f.prepare(...args); next.abort(); return result; } };
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), next.signal, f.trial)).rejects.toThrow();
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), next.signal, f.trial)).rejects.toThrow();
 });
 
 it.each(['explicit', 'automatic', 'group'] as const)('executes %s validation through fake moment hooks before native trials', async mode => {
@@ -156,7 +160,7 @@ it.each(['version', 'trialId', 'example', 'momentRoot', 'at', 'absent'])('binds 
     else (result.momentReceipt as unknown as Record<string, unknown>)[field] = 'wrong';
     return result;
   } };
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), f.signal, f.trial)).rejects.toThrow('receipt mismatch');
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), f.signal, f.trial)).rejects.toThrow('receipt mismatch');
 });
 it.each(['version', 'agent', 'at', 'effectiveAt', 'id', 'role', 'dataset', 'leak', 'example'])('binds rewind evidence field: %s', async field => {
   const f = await fixture(), original = f.prepare;
@@ -170,5 +174,5 @@ it.each(['version', 'agent', 'at', 'effectiveAt', 'id', 'role', 'dataset', 'leak
     await writeFile(file, JSON.stringify(evidence));
     return result;
   } };
-  await expect(spawnfileEnvironment(f.integration, f.context)(await f.paths(), f.signal, f.trial)).rejects.toThrow('evidence mismatch');
+  await expect(spawnfileEnvironment(f.integration, f.context, f.services)(await f.paths(), f.signal, f.trial)).rejects.toThrow('evidence mismatch');
 });

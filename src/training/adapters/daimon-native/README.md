@@ -371,9 +371,12 @@ Startup, in order, with no model call and no `codex sandbox` process:
 4. The ready line adds `engine` and `reasoningEffort`; the parent requires them to
    match the launch. The parent re-binds the persisted receipt without Daimon and
    additionally requires every caller `protectedPaths` entry as a denied canary.
-   Child execution must supply `grokSlots`, a `createGrokSlotFreshnessStore(file)`
-   kept in the experiment state: preparation calls `request(slot)` to mint the nonce
-   and generation floor it writes into the launch and sends with the recycle request;
+   Child execution must supply `grokSlots`. The CLI owns it: one
+   `createExperimentSlotFreshness(out)` store per experiment, handed to the
+   integration's `createAdapter` (for `grokSlots`) and preparation hooks
+   (`NativeTrialServices.grokSlots`). `prepareNativeSubject` calls `request(slot)`
+   before the provisioner runs to mint the nonce and generation floor the
+   provisioner sends with the recycle request and echoes into the launch;
    the parent's `accept` requires the pending nonce and a strictly higher generation
    and persists it, so a receipt can never be replayed into a later trial.
    Every store operation re-reads the file under an O_EXCL lockfile shared across

@@ -11,8 +11,21 @@ fields. Comparison mode does not accept these controls.
 The expected document is `{schema:"spawnfile.training-slots.v1", slots:[...]}`.
 Each descriptor carries `index`, `workerUid`, opaque `roots`, and `ports:{base,count}`.
 Preparation receives it as `NativePreparationContext.slot`; subject start receives
-it as `SubjectStart.slot`. Preparation remains responsible for provisioning and
-mapping the isolated resources. The native Daimon launch verifier binds the prepared
+it as `SubjectStart.slot`. The integration's `SubjectProvisioner` (Spawnfile's
+training lease satisfies it structurally) still provisions and maps the isolated
+resources; Paideia owns the execution half through the `adapters/daimon-native`
+subpath. `prepareNativeSubject` mints a broker slot's recycle nonce and generation
+floor before the provisioner runs and refuses its result unless the broker section
+parses as launch.v2 `broker`, echoes that freshness and passes the leased-slot
+verifier, all before any trial bytes are written; a shared-uid slot admits Codex
+only and passes it through unchanged. `bindTrialPathsToSlot`,
+`nativeTrialInputsRoot`, `nativeSubjectScratch` and `assertNativeEngineConfig`
+own trial path relocation, the per-engine input/scratch layout and the compiled
+engine check. The CLI creates one freshness store per experiment
+(`<out>/grok-slot-freshness.json`) and passes the same store to preparation
+(`NativeTrialServices.grokSlots`) and to `createAdapter` for
+`NativeChildExecution.grokSlots`, so integrations configure no freshness file. Integrations must not create their own Grok freshness store for the child: the CLI's single store is passed to both preparation and child execution, otherwise nonces mint in one file and are accepted in another and every trial fails `stale: nonce`.
+The native Daimon launch verifier binds the prepared
 receipt to `roots.workspace`, `runtimeHome`, `workerHome`, `usageLedger`,
 `preflightReceipt`, `controlRoot`, and the descriptor's identity and port block.
 It does not rewrite digest-bound receipts or reconstruct a broker projection.
