@@ -3,9 +3,9 @@ import type { Socket } from "node:net";
 import path from "node:path";
 
 import { SpawnfileError } from "../../shared/index.js";
-import { DAIMON_ENGINE_CREDENTIALS, DAIMON_GROK_ENGINE_BROKER } from "../../runtime/daimon/contractManifest.js";
+import { DAIMON_ENGINE_CREDENTIALS, DAIMON_GROK_ENGINE_BROKER, type DaimonGrokBrokerModel, type DaimonGrokBrokerReasoningEffort } from "../../runtime/daimon/contractManifest.js";
 import { parseTrainingBrokerDeclaration } from "./broker/declaration.js";
-import { TRAINING_BROKER_DECLARATION_FILE, TRAINING_PAIDEIA_ROOT, trainingSlotDescriptors, trainingSlotPaths } from "./broker/paths.js";
+import { TRAINING_BROKER_DECLARATION_FILE, TRAINING_PAIDEIA_ROOT, TRAINING_SLOTS_FILE, trainingSlotDescriptors } from "./broker/paths.js";
 import { loadDaimonProjectionModule, resolveTrainingSlotProjection } from "./broker/projection.js";
 import { recycleTrainingSlot } from "./broker/recycleClient.js";
 
@@ -17,7 +17,7 @@ export type TrainingSubjectEvaluatorRole = "run-root" | "context" | "sealed-inpu
 
 /** `paideia.daimon-native.launch.v2` `broker`, structurally `grokBrokerLaunchSchema` of Paideia 0.1.1. */
 export interface TrainingSubjectBrokerSection {
-  projectionVersion: string;
+  projectionVersion: typeof DAIMON_GROK_ENGINE_BROKER.projectionVersion;
   workerConfigVariant: "unclocked" | "clocked";
   projectionSha256: string;
   slot: number;
@@ -37,7 +37,7 @@ export interface TrainingSubjectBrokerSection {
 
 export type TrainingSubjectAgent =
   | { id: string; engine: "codex"; model: string }
-  | { id: string; engine: "grok"; model: string; reasoningEffort: string };
+  | { id: string; engine: "grok"; model: DaimonGrokBrokerModel; reasoningEffort: DaimonGrokBrokerReasoningEffort };
 
 export interface TrainingSubjectLease {
   agent: TrainingSubjectAgent;
@@ -45,9 +45,10 @@ export interface TrainingSubjectLease {
   projections: { role: "home" | "memory" | "transport"; source: string; target: string }[];
   credentials: { source: string; target: string }[];
   broker?: TrainingSubjectBrokerSection;
-  /** Named slot roots: always `workspace`, `home` and `control`, plus engine-specific roots. */
-  roots: Record<string, string>;
-  ports: { moltnet: number; workerControl: number; bridge: number };
+  /** Named slot roots: always `workspace`, `home` and `control`, plus engine-specific roots (Grok adds `context`). */
+  roots: Record<string, string> & { workspace: string; home: string; control: string };
+  /** `control` is the worker control port; `moltnet` and `bridge` are provisioner-owned extras. */
+  ports: { moltnet: number; control: number; bridge: number };
   /** Recycled generation; Grok only. */
   generation?: number;
   /** Subject environment Spawnfile owns for this lease. */
@@ -70,6 +71,7 @@ export interface LeaseTrainingSubjectOptions {
   /** Test seams: the supervisor connection and the declaration file. */
   connect?: () => Socket;
   declarationFile?: string;
+  slotsFile?: string;
 }
 
 /** The fixed read-only container leaf the training launch binds the Codex login to. */
@@ -133,7 +135,7 @@ const leaseGrokSubject = async (options: LeaseTrainingSubjectOptions): Promise<T
     projections: [{ role: "home", source: descriptor.runtimeHome, target: descriptor.runtimeHome }],
     credentials: [],
     broker: {
-      projectionVersion: String(projection.version),
+      projectionVersion: DAIMON_GROK_ENGINE_BROKER.projectionVersion,
       workerConfigVariant: projection.workerConfigVariant as "clocked",
       projectionSha256,
       slot: options.slot,
@@ -152,7 +154,7 @@ const leaseGrokSubject = async (options: LeaseTrainingSubjectOptions): Promise<T
       minGeneration: freshness.minGeneration
     },
     roots,
-    ports: { moltnet: descriptor.ports.moltnet, workerControl: descriptor.ports.workerControl, bridge: descriptor.ports.bridge },
+    ports: { moltnet: descriptor.ports.moltnet, control: descriptor.ports.workerControl, bridge: descriptor.ports.bridge },
     generation: result.generation,
     env: { [DAIMON_GROK_ENGINE_BROKER.slotRouting.slotEnvironment]: String(options.slot) }
   };
@@ -176,13 +178,32 @@ const codexCredentialRelativePath = async (load: () => Promise<unknown> = loadDa
   return relative;
 };
 
+/** Ports from the leased slot's own `slots.json` block (offsets 0=Moltnet, 1=worker control, 2=bridge), refused outside it. */
+const leasedSlotPorts = async (slot: number, file: string): Promise<TrainingSubjectLease["ports"]> => {
+  let entry: { index?: unknown; ports?: { base?: unknown; count?: unknown } } | undefined;
+  try {
+    const document = JSON.parse(await readFile(file, "utf8")) as { slots?: unknown };
+    entry = Array.isArray(document.slots) ? (document.slots as NonNullable<typeof entry>[]).find((row) => row?.index === slot) : undefined;
+  } catch { return refused("The training slots manifest is missing or unreadable"); }
+  const base = entry?.ports?.base, count = entry?.ports?.count;
+  if (!Number.isSafeInteger(base) || !Number.isSafeInteger(count) || (base as number) < 1 || (count as number) < 3) {
+    return refused(`Training slot ${slot} has no usable port block in the slots manifest`);
+  }
+  const first = base as number;
+  const offsets = { moltnet: first, control: first + 1, bridge: first + 2 };
+  if (Object.values(offsets).some((port) => port >= first + (count as number) || port > 65_535)) {
+    return refused(`Training slot ${slot} ports fall outside its leased block`);
+  }
+  return offsets;
+};
+
 const leaseCodexSubject = async (options: LeaseTrainingSubjectOptions): Promise<TrainingSubjectLease> => {
   if (options.freshness !== undefined) invalid("A Codex training subject has no slot recycle; freshness does not apply");
   if (typeof options.model !== "string" || !options.model.trim()) invalid("A Codex training subject requires its compiled model");
   if (!options.trialRoots) return invalid("A Codex training subject requires the evaluator's trial roots");
   const workspace = canonical("workspace", options.trialRoots.workspace);
   const runtimeHome = canonical("runtime home", options.trialRoots.runtimeHome);
-  const p = trainingSlotPaths(options.slot);
+  const ports = await leasedSlotPorts(options.slot, options.slotsFile ?? TRAINING_SLOTS_FILE);
   const relative = await codexCredentialRelativePath(options.loadDaimon);
   options.signal.throwIfAborted();
   // Codex's writable data sits beside the workspace, disjoint from the evaluator runtime and its controls.
@@ -204,7 +225,7 @@ const leaseCodexSubject = async (options: LeaseTrainingSubjectOptions): Promise<
     // (`stageTrainingAuth` from `spawnfile/auth`), never overwriting a renewed credential.
     credentials: [{ source: TRAINING_CODEX_CREDENTIAL_INGRESS, target: path.posix.join(home, relative) }],
     roots,
-    ports: { moltnet: p.ports.moltnet, workerControl: p.ports.workerControl, bridge: p.ports.bridge },
+    ports,
     env: {}
   };
 };

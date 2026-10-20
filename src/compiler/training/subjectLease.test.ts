@@ -8,7 +8,7 @@ import { z } from "zod";
 import { DAIMON_GROK_ENGINE_BROKER } from "../../runtime/daimon/contractManifest.js";
 import { resolveDaimonGrokClockedWorkerConfig } from "../../runtime/daimon/grokWorkerContract.js";
 import { parseTrainingBrokerDeclaration } from "./broker/declaration.js";
-import { trainingSlotPaths } from "./broker/paths.js";
+import { trainingSlotsDocument, trainingSlotPaths } from "./broker/paths.js";
 import { resolveTrainingGrokProjection, type DaimonProjectionModule } from "./broker/projection.js";
 import { buildTrainingSlotReceipt } from "./broker/receipt.js";
 import { resolveTrainingGrokRegistration } from "./broker/registration.js";
@@ -109,7 +109,7 @@ describe("leaseTrainingSubject for a brokered Grok slot", () => {
       projections: [{ role: "home", source: p.runtimeHome, target: p.runtimeHome }], credentials: [], generation: 5,
       roots: { workspace: p.workspace, home: p.runtimeHome, control: p.state, workerHome: p.workerHome, usageLedger: p.usageLedger,
         preflightReceipt: p.preflightReceipt, context: "/run/paideia" },
-      ports: { moltnet: 20_200, workerControl: 20_201, bridge: 20_202 }, env: { DAIMON_ENGINE_BROKER_SLOT: "2" }
+      ports: { moltnet: 20_200, control: 20_201, bridge: 20_202 }, env: { DAIMON_ENGINE_BROKER_SLOT: "2" }
     });
     expect(section).toMatchObject({ slot: 2, workerUid: 2202, workerConfigVariant: "clocked", expectedNonce: nonce, minGeneration: 5,
       limits: { maxRequests: 48, maxTokens: 2_500_000, timeoutMs: 1_800_000 }, slotPreflightReceipt: p.preflightReceipt });
@@ -171,8 +171,15 @@ describe("leaseTrainingSubject for a brokered Grok slot", () => {
 
 describe("leaseTrainingSubject for a Codex subject", () => {
   const material = { ENGINE_CREDENTIAL_MATERIAL: { codex: { sourceRelativePath: ".daimon-inbound/codex-auth" } } };
+  const slotsFile = (mutate: (document: ReturnType<typeof trainingSlotsDocument>) => void = () => undefined): string => {
+    const document = trainingSlotsDocument(4);
+    mutate(document);
+    const file = path.join(scratch(), "slots.json");
+    writeFileSync(file, JSON.stringify(document));
+    return file;
+  };
   const codex = (overrides: Partial<LeaseTrainingSubjectOptions> = {}) => leaseTrainingSubject({ slot: 1, engine: "codex", agentId: "agent:reporter",
-    model: "gpt-5.5", signal: new AbortController().signal, loadDaimon: async () => material,
+    model: "gpt-5.5", slotsFile: slotsFile(), signal: new AbortController().signal, loadDaimon: async () => material,
     trialRoots: { workspace: "/work/trial-1/workspace", runtimeHome: "/work/trial-1/runtime" }, ...overrides });
 
   it("projects home, memory and transport and binds the credential ingress into the home", async () => {
@@ -186,9 +193,20 @@ describe("leaseTrainingSubject for a Codex subject", () => {
       roots: { workspace: "/work/trial-1/workspace", home: "/work/trial-1/home", memory: "/work/trial-1/memory",
         transport: "/work/trial-1/runtime/native/moltnet", control: "/work/trial-1/runtime/native/root-control/acceptance",
         inputs: "/work/trial-1/runtime/native/root-control/inputs" },
-      ports: { moltnet: 20_100, workerControl: 20_101, bridge: 20_102 }, env: {}
+      ports: { moltnet: 20_100, control: 20_101, bridge: 20_102 }, env: {}
     });
     expect(TRAINING_CODEX_CREDENTIAL_INGRESS).toBe("/run/paideia-auth/codex");
+  });
+
+  it("takes Codex ports from the leased slot's own block and refuses ports outside it", async () => {
+    const shifted = slotsFile((document) => { document.slots[1]!.ports = { base: 30_000, count: 100 }; });
+    await expect(codex({ slotsFile: shifted })).resolves.toMatchObject({ ports: { moltnet: 30_000, control: 30_001, bridge: 30_002 } });
+    const narrow = slotsFile((document) => { document.slots[1]!.ports = { base: 20_100, count: 2 }; });
+    await expect(codex({ slotsFile: narrow })).rejects.toThrow(/port block/u);
+    await expect(codex({ slotsFile: slotsFile((document) => { document.slots[1]!.ports = { base: 65_534, count: 100 }; }) }))
+      .rejects.toThrow(/outside its leased block/u);
+    await expect(codex({ slotsFile: slotsFile((document) => { document.slots.splice(1, 1); }) })).rejects.toThrow(/port block/u);
+    await expect(codex({ slotsFile: path.join(scratch(), "absent.json") })).rejects.toThrow(/slots manifest/u);
   });
 
   it("refuses drifted Daimon credential material, missing inputs and freshness", async () => {
