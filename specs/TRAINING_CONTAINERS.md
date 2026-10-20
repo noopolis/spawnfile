@@ -367,22 +367,52 @@ identical `(agent, wake, prompt)` in trial N+1 can never replay trial N's sealed
 turn.
 
 The root slot supervisor listens on `/run/training/supervisor/control.sock` with
-one verb and one argument:
+one verb, a slot and a nonce (protocol v2):
 
 ```json
-{"v": "spawnfile.training-slot-supervisor.v1", "verb": "recycle", "nonce": "<32 random bytes, hex>"}
+{"v": "spawnfile.training-slot-supervisor.v2", "verb": "recycle", "slot": 2, "nonce": "<32 random bytes, hex>"}
 ```
 
-It answers `{"ok": true, "generation": N, "receipt": "/run/training/slot/preflight.json", "durationMs": …}`.
-`recycle` drains (no active turn in the registry and a settled credential
-journal), stops the relay, backend and launcher in that order, wipes the slot,
-replays the same audited provisioning the entrypoint ran — credential-journal
-recovery included, so a crash during a refresh either recovers or fails closed
-with a named error — restarts and re-verifies all three identities, runs the
-worker-uid denial canaries, and only then publishes
-`noopolis.daimon.grok-slot-preflight.v2` with a monotonic `generation` and the
-caller's `nonce`. Recycles are serialized; the caller never names a path or a
-command. Measured: three recycles at 611–620 ms each.
+It answers one line,
+`{"v": "spawnfile.training-slot-supervisor.v2", "ok": true, "verb": "recycle", "slot": 2, "generation": N, "nonce": "<echoed>", "receipt": "/run/training/slots/2/preflight.json", "durationMs": …}`,
+or `{"v": …, "ok": false, "error": "<reason>"}`. Every slot `<i>` publishes its
+own receipt at `/run/training/slots/<i>/preflight.json`. `recycle` asks the
+broker to reset only that slot (it refuses an active turn or a live worker and
+resets the slot's clock and turn store), wipes the slot's own tmpfs roots,
+replays the audited worker provisioning for that slot alone — shared broker
+configuration and credential state are never rewritten — runs the worker-uid
+denial canaries, and only then publishes
+`noopolis.daimon.grok-slot-preflight.v2` with that slot's monotonic
+`generation` and the caller's `nonce`. Recycles of one slot are serialized;
+different slots overlap. The caller never names a path or a command and must
+hold its exclusive slot lease throughout.
+
+### Public slot lease
+
+Integrations consume these through `spawnfile/training` and never import
+`dist/compiler/training/broker` internals or name an engine-specific path:
+
+- `recycleTrainingSlot({ slot, nonce, signal?, connect?, timeoutMs? })` is the
+  supervisor client. It bounds the reply (64 KiB) and the wait (180 s default,
+  plus `signal`), requires the answer to echo the protocol, slot and nonce with
+  a generation of at least 1, and surfaces a supervisor refusal with its reason.
+- `leaseTrainingSubject({ slot, engine, agentId, model?, freshness?, trialRoots?, signal, loadDaimon? })`
+  returns `{ agent, workspace, projections, credentials, broker?, roots, ports, generation?, env }`
+  for `paideia.daimon-native.launch.v2`. For Grok it reads the broker
+  declaration, resolves the slot's registration and Daimon projection exactly as
+  the root entrypoint does, recycles with `freshness.expectedNonce`, requires
+  the receipt path to be the slot descriptor's and the generation to reach
+  `freshness.minGeneration`, and returns the broker section with the
+  provisioner's verbatim deny list and profile digest. For Codex it derives the
+  home, memory and transport projections from the evaluator's trial roots and
+  binds the `/run/paideia-auth/codex` ingress to
+  `<home>/<ENGINE_CREDENTIAL_MATERIAL.codex.sourceRelativePath>`, refused unless
+  the installed Daimon's material equals the vendored manifest. Other engines
+  are refused.
+- `assertTrainingSubjectDeclaration(projectRoot, agentId, broker?)` checks the
+  resolved declaration: Codex requires `codex_policy: workspace-no-network` and
+  no broker or `turn_limits`; Grok requires all three `turn_limits` equal to the
+  broker limits and a `clocked` worker slot.
 
 Nothing the launch mounts may sit inside a directory a recycle removes or
 empties: a mount point cannot be unlinked while it is mounted. The broker and
@@ -437,13 +467,13 @@ profile and a canary in the receipt:
 | context | `/run/paideia` |
 | sealed-inputs | `/run/training/inputs` |
 | judge-home | `/run/training/grants` |
-| slot-ledger | `/run/training/slot/usage` |
+| slot-ledger | `/run/training/slots/<i>/usage` |
 
 The rest of the deny list is `/etc/daimon-engine-broker`,
 `/run/daimon-engine-broker`, `/run/training/inference`,
-`/run/training/slot/turns`, `/run/training/supervisor`,
+`/run/training/turns`, `/run/training/supervisor`,
 `/var/lib/spawnfile/daimon/{usage,wake-fuse}`, and Daimon's own protected set
-(the Grok bootstrap, the realm and `/run/training/slot/state`, the slot state
+(the Grok bootstrap, the realm and `/run/training/slots/<i>/state`, the slot state
 root that holds the wake-acceptance store). The caller's
 `config.json`, `launch.json`, `token`, `env`, `control`, `preparation.json` and
 `repair.json` are covered by the single `/run/paideia` mask rather than listed
@@ -456,7 +486,7 @@ every ancestor directory; one unplaceable entry makes Grok refuse the whole
 profile, so every turn of that slot fails with `bwrap: Can't create file at …:
 Permission denied`, not just that path (matrix:
 `.runtime/grok-deny-placement/EVIDENCE.md`). The wake-acceptance store is that
-case: its parent `/run/training/slot/state` is `2000:2000 0700`, so the mask
+case: its parent `/run/training/slots/<i>/state` is `2000:2000 0700`, so the mask
 moves onto the state root, which covers it and nothing else. Lifting a mask to a
 private ancestor is strictly stronger than masking the leaf and, unlike opening
 the ancestor with `o+x`, gives the worker no additional reach. Root provisioning
@@ -550,7 +580,7 @@ outright, because bubblewrap needs them, so in production an unavailable
 namespace is reported as `kernel`.
 
 Provisioning records every route and its verdict in
-`/run/training/slot/sealed-inputs.json`, a Spawnfile-owned
+`/run/training/slots/<i>/sealed-inputs.json`, a Spawnfile-owned
 `spawnfile.training-sealed-inputs.v1` attestation, `root:2000 0640` beside the
 slot preflight receipt. It is separate on purpose: the canary members of
 `noopolis.daimon.grok-slot-preflight.v2` are a cross-repo contract whose schema

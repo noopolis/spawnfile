@@ -25,3 +25,6 @@
 - Register each lowering entry before timestamp normalization; normalization failures are per-example refusals with null lineage, and later examples must still run.
 - `compiledAgent.ts` validates the consumed compile-report projection and resolves exact agent IDs or names to host and container paths. Shared runtimes publish adapter-owned per-agent paths; missing associations refuse rather than infer layouts.
 - Public exports include the fixed training-image faketime library path and the offline SQLite inspector with ordered room/sender filtering.
+
+- `subjectLease.ts` is the public engine-neutral subject lease. Integrations name an engine, agent and slot; Spawnfile supplies every container path, projection input, credential ingress and the recycle. Grok resolves its projection through `broker/projection.ts`'s `resolveTrainingSlotProjection`, the same call the root entrypoint binds into the receipt, and must never re-derive a deny list or digest. Unknown engines refuse.
+- `subjectDeclaration.ts` asserts declaration-level subject policy over the resolved project (Codex `codex_policy`, Grok `turn_limits` equal to the broker limits and a clocked slot).

@@ -24,6 +24,7 @@ container that runs a brokered Grok subject beside the evaluator.
   no caller-supplied path or command) and owns `startTrainingSlot`, the only
   preflight publication after shared startup. Recycles serialize per slot; different
   slots overlap. Paideia must retain its exclusive slot lease throughout recycle.
+- `recycleClient.ts` is the public evaluator-side client of the supervisor verb: bounded reply, timeout/abort, exact slot/nonce/protocol echo, refusal reasons surfaced. Its tests drive the real `serveTrainingSlotSupervisor` socket with only ownership facts stubbed.
 - `receipt.ts` writes `noopolis.daimon.grok-slot-preflight.v2`.
 - `taskClock.ts` reclaims the clock subtree only during shared startup,
   and checks installed config bytes, clock modes, library identity and worker
