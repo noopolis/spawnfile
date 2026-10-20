@@ -46,3 +46,16 @@ it.each(['throw', 'failed-return'] as const)('preserves usage observed before co
   expect(costs.completeness).toBe('incomplete');
   expect(costs.apiEquivalentUsd).toBeNull();
 });
+
+it('an observation failure after a settled turn withdraws both the usage status and the settlement attestation', async () => {
+  const native = { ...complete, usage, coverage: [...complete.coverage,
+    { channel: 'usage' as const, completeness: 'complete' as const, ordering: 'source' as const }] };
+  const task = await setup(async (input, turn) => {
+    await input.onObservation({ id: 'foreign', source: 'synthetic-native', seq: 1, type: 'usage', usage,
+      trialId: 'another-trial', wakeId: turn.id, timestamp: new Date().toISOString() }).catch(() => undefined);
+    return native;
+  });
+  const report = await runTrial(task.options);
+  expect(report.snapshot.subjectUsage).toMatchObject({ status: 'incomplete' });
+  expect(report.snapshot.subjectUsage).not.toHaveProperty('settled');
+});
