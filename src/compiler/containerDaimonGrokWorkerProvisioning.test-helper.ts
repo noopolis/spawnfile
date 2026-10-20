@@ -72,6 +72,12 @@ export const memoryFs = (seed: Record<string, Partial<Node>>) => {
       return resolved;
     },
     statSync: stat,
+    readdirSync: (target: string) => { get(target); return [...nodes.keys()].filter((key) => key !== target && path.posix.dirname(key) === target).map((key) => path.posix.basename(key)); },
+    rmdirSync: (target: string) => {
+      if ([...nodes.keys()].some((key) => key !== target && path.posix.dirname(key) === target)) throw Object.assign(new Error(`ENOTEMPTY: ${target}`), { code: "ENOTEMPTY" });
+      assertCreatableIn(target); nodes.delete(target);
+    },
+    unlinkSync: (target: string) => { if (get(target).kind === "dir") throw Object.assign(new Error(`EISDIR: ${target}`), { code: "EISDIR" }); assertCreatableIn(target); nodes.delete(target); },
     writeFileSync: (target: string, content: string, options: { flag?: string; mode?: number } = {}) => {
       if (options.flag === "wx" && nodes.has(target)) throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
       if (!nodes.has(target)) assertCreatableIn(target);
@@ -96,8 +102,8 @@ export const seedFor = (registrations: readonly DaimonGrokRegistration[], omit: 
     .map((denied) => [denied, { kind: denied.endsWith("grok-bootstrap-auth") ? "file" as const : "dir" as const, mode: 0o700 }] as const)
 ].filter(([target]) => !omit.includes(target)));
 
-export const run = (registrations: readonly DaimonGrokRegistration[], seed: Record<string, Partial<Node>>, lines = renderDaimonGrokWorkerProvisioning(registrations)) => {
-  const memory = memoryFs(seed);
+/** Runs the rendered program against an existing memory fs, so a second run models a container restart. */
+export const runOn = (memory: ReturnType<typeof memoryFs>, lines: readonly string[]) => {
   const secureWorkspace = (): void => undefined;
   const program = new Function("fs", "crypto", "secureWorkspace", "require", lines.join("\n"));
   program(memory.fs, crypto, secureWorkspace, (name: string) => name === "node:path" ? path.posix : name === "node:child_process" ? {
@@ -109,3 +115,6 @@ export const run = (registrations: readonly DaimonGrokRegistration[], seed: Reco
   } : undefined);
   return memory.nodes;
 };
+
+export const run = (registrations: readonly DaimonGrokRegistration[], seed: Record<string, Partial<Node>>, lines = renderDaimonGrokWorkerProvisioning(registrations)) =>
+  runOn(memoryFs(seed), lines);

@@ -33,8 +33,27 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
   spillDirectory: entry.spillDirectory,
   slot: entry.slot,
   uid: entry.uid,
-  workspace: entry.workspace
+  workspace: entry.workspace,
+  ...(entry.skills ? { skills: entry.skills.tree } : {})
 });
+
+/**
+ * `$GROK_HOME/skills`, exactly Daimon's `renderGrokWorkerSkillsTree` entries
+ * (`../runtime/daimon/grokWorkerSkills.ts`): rendered only when some worker
+ * declares skills, so a skill-less program is byte-identical to before. It runs
+ * while `$GROK_HOME` is still `root:root 0700` (pass 1), first removing any
+ * previous tree (a restart, or a worker-planted entry) after reclaiming each
+ * directory, because root holds neither `CAP_FOWNER` nor `CAP_DAC_OVERRIDE`.
+ * Files are created `wx` (single link) and moded `root:root 0444`; directories
+ * are created `0700` and only moded `root:root 0555` once every child exists.
+ * No other user skill root (`GROK_WORKER_FOREIGN_SKILL_ROOTS`) is created.
+ */
+const renderDaimonGrokWorkerSkillsProvisioning = (registrations: readonly DaimonGrokRegistration[]): string[] =>
+  registrations.some((entry) => entry.skills) ? [
+    "const removeSkillsTree = (target) => { let info; try { info = fs.lstatSync(target); } catch (error) { if (error.code === 'ENOENT') return; throw error; } if (info.isDirectory() && !info.isSymbolicLink()) { fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o700); for (const name of fs.readdirSync(target)) removeSkillsTree(`${target}/${name}`); fs.rmdirSync(target); } else fs.unlinkSync(target); };",
+    "const provisionSkills = (entry) => { removeSkillsTree(`${entry.grokHome}/skills`); const directories = []; for (const item of entry.skills) { const target = `${entry.grokHome}/${item.path}`; if ((item.path !== 'skills' && !item.path.startsWith('skills/')) || item.path.split('/').some((part) => part === '' || part === '.' || part === '..') || item.uid !== 0 || item.gid !== 0) throw new Error(`unsafe Grok worker skill entry: ${item.path}`); if (item.kind === 'directory') { fs.mkdirSync(target, { mode: 0o700 }); fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o700); directories.push([target, item.mode]); continue; } fs.writeFileSync(target, item.content, { mode: 0o600, flag: 'wx' }); const info = fs.lstatSync(target); if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) throw new Error(`unsafe Grok worker skill file: ${target}`); fs.chownSync(target, 0, 0); fs.chmodSync(target, item.mode); } for (const [target, mode] of directories.reverse()) { fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); } };",
+    "for (const entry of grokWorkers) if (entry.skills) provisionSkills(entry);"
+  ] : [];
 
 /**
  * Root provisioning for every brokered Grok worker, as lines of the broker's
@@ -93,6 +112,7 @@ export const renderDaimonGrokWorkerProvisioning = (
   `for (const entry of grokWorkers) { traversable(entry.workspace); secureWorkspace(entry.workspace, entry.uid); assertCanonical(entry.workspace, 'workspace'); ${scope === "container" ? "ensureDirectory(entry.home, 0, 0, 0o700);" : ""} ensureDirectory(entry.grokHome, 0, 0, 0o700); ensureDirectory(\`\${entry.grokHome}/sessions\`, 0, 0, 0o700); for (const target of [entry.home, entry.grokHome]) assertCanonical(target, 'home'); }`,
   "for (const denied of optionalDenyPaths) { try { fs.lstatSync(denied); } catch (error) { if (error.code !== 'ENOENT') throw error; fs.mkdirSync(denied, { mode: 0o700 }); fs.chownSync(denied, 0, 0); fs.chmodSync(denied, 0o700); } }",
   "for (const entry of grokWorkers) for (const denied of entry.denyPaths) { try { assertCanonical(denied, 'deny path'); } catch (error) { if (error.code === 'ENOENT' && entry.deferredDenyPaths.includes(denied)) continue; if (error.code === 'ENOENT') throw new Error(`Grok worker deny path is missing: ${denied}`); throw error; } }",
+  ...renderDaimonGrokWorkerSkillsProvisioning(registrations),
   // Pass 2: exact root-owned read-only files, the events file, then the final sticky modes.
   `for (const entry of grokWorkers) { ensureExactFile(\`\${entry.grokHome}/config.toml\`, entry.config, 0o444); ensureExactFile(entry.profilePath, entry.profile, 0o444); for (const name of ${JSON.stringify(DAIMON_GROK_WORKER_READ_ONLY_FILES.filter((name) => name !== "config.toml" && name !== "sandbox.toml"))}) ensureExactFile(\`\${entry.grokHome}/\${name}\`, '', 0o444); ensureEventsFile(entry.eventsPath, entry.uid); ensureDirectory(\`\${entry.grokHome}/sessions\`, 0, entry.uid, 0o1771); ensureDirectory(entry.grokHome, 0, entry.uid, 0o1771); ${scope === "container" ? `ensureDirectory(entry.privateTmp, entry.uid, entry.uid, 0o700); ensureDirectory(entry.home, entry.uid, ${DAIMON_BROKER_UID}, 0o710);` : ""} for (const target of [entry.profilePath, entry.eventsPath, \`\${entry.grokHome}/config.toml\`]) assertCanonical(target, 'home file'); }`,
   // Worker-private temp: the launcher compiles TMPDIR=<home>/tmp, the only temp the worker may write. It is

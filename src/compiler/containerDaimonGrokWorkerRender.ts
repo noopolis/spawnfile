@@ -25,6 +25,7 @@ import {
   renderDaimonGrokWorkerSandboxProfile,
   resolveDaimonGrokWorkerConfig
 } from "../runtime/daimon/grokWorkerContract.js";
+import { resolveDaimonGrokWorkerSkills, type DaimonGrokWorkerSkills } from "../runtime/daimon/grokWorkerSkills.js";
 import { DAIMON_FIRST_WORKER_UID } from "../runtime/daimon/runtimeIdentity.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 
@@ -118,6 +119,12 @@ export interface DaimonGrokRegistration {
   runtimeHome: string;
   /** Persistent mounts inside this agent's runtime home; Spawnfile keeps each `0700` under the traversable home. */
   runtimeHomeMounts: string[];
+  /**
+   * The agent's declared skills as Daimon renders them into `$GROK_HOME/skills`,
+   * with their digest; absent when it declares none, which keeps the
+   * registration, `service.json` and provisioning byte-identical.
+   */
+  skills?: DaimonGrokWorkerSkills;
   /** `<runtimeHome>/tool-output`: setgid spill directory in the worker's group. */
   spillDirectory: string;
   slot: number;
@@ -282,7 +289,9 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
     // The launcher derives HOME, GROK_HOME=<home>/.grok and TMPDIR=<home>/tmp from the registered home, and the broker reads the profile from GROK_HOME.
     if (path.posix.dirname(path.posix.dirname(path.posix.join(grokHome, "sandbox.toml"))) !== home) fail(`Grok worker ${agentId} profile is not under its registered home`);
     const backings = new Set(plans.flatMap((candidate) => candidate.resources ?? []).map((resource) => resource.backingPath));
+    const skills = resolveDaimonGrokWorkerSkills(plan.grokSkillsByNodeId?.[agentId]);
     return {
+      ...(skills ? { skills } : {}),
       deferredDenyPaths: denyPaths.filter((entry) => backings.has(entry)),
       limits,
       agentId,
@@ -367,11 +376,13 @@ export const renderDaimonGrokServiceConfig = (
     profileSha256: entry.profileSha256,
     ...(options.version === "v3" ? {} : { usageLedgerPath: entry.usageLedgerPath,
     limits: { ...(entry.limits ?? DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults) },
-    model: { id: entry.model, reasoningEffort: entry.reasoningEffort } })
+    model: { id: entry.model, reasoningEffort: entry.reasoningEffort },
+    ...(entry.skills ? { skillsSha256: entry.skills.sha256 } : {}) })
   })),
   ...(options.version === "v3" ? { slotPolicies: registrations.map(entry => ({
     slot: entry.slot, usageLedgerPath: entry.usageLedgerPath,
     limits: { ...(entry.limits ?? DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults) },
-    model: { id: entry.model, reasoningEffort: entry.reasoningEffort }
+    model: { id: entry.model, reasoningEffort: entry.reasoningEffort },
+    ...(entry.skills ? { skillsSha256: entry.skills.sha256 } : {})
   })) } : {})
 });
