@@ -17,9 +17,11 @@ vi.mock("./processes.js", () => ({ startBrokerProcesses: async () => { control.o
   stopBrokerProcesses: async () => {} }));
 vi.mock("./evaluatorSecrets.js", () => ({ stageTrainingEvaluatorSecret: async () => { control.order.push("secret"); } }));
 vi.mock("./provisioning.js", () => ({ renderTrainingBrokerProvisioning: () => [] }));
+// Shared provisioning runs from a root-only script file (argv would hit Linux MAX_ARG_STRLEN), never execFile argv.
+vi.mock("./rootScript.js", () => ({ runTrainingRootScript: async () => { control.order.push("provision"); return { stdout: "", stderr: "" }; } }));
 vi.mock("node:child_process", () => ({
   execFile: (_command: string, _args: string[], _options: unknown, done: (error: unknown) => void) => {
-    control.order.push("provision"); done(null);
+    control.order.push("execFile"); done(null);
   },
   spawn: (_command: string, _args: string[], options: { env: NodeJS.ProcessEnv }) => {
     control.order.push("evaluator"); control.env = options.env;

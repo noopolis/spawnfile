@@ -1,9 +1,9 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
 import os from "node:os";
-import { promisify } from "node:util";
 import { renderTrainingBrokerProvisioning } from "./provisioning.js";
+import { runTrainingRootScript } from "./rootScript.js";
 import { stageTrainingEvaluatorSecret } from "./evaluatorSecrets.js";
 import { startBrokerProcesses, stopBrokerProcesses } from "./processes.js";
 import { resetTrainingBrokerSlotAsOrganization } from "./reset.js";
@@ -92,7 +92,7 @@ export const runTrainingBrokerEntrypoint = async (options: TrainingEntrypointOpt
   const runtimes = slots.map(({ registration, projectionSha256 }) =>
     createTrainingSlotRuntime({ declaration, registration, projectionSha256, reset }));
   await stageTrainingEvaluatorSecret();
-  await promisify(execFile)("/bin/bash", ["--noprofile", "--norc", "-ceu", renderTrainingBrokerProvisioning(registrations, declaration.maxRunRequests).join("\n")], { maxBuffer: 8 * 1024 * 1024 });
+  await runTrainingRootScript(renderTrainingBrokerProvisioning(registrations, declaration.maxRunRequests).join("\n"), { maxBuffer: 8 * 1024 * 1024 });
   const children = await startBrokerProcesses({ log });
   let server: ReturnType<typeof serveTrainingSlotSupervisor> | undefined;
   try {

@@ -34,7 +34,8 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
   slot: entry.slot,
   uid: entry.uid,
   workspace: entry.workspace,
-  ...(entry.skills ? { skills: entry.skills.tree } : {})
+  // By digest only: the tree itself is embedded once per program (`grokWorkerSkillTrees`), never per slot.
+  ...(entry.skills ? { skillsSha256: entry.skills.sha256 } : {})
 });
 
 /**
@@ -50,9 +51,10 @@ const programRegistration = (entry: DaimonGrokRegistration) => ({
  */
 const renderDaimonGrokWorkerSkillsProvisioning = (registrations: readonly DaimonGrokRegistration[]): string[] =>
   registrations.some((entry) => entry.skills) ? [
+    `const grokWorkerSkillTrees = ${JSON.stringify(Object.fromEntries(registrations.flatMap((entry) => entry.skills ? [[entry.skills.sha256, entry.skills.tree]] : [])))};`,
     "const removeSkillsTree = (target) => { let info; try { info = fs.lstatSync(target); } catch (error) { if (error.code === 'ENOENT') return; throw error; } if (info.isDirectory() && !info.isSymbolicLink()) { fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o700); for (const name of fs.readdirSync(target)) removeSkillsTree(`${target}/${name}`); fs.rmdirSync(target); } else fs.unlinkSync(target); };",
-    "const provisionSkills = (entry) => { removeSkillsTree(`${entry.grokHome}/skills`); const directories = []; for (const item of entry.skills) { const target = `${entry.grokHome}/${item.path}`; if ((item.path !== 'skills' && !item.path.startsWith('skills/')) || item.path.split('/').some((part) => part === '' || part === '.' || part === '..') || item.uid !== 0 || item.gid !== 0) throw new Error(`unsafe Grok worker skill entry: ${item.path}`); if (item.kind === 'directory') { fs.mkdirSync(target, { mode: 0o700 }); fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o700); directories.push([target, item.mode]); continue; } fs.writeFileSync(target, item.content, { mode: 0o600, flag: 'wx' }); const info = fs.lstatSync(target); if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) throw new Error(`unsafe Grok worker skill file: ${target}`); fs.chownSync(target, 0, 0); fs.chmodSync(target, item.mode); } for (const [target, mode] of directories.reverse()) { fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); } };",
-    "for (const entry of grokWorkers) if (entry.skills) provisionSkills(entry);"
+    "const provisionSkills = (entry) => { removeSkillsTree(`${entry.grokHome}/skills`); const tree = grokWorkerSkillTrees[entry.skillsSha256]; if (!Array.isArray(tree) || tree.length === 0) throw new Error(`Grok worker skills ${entry.skillsSha256} are not embedded`); const directories = []; for (const item of tree) { const target = `${entry.grokHome}/${item.path}`; if ((item.path !== 'skills' && !item.path.startsWith('skills/')) || item.path.split('/').some((part) => part === '' || part === '.' || part === '..') || item.uid !== 0 || item.gid !== 0) throw new Error(`unsafe Grok worker skill entry: ${item.path}`); if (item.kind === 'directory') { fs.mkdirSync(target, { mode: 0o700 }); fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o700); directories.push([target, item.mode]); continue; } fs.writeFileSync(target, item.content, { mode: 0o600, flag: 'wx' }); const info = fs.lstatSync(target); if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) throw new Error(`unsafe Grok worker skill file: ${target}`); fs.chownSync(target, 0, 0); fs.chmodSync(target, item.mode); } for (const [target, mode] of directories.reverse()) { fs.chownSync(target, 0, 0); fs.chmodSync(target, mode); } };",
+    "for (const entry of grokWorkers) if (entry.skillsSha256) provisionSkills(entry);"
   ] : [];
 
 /**
