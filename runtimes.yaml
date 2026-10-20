@@ -13,15 +13,15 @@
 runtimes:
   daimon:
     remote: git@github.com:noopolis/daimon-harness.git
-    ref: 14d0298c00861f949bb6993d1af9751cde53319f
+    ref: 00e8f1dcf2b31d32e8048dd292df840a749b7869
     default_branch: main
     install:
       kind: container_image
       image: noopolis/spawnfile-runtime-daimon
-      tag: 0.2.1-14d0298
-      digest: sha256:2de3bd522ce88202b3295efa4f19c72c350e5e18c25ccba55e5acf3395e8569c
+      tag: 0.2.2-00e8f1d
+      digest: sha256:8ea499317850b9cd72039d1108b8b58cd0c9735256fbd7ac71d5dbe32969dea2
       capability_receipts:
-        amd64: sha256:26fe7ff328bb45fb6643b0792ab38b2658d5fcc3d2d8bd67d9848ea2987c04cc
+        amd64: sha256:b68d2b27f8ec7f6237f2e2a5253fa3fc16f5555968ce82a07350ba258e659a93
         arm64: sha256:347da7c613ad3430e018de829587a6d686c498c6168ef4be6b8dd501fdb07ebb
       contract_manifest_sha256: sha256:e39551277c6727c8807b1247e759f57addcee3f17f1405ebc927179647d64de6
     status: active
