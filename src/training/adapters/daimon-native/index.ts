@@ -19,8 +19,9 @@ export type { GrokBrokerLaunch } from './receipt/index.js';
  * Engine-neutral subject preparation on a leased slot: Paideia sequences slot
  * freshness and validates the provisioner's launch fields against the lease.
  */
-export { prepareNativeSubject } from './preparation/index.js';
-export type { NativeSubjectEngine, NativeTrialRoots, PrepareNativeSubjectOptions, ProvisionedSubject,
+export { assertNativeEngineConfig, bindTrialPathsToSlot, nativeSubjectScratch, nativeTrialInputsRoot,
+  prepareNativeSubject } from './preparation/index.js';
+export type { NativeAgentConfig, NativeScratchName, NativeSubjectLayout, NativeSubjectEngine, NativeTrialRoots, PrepareNativeSubjectOptions, ProvisionedSubject,
   SubjectProvisionInput, SubjectProvisioner } from './preparation/index.js';
 
 export type { NativeExternalInputs, NativeExternalInput, NativeChildExternalInputs } from './external.js';
