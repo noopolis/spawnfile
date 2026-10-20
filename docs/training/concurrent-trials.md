@@ -24,7 +24,7 @@ own trial path relocation, the per-engine input/scratch layout and the compiled
 engine check. The CLI creates one freshness store per experiment
 (`<out>/grok-slot-freshness.json`) and passes the same store to preparation
 (`NativeTrialServices.grokSlots`) and to `createAdapter` for
-`NativeChildExecution.grokSlots`, so integrations configure no freshness file.
+`NativeChildExecution.grokSlots`, so integrations configure no freshness file. Integrations must not create their own Grok freshness store for the child: the CLI's single store is passed to both preparation and child execution, otherwise nonces mint in one file and are accepted in another and every trial fails `stale: nonce`.
 The native Daimon launch verifier binds the prepared
 receipt to `roots.workspace`, `runtimeHome`, `workerHome`, `usageLedger`,
 `preflightReceipt`, `controlRoot`, and the descriptor's identity and port block.
