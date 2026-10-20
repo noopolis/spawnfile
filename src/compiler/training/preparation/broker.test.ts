@@ -37,6 +37,6 @@ it("carries the subject's pinned skills into the declaration, refuses changed by
     const plain = await prepareTrainingBroker(broker, root, bare, true, 2);
     expect(JSON.parse(await readFile(plain.declarationPath, "utf8"))).not.toHaveProperty("skills");
     await writeFile(skillPath, `${content}tampered\n`);
-    await expect(trainingBrokerSkills({ skills: [pinned] })).rejects.toThrow(/changed since its context was captured/u);
+    await expect(trainingBrokerSkills({ skills: [pinned] })).rejects.toMatchObject({ name: "SpawnfileError", message: expect.stringMatching(/changed since its context was captured/u) });
   } finally { await rm(root, { recursive: true, force: true }); }
 });

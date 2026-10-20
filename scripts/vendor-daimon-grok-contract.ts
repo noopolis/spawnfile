@@ -38,8 +38,17 @@ type DaimonModules = {
   contractManifestArtifacts: () => { digest: Buffer; manifest: Buffer };
   grokWorkerSkillsSha256: (skills: AgentSkills) => string;
   renderGrokWorkerSkillsTree: (skills: AgentSkills) => readonly unknown[];
+  /** Daimon's `AGENT_SKILLS_BOUNDS` and the source of its private skill name/path component rule. */
+  skillsRules: { bounds: Readonly<Record<string, number>>; componentPattern: string };
   renderGrokBrokerWorkerConfig: (policy: { model: string; reasoningEffort: string }, variant?: "unclocked" | "clocked", slot?: number) => string;
   renderGrokWorkerSandboxProfile: (denyPaths: readonly string[]) => string;
+};
+
+/** `COMPONENT` is not exported, so its pattern is read from the source it is defined in; a missing definition fails vendoring. */
+const skillComponentPattern = (daimonDirectory: string): string => {
+  const match = /^const COMPONENT = \/(.+)\/u;$/mu.exec(readFileSync(path.join(daimonDirectory, "src/runtime/grokWorkerSkills.ts"), "utf8"));
+  if (!match) throw new Error("Daimon grokWorkerSkills.ts no longer defines its COMPONENT rule as a /.../u literal");
+  return match[1]!;
 };
 
 const loadDaimon = async (daimonDirectory: string): Promise<DaimonModules> => {
@@ -54,6 +63,7 @@ const loadDaimon = async (daimonDirectory: string): Promise<DaimonModules> => {
     contractManifestArtifacts: emitter.contractManifestArtifacts as DaimonModules["contractManifestArtifacts"],
     grokWorkerSkillsSha256: skills.grokWorkerSkillsSha256 as DaimonModules["grokWorkerSkillsSha256"],
     renderGrokWorkerSkillsTree: skills.renderGrokWorkerSkillsTree as DaimonModules["renderGrokWorkerSkillsTree"],
+    skillsRules: { bounds: skills.AGENT_SKILLS_BOUNDS as Readonly<Record<string, number>>, componentPattern: skillComponentPattern(daimonDirectory) },
     renderGrokBrokerWorkerConfig: config.renderGrokBrokerWorkerConfig as DaimonModules["renderGrokBrokerWorkerConfig"],
     renderGrokWorkerSandboxProfile: profile.renderGrokWorkerSandboxProfile as DaimonModules["renderGrokWorkerSandboxProfile"]
   };
@@ -80,6 +90,9 @@ export const renderVendoredWorkerModule = (daimon: Omit<DaimonModules, "contract
     "",
     "/** Daimon `grokWorkerSkillsSha256` / `renderGrokWorkerSkillsTree` samples; the Spawnfile mirror must reproduce them exactly. */",
     `export const DAIMON_GROK_WORKER_SKILLS_SAMPLES = ${JSON.stringify(skills, null, 2)} as const;`,
+    "",
+    "/** Daimon's skills parser limits and name/path component rule; the Spawnfile mirror must use exactly these. */",
+    `export const DAIMON_AGENT_SKILLS_RULES = ${JSON.stringify(daimon.skillsRules, null, 2)} as const;`,
     ""
   ].join("\n");
 };

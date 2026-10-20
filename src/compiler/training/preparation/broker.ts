@@ -3,6 +3,7 @@ import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { daimonAgentSkillsFromResolved, parseDaimonAgentSkills, type DaimonAgentSkill } from "../../../runtime/daimon/grokWorkerSkills.js";
+import { SpawnfileError } from "../../../shared/index.js";
 import type { TrainingContext } from "../contract.js";
 
 import { DAIMON_GROK_SECCOMP_PROFILE_SHA256 } from "../../../shared/daimonGrokSeccompProfile.js";
@@ -37,7 +38,9 @@ export const trainingBrokerSkills = async (context: Pick<TrainingContext, "skill
   if (context.skills.length === 0) return undefined;
   const skills = await Promise.all(context.skills.map(async (skill) => {
     const bytes = await readFile(skill.sourcePath);
-    if (`sha256:${createHash("sha256").update(bytes).digest("hex")}` !== skill.sha256) throw Error(`Training skill ${skill.name} changed since its context was captured`);
+    if (`sha256:${createHash("sha256").update(bytes).digest("hex")}` !== skill.sha256) {
+      throw new SpawnfileError("validation_error", `Training skill ${skill.name} changed since its context was captured`);
+    }
     return { name: skill.name, content: bytes.toString("utf8") };
   }));
   return parseDaimonAgentSkills(daimonAgentSkillsFromResolved(skills));

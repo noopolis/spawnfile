@@ -27,7 +27,9 @@ export interface DaimonGrokWorkerSkillsEntry { path: string; kind: "directory" |
 /** What a registration carries when its agent declares skills; absent otherwise. */
 export interface DaimonGrokWorkerSkills { sha256: string; tree: DaimonGrokWorkerSkillsEntry[] }
 
-const COMPONENT = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/u;
+/** Daimon's skill name and path component rule (vendored as `DAIMON_AGENT_SKILLS_RULES.componentPattern`). */
+export const DAIMON_AGENT_SKILL_COMPONENT = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/u;
+const COMPONENT = DAIMON_AGENT_SKILL_COMPONENT;
 const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/u;
 const invalid = (detail: string): never => { throw new SpawnfileError("compile_error", `Invalid Daimon agent skills: ${detail}`); };
 const compare = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;

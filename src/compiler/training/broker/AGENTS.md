@@ -43,6 +43,13 @@ container that runs a brokered Grok subject beside the evaluator.
   worker uid may even attempt a namespace escape — the only honest way to say
   `seccomp` rather than `kernel` when a route is unavailable.
 - `entrypoint.ts`/`main.ts` are the image's root entrypoint.
+- `rootScript.ts` runs every generated root program (shared provisioning, slot
+  wipe, recycle provisioning, clock assertions) from a fresh `0700` directory's
+  `0600` script file. Never pass one as `bash -c <script>`: Linux caps one argv
+  element at 131072 bytes (`MAX_ARG_STRLEN`), a skills tree pushes a program
+  past it, and macOS does not enforce the cap. Never pipe it on stdin either: a
+  child that reads stdin would eat the rest of the program. Worker programs
+  embed each skills tree once, keyed by its digest, never once per slot.
 - `evaluatorSecrets.ts` boundedly copies readonly TypeSafe ingress into `/run/paideia` tmpfs before provisioning transfers ownership. Ingress stays root-only; the final directory/file are `2000:2000 0700/0600`. Never chmod/chown the host-bound leaf or put its bytes in the global environment/logs. The subject deny mask covers both paths.
 
 Local constraints:

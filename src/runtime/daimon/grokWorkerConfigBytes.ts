@@ -201,3 +201,15 @@ export const DAIMON_GROK_WORKER_SKILLS_SAMPLES = [
     ]
   }
 ] as const;
+
+/** Daimon's skills parser limits and name/path component rule; the Spawnfile mirror must use exactly these. */
+export const DAIMON_AGENT_SKILLS_RULES = {
+  "bounds": {
+    "skills": 64,
+    "filesPerSkill": 64,
+    "fileBytes": 262144,
+    "totalBytes": 4194304,
+    "depth": 8
+  },
+  "componentPattern": "^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"
+} as const;
