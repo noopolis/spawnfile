@@ -1,7 +1,7 @@
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
-import type { SpawnfileCliIntegration } from '../types.js';
+import type { NativeTrialServices, SpawnfileCliIntegration } from '../types.js';
 import type { SpawnfileTrainingContext } from './context.js';
 import type { NativePreparationContext, StoredTrialOptions } from '../../experiments/index.js';
 
@@ -27,7 +27,7 @@ export interface TrainingMomentReceipt {
 }
 export type TrainingMomentPreparation = (
   paths: Parameters<NonNullable<StoredTrialOptions['prepareEnvironment']>>[0], signal: AbortSignal,
-  trial: NativePreparationContext, context: SpawnfileTrainingContext, moment: TrainingMomentCase,
+  trial: NativePreparationContext, context: SpawnfileTrainingContext, moment: TrainingMomentCase, services: NativeTrialServices,
 ) => Promise<Awaited<ReturnType<NonNullable<StoredTrialOptions['prepareEnvironment']>>> & {
   momentReceipt: TrainingMomentReceipt;
 }>;
@@ -39,10 +39,11 @@ async function boundedJson(path: string): Promise<Record<string, unknown>> {
 }
 
 /** Static hook registration, fresh destination and rewind evidence are required before subject start. */
-export function spawnfileEnvironment(integration: SpawnfileCliIntegration, context: SpawnfileTrainingContext): NonNullable<StoredTrialOptions['prepareEnvironment']> {
+export function spawnfileEnvironment(integration: SpawnfileCliIntegration, context: SpawnfileTrainingContext,
+  services: NativeTrialServices): NonNullable<StoredTrialOptions['prepareEnvironment']> {
   return async (paths, signal, trial) => {
     const declared = trial.record.setup?.trainingMoment;
-    if (declared === undefined) return integration.prepareEnvironment(paths, signal, trial, context);
+    if (declared === undefined) return integration.prepareEnvironment(paths, signal, trial, context, services);
     const moment = momentSchema.parse(declared);
     const id = moment.example.slice(moment.role.length + 1);
     // An internal holdout changes evaluation phase, never the authored rewind selector.
@@ -60,7 +61,7 @@ export function spawnfileEnvironment(integration: SpawnfileCliIntegration, conte
       throw error;
     })) throw new Error('Training moment destination is not fresh');
     signal.throwIfAborted();
-    const prepared = await hooks[moment.hook]!(paths, signal, trial, context, moment);
+    const prepared = await hooks[moment.hook]!(paths, signal, trial, context, moment, services);
     signal.throwIfAborted();
     const receipt = prepared.momentReceipt;
     if (!receipt || receipt.version !== 'paideia.training-moment-prepared.v1' || receipt.trialId !== trial.id ||

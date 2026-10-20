@@ -10,6 +10,7 @@ import type { CliDependencies, CliIO } from './types.js';
 import { spawnfileEnvironment } from './spawnfile/index.js';
 import { prepareSpawnfileInputs } from './spawnfile/index.js';
 import type { StoredTrialOptions } from '../experiments/index.js';
+import { createExperimentSlotFreshness } from '../adapters/daimon-native/index.js';
 
 export function resourceMappings(args: CliArguments): ResourceMapping[] {
   const instructions = args.flags.instructions ?? [];
@@ -54,8 +55,10 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   const inputs = prepared ?? await prepareCliInputs(args, io, dependencies);
   const { runtime, model, judges, datasets } = inputs;
   const graders = await datasets.buildGraders(dependencies.grader, args.command === 'train');
+  // One Paideia-owned freshness store per experiment, in its durable output state.
+  const services = 'context' in inputs ? { grokSlots: createExperimentSlotFreshness(inputs.out) } : undefined;
   const adapter = 'context' in inputs
-    ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs })
+    ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs, grokSlots: services!.grokSlots })
     : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
       ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
   const configured = createTrainingInference(args, dependencies, inferenceTimeoutMs, judges, inputs.citationRepairs);
@@ -66,7 +69,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if ('context' in inputs) {
     const context = inputs.context;
-    prepareEnvironment = spawnfileEnvironment(dependencies.spawnfile!, context);
+    prepareEnvironment = spawnfileEnvironment(dependencies.spawnfile!, context, services!);
   }
   const subjectRoot = 'context' in inputs ? dependencies.spawnfile!.subjectRoot : undefined;
   return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot, closeInference: configured.close,

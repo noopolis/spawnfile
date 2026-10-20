@@ -19,8 +19,8 @@ export type { GrokBrokerLaunch } from './receipt/index.js';
  * Engine-neutral subject preparation on a leased slot: Paideia sequences slot
  * freshness and validates the provisioner's launch fields against the lease.
  */
-export { assertNativeEngineConfig, bindTrialPathsToSlot, nativeSubjectScratch, nativeTrialInputsRoot,
-  prepareNativeSubject } from './preparation/index.js';
+export { assertNativeEngineConfig, bindTrialPathsToSlot, createExperimentSlotFreshness, experimentSlotFreshnessFile,
+  nativeSubjectScratch, nativeTrialInputsRoot, prepareNativeSubject } from './preparation/index.js';
 export type { NativeAgentConfig, NativeScratchName, NativeSubjectLayout, NativeSubjectEngine, NativeTrialRoots, PrepareNativeSubjectOptions, ProvisionedSubject,
   SubjectProvisionInput, SubjectProvisioner } from './preparation/index.js';
 
@@ -32,7 +32,7 @@ export type { NativeTransportDelivery, PreparedTransportDelivery } from './trans
 export type { TransportDeliverySource } from './worker/index.js';
 
 export { createGrokSlotFreshnessStore, nativeChildArguments } from './child/index.js';
-export type { GrokSlotFreshness, GrokSlotFreshnessStore, NativeChildExecution } from './child/index.js';
+export type { GrokSlotFreshness, GrokSlotFreshnessOptions, GrokSlotFreshnessStore, NativeChildExecution } from './child/index.js';
 
 export { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from './grants/index.js';
 

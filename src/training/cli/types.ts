@@ -5,6 +5,18 @@ import type { BlobReference } from '../storage/index.js';
 import type { DatasetRegistry, EditPolicy, NativePreparationContext, StoredTrialOptions } from '../index.js';
 import type { TrainingMomentPreparation } from './spawnfile/moments.js';
 import type { SpawnfileTrainingContext } from './spawnfile/index.js';
+import type { GrokSlotFreshnessStore } from '../adapters/daimon-native/index.js';
+
+/**
+ * Experiment-owned services the runner hands to every integration hook. The
+ * same `grokSlots` store goes to preparation (`prepareNativeSubject` mints from
+ * it) and to the adapter's `NativeChildExecution.grokSlots` (the child accepts
+ * into it); it lives in the run's output directory, so integrations never
+ * configure a slot freshness file.
+ */
+export interface NativeTrialServices {
+  grokSlots: GrokSlotFreshnessStore;
+}
 
 export interface CliIO {
   cwd: string;
@@ -56,9 +68,9 @@ export interface SpawnfileCliIntegration {
   } | undefined>;
   /** Hash of immutable preparation/image/tool/evidence inputs; excludes credentials and generated state. */
   executionIdentity?: (context: CliExecutionIdentityContext) => string | Promise<string>;
-  createAdapter(context: SpawnfileTrainingContext, options: { model: string; timeoutMs: number }): SubjectAdapter;
+  createAdapter(context: SpawnfileTrainingContext, options: { model: string; timeoutMs: number; grokSlots: GrokSlotFreshnessStore }): SubjectAdapter;
   prepareEnvironment(paths: Parameters<NonNullable<StoredTrialOptions['prepareEnvironment']>>[0], signal: AbortSignal,
-    trial: NativePreparationContext, context: SpawnfileTrainingContext): ReturnType<NonNullable<StoredTrialOptions['prepareEnvironment']>>;
+    trial: NativePreparationContext, context: SpawnfileTrainingContext, services: NativeTrialServices): ReturnType<NonNullable<StoredTrialOptions['prepareEnvironment']>>;
 }
 
 export interface InvocationIndex {
