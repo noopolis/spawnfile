@@ -88,6 +88,7 @@ export const nativeLaunchSchema = z.union([launchV1, codexLaunchV2, grokLaunchV2
 
 export type NativeLaunch = z.infer<typeof nativeLaunchSchema>;
 export type GrokNativeLaunch = z.infer<typeof grokLaunchV2>;
+export type GrokBrokerLaunch = z.infer<typeof grokBrokerLaunchSchema>;
 export type VerifiedNativeLaunch = NativeLaunch & { receiptFile: string };
 export interface NativeMount { source: string; target: string; readonly: boolean }
 export const containerPaths = { config: '/run/paideia/config.json', control: '/run/paideia/control',
