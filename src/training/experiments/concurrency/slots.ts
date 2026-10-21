@@ -58,13 +58,15 @@ export function slotPort(slot: TrialSlot, index: number): number {
   return slot.ports.base + index;
 }
 
-export interface SlotLease { slot: TrialSlot; port(index: number): number; release(confirmed: boolean): void }
+/** `cause` says why an unconfirmed release quarantines the slot; exhaustion errors name every recorded cause. */
+export interface SlotLease { slot: TrialSlot; port(index: number): number; release(confirmed: boolean, cause?: string): void }
 interface Waiter { resolve(lease: SlotLease): void; reject(error: Error): void; signal?: AbortSignal; abort(): void }
 
 export class SlotPool {
   private readonly free: TrialSlot[];
   private readonly waiting: Waiter[] = [];
   private usable: number;
+  private readonly quarantined: string[] = [];
   constructor(slots: readonly TrialSlot[]) {
     if (!slots.length) throw new Error('No usable trial slots remain');
     this.free = structuredClone([...slots]);
@@ -72,7 +74,7 @@ export class SlotPool {
   }
   acquire(signal?: AbortSignal): Promise<SlotLease> {
     if (signal?.aborted) return Promise.reject(signal.reason);
-    if (!this.usable) return Promise.reject(new Error('No usable trial slots remain; all slots quarantined'));
+    if (!this.usable) return Promise.reject(this.exhausted());
     const slot = this.free.shift();
     if (slot) return Promise.resolve(this.lease(slot));
     return new Promise((resolve, reject) => {
@@ -86,18 +88,21 @@ export class SlotPool {
   }
   private lease(slot: TrialSlot): SlotLease {
     let released = false;
-    return { slot: structuredClone(slot), port: index => slotPort(slot, index), release: confirmed => {
+    return { slot: structuredClone(slot), port: index => slotPort(slot, index), release: (confirmed, cause) => {
       if (released) throw new Error('Trial slot lease already released');
       released = true;
       if (confirmed) this.free.push(slot);
-      else this.usable -= 1;
+      else { this.usable -= 1; this.quarantined.push(`slot ${slot.index}: ${cause?.trim().slice(0, 300) || 'closure unconfirmed'}`); }
       while (this.waiting.length && (this.free.length || !this.usable)) {
         const waiter = this.waiting.shift()!;
         waiter.signal?.removeEventListener('abort', waiter.abort);
-        if (!this.usable) waiter.reject(new Error('No usable trial slots remain; all slots quarantined'));
+        if (!this.usable) waiter.reject(this.exhausted());
         else waiter.resolve(this.lease(this.free.shift()!));
       }
-      if (!this.usable) throw new Error('No usable trial slots remain; all slots quarantined');
+      if (!this.usable) throw this.exhausted();
     } };
+  }
+  private exhausted(): Error {
+    return new Error(`No usable trial slots remain; all slots quarantined (${this.quarantined.join('; ')})`);
   }
 }
