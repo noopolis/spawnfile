@@ -5,6 +5,8 @@ owns paths, identities, port allocation and isolation. Preparation consumes the
 leased descriptor; this module never generates runtime paths or changes permissions.
 Export through index.ts. Test overlap, blocked admission, cancellation, quarantine,
 and invalid declarations without native runtimes or model calls.
+An unconfirmed release records why (`release(false, cause)`); the exhaustion error
+names every quarantined slot with its cause, so a failed experiment never hides it.
 
 `spawnfile.training-slots.v1` retains nonempty opaque roots and distinct worker
 uids. v2 requires `isolation: 'shared-uid'` on each descriptor, permits a shared

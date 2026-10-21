@@ -377,7 +377,10 @@ it.each([1, 2])('resolves preparation ports through real training with %i provis
     await request.evaluate({ caseId: 'Alpha', split: 'train', components: { ...request.components } }, new AbortController().signal);
     throw new Error('preparation verified');
   });
-  await expect(trainAgent(options)).rejects.toThrow(count === 1 ? 'all slots quarantined' : 'preparation verified');
+  // The quarantine names the slot and the preparation failure that left it unconfirmed.
+  await expect(trainAgent(options)).rejects.toThrow(count === 1
+    ? /all slots quarantined \(slot 0: trial \S+ hostWork=\S+ stop=\S+: .*Port index is outside the leased block/
+    : /preparation verified/);
   expect(prepare).toHaveBeenCalledOnce();
   if (count === 1) expect(portFailure).toBeInstanceOf(RangeError);
   else expect(portFailure).toBeUndefined();

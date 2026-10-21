@@ -150,7 +150,8 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     await options.onProgress?.({ type: 'trial.queued', payload: { caseId, phase, candidateId: candidate.id } });
     const lease = await pool?.acquire(signal ?? options.signal);
     let confirmed = false;
-    let report: TrialReport;
+    let report: TrialReport | undefined;
+    let failure: unknown;
     try {
     report = await runStoredTrial({ ...options.native,
       ...(options.scoring?.deferred === 'stage-score' ? { retainDeferredStatus: true } : {}), slot: lease?.slot, id, phase, round, record: structuredClone(record), candidate,
@@ -163,10 +164,12 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       } });
     confirmed = report.hostWork === 'settled' && report.stop?.state === 'acknowledged' && report.stop.quiescence === 'confirmed';
     await checkpoint?.complete(key, report);
-    } finally { lease?.release(confirmed); }
-    trials.push(report);
-    await options.onProgress?.({ type: 'trial.finished', payload: report });
-    return report;
+    } catch (error) { failure = error; throw error; } finally {
+      lease?.release(confirmed, quarantineCause(id, report, failure));
+    }
+    trials.push(report!);
+    await options.onProgress?.({ type: 'trial.finished', payload: report! });
+    return report!;
   };
   const trial: typeof attemptTrial = (dataset, caseId, phase, candidate, signal, callbackId, round) => {
     if (!trialRetries) return attemptTrial(dataset, caseId, phase, candidate, signal, callbackId, round);
@@ -230,4 +233,11 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       executionIdentity: options.checkpoint.identity, receiptDigest: options.checkpoint.fork.receiptDigest, inheritedTrialIds } } : {}) };
   await options.onProgress?.({ type: 'training.completed', payload: report });
   return report;
+}
+
+/** Why a slot lease was not confirmed closed, recorded with its quarantine. */
+function quarantineCause(id: string, report: TrialReport | undefined, failure: unknown): string {
+  if (!report) return `trial ${id} threw: ${failure instanceof Error ? failure.message : String(failure)}`;
+  const stop = report.stop;
+  return `trial ${id} hostWork=${report.hostWork} stop=${stop?.state ?? 'missing'}/${stop?.quiescence ?? 'missing'}: ${stop?.reason ?? report.error ?? 'no reason'}`;
 }
