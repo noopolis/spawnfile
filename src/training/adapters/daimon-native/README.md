@@ -399,6 +399,12 @@ $100 for one turn is malformed and rejected. Cost reports prefer a
 runtime-reported `notionalUsd` (labelled with its source) over catalog rates; there
 is no built-in Grok rate card, but `paideia.cost-config.v1` `prices` can add one.
 A broker limit failure is reported only as its closed `limit_reason`.
+When the failed, closed execution's own sealed usage row carries a `limit_reason`
+of `tokens`, `requests` or `timeout`, the terminal frame and turn carry `limit` and
+the trial reports `execution: "limit-exceeded"`: the subject exhausted a budget it
+declared, which is graded rather than treated as infrastructure. The decision reads
+only that sealed row, never the engine name or message prose; an unlabelled failure,
+a frame whose row disagrees, or an unconfirmed closure stays a failure.
 
 Request budget: `broker.limits.maxRequests` is enforced per broker turn by Daimon
 and is the only request cap. Paideia adds no trial-level request limit; a trial's

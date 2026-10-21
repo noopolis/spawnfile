@@ -74,6 +74,15 @@ the score's denominator rather than becoming a measured zero. An errored termina
 plan still outranks the deferral: an evaluation that could not measure remains
 unscorable instead of being published as a behavioural zero.
 
+A subject can also run out of a budget it declared itself (tokens, requests or
+timeout). An adapter labels that turn `limit` only from the runtime's sealed
+declared-limit stop on the closed execution, and the report's `execution` is
+`limit-exceeded` with the same `limit`. It follows the deferral's proofs and
+demotion exactly — an unproven closure, missing terminal evidence or cancellation
+makes it `failed` — and it is never a pass: a final failing witness names the
+limit. Unlike a deferral, the closed execution settles `subjectUsage`, so an
+artifact it never wrote is an observed absence and fails its checks.
+
 Evaluation services preserve injected grader runtimes alongside judges and embeddings.
 
 Preparation receives the caller's leased `slot` descriptor unchanged; SubjectStart
