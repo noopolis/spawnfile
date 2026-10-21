@@ -65,7 +65,9 @@ when the trial owner recorded a passing preDeferralStatus. Capture that verdict
 only in the opt-in path; default reports and rewards stay unchanged. Keep the
 trial failed, honor all measurement/cleanup guards, bind checkpoint identity and
 use the same policy in callbacks, held-out means and operator exports.
-`failed` remains unscorable; only explicit native-infrastructure failures allow
+`limit-exceeded` is scored the same way, under the same quiescence proof, and can
+only be a `fail`; its training feedback carries an `execution` note naming the
+declared budget the candidate exhausted. `failed` remains unscorable; only explicit native-infrastructure failures allow
 subject replacement.
 
 Evaluation services preserve injected grader runtimes alongside judges and embeddings.

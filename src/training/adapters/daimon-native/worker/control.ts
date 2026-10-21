@@ -1,6 +1,6 @@
-import { describeNativeFailure, executionClosed, claimedExecution, disposedWakeExecution, deferredAfterCompletion } from './evidence/index.js';
+import { describeNativeFailure, executionClosed, claimedExecution, disposedWakeExecution, deferredAfterCompletion, declaredLimitStop, DeclaredLimitStop } from './evidence/index.js';
 export { describeNativeFailure, admittedExecutions, validateNativeFrame, executionClosed, claimedExecution, disposedWakeExecution, AMBIGUOUS_NATIVE_EXECUTION, AMBIGUOUS_WAKE_EXECUTION } from './evidence/index.js';
-import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
+import { createDeliveryGate, engineWakeTimeoutMs, type DeliveryControls } from './deliveries.js';
 import { dirname, join } from 'node:path';
 import { collectNativeEvidence, nativeUsageCoverage, readClosedTraces, wakeEvidenceFile, writeEvidence, settleNativeRead } from './evidence/index.js';
 import { isGrokLaunch, type NativeLaunch, type NativeTaskClockEvidence } from '../receipt/index.js';
@@ -37,6 +37,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
   const source: NativeEvidenceSource = grok ? { engine: 'grok', requestsFile: join(dirname(usageFile), 'requests.jsonl') } : { engine: 'codex' };
   const cancellation = new AbortController();
   const gate = createDeliveryGate(options.timeoutMs, agent.attention?.maxExecutions, launch?.delivery);
+  const wakeTimeoutMs = engineWakeTimeoutMs(options.timeoutMs, launch);
   const transport = launch?.delivery === 'transport' ? createTransportDelivery(host, agent.id) : undefined;
   /** This trial's delivery ordinal, so each wake's frame is filed under a name no later wake reuses. */
   let delivered = 0;
@@ -102,6 +103,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
       let status: TerminalEvidence['status'];
       let error: string | undefined;
       let blocked: TerminalEvidence['blocked'];
+      let limit: TerminalEvidence['limit'];
       let native: NativeEvidence = { traces: [], usage: [], toolReceipts: [], modelContexts: [] };
       let timedOut = false;
       const timer = setTimeout(() => { timedOut = true; void stop(); }, remaining);
@@ -165,7 +167,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
             // Synchronously seal against route admission before deciding a terminal
             // outcome. No in-flight acceptance can be omitted by this snapshot.
             if (!incoming.seal(generation!, native.traces)) { await pause(100, cancellation.signal); continue; }
-            validateTransportExecutions(incoming.evidence, native, activity, agent.id);
+            validateTransportExecutions(incoming.evidence, native, activity, agent.id, wakeTimeoutMs);
           }
           // The trace this wake's own execution closed, never whichever one came
           // first: an unbound wake has no trace to speak for it, and reading another
@@ -186,6 +188,10 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           if (incoming?.evidence.unresolvedDeliveryIds.length) throw new Error('Transport trial deliveries remain unresolved');
           if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
           if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
+            // The closed execution's own sealed limit row outranks the runtime's
+            // generic availability error, which that same limit is what raised.
+            const limit = declaredLimitStop(trace, native.usage, wakeTimeoutMs);
+            if (limit) throw new DeclaredLimitStop(limit, describeNativeFailure(receipt, trace, native.usage));
             throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage));
           }
           status = 'completed';
@@ -195,11 +201,13 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         error = timedOut ? incoming && !incoming.evidence.deliveryId ? 'Transport delivery deadline exceeded: no matching delivery arrived'
           : 'Native trial deadline exceeded' : failure instanceof Error ? failure.message : String(failure);
         status = cancellation.signal.aborted && !timedOut ? 'cancelled' : 'failed';
+        // Thrown only synchronously after the cancellation check, so a deadline or abort never carries it.
+        if (failure instanceof DeclaredLimitStop) limit = failure.limit;
         if (!blocked) await stop();
         try {
           native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id,
             incoming ? undefined : executionId, agent.engine.model!, incoming ? [] : others(), source);
-        } catch (collectionError) { blocked = undefined; await stop(); error += `; evidence collection failed: ${String(collectionError)}`; }
+        } catch (collectionError) { blocked = undefined; limit = undefined; await stop(); error += `; evidence collection failed: ${String(collectionError)}`; }
       } finally { clearTimeout(timer); incoming?.finish(); }
       const continuing = gate.finish(executionId, blocked === 'awaiting-external-input');
       if (blocked && !continuing) await stop();
@@ -208,7 +216,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         ...(launch ? { preparation: { sourceConfigSha256: launch.sourceConfigSha256, instructions: launch.instructions, overrides: launch.overrides } } : {}),
         ...(incoming ? { transport: incoming.evidence } : {}), ...(taskClock ? { taskClock } : {}),
         status, startedAt, completedAt: new Date().toISOString(), executionId, receipt, activity, availability, native,
-        ...(blocked ? { blocked } : {}),
+        ...(blocked ? { blocked } : {}), ...(limit ? { limit } : {}),
         coverage: [{ channel: 'tools', completeness: native.toolReceipts.length || native.traces.some(trace => trace.tools.length) ? 'partial' : 'absent', ordering: 'none' },
           { channel: 'output', completeness: 'absent', ordering: 'none' },
           { channel: 'usage', completeness: native.accounting?.coverage ?? nativeUsageCoverage(native, executionId), ordering: 'source' }],

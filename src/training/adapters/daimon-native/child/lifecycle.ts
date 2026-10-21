@@ -3,10 +3,10 @@ import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEvidenceMissing } from '../../../contracts/execution.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
-import { admittedExecutions, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
+import { admittedExecutions, declaredLimitStop, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
   type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, transportTerminalBinding, type NativeExecutionHandle } from '../transport/index.js';
-import { parseTransportSource, type TransportDeliverySource } from '../worker/index.js';
+import { engineWakeTimeoutMs, parseTransportSource, type TransportDeliverySource } from '../worker/index.js';
 import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
 import type { NativeChildExecution } from './types.js';
@@ -227,7 +227,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       if (wake && launch.delivery === 'transport') wake.source = parseTransportSource((body as { source?: unknown }).source);
       if (wake) wakes.push(wake);
       const result = await http<T>(path, body, ms, signal);
-      if (wake) bindTerminalEvidence(wake, result as TerminalEvidence, launch, trialId, fault => { sealed ??= fault; });
+      if (wake) bindTerminalEvidence(wake, result as TerminalEvidence, launch, trialId, fault => { sealed ??= fault; }, engineWakeTimeoutMs(timeoutMs, launch));
       return result;
     };
     return { name: `child:${child.pid}`, request, stop, diagnostic: () => diagnosed };
@@ -280,7 +280,7 @@ function named(wakeId: unknown): WakeEvidence {
  * instead of here.
  */
 export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence, launch: VerifiedNativeLaunch, trialId: string,
-  seal: (fault: TerminalEvidenceMissing) => void): void {
+  seal: (fault: TerminalEvidenceMissing) => void, wakeTimeoutMs?: number): void {
   const own = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
     value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
     value.wakeId === wake.wakeId;
@@ -302,7 +302,10 @@ export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence
     }
     validateNativeFrame(value.activity!, value.receipt!, value.native.traces, launch.agent.id, value.executionId);
     const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
-    if (!trace || trace.status !== 'completed') return;
+    // A failed trace binds only as the declared-limit stop the worker labelled and
+    // its own sealed usage row still states; any other failure stays unscorable.
+    const limited = value.limit !== undefined && declaredLimitStop(trace, value.native.usage, wakeTimeoutMs) === value.limit;
+    if (!trace || trace.status !== 'completed' && !limited) return;
     if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, trace.turn_id) === value.executionId) wake.unevidenced = undefined;
   } catch (conflict) {
     const fault = (conflict as Error).message === AMBIGUOUS_NATIVE_EXECUTION ? 'terminal-ambiguous' : 'terminal-unbound';

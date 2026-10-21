@@ -1,4 +1,9 @@
 import { expect, it } from 'vitest';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
+import { trialScore } from '../training/index.js';
+import type { ObservationCoverage } from '../../contracts/execution.js';
 import type { EvaluationSnapshot } from '../../contracts/evaluation.js';
 import type { SubjectTurnResult, Usage } from '../../contracts/execution.js';
 import { createEvaluationRegistry, result } from '../../evaluation/index.js';
@@ -144,4 +149,82 @@ it('carries runtime-reported notional USD once and refuses invalid values', () =
   expect(capture([priced, native()]).usage?.notionalUsd).toBeNull();
   expect(capture([native(), native()]).usage).not.toHaveProperty('notionalUsd');
   for (const notionalUsd of [-1, Number.NaN]) expect(capture([native({ usage: { ...usage, notionalUsd } })])).toEqual({ status: 'incomplete', usage: null });
+});
+
+const limitError = 'Native execution failed: Grok broker turn limit_exceeded (limit_reason timeout)';
+const coverage: ObservationCoverage[] = [{ channel: 'tools', completeness: 'partial', ordering: 'none' },
+  { channel: 'output', completeness: 'absent', ordering: 'none' }, { channel: 'usage', completeness: 'partial', ordering: 'source' }];
+/** The run52 shape: the broker sealed the subject's own declared timeout on a closed execution. */
+function limited(limit?: SubjectTurnResult['limit']): SubjectTurnResult {
+  return { status: 'failed', text: '', error: limitError, coverage, ...(limit ? { limit } : {}),
+    usage: { inputTokens: 1_110_819, cachedInputTokens: 792_704, outputTokens: 80_322, reasoningTokens: null, source: 'fixture' } };
+}
+function filing() {
+  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+id: filing
+stages:
+  - id: accepted-filing
+    checks:
+      - {id: body, eval: contains-any, input: 'artifact:article#/body', values: [Filed]}
+    score:
+      linear: {body: 1}
+    gate: {passed: body}
+records:
+  - id: record
+    group: unique
+    input: {prompt: file the assigned story}
+    outputs: {article: article.json}
+`)).records[0]!;
+}
+
+it('grades a declared-limit stop on what it left, labels the limit and keeps the experiment scoring', async () => {
+  const task = await setup(async () => limited('timeout'));
+  task.options.record = filing();
+  const report = await runTrial(task.options);
+  expect(report).toMatchObject({ execution: 'limit-exceeded', limit: 'timeout', hostWork: 'settled', error: limitError });
+  expect(report).not.toHaveProperty('failureKind');
+  expect(report.stop).toMatchObject({ state: 'acknowledged', quiescence: 'confirmed' });
+  // The closed execution certifies the absence: the missing article fails its check.
+  expect(report.snapshot.subjectUsage).toMatchObject({ status: 'incomplete', settled: true });
+  expect(report.evaluation.stages[0]!.checks[0]!.status).toBe('fail');
+  expect(report.status).toBe('fail');
+  // A behavioural zero the optimizer learns from, never "failed in infrastructure".
+  expect(trialScore(report)).toBe(0);
+});
+
+it('grades whatever artifact a limit-stopped subject did produce, and still never passes it', async () => {
+  const task = await setup(async input => {
+    await writeFile(join(input.workspacePath, 'article.json'), '{"body":"Filed"}');
+    return limited('tokens');
+  });
+  task.options.record = filing();
+  const report = await runTrial(task.options);
+  expect(report).toMatchObject({ execution: 'limit-exceeded', limit: 'tokens' });
+  expect(report.evaluation.stages[0]!.checks[0]!.status).toBe('pass');
+  expect(report.status).toBe('fail');
+  expect(trialScore(report)).toBe(0);
+});
+
+it('keeps an unconfirmed-closure or unlabelled limit failure an infrastructure error', async () => {
+  const unconfirmed = await setup(async () => limited('timeout'));
+  unconfirmed.options.record = filing();
+  const base = unconfirmed.options.adapter;
+  unconfirmed.options.adapter = { ...base, async start(input) {
+    const session = await base.start(input);
+    return { ...session, stop: async reason => ({ ...await session.stop(reason), quiescence: 'unknown' as const, unconfirmed: 'child-running' as const }) };
+  } };
+  const unproven = await runTrial(unconfirmed.options);
+  expect(unproven.execution).toBe('failed');
+  expect(unproven).not.toHaveProperty('limit');
+  expect(unproven.error).toBe(`Native closure unproven (child-running); ${limitError}`);
+  expect(unproven.evaluation.stages[0]!.checks[0]!.status).toBe('unknown');
+  expect(() => trialScore(unproven)).toThrow('failed in infrastructure');
+
+  // The same words without the adapter's sealed-limit label are not a declared-limit stop.
+  const unlabelled = await setup(async () => limited());
+  unlabelled.options.record = filing();
+  const crashed = await runTrial(unlabelled.options);
+  expect(crashed.execution).toBe('failed');
+  expect(crashed.status).toBe('error');
+  expect(() => trialScore(crashed)).toThrow('failed in infrastructure');
 });

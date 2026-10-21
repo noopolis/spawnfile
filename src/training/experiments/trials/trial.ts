@@ -71,6 +71,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   let error: string | undefined;
   let execution: TrialReport['execution'] = 'completed';
   let failureKind: TrialReport['failureKind'];
+  let limit: TrialReport['limit'];
   let sinkFailed = false;
   let closed = false;
   let observationTail = Promise.resolve();
@@ -95,7 +96,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   let collectionFailed = false;
   const externallyInterrupted = () => control.cause === 'operator' || control.cause === 'deadline';
   const subjectUsage = () => subjectUsageSnapshot(turns.map(turn => turn.native), { expectedTurns: inputs.length,
-    complete: closed && execution === 'completed' && control.hostWork === 'settled' && !control.signal.aborted && nativeClosureConfirmed });
+    complete: closed && (execution === 'completed' || execution === 'limit-exceeded') && control.hostWork === 'settled' && !control.signal.aborted && nativeClosureConfirmed });
   const snapshot = async (): Promise<EvaluationSnapshot> => {
     pendingCollections++;
     try {
@@ -180,8 +181,10 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         // A turn that closed its own execution and left the delivery deferred is the
         // subject's outcome, not the machine's. The stop proofs below can still
         // demote it; an uncertain, hung, crashed or cancelled turn never reaches it.
+        // The same holds for a budget the subject declared and its runtime sealed as exhausted.
         execution = native.status === 'cancelled' ? 'interrupted'
-          : native.blocked === 'awaiting-external-input' ? 'deferred' : 'failed';
+          : native.blocked === 'awaiting-external-input' ? 'deferred' : native.limit ? 'limit-exceeded' : 'failed';
+        if (execution === 'limit-exceeded') limit = native.limit;
         if (execution === 'failed') fail();
         error = native.error; break;
       }
@@ -223,7 +226,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   const failedWake = nativeStop?.wakes?.filter(wake => wake.unevidenced).at(-1)?.wakeId;
   const unevidenced = nativeStop?.unevidenced
     ? `Native trial unscorable for want of terminal evidence (${nativeStop.unevidenced})${failedWake ? ` on wake ${failedWake}` : ''}` : undefined;
-  if (execution === 'deferred' && (unproven || unevidenced || control.signal.aborted)) {
+  if ((execution === 'deferred' || execution === 'limit-exceeded') && (unproven || unevidenced || control.signal.aborted)) {
     fail();
     // The deferral is the subject's outcome; this demotion is the machine's. While
     // they shared one message, an unprovable closure published the subject's own
@@ -279,13 +282,16 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       if (preDeferralStatus !== 'error') {
         gates.push(result('fail', error ?? 'Native delivery remains deferred awaiting external input'));
       }
+    } else if (execution === 'limit-exceeded') {
+      // Running out of a declared budget is the subject's failure, graded on what it left.
+      if (preDeferralStatus !== 'error') gates.push(result('fail', `Subject exhausted its declared ${limit} limit`));
     } else if (execution !== 'completed' && !live.decisive) gates.push(result('error', error ?? control.reason ?? 'Incomplete native execution'));
     const report: TrialReport = { schema: 'paideia.trial.v1', id: options.id, phase: options.phase,
       candidateId: options.candidateId, datasetDigest: options.datasetDigest, planDigest: options.planDigest,
       recordId: record.id, durationMs: performance.now() - started,
       subject: { adapterId: adapter.id, requestedModel: options.model, isolation: adapter.capabilities.isolation },
       ...(execution === 'deferred' && options.retainDeferredStatus ? { preDeferralStatus } : {}),
-      ...(failureKind ? { failureKind } : {}),
+      ...(failureKind ? { failureKind } : {}), ...(execution === 'limit-exceeded' ? { limit } : {}),
       ...(collectionFailed ? { collectionFailed: true as const } : {}),
       paths, status: combine('all', gates).status, execution, hostWork: control.hostWork, snapshot: finalSnapshot,
       expectedTurns: inputs.length, turns, evaluation, live: structuredClone(live.history), decisiveFailure: structuredClone(live.decisive),

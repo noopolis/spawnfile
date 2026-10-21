@@ -225,6 +225,9 @@ export interface SubjectEvidence {
   payload: unknown;
 }
 
+/** A subject-declared budget a runtime may report as exhausted. */
+export type DeclaredLimit = 'tokens' | 'requests' | 'timeout';
+
 export interface SubjectTurnResult {
   /** Only evidence admitted by the adapter, never unbound frames. */
   evidence?: SubjectEvidence;
@@ -248,6 +251,15 @@ export interface SubjectTurnResult {
    * hang, crash, abort or deadline never carries it.
    */
   blocked?: 'awaiting-external-input';
+  /**
+   * The subject's execution closed because it exhausted a budget it declared
+   * itself, sealed by the runtime's declared-limit stop contract (Daimon's
+   * `limit_reason`) on the failed execution's own usage row. The turn is still
+   * `failed`; an adapter sets it only for a closed, bound execution, so an
+   * unconfirmed closure, crash, credential fault, refusal or unknown stop never
+   * carries it.
+   */
+  limit?: DeclaredLimit;
   text: string;
   coverage: ObservationCoverage[];
   usage: Usage | null;

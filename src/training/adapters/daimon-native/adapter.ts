@@ -6,7 +6,7 @@ import { boundedTransportCall, requestTransportDelivery, transportTerminalBindin
 import { startOwnedChild, type NativeChildExecution } from './child/index.js';
 import { nextExternalInput, weakestNativeCoverage, type NativeExternalInputs } from './external.js';
 import type { SubjectAdapter, SubjectTurnResult } from '../../contracts/execution.js';
-import { MAX_EXTERNAL_DELIVERIES, type TerminalEvidence, type DeliveryControls } from './worker/index.js';
+import { MAX_EXTERNAL_DELIVERIES, engineWakeTimeoutMs, type TerminalEvidence, type DeliveryControls } from './worker/index.js';
 import { dockerCommand, workerRequest, type DockerCommand } from './container/index.js';
 import { startOwnedContainer } from './container/index.js';
 import { loadNativeLaunch } from './container/index.js';
@@ -96,7 +96,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             }
             let admitted: NativeTurnEvidence['wakes'][number] | undefined;
             try { admitted = admittedNativeEvidence(terminal, launch, input.trialId, turn.id, deliveryOrdinal,
-              join(nativeTrialArtifactsRoot(launch, input.trialId), 'evidence.json'), transport?.source, admittedDeliveries);
+              join(nativeTrialArtifactsRoot(launch, input.trialId), 'evidence.json'), transport?.source, admittedDeliveries, engineWakeTimeoutMs(timeoutMs, launch));
             // Evidence admission only withholds evidence from collect(); the turn's own verdict is unchanged.
             } catch { attributionInvalid = true; }
             if (admitted) evidence.wakes.push(admitted);
@@ -112,7 +112,8 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             // above matched. The caller needs that apart from the bare `failed` status.
             return { result: { status: terminal.status, text: '', usage, error: terminal.error, coverage: terminal.coverage,
               ...(admission ? { admission } : {}),
-              ...(terminal.blocked ? { blocked: terminal.blocked } : {}) } as SubjectTurnResult, terminal, verified: binding === 'bound' };
+              ...(terminal.blocked ? { blocked: terminal.blocked } : {}),
+              ...(terminal.limit && terminal.status === 'failed' ? { limit: terminal.limit } : {}) } as SubjectTurnResult, terminal, verified: binding === 'bound' };
           } catch (error) {
             const wasCancelled = stopped || signals.some(source => source.aborted);
             cancelled.abort();
@@ -171,7 +172,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             const { result, terminal, verified } = await deliver(current, combined, controls, turn.id, transport);
             coverages.push(result.coverage);
             // A cancelled wake never carries the deferral: cancellation is the machine's outcome.
-            if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, usage: observer.usage(),
+            if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, limit: undefined, usage: observer.usage(),
               coverage: weakestNativeCoverage(coverages), stop: await stop('Native subject stopped after verified wake') };
             if (!verified || !external || terminal?.blocked !== 'awaiting-external-input') return { ...result, usage: observer.usage(), coverage: weakestNativeCoverage(coverages) };
             if (ordinal >= external.maxDeliveries) return { ...result, status: 'failed', usage: observer.usage(), coverage: weakestNativeCoverage(coverages), stop: await stop('External input delivery budget exhausted') };

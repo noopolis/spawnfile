@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import { AMBIGUOUS_NATIVE_EXECUTION, AMBIGUOUS_WAKE_EXECUTION, claimedExecution, disposedWakeExecution, executionClosed } from './execution.js';
+import { AMBIGUOUS_NATIVE_EXECUTION, AMBIGUOUS_WAKE_EXECUTION, claimedExecution, declaredLimitStop, disposedWakeExecution, executionClosed } from './execution.js';
+import type { NativeUsage } from '../types.js';
 import { activityFixture, executionId, receiptFixture, traceFixture } from '../../test-fixtures.js';
 
 test('completed inbox receipt cannot close a running execution or substitute for telemetry', () => {
@@ -90,4 +91,32 @@ test('frame-wide validation precedes busy or missing selection and covers unname
     assert.throws(() => executionClosed(activityFixture(active), { ...receiptFixture(), execution_id: 'other' }, [],
       'agent:writer', executionId), /identity/);
   }
+});
+
+test('a declared-limit stop is read only from the failed execution\'s own sealed limit row, for any engine', () => {
+  const failed = { ...traceFixture(), status: 'failed' as const, error: { message: 'engine broker turn failed (limit_exceeded; limit=timeout)' } };
+  const row = (limit: string, wake = executionId, engine = 'grok') => ({ v: 'noopolis.daimon.turn-usage.v1', agent: 'agent:writer', wake, engine,
+    input: 1, output: 1, cache_read: 0, total: 2, complete: false, limit_reason: limit }) as unknown as NativeUsage;
+  // The fixture trace spans 1000ms; a 1000ms wake ceiling is the one it reached.
+  for (const limit of ['tokens', 'requests', 'timeout'] as const) assert.equal(declaredLimitStop(failed, [row(limit)], 1000), limit);
+  // Engine-neutral: the sealed contract decides, never the engine name.
+  assert.equal(declaredLimitStop(failed, [row('timeout', executionId, 'codex')], 1000), 'timeout');
+  // Daimon's idle watchdog seals the same `timeout`: short of the configured ceiling it is
+  // a hang, not the subject's budget. Within the 1% tolerance it still counts.
+  assert.equal(declaredLimitStop(failed, [row('timeout')], 1_800_000), undefined);
+  assert.equal(declaredLimitStop(failed, [row('timeout')], 1010), 'timeout');
+  assert.equal(declaredLimitStop(failed, [row('timeout')], 1011), undefined);
+  assert.equal(declaredLimitStop(failed, [row('timeout')]), undefined);
+  assert.equal(declaredLimitStop({ ...failed, started_at: 'unparsable' }, [row('timeout')], 1000), undefined);
+  // Token and request ceilings need no span.
+  assert.equal(declaredLimitStop(failed, [row('tokens')], 1_800_000), 'tokens');
+  // The broker's own prose without a sealed row, `none`, an unknown reason or another
+  // execution's row is not this execution's declared-limit stop.
+  assert.equal(declaredLimitStop(failed, []), undefined);
+  assert.equal(declaredLimitStop(failed, [row('none')]), undefined);
+  assert.equal(declaredLimitStop(failed, [row('secret')]), undefined);
+  assert.equal(declaredLimitStop(failed, [row('timeout', 'other-execution')]), undefined);
+  // Only a failed trace can have stopped on a limit.
+  assert.equal(declaredLimitStop(traceFixture(), [row('timeout')]), undefined);
+  assert.equal(declaredLimitStop(undefined, [row('timeout')]), undefined);
 });

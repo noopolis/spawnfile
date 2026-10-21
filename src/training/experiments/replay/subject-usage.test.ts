@@ -93,3 +93,20 @@ it('a legacy complete capture without settlement still parses and never certifie
   // A capture that does attest settlement is authenticated against it, and a forged one is refused.
   expect(() => trialReportSchema.parse({ ...stored, snapshot: { ...stored.snapshot, subjectUsage: { ...legacy, settled: false } } })).toThrow('Subject usage');
 });
+
+it('keeps a declared-limit stop\'s label and settled absence through replay, and only with the turn\'s own label', async () => {
+  const { report } = await fixture(report => {
+    report.expectedTurns = 1; report.execution = 'limit-exceeded'; report.limit = 'timeout';
+    report.turns[0]!.native = { ...report.turns[0]!.native, status: 'failed', limit: 'timeout' };
+    report.stop!.quiescence = 'confirmed';
+    report.snapshot.subjectUsage = subjectUsageSnapshot(report.turns.map(row => row.native), { complete: true, expectedTurns: 1 });
+  });
+  expect(report.snapshot.subjectUsage).toMatchObject({ settled: true });
+  expect(trialReportSchema.parse(report)).toMatchObject({ execution: 'limit-exceeded', limit: 'timeout',
+    turns: [{ native: { limit: 'timeout' } }], snapshot: { subjectUsage: { settled: true } } });
+  // A failed turn without the sealed-limit label cannot have certified that absence.
+  const unlabelled = structuredClone(report);
+  delete unlabelled.turns[0]!.native.limit;
+  expect(() => trialReportSchema.parse(unlabelled)).toThrow('Subject usage');
+  expect(() => trialReportSchema.parse({ ...report, limit: 'wall-clock' })).toThrow();
+});

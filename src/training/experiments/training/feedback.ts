@@ -91,6 +91,12 @@ function evaluationFeedback(evaluation: PlanEvaluation, measurementsOnly = false
   })) };
 }
 
+/** Present only when the subject ran out of a budget it declared; other reports keep their bytes. */
+function executionFeedback(report: TrialReport) {
+  return report.execution === 'limit-exceeded' ? { execution: { status: report.execution, limit: report.limit ?? null,
+    note: `The candidate exhausted its declared ${report.limit ?? 'unknown'} budget before finishing the task; work left unfinished was graded as missing.` } } : {};
+}
+
 function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialReport): string {
   const text = JSON.stringify(value);
   if (Buffer.byteLength(text) <= trainingFeedbackLimits.feedbackBytes) return text;
@@ -106,7 +112,7 @@ function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialR
   evaluation.stages.forEach(stage => stage.checks.forEach(collect));
   report.live.forEach(item => collect(item.result));
   const compact = { truncated: true, originalBytes: Buffer.byteLength(text),
-    sha256: createHash('sha256').update(text).digest('hex'), excerpt: '',
+    sha256: createHash('sha256').update(text).digest('hex'), excerpt: '', ...executionFeedback(report),
     evaluation: evaluationFeedback(evaluation, true), subjectUsage: report.snapshot.subjectUsage ?? null,
     live: report.live.map(item => ({ checkId: item.checkId, boundary: item.boundary, result: checkFeedback(item.result, true) })),
     atomic: { failed_check_count: atomic.failed_check_count, omitted_failed_checks: atomic.failed_check_count, failed_checks: [] } as AtomicFeedback };
@@ -119,7 +125,7 @@ function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialR
 export function trainingFeedback(record: ResolvedRecord, report: TrialReport, evaluation: PlanEvaluation = report.evaluation): { output: string; feedback: string } {
   if (report.phase !== 'train') return { output: '', feedback: '' };
   return { output: taskOutput(record, report), feedback: feedbackText({ task: record.input ?? record.turns,
-    criteria: record.effectiveStages,
+    criteria: record.effectiveStages, ...executionFeedback(report),
     evaluation: evaluationFeedback(evaluation),
     subjectUsage: report.snapshot.subjectUsage ?? null,
     live: report.live.map(item => ({ checkId: item.checkId, boundary: item.boundary, result: checkFeedback(item.result) })) }, evaluation, report) };
