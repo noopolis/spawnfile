@@ -2,7 +2,7 @@ import type { TrialSlot } from '../../contracts/trial-slot.js';
 import type { CandidateManifest } from '../../candidates/index.js';
 import type { ResolvedRecord, TaskInput } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationRegistry, EvaluationResult, EvaluationSnapshot, PlanEvaluation, Verdict } from '../../contracts/evaluation.js';
-import type { FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectStartupDiagnostic, SubjectTurnResult } from '../../contracts/execution.js';
+import type { DeclaredLimit, FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectStartupDiagnostic, SubjectTurnResult } from '../../contracts/execution.js';
 
 export interface TrialPaths { root: string; workspace: string; control: string; runtimeHome: string }
 /** Completed turns so far; absent before any turn returns, partial during live observation. */
@@ -66,8 +66,12 @@ export interface TrialReport {
    * waiting on external input: the machine worked and the task did not finish.
    * It is scored and never passed; `failed` requires failureKind to distinguish
    * native infrastructure from behavioral and measurement failures.
+   * `limit-exceeded` is the subject's own closed execution stopped by a budget
+   * it declared (`limit` names which), with closure confirmed: scored, never passed.
    */
-  execution: 'completed' | 'deferred' | 'interrupted' | 'failed';
+  execution: 'completed' | 'deferred' | 'limit-exceeded' | 'interrupted' | 'failed';
+  /** Present exactly on `limit-exceeded`: the declared budget the subject exhausted. */
+  limit?: DeclaredLimit;
   /** Present on classified failures only; absent legacy failures are not retryable. */
   failureKind?: 'native-infrastructure' | 'behavioral' | 'measurement';
   /** A failed collector requires explicit zero-admission evidence before replacement. */

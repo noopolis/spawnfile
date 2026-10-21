@@ -19,9 +19,12 @@ export function trialScore(
   // optimizer must see, not a broken machine — but only with the quiescence proof, and
   // never as a pass: an unanswered delivery is not completed training evidence.
   const deferred = report.execution === 'deferred' && report.stop?.quiescence === 'confirmed';
-  if (report.execution !== 'completed' && !decisive && !deferred) throw new Error(`Trial ${report.id} has incomplete native execution`);
+  // So is a subject that ran out of a budget it declared itself, under the same proof.
+  const limited = report.execution === 'limit-exceeded' && report.stop?.quiescence === 'confirmed';
+  if (report.execution !== 'completed' && !decisive && !deferred && !limited) throw new Error(`Trial ${report.id} has incomplete native execution`);
   if (report.status !== 'pass' && report.status !== 'fail') throw new Error(`Trial ${report.id} has unscorable ${report.status} evidence`);
   if (deferred && report.status !== 'fail') throw new Error(`Trial ${report.id} cannot pass on a deferred delivery`);
+  if (limited && report.status !== 'fail') throw new Error(`Trial ${report.id} cannot pass on an exhausted declared limit`);
   // Logical gates may mask errors; failed atomic measurements still have no behavioral score.
   const checks = [...Object.values(report.evaluation.checks ?? {}),
     ...report.evaluation.stages.flatMap(stage => [...stage.checks, stage.gate])];

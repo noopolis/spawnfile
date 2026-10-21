@@ -112,7 +112,8 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             // above matched. The caller needs that apart from the bare `failed` status.
             return { result: { status: terminal.status, text: '', usage, error: terminal.error, coverage: terminal.coverage,
               ...(admission ? { admission } : {}),
-              ...(terminal.blocked ? { blocked: terminal.blocked } : {}) } as SubjectTurnResult, terminal, verified: binding === 'bound' };
+              ...(terminal.blocked ? { blocked: terminal.blocked } : {}),
+              ...(terminal.limit && terminal.status === 'failed' ? { limit: terminal.limit } : {}) } as SubjectTurnResult, terminal, verified: binding === 'bound' };
           } catch (error) {
             const wasCancelled = stopped || signals.some(source => source.aborted);
             cancelled.abort();
@@ -171,7 +172,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             const { result, terminal, verified } = await deliver(current, combined, controls, turn.id, transport);
             coverages.push(result.coverage);
             // A cancelled wake never carries the deferral: cancellation is the machine's outcome.
-            if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, usage: observer.usage(),
+            if (verified && stopped) return { ...result, status: 'cancelled', blocked: undefined, limit: undefined, usage: observer.usage(),
               coverage: weakestNativeCoverage(coverages), stop: await stop('Native subject stopped after verified wake') };
             if (!verified || !external || terminal?.blocked !== 'awaiting-external-input') return { ...result, usage: observer.usage(), coverage: weakestNativeCoverage(coverages) };
             if (ordinal >= external.maxDeliveries) return { ...result, status: 'failed', usage: observer.usage(), coverage: weakestNativeCoverage(coverages), stop: await stop('External input delivery budget exhausted') };

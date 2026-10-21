@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEvidenceMissing } from '../../../contracts/execution.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
-import { admittedExecutions, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
+import { admittedExecutions, declaredLimitStop, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
   type TerminalEvidence } from '../worker/index.js';
 import { createNativeHttpClient, transportTerminalBinding, type NativeExecutionHandle } from '../transport/index.js';
 import { parseTransportSource, type TransportDeliverySource } from '../worker/index.js';
@@ -302,7 +302,10 @@ export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence
     }
     validateNativeFrame(value.activity!, value.receipt!, value.native.traces, launch.agent.id, value.executionId);
     const trace = typeof value.executionId === 'string' ? value.native.traces.find(row => row.turn_id === value.executionId) : undefined;
-    if (!trace || trace.status !== 'completed') return;
+    // A failed trace binds only as the declared-limit stop the worker labelled and
+    // its own sealed usage row still states; any other failure stays unscorable.
+    const limited = value.limit !== undefined && declaredLimitStop(trace, value.native.usage) === value.limit;
+    if (!trace || trace.status !== 'completed' && !limited) return;
     if (executionClosed(value.activity!, value.receipt!, value.native.traces, launch.agent.id, trace.turn_id) === value.executionId) wake.unevidenced = undefined;
   } catch (conflict) {
     const fault = (conflict as Error).message === AMBIGUOUS_NATIVE_EXECUTION ? 'terminal-ambiguous' : 'terminal-unbound';

@@ -1,4 +1,4 @@
-import { describeNativeFailure, executionClosed, claimedExecution, disposedWakeExecution, deferredAfterCompletion } from './evidence/index.js';
+import { describeNativeFailure, executionClosed, claimedExecution, disposedWakeExecution, deferredAfterCompletion, declaredLimitStop, DeclaredLimitStop } from './evidence/index.js';
 export { describeNativeFailure, admittedExecutions, validateNativeFrame, executionClosed, claimedExecution, disposedWakeExecution, AMBIGUOUS_NATIVE_EXECUTION, AMBIGUOUS_WAKE_EXECUTION } from './evidence/index.js';
 import { createDeliveryGate, type DeliveryControls } from './deliveries.js';
 import { dirname, join } from 'node:path';
@@ -102,6 +102,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
       let status: TerminalEvidence['status'];
       let error: string | undefined;
       let blocked: TerminalEvidence['blocked'];
+      let limit: TerminalEvidence['limit'];
       let native: NativeEvidence = { traces: [], usage: [], toolReceipts: [], modelContexts: [] };
       let timedOut = false;
       const timer = setTimeout(() => { timedOut = true; void stop(); }, remaining);
@@ -186,6 +187,10 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
           if (incoming?.evidence.unresolvedDeliveryIds.length) throw new Error('Transport trial deliveries remain unresolved');
           if (!failure && deferredAfterCompletion(receipt, trace)) blocked = 'awaiting-external-input';
           if (receipt.state !== 'completed' || trace?.status !== 'completed' || failure) {
+            // The closed execution's own sealed limit row outranks the runtime's
+            // generic availability error, which that same limit is what raised.
+            const limit = declaredLimitStop(trace, native.usage);
+            if (limit) throw new DeclaredLimitStop(limit, describeNativeFailure(receipt, trace, native.usage));
             throw new Error(failure ?? describeNativeFailure(receipt, trace, native.usage));
           }
           status = 'completed';
@@ -195,11 +200,12 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         error = timedOut ? incoming && !incoming.evidence.deliveryId ? 'Transport delivery deadline exceeded: no matching delivery arrived'
           : 'Native trial deadline exceeded' : failure instanceof Error ? failure.message : String(failure);
         status = cancellation.signal.aborted && !timedOut ? 'cancelled' : 'failed';
+        if (failure instanceof DeclaredLimitStop && !timedOut && !cancellation.signal.aborted) limit = failure.limit;
         if (!blocked) await stop();
         try {
           native = await collectNativeEvidence(agent.runtimeHomePath, usageFile, agent.id,
             incoming ? undefined : executionId, agent.engine.model!, incoming ? [] : others(), source);
-        } catch (collectionError) { blocked = undefined; await stop(); error += `; evidence collection failed: ${String(collectionError)}`; }
+        } catch (collectionError) { blocked = undefined; limit = undefined; await stop(); error += `; evidence collection failed: ${String(collectionError)}`; }
       } finally { clearTimeout(timer); incoming?.finish(); }
       const continuing = gate.finish(executionId, blocked === 'awaiting-external-input');
       if (blocked && !continuing) await stop();
@@ -208,7 +214,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         ...(launch ? { preparation: { sourceConfigSha256: launch.sourceConfigSha256, instructions: launch.instructions, overrides: launch.overrides } } : {}),
         ...(incoming ? { transport: incoming.evidence } : {}), ...(taskClock ? { taskClock } : {}),
         status, startedAt, completedAt: new Date().toISOString(), executionId, receipt, activity, availability, native,
-        ...(blocked ? { blocked } : {}),
+        ...(blocked ? { blocked } : {}), ...(limit ? { limit } : {}),
         coverage: [{ channel: 'tools', completeness: native.toolReceipts.length || native.traces.some(trace => trace.tools.length) ? 'partial' : 'absent', ordering: 'none' },
           { channel: 'output', completeness: 'absent', ordering: 'none' },
           { channel: 'usage', completeness: native.accounting?.coverage ?? nativeUsageCoverage(native, executionId), ordering: 'source' }],

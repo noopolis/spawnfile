@@ -82,6 +82,7 @@ const snapshot = z.object({ trialId: identity, recordId: identity, closed: z.lit
     value: z.json(), provenance: z.string(), acceptedCallId: z.string().optional() })) });
 
 /** Version-one reports contain only a final snapshot; turn results do not imply turn snapshots. */
+const declaredLimit = z.enum(['tokens', 'requests', 'timeout']);
 export const trialReportSchema = z.object({
   schema: z.literal('paideia.trial.v1'), id: identity, phase: z.enum(['train', 'validation', 'test']), candidateId: identity,
   datasetDigest: identity, planDigest: identity, recordId: identity,
@@ -95,11 +96,11 @@ export const trialReportSchema = z.object({
   status: verdict, preDeferralStatus: verdict.optional(),
   failureKind: z.enum(['native-infrastructure', 'behavioral', 'measurement']).optional(),
   collectionFailed: z.literal(true).optional(),
-  execution: z.enum(['completed', 'deferred', 'interrupted', 'failed']), hostWork: z.enum(['settled', 'incomplete']), snapshot,
+  execution: z.enum(['completed', 'deferred', 'limit-exceeded', 'interrupted', 'failed']), limit: declaredLimit.optional(), hostWork: z.enum(['settled', 'incomplete']), snapshot,
   expectedTurns: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
   turns: z.array(z.object({ id: identity, checks: z.array(result), native: z.object({
     status: z.enum(['completed', 'failed', 'cancelled']), blocked: z.literal('awaiting-external-input').optional(),
-    admission: z.object({ executionRecords: tokenCount, executionsUsed: tokenCount, agentExecutionsUsed: tokenCount,
+    limit: declaredLimit.optional(), admission: z.object({ executionRecords: tokenCount, executionsUsed: tokenCount, agentExecutionsUsed: tokenCount,
       tokensUsed: tokenCount, agentTokensUsed: tokenCount, toolEvents: tokenCount, outputEvents: tokenCount }).strict().optional(),
     text: z.string(), coverage: z.array(coverage), usage: usage.nullable(),
     error: z.string().optional(), stop: stop.optional() }) })),

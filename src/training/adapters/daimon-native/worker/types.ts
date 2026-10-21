@@ -1,3 +1,4 @@
+import type { DeclaredLimit } from '../../../contracts/execution.js';
 import type { NativeLaunch } from '../receipt/index.js';
 import type { NativeAcceptanceResult, TransportEvidence } from './wake-delivery/index.js';
 import type { NativeTaskClockEvidence } from '../receipt/index.js';
@@ -180,6 +181,8 @@ export interface TerminalEvidence {
   status: 'completed' | 'failed' | 'cancelled';
   /** A closed execution can leave its delivery deferred; this never marks the trial completed. */
   blocked?: 'awaiting-external-input';
+  /** The closed execution failed on a subject-declared limit sealed in its own usage row. */
+  limit?: DeclaredLimit;
   startedAt: string;
   completedAt: string;
   executionId?: string;

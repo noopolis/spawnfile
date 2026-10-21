@@ -43,10 +43,10 @@ export function subjectUsageSnapshot(turns: readonly SubjectTurnResult[], option
     }
     if (!validUsage(usage)) return missing;
   }
-  // Settlement is the execution's closure: completed turns, host settled, stop proven. It
+  // Settlement is the execution's closure: completed (or declared-limit-stopped) turns, host settled, stop proven. It
   // deliberately omits usage coverage, which a retried attempt can leave partial.
   const settled = options.complete && options.expectedTurns > 0 && Number.isSafeInteger(options.expectedTurns) &&
-    turns.length === options.expectedTurns && turns.every(turn => turn.status === 'completed' &&
+    turns.length === options.expectedTurns && turns.every(turn => (turn.status === 'completed' || turn.status === 'failed' && turn.limit !== undefined) &&
       (!turn.stop || turn.stop.state === 'acknowledged' && turn.stop.quiescence === 'confirmed'));
   const complete = settled && usage.inputTokens !== null && usage.outputTokens !== null && turns.every(turn => {
     const channels = turn.coverage.filter(row => row.channel === 'usage');
