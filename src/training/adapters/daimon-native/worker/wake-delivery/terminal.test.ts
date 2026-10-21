@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { activityFixture, receiptFixture, traceFixture } from '../../test-fixtures.js';
 import type { NativeEvidence } from '../types.js';
 import { validateTransportExecutions } from './terminal.js';
+import { DeclaredLimitStop } from '../evidence/index.js';
 import type { TransportEvidence } from './types.js';
 
 function fixture() {
@@ -94,4 +95,27 @@ test('a non-settling revisit is judged by its trace only: completed without a us
   expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).not.toThrow();
   native.traces.splice(native.traces.findIndex(row => row.turn_id === 'second'), 1);
   expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow('terminal telemetry');
+});
+
+test('a judged attempt sealed on its declared limit raises the labelled stop only once nothing else failed', () => {
+  const { evidence, native } = fixture();
+  native.traces[1]!.status = 'failed';
+  native.usage[1] = { ...native.usage[1]!, limit_reason: 'timeout' };
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow(DeclaredLimitStop);
+  try { validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer'); } catch (error) {
+    expect(error).toMatchObject({ limit: 'timeout', message: expect.stringContaining('Native execution failed') });
+  }
+  // One attempt that failed any other way is still a plain failure, whatever order it appears in.
+  native.traces[0]!.status = 'failed';
+  let caught: unknown;
+  try { validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer'); } catch (error) { caught = error; }
+  expect(caught).toBeInstanceOf(Error);
+  expect(caught).not.toBeInstanceOf(DeclaredLimitStop);
+  // A limit attempt never excuses missing ownership evidence for the rest of the history.
+  const orphaned = fixture();
+  orphaned.native.traces[1]!.status = 'failed';
+  orphaned.native.usage[1] = { ...orphaned.native.usage[1]!, limit_reason: 'requests' };
+  orphaned.native.traces.unshift({ ...traceFixture(), turn_id: 'between-polls' });
+  expect(() => validateTransportExecutions(orphaned.evidence, orphaned.native, activityFixture(), 'agent:writer'))
+    .toThrow('terminal trace omitted execution ownership');
 });

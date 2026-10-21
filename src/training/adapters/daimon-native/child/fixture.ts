@@ -122,6 +122,12 @@ if(mode==='blocked-wrong-execution')terminal.executionId='foreign';
 if(mode==='blocked-always-unbound'||mode.startsWith('blocked-always-unbound-continuation')&&input.wakeId!=='task')terminal.executionId='foreign';
 if(mode==='blocked-always-failed-continuation-foreign'&&input.wakeId!=='task')terminal.native.traces[0].status='failed';
 if(mode.endsWith('-continuation-foreign')&&input.wakeId!=='task')terminal.native.traces.push({...closedTrace,turn_id:'foreign-execution',agent_id:'another-agent'});}
+// A closed execution the broker sealed on the subject's own declared timeout: the
+// worker labels the frame only when that execution's own usage row says so;
+// '-unbacked' is a label that row does not support.
+if(mode.startsWith('limit')){terminal.status='failed';receipt.state='failed';closedTrace.status='failed';closedTrace.error={message:'engine broker turn failed (limit_exceeded; limit=timeout)',stage:'engine_prompt'};
+terminal.native.usage[0].complete=false;terminal.native.usage[0].limit_reason=mode.startsWith('limit-unlabelled')||mode==='limit-unbacked'?'none':'timeout';terminal.coverage=[{channel:'usage',completeness:'partial',ordering:'source'}];
+terminal.error='Native execution failed: Grok broker turn limit_exceeded (limit_reason timeout)';if(!mode.startsWith('limit-unlabelled'))terminal.limit='timeout';settleStop();}
 if(mode==='bad-terminal')terminal.trialId='foreign';
 // A frame whose receipt answers for another trial's delivery, with every other
 // identity on the frame itself matching: the delivery is the only thing that says so.
