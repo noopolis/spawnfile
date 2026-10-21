@@ -94,7 +94,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.copyCommands).toEqual([
       `COPY --from=noopolis/spawnfile-runtime-daimon@sha256:8ea499317850b9cd72039d1108b8b58cd0c9735256fbd7ac71d5dbe32969dea2 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
-    expect(recipe.commands[0]).toContain('case "$arch" in amd64) expected="sha256:b68d2b27f8ec7f6237f2e2a5253fa3fc16f5555968ce82a07350ba258e659a93" ;; arm64) expected="sha256:347da7c613ad3430e018de829587a6d686c498c6168ef4be6b8dd501fdb07ebb" ;;');
+    expect(recipe.commands[0]).toContain('case "$arch" in amd64) expected="sha256:b68d2b27f8ec7f6237f2e2a5253fa3fc16f5555968ce82a07350ba258e659a93" ;; arm64) expected="sha256:e3bab10df4fb65089895974e23048ebe2142f47b42ef0e939c0dd1595f3d8b94" ;;');
   });
 
   it("installs overridden runtime packages from the vendored tarball path in the Pi recipe", async () => {

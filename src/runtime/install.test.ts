@@ -20,7 +20,7 @@ describe("runtime install selection", () => {
   it("resolves Daimon install selection from the pinned runtime image", async () => {
     await expect(resolveRuntimeInstallSelection("daimon")).resolves.toEqual({
       capabilityReceipt: undefined,
-      capabilityReceipts: { amd64: "sha256:b68d2b27f8ec7f6237f2e2a5253fa3fc16f5555968ce82a07350ba258e659a93", arm64: "sha256:347da7c613ad3430e018de829587a6d686c498c6168ef4be6b8dd501fdb07ebb" },
+      capabilityReceipts: { amd64: "sha256:b68d2b27f8ec7f6237f2e2a5253fa3fc16f5555968ce82a07350ba258e659a93", arm64: "sha256:e3bab10df4fb65089895974e23048ebe2142f47b42ef0e939c0dd1595f3d8b94" },
       contractManifestSha256: "sha256:e39551277c6727c8807b1247e759f57addcee3f17f1405ebc927179647d64de6",
       digest: "sha256:8ea499317850b9cd72039d1108b8b58cd0c9735256fbd7ac71d5dbe32969dea2",
       ecosystem: "node",
