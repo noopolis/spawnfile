@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { parseTransportSource, type TransportDeliverySource } from './wake-delivery/index.js';
+import { isGrokLaunch, type NativeLaunch } from '../receipt/index.js';
 
 export interface ExternalInputSource { kind: string; id: string; sha256: string }
 export interface DeliveryControls { maxExternalDeliveries?: number; source?: ExternalInputSource }
@@ -16,6 +17,11 @@ export interface DeliveryControls { maxExternalDeliveries?: number; source?: Ext
  */
 export const MAX_EXTERNAL_DELIVERIES = 3;
 export const MAX_TRIAL_WAKES = MAX_EXTERNAL_DELIVERIES + 1;
+
+/** The per-wake timeout this worker hands Daimon: broker turn overrides may only lower the registration. */
+export function engineWakeTimeoutMs(timeoutMs: number, launch: NativeLaunch | undefined): number {
+  return launch && isGrokLaunch(launch) ? Math.min(timeoutMs, launch.broker.limits.timeoutMs) : timeoutMs;
+}
 
 export function verifyExternalSource(source: ExternalInputSource, text: string): void {
   if (!source || Object.keys(source).sort().join(',') !== 'id,kind,sha256' ||

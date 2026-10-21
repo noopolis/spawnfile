@@ -16,11 +16,21 @@ const DECLARED_LIMITS: readonly string[] = ['tokens', 'requests', 'timeout'];
  * execution carrying a closed `limit_reason`. Engine-neutral by construction —
  * no engine name, no message prose. Absent row, `none`, or a trace that did not
  * fail all answer `undefined`, so every other failure stays what it was.
+ *
+ * `timeout` needs more than the row. Daimon seals its idle watchdog (no model
+ * request or tool call for minutes, i.e. a hang) as the same `timeout` and does
+ * not persist which one ended the turn, so a timeout counts as the subject's
+ * budget only when the closed trace's own span reached `wakeTimeoutMs`, the
+ * per-wake ceiling this worker configured, within a 1% (at most 5s) tolerance.
+ * Without a ceiling a timeout is never labelled.
  */
-export function declaredLimitStop(trace: NativeTrace | undefined, usage: readonly NativeUsage[]): DeclaredLimit | undefined {
+export function declaredLimitStop(trace: NativeTrace | undefined, usage: readonly NativeUsage[], wakeTimeoutMs?: number): DeclaredLimit | undefined {
   if (trace?.status !== 'failed') return undefined;
   const reason = usage.find(row => row.wake === trace.turn_id && DECLARED_LIMITS.includes(String(row.limit_reason)))?.limit_reason;
-  return reason as DeclaredLimit | undefined;
+  if (reason !== 'timeout') return reason as DeclaredLimit | undefined;
+  const span = Date.parse(trace.completed_at) - Date.parse(trace.started_at);
+  if (wakeTimeoutMs === undefined || !Number.isFinite(span)) return undefined;
+  return span >= wakeTimeoutMs - Math.min(5_000, wakeTimeoutMs * 0.01) ? 'timeout' : undefined;
 }
 
 /** A closed execution that stopped on a subject-declared limit; the worker labels its frame from it. */

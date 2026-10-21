@@ -8,7 +8,7 @@ export type { NativeStopEvidence } from './control.js';
 export type { NativeConfig, NativeHost, NativeReceipt, NativeActivity, NativeAvailability, NativeTrace, NativeUsage, NativeCodexUsage, NativeGrokUsage,
   NativeRequestUsage, NativeTurnSeal, NativeEvidence, NativeEvidenceSource, TerminalEvidence, WorkerOptions } from './types.js';
 
-export { verifyExternalSource, MAX_EXTERNAL_DELIVERIES, MAX_TRIAL_WAKES } from './deliveries.js';
+export { verifyExternalSource, MAX_EXTERNAL_DELIVERIES, MAX_TRIAL_WAKES, engineWakeTimeoutMs } from './deliveries.js';
 export type { ExternalInputSource, DeliveryControls } from './deliveries.js';
 export { parseTransportSource, matchTransportSource } from './wake-delivery/index.js';
 export type { TransportDeliverySource, TransportRunState, TransportEvidence } from './wake-delivery/index.js';

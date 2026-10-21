@@ -127,7 +127,16 @@ if(mode.endsWith('-continuation-foreign')&&input.wakeId!=='task')terminal.native
 // '-unbacked' is a label that row does not support.
 if(mode.startsWith('limit')){terminal.status='failed';receipt.state='failed';closedTrace.status='failed';closedTrace.error={message:'engine broker turn failed (limit_exceeded; limit=timeout)',stage:'engine_prompt'};
 terminal.native.usage[0].complete=false;terminal.native.usage[0].limit_reason=mode.startsWith('limit-unlabelled')||mode==='limit-unbacked'?'none':'timeout';terminal.coverage=[{channel:'usage',completeness:'partial',ordering:'source'}];
-terminal.error='Native execution failed: Grok broker turn limit_exceeded (limit_reason timeout)';if(!mode.startsWith('limit-unlabelled'))terminal.limit='timeout';settleStop();}
+terminal.error='Native execution failed: Grok broker turn limit_exceeded (limit_reason timeout)';if(!mode.startsWith('limit-unlabelled'))terminal.limit='timeout';
+// A timeout counts only once the trace spans the configured wake ceiling (20s here);
+// '-idle' is Daimon's idle watchdog sealing the same reason after a short stall.
+closedTrace.started_at=new Date(Date.parse(at)-(mode==='limit-idle'?1000:20000)).toISOString();
+// Daimon's retry shape: the failed execution ran again under a fresh id, and after that
+// failed too the receipt is accepted, deferred and no longer names an execution.
+if(mode==='limit-retried'){const first={...closedTrace,turn_id:crypto.randomUUID()};terminal.native.traces=[first,closedTrace];
+terminal.native.usage=[{...terminal.native.usage[0],wake:first.turn_id},terminal.native.usage[0]];receipt.state='accepted';receipt.deferred=true;delete receipt.execution_id;
+terminal.activity.items=[{...receipt,active:false}];}
+settleStop();}
 if(mode==='bad-terminal')terminal.trialId='foreign';
 // A frame whose receipt answers for another trial's delivery, with every other
 // identity on the frame itself matching: the delivery is the only thing that says so.

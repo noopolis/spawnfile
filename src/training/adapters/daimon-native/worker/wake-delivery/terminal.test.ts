@@ -101,14 +101,19 @@ test('a judged attempt sealed on its declared limit raises the labelled stop onl
   const { evidence, native } = fixture();
   native.traces[1]!.status = 'failed';
   native.usage[1] = { ...native.usage[1]!, limit_reason: 'timeout' };
-  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer')).toThrow(DeclaredLimitStop);
-  try { validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer'); } catch (error) {
+  expect(() => validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer', 1000)).toThrow(DeclaredLimitStop);
+  try { validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer', 1000); } catch (error) {
     expect(error).toMatchObject({ limit: 'timeout', message: expect.stringContaining('Native execution failed') });
   }
+  // An idle-watchdog timeout, short of the configured wake ceiling, is a plain failure.
+  let idle: unknown;
+  try { validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer', 1_800_000); } catch (error) { idle = error; }
+  expect(idle).toBeInstanceOf(Error);
+  expect(idle).not.toBeInstanceOf(DeclaredLimitStop);
   // One attempt that failed any other way is still a plain failure, whatever order it appears in.
   native.traces[0]!.status = 'failed';
   let caught: unknown;
-  try { validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer'); } catch (error) { caught = error; }
+  try { validateTransportExecutions(evidence, native, activityFixture(), 'agent:writer', 1000); } catch (error) { caught = error; }
   expect(caught).toBeInstanceOf(Error);
   expect(caught).not.toBeInstanceOf(DeclaredLimitStop);
   // A limit attempt never excuses missing ownership evidence for the rest of the history.
@@ -116,6 +121,6 @@ test('a judged attempt sealed on its declared limit raises the labelled stop onl
   orphaned.native.traces[1]!.status = 'failed';
   orphaned.native.usage[1] = { ...orphaned.native.usage[1]!, limit_reason: 'requests' };
   orphaned.native.traces.unshift({ ...traceFixture(), turn_id: 'between-polls' });
-  expect(() => validateTransportExecutions(orphaned.evidence, orphaned.native, activityFixture(), 'agent:writer'))
+  expect(() => validateTransportExecutions(orphaned.evidence, orphaned.native, activityFixture(), 'agent:writer', 1000))
     .toThrow('terminal trace omitted execution ownership');
 });

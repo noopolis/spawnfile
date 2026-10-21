@@ -6,7 +6,7 @@ import { boundedTransportCall, requestTransportDelivery, transportTerminalBindin
 import { startOwnedChild, type NativeChildExecution } from './child/index.js';
 import { nextExternalInput, weakestNativeCoverage, type NativeExternalInputs } from './external.js';
 import type { SubjectAdapter, SubjectTurnResult } from '../../contracts/execution.js';
-import { MAX_EXTERNAL_DELIVERIES, type TerminalEvidence, type DeliveryControls } from './worker/index.js';
+import { MAX_EXTERNAL_DELIVERIES, engineWakeTimeoutMs, type TerminalEvidence, type DeliveryControls } from './worker/index.js';
 import { dockerCommand, workerRequest, type DockerCommand } from './container/index.js';
 import { startOwnedContainer } from './container/index.js';
 import { loadNativeLaunch } from './container/index.js';
@@ -96,7 +96,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             }
             let admitted: NativeTurnEvidence['wakes'][number] | undefined;
             try { admitted = admittedNativeEvidence(terminal, launch, input.trialId, turn.id, deliveryOrdinal,
-              join(nativeTrialArtifactsRoot(launch, input.trialId), 'evidence.json'), transport?.source, admittedDeliveries);
+              join(nativeTrialArtifactsRoot(launch, input.trialId), 'evidence.json'), transport?.source, admittedDeliveries, engineWakeTimeoutMs(timeoutMs, launch));
             // Evidence admission only withholds evidence from collect(); the turn's own verdict is unchanged.
             } catch { attributionInvalid = true; }
             if (admitted) evidence.wakes.push(admitted);

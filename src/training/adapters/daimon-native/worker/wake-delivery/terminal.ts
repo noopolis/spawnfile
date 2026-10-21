@@ -4,7 +4,7 @@ import type { TransportEvidence } from './types.js';
 
 /** A completed disposition is not terminal execution telemetry: validate both. */
 export function validateTransportExecutions(evidence: TransportEvidence, native: NativeEvidence,
-  activity: NativeActivity, agentId: string): void {
+  activity: NativeActivity, agentId: string, wakeTimeoutMs?: number): void {
   if (!evidence.batch) throw new Error('Transport execution closed without observable batch membership');
   if (!evidence.selectedDeliveries?.length) throw new Error('Transport selection evidence is missing');
   const owned = new Set<string>();
@@ -29,7 +29,7 @@ export function validateTransportExecutions(evidence: TransportEvidence, native:
       // settled the delivery as receipt.execution_id. Earlier attempts stay in the
       // retained traces as evidence; only the settling execution decides success.
       if (settling && executionId !== settling) continue;
-      const limit = declaredLimitStop(trace, native.usage);
+      const limit = declaredLimitStop(trace, native.usage, wakeTimeoutMs);
       if (limit) { limited ??= new DeclaredLimitStop(limit, describeNativeFailure(receipt, trace, native.usage)); continue; }
       if (trace.status !== 'completed') throw new Error(describeNativeFailure(receipt, trace, native.usage));
       if (!native.usage.some(row => row.wake === executionId)) throw new Error('Transport execution omitted token usage evidence');

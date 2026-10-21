@@ -11,11 +11,11 @@ export interface NativeTurnEvidence {
 
 export function admittedNativeEvidence(value: TerminalEvidence, launch: VerifiedNativeLaunch, trialId: string,
   wakeId: string, ordinal: number, file: string, source: TransportDeliverySource | undefined,
-  deliveries: Set<string>): NativeTurnEvidence['wakes'][number] | undefined {
+  deliveries: Set<string>, wakeTimeoutMs?: number): NativeTurnEvidence['wakes'][number] | undefined {
   if (!value.activity || !value.receipt) return undefined;
   const wake = { wakeId, source, unevidenced: 'terminal-absent' as TerminalEvidenceMissing | undefined };
   let sealed = false;
-  bindTerminalEvidence(wake, value, launch, trialId, () => { sealed = true; });
+  bindTerminalEvidence(wake, value, launch, trialId, () => { sealed = true; }, wakeTimeoutMs);
   if (sealed) throw new Error('Native terminal evidence attribution conflict');
   const delivery = value.receipt!.delivery_id;
   const own = (id: string) => launch.delivery === 'transport' ? deliveries.has(id) || id === delivery : id.startsWith(`${trialId}:`);

@@ -405,6 +405,10 @@ the trial reports `execution: "limit-exceeded"`: the subject exhausted a budget 
 declared, which is graded rather than treated as infrastructure. The decision reads
 only that sealed row, never the engine name or message prose; an unlabelled failure,
 a frame whose row disagrees, or an unconfirmed closure stays a failure.
+`timeout` additionally needs the closed trace's own span to reach the per-wake
+ceiling this worker configured (`DAIMON_ENGINE_WAKE_TIMEOUT_MS`, within 1% and at
+most 5s): Daimon seals its idle watchdog as the same `timeout` without recording
+which ended the turn, and a turn that stopped short of the ceiling is a hang.
 
 Request budget: `broker.limits.maxRequests` is enforced per broker turn by Daimon
 and is the only request cap. Paideia adds no trial-level request limit; a trial's

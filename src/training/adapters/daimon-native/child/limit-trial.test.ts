@@ -13,8 +13,8 @@ afterEach(async () => { vi.clearAllMocks(); await Promise.all(roots.splice(0).ma
  * own usage row, and the stop proved the runtime quiet. That is the candidate's
  * outcome, graded on what it left, and never an infrastructure failure.
  */
-it('grades a sealed declared-limit stop as the subject outcome and keeps the experiment scoring', async () => {
-  const { report, turn, deliveries, root } = await nativeDeferredTrial('limit');
+it.each(['limit', 'limit-retried'])('grades a sealed declared-limit stop (%s) as the subject outcome and keeps the experiment scoring', async mode => {
+  const { report, turn, deliveries, root } = await nativeDeferredTrial(mode);
   roots.push(root);
   expect(deliveries).toBe(0);
   expect(turn).toMatchObject({ status: 'failed', limit: 'timeout' });
@@ -33,6 +33,8 @@ it('grades a sealed declared-limit stop as the subject outcome and keeps the exp
 it.each([
   ['limit-unlabelled', { unevidenced: 'terminal-unbound' }],
   ['limit-unbacked', { unevidenced: 'terminal-unbound' }],
+  // A timeout label on a turn far short of the configured wake ceiling is the idle watchdog: a hang.
+  ['limit-idle', { unevidenced: 'terminal-unbound' }],
   ['limit-stop-unknown', { quiescence: 'unknown' }],
 ])('keeps a %s failure an infrastructure error', async (mode, stop) => {
   const { report, root } = await nativeDeferredTrial(mode);

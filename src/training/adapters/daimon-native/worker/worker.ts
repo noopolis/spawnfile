@@ -1,7 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createWorkerController } from './control.js';
-import { MAX_TRIAL_WAKES } from './deliveries.js';
+import { MAX_TRIAL_WAKES, engineWakeTimeoutMs } from './deliveries.js';
 import { assertFreshNativeEvidence } from './evidence/index.js';
 import { assertNativeProfile, verifyNativeWorkerStartup, verifyWorkerPaths } from './profile.js';
 import { configureNativeTaskClock, isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
@@ -50,7 +50,7 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   delete process.env.DAIMON_WAKE_FUSE;
   // Engine-neutral names; the Codex aliases stay equal so older Codex runtimes keep their bound and Daimon never sees a conflict.
   // Broker turn overrides may only lower the registered limits; the trial deadline still spans all wakes.
-  process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS = String(grok ? Math.min(options.timeoutMs, grok.broker.limits.timeoutMs) : options.timeoutMs);
+  process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS = String(engineWakeTimeoutMs(options.timeoutMs, launch));
   process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING = String(grok ? Math.min(launch.limits.wakeTokenCeiling, grok.broker.limits.maxTokens) : launch.limits.wakeTokenCeiling);
   process.env.DAIMON_CODEX_WAKE_TIMEOUT_MS = process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS;
   process.env.DAIMON_CODEX_WAKE_TOKEN_CEILING = process.env.DAIMON_ENGINE_WAKE_TOKEN_CEILING;
