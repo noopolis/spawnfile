@@ -20,10 +20,14 @@ async function sourceFiles(directory: string, typescriptOnly = true): Promise<st
   return files.flat();
 }
 
-function importSpecifiers(source: string): string[] {
+function importSpecifiers(source: string): { specifier: string; typeOnly: boolean }[] {
   const parsed = ts.createSourceFile('source.ts', source, ts.ScriptTarget.Latest, true);
   const imports = ts.preProcessFile(source, true, true);
-  const specifiers = [...imports.importedFiles, ...imports.referencedFiles].map((item) => item.fileName);
+  const specifiers = [...imports.importedFiles, ...imports.referencedFiles].map(item => ({
+    specifier: item.fileName,
+    typeOnly: parsed.statements.some(statement => ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly === true &&
+      statement.moduleSpecifier.getStart(parsed) <= item.pos && statement.moduleSpecifier.end >= item.end),
+  }));
   const constants = new Map<string, string>();
   const visit = (node: ts.Node) => {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
@@ -32,7 +36,7 @@ function importSpecifiers(source: string): string[] {
     if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
       ts.isIdentifier(node.expression) && node.expression.text === 'require')) {
       const argument = node.arguments[0];
-      if (argument && ts.isIdentifier(argument) && constants.has(argument.text)) specifiers.push(constants.get(argument.text)!);
+      if (argument && ts.isIdentifier(argument) && constants.has(argument.text)) specifiers.push({ specifier: constants.get(argument.text)!, typeOnly: false });
     }
     ts.forEachChild(node, visit);
   };
@@ -42,7 +46,11 @@ function importSpecifiers(source: string): string[] {
 
 function boundaryViolations(filename: string, source: string): string[] {
   const fromTraining = inside(trainingRoot, filename);
-  const forbidden = fromTraining ? ['src/runtime', 'src/compiler'] : inside(canonicalPath(path.join(root, 'src/runtime')), filename) ? [] : ['src/training'];
+  const relative = path.relative(root, filename).split(path.sep).join('/');
+  // Only the composition entry points and their adjacent tests may reach across owners.
+  const integration = /^src\/runtime\/[^/]+\/training\//u.test(relative) ||
+    /^src\/runtime\/training(?:Subjects|Cli)(?:\.test)?\.ts$/u.test(relative);
+  const forbidden = fromTraining ? ['src/runtime', 'src/compiler'] : integration ? [] : ['src/training'];
   const violations: string[] = [];
   if (fromTraining) {
     const parsed = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
@@ -54,13 +62,14 @@ function boundaryViolations(filename: string, source: string): string[] {
     };
     visit(parsed);
   }
-  return [...violations, ...importSpecifiers(source).filter((specifier) => {
+  return [...violations, ...importSpecifiers(source).filter(({ specifier, typeOnly }) => {
+    if (relative === 'src/runtime/registry.ts' && typeOnly) return false;
     let target = specifier;
     if (target.startsWith('file:')) target = fileURLToPath(target);
     if (!target.startsWith('.') && !path.isAbsolute(target)) return false;
     const resolved = importTarget(filename, target);
     return forbidden.some((directory) => inside(canonicalPath(path.join(root, directory)), resolved));
-  })];
+  }).map(({ specifier }) => specifier)];
 }
 
 test('training retains its imported structural and public module gates', async () => {
@@ -88,8 +97,30 @@ test.each([
   ['src/training/evaluation/check.ts', "/// <reference path='../../runtime/index.ts' />"],
   ['src/cli/check.ts', "import '../training/index.js';"],
   ['src/compiler/runtime/check.ts', "import '../../training/index.js';"],
+  ['src/runtime/common.ts', "import '../training/index.js';"],
+  ['src/runtime/daimon/adapter.ts', "import '../../training/index.js';"],
+  ['src/runtime/pi/adapter.ts', "export * from '../../training/index.js';"],
+  ['src/runtime/codex-exec/training-extra/check.ts', "import '../../../training/index.js';"],
+  ['src/runtime/daimon/other/training/check.ts', "import '../../../../training/index.js';"],
+  ['src/runtime/trainingSubjectsExtra.ts', "import '../training/index.js';"],
+  ['src/runtime/registry.ts', "import { SubjectAdapterRegistration } from '../training/subjects/index.js';"],
+  ['src/runtime/registry.ts', "export * from '../training/subjects/index.js';"],
+  ['src/runtime/registry.ts', "await import('../training/subjects/index.js');"],
+  ['src/runtime/registry.ts', "import type { SubjectAdapterRegistration } from '../training/subjects/index.js'; await import('../training/subjects/index.js');"],
 ])('rejects a forbidden dependency from %s: %s', (filename, source) => {
   expect(boundaryViolations(path.join(root, filename), source)).not.toEqual([]);
+});
+
+test.each([
+  ['src/runtime/daimon/training/check.ts', "import '../../../training/index.js';"],
+  ['src/runtime/codex-exec/training/check.ts', "import '../../../training/index.js';"],
+  ['src/runtime/trainingSubjects.ts', "import '../training/subjects/index.js';"],
+  ['src/runtime/trainingCli.ts', "import '../training/cli/index.js';"],
+  ['src/runtime/trainingSubjects.test.ts', "import '../training/cli/fixture.js';"],
+  ['src/runtime/trainingCli.test.ts', "import '../training/cli/fixture.js';"],
+  ['src/runtime/registry.ts', "import type { SubjectAdapterRegistration } from '../training/subjects/index.js';"],
+])('allows a scoped training integration from %s: %s', (filename, source) => {
+  expect(boundaryViolations(path.join(root, filename), source)).toEqual([]);
 });
 
 test('all training folders are checked and legitimate imports remain valid', () => {
