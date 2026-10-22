@@ -1,4 +1,3 @@
-import { DAIMON_PACKAGE_NAME } from '../runtime/daimon/packageName.js';
 import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -27,16 +26,16 @@ describe("stageRuntimePackageOverrides", () => {
   });
 
   it("packs each overridden local package directory into the vendor build context", async () => {
-    const daimonDirectory = await createFakePackage(`${DAIMON_PACKAGE_NAME}`, "0.1.2");
+    const daimonDirectory = await createFakePackage("@noopolis/daimon", "0.1.2");
     const mnemeDirectory = await createFakePackage("@noopolis/mneme", "0.1.1");
     const outputDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-vendor-out-"));
 
     const resolved = await stageRuntimePackageOverrides(outputDirectory, {
-      [`${DAIMON_PACKAGE_NAME}`]: daimonDirectory,
+      "@noopolis/daimon": daimonDirectory,
       "@noopolis/mneme": mnemeDirectory
     });
 
-    expect(resolved?.[`${DAIMON_PACKAGE_NAME}`]?.filename).toBe("noopolis-daimon-0.1.2.tgz");
+    expect(resolved?.["@noopolis/daimon"]?.filename).toBe("noopolis-daimon-0.1.2.tgz");
     expect(resolved?.["@noopolis/mneme"]?.filename).toBe("noopolis-mneme-0.1.1.tgz");
 
     const vendorFiles = (
@@ -50,7 +49,7 @@ describe("stageRuntimePackageOverrides", () => {
     const missingDirectory = path.join(outputDirectory, "does-not-exist");
 
     await expect(
-      stageRuntimePackageOverrides(outputDirectory, { [`${DAIMON_PACKAGE_NAME}`]: missingDirectory })
-    ).rejects.toMatchObject({ message: expect.stringContaining(`${DAIMON_PACKAGE_NAME}`) });
+      stageRuntimePackageOverrides(outputDirectory, { "@noopolis/daimon": missingDirectory })
+    ).rejects.toMatchObject({ message: expect.stringContaining("@noopolis/daimon") });
   }, 30_000);
 });

@@ -1,4 +1,3 @@
-import { DAIMON_PACKAGE_NAME } from '../runtime/daimon/packageName.js';
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -58,7 +57,7 @@ describe("Docker build context ignore safety", () => {
       {
         dockerfile: await renderDockerfile([plan], {
           runtimePackageOverrides: {
-            [`${DAIMON_PACKAGE_NAME}`]: { filename: "noopolis-daimon-test.tgz" }
+            "@noopolis/daimon": { filename: "noopolis-daimon-test.tgz" }
           }
         }),
         name: "runtime package override"

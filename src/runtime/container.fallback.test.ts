@@ -1,4 +1,3 @@
-import { DAIMON_PACKAGE_NAME } from './daimon/packageName.js';
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const loadContainerModule = async (selectionByRuntime: Record<string, unknown>) => {
@@ -154,7 +153,7 @@ describe("runtime container install recipe fallbacks", () => {
         ecosystem: "node",
         installHint: "Install the pinned Daimon package version from npm.",
         kind: "npm",
-        packageName: `${DAIMON_PACKAGE_NAME}`,
+        packageName: "@noopolis/daimon",
         runtimeName: "daimon",
         runtimeRef: "v0.1.2",
         selectionSource: "runtime_registry_install",

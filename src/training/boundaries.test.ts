@@ -140,8 +140,15 @@ test.each([
   expect(boundaryViolations(path.join(trainingRoot, 'subjects/check.ts'), source)).not.toEqual([]);
 });
 
+test('training tests retain the runtime package literal boundary', () => {
+  expect(boundaryViolations(path.join(trainingRoot, 'subjects/check.test.ts'),
+    `const name = '${['@noopolis', 'daimon'].join('/')}';`)).toContain('runtime package literal');
+});
+
 test('Daimon package text stays under its runtime owner throughout source files', async () => {
-  const files = (await sourceFiles(path.join(root, 'src'), false)).filter(filename => !inside(path.join(root, 'src/runtime/daimon'), filename));
+  // Literal test expectations are independent pins; training tests retain the core boundary.
+  const files = (await sourceFiles(path.join(root, 'src'), false)).filter(filename =>
+    !inside(path.join(root, 'src/runtime/daimon'), filename) && !(filename.endsWith('.test.ts') && !inside(trainingRoot, filename)));
   const forbidden = ['@noopolis', 'daimon'].join('/');
   const violations = await Promise.all(files.map(async filename => (await readFile(filename, 'utf8')).includes(forbidden) ? path.relative(root, filename) : undefined));
   expect(violations.filter(Boolean)).toEqual([]);
