@@ -35,7 +35,7 @@ it('resolves dataset-relative test and YAML budgets before starting and permits 
     'max-proposals': ['2'], seed: ['7'], 'optimizer-model': ['opus'], 'bridge-command': ['paideia-dspy'], judge: ['prose=small'], 'judge-citation-repairs': ['prose=1'] });
   expect(authoredArguments(parseArguments([...f.args, '--max-trials', '9']), f.io).flags['max-trials']).toEqual(['9']);
   const forbidden = vi.fn(() => { throw new Error('Models must remain unopened'); });
-  expect(await main(f.args, f.io, { adapter: forbidden, inference: forbidden, modelInference: forbidden })).toBe(0);
+  expect(await main(f.args, f.io, { ...f.dependencies, adapter: forbidden, inference: forbidden, modelInference: forbidden })).toBe(0);
   expect(forbidden).not.toHaveBeenCalled();
   expect(JSON.parse(f.stdout[0]!).budget.maxTrials).toBe(8);
 });
@@ -178,7 +178,7 @@ it('hands an explicit validation file to cost preflight and rejects cross-role l
   await writeFile(join(f.root, 'evals/validation.yaml'), datasetText([{ id: 'validation', group: 'validation' }]));
   const selected = authoredArguments(parseArguments(f.args), f.io);
   expect(selected.flags.validation).toEqual([join(f.root, 'evals/validation.yaml')]);
-  expect(await main(f.args, f.io)).toBe(0);
+  expect(await main(f.args, f.io, f.dependencies)).toBe(0);
   expect(JSON.parse(f.stdout.at(-1)!).datasetDigests.validation).toMatch(/^sha256:/);
   expect(await main([...f.args.filter(value => value !== '--dry-run'), '--bridge-command', f.bridge, '--out', 'explicit'], f.io,
     { ...f.dependencies, modelInference: () => f.dependencies.inference!(15000) })).toBe(0);
@@ -191,6 +191,6 @@ it('hands an explicit validation file to cost preflight and rejects cross-role l
     const path = join(f.root, `evals/${file}.yaml`);
     await writeFile(path, (await readFile(path, 'utf8')).replace(`    group: ${file}`, `    group: ${file}\n    lineage: [shared-origin]`));
   }
-  expect(await main(f.args, f.io)).toBe(2);
+  expect(await main(f.args, f.io, f.dependencies)).toBe(2);
   expect(f.stderr.at(-1)).toContain('lineage leakage');
 });

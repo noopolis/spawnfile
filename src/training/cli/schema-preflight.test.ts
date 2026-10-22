@@ -25,7 +25,7 @@ it.each(['validate', 'evaluate', 'train', 'dry-run'] as const)(
         : ['train', '--train', 'train.yaml', '--test', 'test.yaml', ...f.nativeArgs,
           '--editable', 'AGENTS.md', '--optimizer-model', 'explicit-fixture', '--bridge-command', f.bridge,
           ...(mode === 'dry-run' ? ['--dry-run'] : [])];
-      expect(await main(argv, f.io, { adapter, inference })).toBe(2);
+      expect(await main(argv, f.io, { ...f.dependencies, adapter, inference })).toBe(2);
       expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
       expect(f.stdout).toEqual([]);
       expect(f.stderr.join('')).not.toMatch(/Unexpected (adapter|inference) construction/);

@@ -31,7 +31,7 @@ export function resourceMappings(args: CliArguments): ResourceMapping[] {
 /** File selection only; deliberately has no runtime or inference construction. */
 export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string, subjects?: CliDependencies['subjects']) {
   const runtime = one(args, 'runtime');
-  if (!runtime || subjects && !Object.hasOwn(subjects, runtime)) throw new Error(`Supported native runtimes: ${Object.keys(subjects ?? {}).join(', ')}`);
+  if (!runtime || !subjects || !Object.hasOwn(subjects, runtime)) throw new Error(`Supported native runtimes: ${Object.keys(subjects ?? {}).join(', ') || 'none registered'}`);
   const model = one(args, 'model');
   const sourceRoot = resolve(io.cwd, one(args, 'source-root', io.cwd));
   const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined));

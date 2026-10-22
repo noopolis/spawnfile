@@ -18,12 +18,21 @@ async function fixture() {
 }
 
 describe('training dry-run command', () => {
+  it.each([undefined, {}, { codex: { create: () => { throw new Error('No native construction'); } } }])(
+    'rejects an unknown runtime even when no subject registry is supplied: %j', async subjects => {
+      const f = await fixture();
+      const before = await readdir(f.root);
+      expect(await main(f.args.map(arg => arg === 'codex' ? 'unknown-runtime' : arg), f.io, { subjects })).toBe(2);
+      expect(f.stderr.join('')).toContain('Supported native runtimes');
+      expect(f.stdout).toEqual([]);
+      expect(await readdir(f.root)).toEqual(before);
+    });
   it('makes zero adapter/inference calls and no trial, optimizer or output directory', async () => {
     const f = await fixture();
     const before = await readdir(f.root);
     const adapter = vi.fn(() => { throw new Error('Native factory was invoked'); });
     const inference = vi.fn(() => { throw new Error('Inference factory was invoked'); });
-    expect(await main(f.args, f.io, { adapter, inference })).toBe(0);
+    expect(await main(f.args, f.io, { ...f.dependencies, adapter, inference })).toBe(0);
     expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
     expect(f.stderr).toEqual([]);
     const plan = JSON.parse(f.stdout.join(''));
@@ -36,12 +45,12 @@ describe('training dry-run command', () => {
   it('uses local price/assumption configuration and rejects missing/invalid inputs', async () => {
     const f = await fixture();
     await writeFile(join(f.root, 'cost.yaml'), 'schema: paideia.cost-config.v1\nassumptions:\n  subject:\n    inputTokens: {low: 1000, high: 2000}\n    outputTokens: {low: 100, high: 200}\n    cacheReadFraction: {low: 0, high: 0}\n');
-    expect(await main([...f.args, '--cost-config', 'cost.yaml'], f.io)).toBe(0);
+    expect(await main([...f.args, '--cost-config', 'cost.yaml'], f.io, f.dependencies)).toBe(0);
     expect(JSON.parse(f.stdout[0]!).assumptions.subject.inputTokens.high).toBe(2000);
-    expect(await main([...f.args, '--cost-config', 'absent.yaml'], f.io)).toBe(2);
+    expect(await main([...f.args, '--cost-config', 'absent.yaml'], f.io, f.dependencies)).toBe(2);
     await writeFile(join(f.root, 'cost.yaml'), 'schema: a\nschema: b\n');
     expect(() => readCostConfig(parseArguments([...f.args, '--cost-config', 'cost.yaml']), f.io)).toThrow('Invalid cost configuration');
-    expect(await main(f.args.filter((_, index) => ![12, 13].includes(index)), f.io)).toBe(2);
+    expect(await main(f.args.filter((_, index) => ![12, 13].includes(index)), f.io, f.dependencies)).toBe(2);
   });
   it('prices independently selected named judges without opening inference', async () => {
     const f = await fixture();
@@ -53,7 +62,7 @@ describe('training dry-run command', () => {
     }
     const inference = vi.fn(() => { throw new Error('No judge construction'); });
     expect(await main([...f.args, '--judge', 'prose=claude-fable-5-1', '--judge', 'grounding=unpriced-judge-model',
-      '--judge-citation-repairs', 'prose=1'], f.io, { inference })).toBe(0);
+      '--judge-citation-repairs', 'prose=1'], f.io, { ...f.dependencies, inference })).toBe(0);
     const plan = JSON.parse(f.stdout.join(''));
     expect(plan.coverage).toBe('partial'); expect(plan.apiEquivalentUsd).toBeNull();
     expect(plan.lines.filter((line: { role: string }) => line.role === 'judge').map((line: { name: string; model: string }) => [line.name, line.model]))
@@ -72,7 +81,7 @@ describe('training dry-run command', () => {
     for (const command of [f.args, f.args.filter(arg => arg !== '--dry-run')]) {
       for (const flags of [['--judge-citation-repairs', 'missing=1'], ['--judge-citation-repairs', 'prose=2'],
         ['--judge-citation-repairs', 'prose=1', '--judge-citation-repairs', 'prose=0']]) {
-        expect(await main([...command, '--judge', 'prose=model', ...flags], f.io, { adapter, inference })).toBe(2);
+        expect(await main([...command, '--judge', 'prose=model', ...flags], f.io, { ...f.dependencies, adapter, inference })).toBe(2);
       }
     }
     expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();

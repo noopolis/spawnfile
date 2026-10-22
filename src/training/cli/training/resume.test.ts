@@ -106,7 +106,7 @@ training:
   const argv = ['train', '--train', 'train.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md',
     '--bridge-command', relative(f.root, f.bridge)];
   const forbidden = () => { throw new Error('dry-run opened model'); };
-  expect(await main([...argv, '--dry-run'], f.io, { adapter: forbidden, modelInference: forbidden })).toBe(0);
+  expect(await main([...argv, '--dry-run'], f.io, { ...f.dependencies, adapter: forbidden, modelInference: forbidden })).toBe(0);
   const plan = JSON.parse(f.stdout.at(-1)!);
   expect(plan.budget).toMatchObject({ metricCalls: 4, reservedTestTrials: 12 });
   let finished = 0;

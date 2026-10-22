@@ -16,6 +16,7 @@ export async function cliFixture() {
   const stdout: string[] = [], stderr: string[] = [], observedInstructions: string[] = [];
   const io: CliIO = { cwd: root, stdout: (text) => { stdout.push(text); }, stderr: (text) => { stderr.push(text); } };
   const dependencies: CliDependencies = {
+    subjects: { codex: { create: () => fixtureAdapter('codex', observedInstructions) } },
     adapter: (runtime) => fixtureAdapter(runtime, observedInstructions),
     inference: () => ({ id: 'test-subscription', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
       async generate(request) {

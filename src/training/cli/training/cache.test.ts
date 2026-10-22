@@ -103,7 +103,7 @@ it('validates cache namespace, mode fields and recovery bounds before invoking n
     records:[{id:'test',group:'test',input:{prompt:'Write held-out.'}}]}));
   const forbidden=vi.fn(()=>{throw new Error('No native or inference construction');});
   const code=await main(['train','--train','evals/data.yaml','--runtime','codex','--model','subject',
-    '--instructions','AGENTS.md','--editable','AGENTS.md','--dry-run'],f.io,{adapter:forbidden,inference:forbidden,modelInference:forbidden,
+    '--instructions','AGENTS.md','--editable','AGENTS.md','--dry-run'],f.io,{...f.dependencies,adapter:forbidden,inference:forbidden,modelInference:forbidden,
     spawnfile:{id:'dry',version:'1',judgeCacheRoot:join(f.root,'must-not-exist'),createAdapter:forbidden,prepareEnvironment:forbidden}});
   expect(f.stderr).toEqual([]); expect(code).toBe(0);
   expect(JSON.parse(f.stdout[0]!).budget.maxTrials).toBeGreaterThan(0);
