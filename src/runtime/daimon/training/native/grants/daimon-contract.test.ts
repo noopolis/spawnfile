@@ -11,7 +11,7 @@ import { loadDaimonGrokGrantAuthority } from './authority.js';
 import { daimonGrokInferenceClientPin as PIN } from './pins.js';
 import { scriptedBrokerSocket } from './test-socket.js';
 
-/** Pins Paideia's broker-grant binding to the installed Daimon (optional peer, absent in plain CI installs). */
+/** Pins Paideia's broker-grant binding to the built registry checkout; mandatory in CI, opt-in locally. */
 let daimon: Record<string, unknown> | undefined;
 const packageName = daimonCheckoutRuntime();
 if (packageName) {

@@ -91,14 +91,15 @@ it("recycles a leased slot beside an active sibling without draining or modifyin
 
 // Read the broker as test data from its exact registry revision, never from a
 // checkout's mutable HEAD. CI supplies the repository; local runs may select it
-// with DAIMON_SOURCE_ROOT or SPAWNFILE_DAIMON_CHECKOUT. Explicit incompatible source fails; absent opt-in skips live checks.
+// with DAIMON_SOURCE_ROOT. Missing source is a failure in CI, optional locally.
 const stagePinnedDaimon = async (root: string): Promise<string> => {
   const registry = parseYaml(await readFile("runtimes.yaml", "utf8")) as {
     runtimes: { daimon: { ref: string } }
   };
   const ref = registry.runtimes.daimon.ref;
   if (!/^[a-f0-9]{40}$/u.test(ref)) throw Error("Daimon recovery requires a full registry commit pin");
-  const source = process.env.DAIMON_SOURCE_ROOT ?? process.env.SPAWNFILE_DAIMON_CHECKOUT!;
+  const source = process.env.DAIMON_SOURCE_ROOT;
+  if (!source) throw Error("Daimon recovery requires Git source; set DAIMON_SOURCE_ROOT");
   const run = promisify(execFile);
   let revision: string;
   try { revision = (await run("git", ["-C", source, "rev-parse", `${ref}^{commit}`])).stdout.trim(); }
@@ -112,7 +113,7 @@ const stagePinnedDaimon = async (root: string): Promise<string> => {
   return staged;
 };
 
-it.skipIf(!process.env.DAIMON_SOURCE_ROOT && !process.env.SPAWNFILE_DAIMON_CHECKOUT)("restart without refresh permits profile writeback and slot recycling at the exact Daimon pin", async () => {
+it.skipIf(!process.env.CI && !process.env.DAIMON_SOURCE_ROOT)("restart without refresh permits profile writeback and slot recycling at the exact Daimon pin", async () => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), "broker-recovery-")));
   let pool: Awaited<ReturnType<typeof slotPool>> | undefined;
   try {
@@ -169,7 +170,7 @@ await writeFile(journal, JSON.stringify(row));`);
   } finally { transport.connect.mockReset(); await rm(root, { recursive: true, force: true }); }
 });
 
-it.skipIf(!process.env.DAIMON_SOURCE_ROOT && !process.env.SPAWNFILE_DAIMON_CHECKOUT)("two equal-expiry rotations across restart retain ancestry to the original host credential at the exact Daimon pin", async () => {
+it.skipIf(!process.env.CI && !process.env.DAIMON_SOURCE_ROOT)("two equal-expiry rotations across restart retain ancestry to the original host credential at the exact Daimon pin", async () => {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), "broker-lineage-")));
   try {
     const daimon = await stagePinnedDaimon(root), home = path.join(root, "realm");

@@ -4,4 +4,4 @@
 
 Container-only carve-out: dynamic package specifiers for @noopolis/daimon/pi and @noopolis/daimon/runtime live only below this folder. They load lazily inside training containers where Daimon is installed, like the generated Pi app; importing the registration on the host must never load Daimon. No host dependency on Daimon is permitted.
 
-Real-runtime differential tests are opt-in through SPAWNFILE_DAIMON_CHECKOUT, an absolute checkout path with built dist/runtime/index.js. Static mirrors and checked-in fixtures cover ordinary installs.
+Real-runtime differential tests use SPAWNFILE_DAIMON_CHECKOUT, an absolute checkout path with built dist/runtime/index.js: required in CI, opt-in locally. CI builds the runtimes.yaml pin; DAIMON_SOURCE_ROOT separately selects Git source for compiler recovery tests. Static mirrors and checked-in fixtures cover ordinary installs.

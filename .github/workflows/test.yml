@@ -67,7 +67,7 @@ jobs:
           env -u TYPESAFE_API_KEY src/training/dspy/.venv/bin/python -m pip install -r src/training/dspy/requirements.lock
           env -u TYPESAFE_API_KEY src/training/dspy/.venv/bin/python -m pip install --no-deps -e src/training/dspy
 
-      - name: Resolve exact Daimon recovery fixture revision
+      - name: Resolve exact Daimon parity and recovery fixture revision
         id: daimon-fixture
         run: |
           node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
@@ -78,12 +78,16 @@ jobs:
           console.log(`ref=${ref}`);
           NODE
 
-      - name: Check out pinned Daimon recovery fixture
+      - name: Check out pinned Daimon parity and recovery fixture
         uses: actions/checkout@v4
         with:
           repository: noopolis/daimon-harness
           ref: ${{ steps.daimon-fixture.outputs.ref }}
           path: .tmp/daimon-source
+
+      - name: Build pinned Daimon for training parity tests
+        working-directory: .tmp/daimon-source
+        run: env -u TYPESAFE_API_KEY npm ci && env -u TYPESAFE_API_KEY npm run build
 
       - name: Audit runtime dependencies
         run: npm audit --omit=dev --audit-level=high
@@ -120,7 +124,10 @@ jobs:
         run: npm run test:boundaries
 
       - name: Coverage
-        run: npm run coverage
+        env:
+          # Parity loads built modules; recovery separately reads pinned Git source.
+          SPAWNFILE_DAIMON_CHECKOUT: ${{ github.workspace }}/.tmp/daimon-source
+        run: env -u TYPESAFE_API_KEY npm run coverage
 
   training-python:
     name: DSPy bridge tests and per-module coverage

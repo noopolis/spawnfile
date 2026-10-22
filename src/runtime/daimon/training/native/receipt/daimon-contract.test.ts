@@ -7,7 +7,7 @@ import { daimonGrokInferenceClientPin } from '../grants/index.js';
 import { daimonProjectionGolden, daimonProjectionGoldenSha256, daimonClockedProjectionGolden, daimonClockedProjectionGoldenSha256,
   fixtureNonce, slotPreflightFor } from '../grok-fixtures.js';
 
-/** Pins Paideia's Daimon-free mirrors to the installed Daimon contract; Daimon is an optional peer, absent in plain CI installs. */
+/** Pins Paideia's Daimon-free mirrors to the built registry checkout; mandatory in CI, opt-in locally. */
 interface DaimonGrokContract {
   resolveOrganizationGrokBrokerProjection(config: unknown, agentId: string, options: unknown): unknown;
   grokBrokerProjectionSha256(value: unknown): string;
