@@ -67,7 +67,7 @@ export default defineConfig({
         exclude: [...configDefaults.exclude, ...realBridgeTests], testTimeout: 15_000, hookTimeout: 15_000,
         sequence: { groupOrder: 0 } } },
       { extends: true, test: { name: "real-bridge", include: realBridgeTests,
-        fileParallelism: false, testTimeout: 15_000, hookTimeout: 15_000, sequence: { groupOrder: 1 } } }
+        pool: "forks", poolOptions: { forks: { singleFork: true } }, testTimeout: 15_000, hookTimeout: 15_000, sequence: { groupOrder: 1 } } }
     ],
     // Whole-src scans and durable filesystem I/O can outlive the 5s default under full-fork load.
     testTimeout: 30_000,

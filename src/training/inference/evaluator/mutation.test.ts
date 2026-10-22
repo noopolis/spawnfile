@@ -6,32 +6,34 @@ import { promisify } from 'node:util';
 import { expect, it } from 'vitest';
 const run = promisify(execFile);
 const mutations = [
-  { file: 'src/cli/training/inference.ts', before: " || process.env.PAIDEIA_EVALUATOR_ROUTES_FILE !== undefined",
-    after: '', test: 'src/cli/training/request-cap.test.ts', title: 'budgets proposals with a shared judge model' },
-  { file: 'src/inference/evaluator/policy.ts', before: 'value.provider === provider && value.purpose === purpose && value.model === model',
-    after: 'value.provider === provider', test: 'src/inference/evaluator/evaluator.test.ts', title: 'admits only exact explicitly' },
-  { file: 'src/inference/evaluator/ledger.ts', before: 'calls.size >= selected.route.maxRequests', after: 'false',
-    test: 'src/inference/evaluator/evaluator.test.ts', title: 'charges before dispatch' },
-  { file: 'src/inference/evaluator/ledger.ts', before: 'spent + estimatedUsd > selected.route.maxSpendUsd', after: 'false',
-    test: 'src/inference/evaluator/evaluator.test.ts', title: 'enforces independent spend ceilings' },
-  { file: 'src/inference/evaluator/ledger.ts', before: "appendFileSync(fd, `${JSON.stringify(admitted)}\\n`); fsyncSync(fd);", after: '',
-    test: 'src/inference/evaluator/evaluator.test.ts', title: 'charges before dispatch' },
-  { file: 'src/inference/evaluator/provider.ts', before: 'const admission = reserveEvaluatorRequest(name, purpose, model);',
-    after: "const admission = { finish() {} };", test: 'src/cli/training/request-cap.test.ts', title: 'budgets explicitly declared Codex proposals' },
-  { file: 'src/inference/decision/typesafe/transport.ts', before: 'const admission = evaluatorCapped', after: 'const admission = false',
-    test: 'src/inference/evaluator/evaluator.test.ts', title: 'loads the key only into evaluator transport' },
-  { file: 'src/inference/evaluator/provider.ts', before: 'return { TYPESAFE_API_KEY: key };',
+  { file: 'src/training/cli/training/inference.ts', before: " || process.env.PAIDEIA_EVALUATOR_ROUTES_FILE !== undefined",
+    after: '', test: 'src/training/cli/training/request-cap.test.ts', title: 'budgets proposals with a shared judge model' },
+  { file: 'src/training/inference/evaluator/policy.ts', before: 'value.provider === provider && value.purpose === purpose && value.model === model',
+    after: 'value.provider === provider', test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'admits only exact explicitly' },
+  { file: 'src/training/inference/evaluator/ledger.ts', before: 'calls.size >= selected.route.maxRequests', after: 'false',
+    test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'charges before dispatch' },
+  { file: 'src/training/inference/evaluator/ledger.ts', before: 'spent + estimatedUsd > selected.route.maxSpendUsd', after: 'false',
+    test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'enforces independent spend ceilings' },
+  { file: 'src/training/inference/evaluator/ledger.ts', before: "appendFileSync(fd, `${JSON.stringify(admitted)}\\n`); fsyncSync(fd);", after: '',
+    test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'charges before dispatch' },
+  { file: 'src/training/inference/evaluator/provider.ts', before: 'const admission = reserveEvaluatorRequest(name, purpose, model);',
+    after: "const admission = { finish() {} };", test: 'src/training/cli/training/request-cap.test.ts', title: 'budgets explicitly declared Codex proposals' },
+  { file: 'src/training/inference/decision/typesafe/transport.ts', before: 'const admission = evaluatorCapped', after: 'const admission = false',
+    test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'loads the key only into evaluator transport' },
+  { file: 'src/training/inference/evaluator/provider.ts', before: 'return { TYPESAFE_API_KEY: key };',
     after: 'process.env.TYPESAFE_API_KEY = key; return { TYPESAFE_API_KEY: key };',
-    test: 'src/inference/evaluator/evaluator.test.ts', title: 'loads the key only into evaluator transport' },
-  { file: 'src/adapters/daimon-native/child/arguments.ts', before: 'const env: NodeJS.ProcessEnv = { HOME: home.target };',
+    test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'loads the key only into evaluator transport' },
+  { file: 'src/training/adapters/daimon-native/child/arguments.ts', before: 'const env: NodeJS.ProcessEnv = { HOME: home.target };',
     after: 'const env: NodeJS.ProcessEnv = { ...process.env, HOME: home.target };',
-    test: 'src/adapters/daimon-native/child/evaluator-environment.test.ts', title: 'never inherits the evaluator' },
+    test: 'src/training/adapters/daimon-native/child/evaluator-environment.test.ts', title: 'never inherits the evaluator' },
 ];
 it('kills each evaluator admission, request, spend, receipt and secret-isolation mutant with its behavioral test', async () => {
   const source = resolve('.'), root = await mkdtemp(join(tmpdir(), 'evaluator-mutations-'));
   try {
-    await cp(join(source, 'src'), join(root, 'src'), { recursive: true });
-    for (const file of ['package.json', 'tsconfig.json', 'vitest.config.ts']) await cp(join(source, file), join(root, file));
+    await cp(join(source, 'src/training'), join(root, 'src/training'), { recursive: true,
+      filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
+    for (const file of ['package.json', 'tsconfig.json']) await cp(join(source, file), join(root, file));
+    await writeFile(join(root, 'vitest.config.mjs'), 'export default {test:{include:["src/training/**/*.test.ts"]}};');
     await symlink(resolve('node_modules'), join(root, 'node_modules'));
     await mkdir(join(root, 'tmp'));
     for (const mutation of mutations) {

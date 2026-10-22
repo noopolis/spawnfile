@@ -104,7 +104,7 @@ it('resolves explicit identity grading with per-record protected context and no 
 
 
 it('resolves the three-family example and distinct fixed question sets on separate records', async () => {
-  const root = 'examples/fixed-questions/evals/';
+  const root = 'examples/training/fixed-questions/evals/';
   const source = await readFile(`${root}delivery.paideia.yaml`, 'utf8');
   const graderSource = await readFile(`${root}item.grader.yaml`, 'utf8');
   const options = { readCriterionFile: () => graderSource, registry: { judges: { prose: { version: 'test' } } } };

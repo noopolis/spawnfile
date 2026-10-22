@@ -99,7 +99,7 @@ it('reports foreign-owned directories without widening their permissions', async
   const paths = await createTrialPaths(join(base, 'store'), subjects);
   await chmod(paths.workspace, 0o555);
   const uid = process.getuid!();
-  const owner = vi.spyOn(process, 'getuid').mockReturnValue(uid + 1);
+  const owner = vi.spyOn(process as { getuid: () => number }, 'getuid').mockReturnValue(uid + 1);
   try {
     await expect(releaseTrialScratch(paths, subjects, true)).rejects.toThrow('another uid');
     expect((await stat(paths.workspace)).mode & 0o777).toBe(0o555);
