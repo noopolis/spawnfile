@@ -1,0 +1,32 @@
+schema: paideia.dataset.v1
+id: native-formatting-train
+subject: native-formatting
+
+checks:
+  - id: response-shape
+    eval: json-schema
+    input: output.text
+    schema:
+      type: string
+      pattern: '^ack:[a-z]+$'
+
+records:
+  - id: alpha
+    group: alpha-training
+    input:
+      prompt: 'Token: Alpha'
+    checks:
+      - id: exact-token
+        eval: equals
+        input: output.text
+        value: ack:alpha
+
+  - id: beta
+    group: beta-validation
+    input:
+      prompt: 'Token: Beta'
+    checks:
+      - id: exact-token
+        eval: equals
+        input: output.text
+        value: ack:beta

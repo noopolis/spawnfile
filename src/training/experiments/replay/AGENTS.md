@@ -1,0 +1,50 @@
+# Explicit captured-run rescoring
+
+Owns new terminal-stage evaluations over an authenticated immutable stored trial.
+Public seam: index.ts. Consume storage, evaluation and training criteria through
+public indexes; never import or invoke a subject adapter.
+
+- Plain playback performs no inference. Only an explicit rescore may call a judge.
+- Preserve original execution, coverage, stop evidence and decisive mechanical
+  failure; changed criteria never create another native trial.
+- Require evaluator/operator authorization, intact stored evidence and exactly one
+  original trial report. Reject per-turn checks without saved turn snapshots.
+- Freeze new criteria and evaluate a clone of the original final snapshot.
+- Append a separate immutable evaluator-only rescore record; never replace history.
+- Test real-store access, integrity, truncation, immutable append and stopped runs.
+
+Explicit rescoring appends returned raw judge attempts as evaluator-only events
+linked to its evaluation ID. Preserve the trusted observer while freezing routes;
+raw attempts are not native observations or optimizer feedback.
+
+`capturedTrial` is the shared public read/verify seam for an authenticated original
+report, its manifest, snapshot observations and artifact hashes. Preserve current
+judge failure/fallback/cache provenance and authored stage weights through schema
+validation; dropping those fields changes recovery policy and cost evidence.
+
+Evaluation services preserve injected grader runtimes alongside judges and embeddings.
+Replay preserves the complete typed grader result, calibration/scoring identity,
+coverage and measured judge billing/timing on every nested result surface. Validate
+those fields explicitly; object stripping must never erase grading evidence.
+Judge-call replay retains typed refused outcomes and tool-call failure details.
+
+Replay explicitly validates atomicGrading identities, probabilities, decomposition,
+extraction/audit diagnostics and invocation-owned API receipts; never strip them.
+Retain and validate atomicFailure on nested results when an errored acceptance
+gate stopped grading before atomicGrading existed; replay must stay unscorable.
+
+Retain optional host durationMs and declared subject isolation/model metadata.
+Validate finite nonnegative durations and preserve absent legacy fields as unknown;
+rescoring cannot invent a new native execution duration.
+
+Replay validates and retains evaluated manifests, matching candidateId, and
+optional nonnegative search rounds; reject search attribution on sealed tests.
+Failed-grade decisionAccounting uses the same allowlisted receipt schema as grades.
+
+Retain optional preDeferralStatus with the same verdict vocabulary as status.
+Legacy reports omit it; stripping it breaks cached recovery and deferred rewards.
+
+Validate and retain optional failureKind (native-infrastructure, behavioral,
+measurement). Legacy reports omit it and cannot acquire retry eligibility by replay.
+Preserve collectionFailed and per-turn neutral admission counters. Validate every
+counter as a nonnegative integer or explicit null; missing fields are not zeros.

@@ -1,0 +1,191 @@
+import { grokGrantModels, grokGrantReasoningEfforts } from '../../contracts/inference-grants.js';
+import type { TrainingConfiguration } from '../../contracts/training-config.js';
+import { fail, fields, number, object, oneOf, safePath, string, uniqueStrings } from '../validation.js';
+
+function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_INTEGER): void {
+  if (!Number.isSafeInteger(number(value, path, min, max))) fail(path, 'expected an integer');
+}
+
+/** Validate controls without executing templates or contacting declared providers. */
+export function validateTrainingConfiguration(value: unknown, path = '$.training'): TrainingConfiguration {
+  const config = object(value, path);
+  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'scoring', 'test', 'validation', 'validation_groups', 'seed'], path);
+  const models = object(config.models, `${path}.models`);
+  if (!Object.keys(models).length) fail(`${path}.models`, 'requires a named model');
+  for (const [name, value] of Object.entries(models)) {
+    const location = `${path}.models.${name}`;
+    string(name, location);
+    const model = object(value, location);
+    fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort', 'think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'], location);
+    oneOf(model.provider, ['claude-subscription', 'codex-subscription', 'grok-subscription', 'grok-broker', 'ollama'], `${location}.provider`);
+    string(model.model, `${location}.model`);
+    if (model.provider === 'grok-broker') {
+      // Broker grants carry the declared model and effort to the broker; nothing is defaulted or inherited.
+      oneOf(model.model, [...grokGrantModels], `${location}.model`);
+      if (model.reasoning_effort === undefined) fail(`${location}.reasoning_effort`, 'required for grok-broker');
+      oneOf(model.reasoning_effort, [...grokGrantReasoningEfforts], `${location}.reasoning_effort`);
+    } else if (model.reasoning_effort !== undefined) {
+      if (model.provider !== 'grok-subscription') fail(`${location}.reasoning_effort`, 'only supported for grok-subscription or grok-broker');
+      oneOf(model.reasoning_effort, ['low', 'medium', 'high', 'xhigh'], `${location}.reasoning_effort`);
+    }
+    for (const field of ['think', 'keep_alive_seconds', 'max_output_tokens', 'context_window']) {
+      if (model[field] !== undefined && model.provider !== 'ollama') fail(`${location}.${field}`, 'only supported for ollama');
+    }
+    if (model.think !== undefined && typeof model.think !== 'boolean') fail(`${location}.think`, 'expected a boolean');
+    if (model.keep_alive_seconds !== undefined) integer(model.keep_alive_seconds, `${location}.keep_alive_seconds`, 0, 86400);
+    if (model.context_window !== undefined) integer(model.context_window, `${location}.context_window`, 512, 1048576);
+    if (model.max_output_tokens !== undefined) integer(model.max_output_tokens, `${location}.max_output_tokens`, 1, 131072);
+    if (model.endpoint !== undefined) {
+      if (model.provider !== 'ollama') fail(`${location}.endpoint`, 'only supported for ollama');
+      let url: URL;
+      try { url = new URL(string(model.endpoint, `${location}.endpoint`)); }
+      catch { return fail(`${location}.endpoint`, 'expected an HTTP endpoint'); }
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+        fail(`${location}.endpoint`, 'expected HTTP endpoint without credentials, query or fragment');
+      }
+    }
+  }
+  function route(value: unknown, location: string, judge = false): void {
+    const policy = object(value, location);
+    fields(policy, ['model', 'fallbacks', 'attempts', 'timeout_ms', ...(judge ? ['template', 'citation_repairs', 'protocol'] : ['proposal', 'method', 'variants', 'keep', 'budget', 'selection', 'boundaries', 'patience'])], location);
+    const primary = string(policy.model, `${location}.model`);
+    const fallbacks = policy.fallbacks === undefined ? [] : uniqueStrings(policy.fallbacks, `${location}.fallbacks`);
+    if (fallbacks.includes(primary)) fail(`${location}.fallbacks`, 'primary model cannot be its own fallback');
+    for (const name of [primary, ...fallbacks]) if (!Object.hasOwn(models, name)) fail(location, `unknown model ${name}`);
+    const providers = new Set([primary, ...fallbacks].map(name => (models[name] as { provider?: unknown }).provider));
+    if (providers.has('grok-broker') && providers.has('grok-subscription')) fail(location, 'grok-broker routes cannot fall back to a desktop grok-subscription login');
+    if (policy.attempts !== undefined) integer(policy.attempts, `${location}.attempts`, 1, Math.min(10, 1 + fallbacks.length));
+    if (policy.timeout_ms !== undefined) integer(policy.timeout_ms, `${location}.timeout_ms`, 1, 3_600_000);
+    if (policy.citation_repairs !== undefined) oneOf(policy.citation_repairs, [0, 1], `${location}.citation_repairs`);
+    if (policy.protocol !== undefined) oneOf(policy.protocol, ['citations', 'evidence-ids'], `${location}.protocol`);
+    if (policy.protocol === 'evidence-ids' && policy.citation_repairs === 1) fail(`${location}.citation_repairs`, 'citation repair is not supported for evidence-ids');
+    if (policy.proposal !== undefined) {
+      const proposal = object(policy.proposal, `${location}.proposal`);
+      fields(proposal, ['strategy', 'min_change', 'rewrite_share', 'hypothesis_similarity', 'max_attempts', 'history_entries', 'history_bytes'], `${location}.proposal`);
+      if (proposal.strategy !== undefined) oneOf(proposal.strategy, ['refine', 'rewrite'], `${location}.proposal.strategy`);
+      for (const field of ['min_change', 'rewrite_share', 'hypothesis_similarity']) {
+        if (proposal[field] !== undefined) number(proposal[field], `${location}.proposal.${field}`, 0, 1);
+      }
+      for (const [field, min, max] of [['max_attempts', 1, 5], ['history_entries', 1, 100], ['history_bytes', 1024, 262144]] as const) {
+        if (proposal[field] !== undefined) integer(proposal[field], `${location}.proposal.${field}`, min, max);
+      }
+    }
+    if (!judge) {
+      if (policy.method !== undefined) oneOf(policy.method, ['gepa'], `${location}.method`);
+      for (const field of ['variants', 'keep', 'patience']) {
+        if (policy[field] !== undefined) integer(policy[field], `${location}.${field}`);
+      }
+      if (policy.selection !== undefined) oneOf(policy.selection, ['pareto', 'top-k'], `${location}.selection`);
+      if (policy.budget !== undefined) {
+        const budget = object(policy.budget, `${location}.budget`);
+        fields(budget, ['rounds'], `${location}.budget`);
+        integer(budget.rounds, `${location}.budget.rounds`);
+      }
+      if (policy.boundaries !== undefined) {
+        if (!Array.isArray(policy.boundaries) || policy.boundaries.length > 50) fail(`${location}.boundaries`, 'expected at most 50 strings');
+        for (const [index, boundary] of (policy.boundaries as unknown[]).entries()) {
+          if (string(boundary, `${location}.boundaries[${index}]`).length > 500) fail(`${location}.boundaries[${index}]`, 'expected 1..500 characters');
+        }
+      }
+      if (policy.variants !== undefined) {
+        integer(policy.keep, `${location}.keep`, 1, policy.variants as number);
+        if (policy.budget === undefined) fail(`${location}.budget.rounds`, 'required when variants is present');
+      } else {
+        for (const field of ['keep', 'budget', 'selection', 'boundaries', 'patience']) {
+          if (policy[field] !== undefined) fail(`${location}.${field}`, 'requires optimizer.variants');
+        }
+        const proposal = policy.proposal as Record<string, unknown> | undefined;
+        for (const field of ['rewrite_share', 'hypothesis_similarity']) {
+          if (proposal?.[field] !== undefined) fail(`${location}.proposal.${field}`, 'requires optimizer.variants');
+        }
+      }
+    }
+    if (policy.template !== undefined) {
+      const template = object(policy.template, `${location}.template`);
+      fields(template, ['language', 'text'], `${location}.template`);
+      oneOf(template.language, ['jinja'], `${location}.template.language`);
+      string(template.text, `${location}.template.text`);
+    }
+  }
+  if (config.judges !== undefined) {
+    for (const [name, value] of Object.entries(object(config.judges, `${path}.judges`))) {
+      string(name, `${path}.judges`);
+      route(value, `${path}.judges.${name}`, true);
+    }
+  }
+  if (config.comparison !== undefined) {
+    const comparison = object(config.comparison, `${path}.comparison`);
+    fields(comparison, ['candidate'], `${path}.comparison`);
+    const candidate = object(comparison.candidate, `${path}.comparison.candidate`);
+    fields(candidate, ['name', 'replacements'], `${path}.comparison.candidate`);
+    const name = string(candidate.name, `${path}.comparison.candidate.name`);
+    if (!name.trim() || name.length > 120) fail(`${path}.comparison.candidate.name`, 'expected 1..120 characters');
+    if (!Array.isArray(candidate.replacements) || !candidate.replacements.length || candidate.replacements.length > 128) {
+      fail(`${path}.comparison.candidate.replacements`, 'requires 1..128 resource replacements');
+    }
+    const resources = new Set<string>();
+    for (const [index, value] of (candidate.replacements as unknown[]).entries()) {
+      const location = `${path}.comparison.candidate.replacements[${index}]`;
+      const row = object(value, location);
+      fields(row, ['resource', 'source'], location);
+      const resource = safePath(row.resource, `${location}.resource`);
+      safePath(row.source, `${location}.source`);
+      if (resources.has(resource)) fail(location, 'duplicate comparison resource');
+      resources.add(resource);
+    }
+    if (config.optimizer !== undefined) fail(`${path}.optimizer`, 'comparison does not run an optimizer');
+    if (config.budget !== undefined && Object.hasOwn(object(config.budget, `${path}.budget`), 'max_proposals')) {
+      fail(`${path}.budget.max_proposals`, 'comparison has no proposals; omit this field');
+    }
+  }
+  if (config.optimizer !== undefined) route(config.optimizer, `${path}.optimizer`);
+  if (config.budget !== undefined) {
+    const budget = object(config.budget, `${path}.budget`);
+    fields(budget, ['trial_retries', 'test_repeats', 'max_trials', 'max_proposals', 'timeout_ms', 'experiment_timeout_ms', 'trial_timeout_ms'], `${path}.budget`);
+    for (const [key, value] of Object.entries(budget)) {
+      const maximum = key === 'timeout_ms' || key === 'experiment_timeout_ms' ? 604_800_000
+        : key === 'trial_retries' ? 3 : key === 'test_repeats' ? 8 : key === 'trial_timeout_ms' ? 86_400_000 : key === 'max_trials' ? 10_000 : 1000;
+      integer(value, `${path}.budget.${key}`, key === 'trial_retries' ? 0 : 1, maximum);
+    }
+  }
+  if (config.comparison !== undefined && (config.budget as { test_repeats?: number } | undefined)?.test_repeats !== undefined
+      && (config.budget as { test_repeats: number }).test_repeats !== 1) {
+    fail(`${path}.budget.test_repeats`, 'repeats are supported for optimizer training only');
+  }
+  if (config.comparison !== undefined && ((config.budget as { trial_retries?: number } | undefined)?.trial_retries ?? 0) !== 0) {
+    fail(`${path}.budget.trial_retries`, 'retries are supported for optimizer training only');
+  }
+  const optimizer = config.optimizer as { variants?: number; keep?: number } | undefined;
+  const maxProposals = (config.budget as { max_proposals?: number } | undefined)?.max_proposals;
+  if (optimizer?.variants !== undefined && maxProposals !== undefined && maxProposals < optimizer.variants + optimizer.keep!) {
+    fail(`${path}.budget.max_proposals`, 'must be at least optimizer.keep + optimizer.variants');
+  }
+  if (config.cache !== undefined) {
+    const cache = object(config.cache, `${path}.cache`);
+    fields(cache, ['mode', 'max_entries', 'namespace', 'directory'], `${path}.cache`);
+    oneOf(cache.mode, ['off', 'exact', 'persistent'], `${path}.cache.mode`);
+    if (cache.mode === 'persistent') {
+      const namespace = string(cache.namespace, `${path}.cache.namespace`);
+      if (!namespace.trim()) fail(`${path}.cache.namespace`, 'namespace cannot be whitespace');
+      if (namespace.length > 512) fail(`${path}.cache.namespace`, 'namespace exceeds 512 characters');
+      if (cache.directory !== undefined) safePath(cache.directory, `${path}.cache.directory`);
+    } else if (cache.namespace !== undefined || cache.directory !== undefined) fail(`${path}.cache`, 'namespace and directory require persistent mode');
+    if (cache.max_entries !== undefined) integer(cache.max_entries, `${path}.cache.max_entries`, 1, 10_000);
+  }
+  if (config.scoring !== undefined) {
+    const scoring = object(config.scoring, `${path}.scoring`);
+    fields(scoring, ['deferred'], `${path}.scoring`);
+    if (scoring.deferred !== undefined) oneOf(scoring.deferred, ['zero', 'stage-score'], `${path}.scoring.deferred`);
+  }
+  if (config.recovery !== undefined) {
+    const recovery = object(config.recovery, `${path}.recovery`);
+    fields(recovery, ['max_attempts'], `${path}.recovery`);
+    if (recovery.max_attempts !== undefined) integer(recovery.max_attempts, `${path}.recovery.max_attempts`, 0, 10);
+  }
+  if (config.test !== undefined) safePath(config.test, `${path}.test`);
+  if (config.validation !== undefined) safePath(config.validation, `${path}.validation`);
+  if (config.validation !== undefined && config.validation_groups !== undefined) fail(path, 'validation and validation_groups are mutually exclusive');
+  if (config.validation_groups !== undefined) uniqueStrings(config.validation_groups, `${path}.validation_groups`);
+  if (config.seed !== undefined) integer(config.seed, `${path}.seed`, 0);
+  return structuredClone(config) as unknown as TrainingConfiguration;
+}

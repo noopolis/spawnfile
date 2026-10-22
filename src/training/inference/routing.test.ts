@@ -1,0 +1,119 @@
+import { expect, it, vi } from 'vitest';
+import type { InferenceProvider } from '../contracts/execution.js';
+import { createRoutedInference } from './routing.js';
+import { InferenceFailure } from './failure.js';
+const result = { text: 'score: 0', model: 'actual', route: 'test', usage: null };
+const provider = (generate: InferenceProvider['generate']): InferenceProvider => ({ id: 'p', capabilities: { tools: 'disabled', billing: 'subscription', seed: false, temperature: false }, generate });
+const options = (providers: InferenceProvider[]) => ({ id: 'judge', routes: providers.map(p => ({ provider: p, model: 'm' })), maxAttempts: providers.length, timeoutMs: 100 });
+it('preserves containment for primary and fallback routes and rejects unisolated tools', async () => {
+  const contained = provider(async () => result); contained.capabilities.tools = 'contained';
+  for (const routes of [[contained], [contained, provider(async () => result)], [provider(async () => result), contained]]) {
+    const route = createRoutedInference(options(routes));
+    expect(route.capabilities.tools).toBe('contained');
+    expect((await route.generate({ prompt: 'task', model: 'ignored' })).text).toBe(result.text);
+  }
+  const unisolated = provider(vi.fn());
+  Object.assign(unisolated.capabilities, { tools: 'enabled' });
+  expect(() => createRoutedInference(options([unisolated]))).toThrow('tool-isolated');
+  expect(unisolated.generate).not.toHaveBeenCalled();
+});
+it('falls back only on declared infrastructure refusals and audits every settled attempt', async () => {
+  const audit = vi.fn();
+  const route = createRoutedInference({ ...options([provider(async () => { throw new InferenceFailure('quota', 'busy', { responseModel: 'old' }); }), provider(async () => result)]), observeAttempt: audit });
+  const answer = await route.generate({ prompt: 'task', model: 'ignored' });
+  expect(answer.attempts).toMatchObject([{ outcome: 'failed', failureKind: 'quota', responseModel: 'old' }, { outcome: 'completed', responseModel: 'actual' }]);
+  expect(audit).toHaveBeenCalledTimes(2);
+  expect(Object.isFrozen(answer.attempts)).toBe(true);
+});
+it('does not shop a valid low score and preserves unreported model uncertainty', async () => {
+  const next = vi.fn();
+  const answer = await createRoutedInference(options([provider(async () => ({ ...result, modelBasis: 'requested-assumption' })), provider(next)])).generate({ prompt: 'p', model: 'm' });
+  expect(answer.text).toBe('score: 0'); expect(next).not.toHaveBeenCalled(); expect(answer.attempts?.[0]?.responseModel).toBeNull();
+});
+it.each(['authentication', 'protocol', 'unsupported', 'unknown', 'cancelled'] as const)('never falls back on %s', async kind => {
+  const next = vi.fn();
+  await expect(createRoutedInference(options([provider(async () => { throw new InferenceFailure(kind, 'x'); }), provider(next)])).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind });
+  expect(next).not.toHaveBeenCalled();
+});
+it('carries the last route\'s closed refinement and status through the routed wrapper', async () => {
+  // Rebuilding the wrapper from `kind` alone put a refused grant, an expired one
+  // and a dead broker back in one bucket by the time a judge classified it.
+  const refused = createRoutedInference(options([provider(async () => {
+    throw new InferenceFailure('unavailable', 'broker refused', { detail: 'grant-refused' }); })]));
+  await expect(refused.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'unavailable', detail: 'grant-refused', status: null });
+  const limited = createRoutedInference(options([provider(async () => {
+    throw new InferenceFailure('quota', 'refused', { detail: 'provider-status', status: 429 }); })]));
+  await expect(limited.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ detail: 'provider-status', status: 429 });
+  const plain = createRoutedInference(options([provider(async () => { throw new InferenceFailure('unavailable', 'down'); })]));
+  await expect(plain.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'unavailable', detail: null, status: null });
+});
+it('stops on arbitrary errors, exhausted routes and failed audit persistence', async () => {
+  for (const error of [new Error('secret'), new InferenceFailure('transport', 'x')]) {
+    await expect(createRoutedInference(options([provider(async () => { throw error; })])).generate({ prompt: 'p', model: 'm' })).rejects.toBeInstanceOf(InferenceFailure);
+  }
+  await expect(createRoutedInference({ ...options([provider(async () => result)]), observeAttempt: () => { throw Error('disk'); } }).generate({ prompt: 'p', model: 'm' })).rejects.toThrow('audit persistence');
+});
+it('bounds cancellation, timeout and invalid requests', async () => {
+  const never = provider(async () => new Promise(() => undefined));
+  const route = createRoutedInference({ ...options([never]), timeoutMs: 10 });
+  await expect(route.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'timeout' });
+  const controller = new AbortController();
+  const waiting = route.generate({ prompt: 'p', model: 'm', signal: controller.signal }); controller.abort();
+  await expect(waiting).rejects.toMatchObject({ kind: 'cancelled' });
+  for (const patch of [{ signal: AbortSignal.abort() }, { seed: 0 }, { temperature: 0 }, { prompt: '' }]) await expect(route.generate({ prompt: 'p', model: 'm', ...patch })).rejects.toBeInstanceOf(InferenceFailure);
+});
+it('validates finite explicit routes and reports mixed local/subscription billing', () => {
+  const valid = options([provider(async () => result)]);
+  for (const patch of [{ id: '' }, { routes: [] }, { maxAttempts: 0 }, { maxAttempts: 2 }, { timeoutMs: 0 }, { attemptTimeoutMs: Infinity }, { routes: [{ provider: valid.routes[0]!.provider, model: '-bad' }] }]) expect(() => createRoutedInference({ ...valid, ...patch })).toThrow();
+  const local = provider(async () => result); local.capabilities.billing = 'local';
+  expect(createRoutedInference(options([local, valid.routes[0]!.provider])).capabilities.billing).toBe('mixed');
+  const failure = new InferenceFailure('quota', 'x', { usage: { inputTokens: 2, outputTokens: 0, cachedInputTokens: null, reasoningTokens: null, source: 'test' } });
+  expect(Object.isFrozen(failure.usage)).toBe(true);
+});
+it('bounds a stalled audit store and never begins another route', async () => {
+  const next = vi.fn();
+  const route = createRoutedInference({ ...options([provider(async () => { throw new InferenceFailure('quota', 'q'); }), provider(next)]),
+    timeoutMs: 10, observeAttempt: async () => new Promise(() => undefined) });
+  await expect(route.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'timeout', attempts: [{ failureKind: 'quota' }] });
+  expect(next).not.toHaveBeenCalled();
+});
+it('classifies an expired audit timer even when the wall clock has not reached its deadline', async () => {
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(1000);
+  const next = vi.fn();
+  try {
+    const route = createRoutedInference({ ...options([provider(async () => { throw new InferenceFailure('quota', 'q'); }), provider(next)]),
+      timeoutMs: 10, observeAttempt: async () => new Promise(() => undefined) });
+    await expect(route.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'timeout', attempts: [{ failureKind: 'quota' }] });
+    expect(next).not.toHaveBeenCalled();
+  } finally { clock.mockRestore(); }
+});
+it('cancels an audit wait while retaining the completed attempt', async () => {
+  const controller = new AbortController();
+  let began!: () => void;
+  const started = new Promise<void>(resolve => { began = resolve; });
+  const route = createRoutedInference({ ...options([provider(async () => result)]),
+    observeAttempt: async () => { began(); await new Promise(() => undefined); } });
+  const waiting = route.generate({ prompt: 'p', model: 'm', signal: controller.signal });
+  await started; controller.abort();
+  await expect(waiting).rejects.toMatchObject({ kind: 'cancelled', attempts: [{ outcome: 'completed' }] });
+});
+it('fails a stale credential authority fast: later routes on it are skipped, other authorities remain authored fallbacks', async () => {
+  const on = (authority: string | undefined, generate: InferenceProvider['generate']): InferenceProvider => ({ ...provider(generate), id: authority ?? 'plain',
+    capabilities: { tools: 'disabled', billing: 'subscription', seed: false, temperature: false, ...(authority === undefined ? {} : { credentialAuthority: authority }) } });
+  const stale = vi.fn(async () => { throw new InferenceFailure('auth-stale', 'stale realm'); });
+  const sameRealm = vi.fn(async () => result);
+  const claude = vi.fn(async () => ({ ...result, route: 'claude' }));
+  const routed = createRoutedInference({ ...options([on('broker', stale), on('broker', sameRealm), on(undefined, claude)]) });
+  const answer = await routed.generate({ prompt: 'p', model: 'm' });
+  expect(stale).toHaveBeenCalledTimes(1); expect(sameRealm).not.toHaveBeenCalled(); expect(claude).toHaveBeenCalledTimes(1);
+  expect(answer.attempts).toMatchObject([{ ordinal: 1, failureKind: 'auth-stale' }, { ordinal: 2, outcome: 'completed', responseRoute: 'claude' }]);
+  const only = createRoutedInference({ ...options([on('broker', stale), on('broker', sameRealm)]) });
+  await expect(only.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'auth-stale', attempts: [{ failureKind: 'auth-stale' }] });
+  expect(sameRealm).not.toHaveBeenCalled();
+  const budget = createRoutedInference({ ...options([on('broker', stale), on(undefined, claude)]), maxAttempts: 1 });
+  await expect(budget.generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'auth-stale' });
+  const unnamed = vi.fn(async () => { throw new InferenceFailure('auth-stale', 'stale'); });
+  const plainTwin = vi.fn(async () => result);
+  await expect(createRoutedInference(options([on(undefined, unnamed), on(undefined, plainTwin)])).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'auth-stale' });
+  expect(plainTwin).not.toHaveBeenCalled();
+});
