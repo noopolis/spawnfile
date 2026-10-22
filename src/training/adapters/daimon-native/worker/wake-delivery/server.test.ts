@@ -1,3 +1,4 @@
+import { resolve } from 'import-meta-resolve';
 import { expect, test, vi } from 'vitest';
 import { createWorkerServer, listenWorker } from '../server.js';
 import { Readable } from 'node:stream';
@@ -24,7 +25,7 @@ let daimon: DaimonWakeContract | undefined;
 const packageName = '@noopolis/daimon/runtime';
 let installed = false;
 try {
-  import.meta.resolve(packageName);
+  resolve(packageName, import.meta.url);
   installed = true;
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ERR_MODULE_NOT_FOUND') throw error;

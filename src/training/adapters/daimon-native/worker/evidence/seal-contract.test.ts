@@ -1,3 +1,4 @@
+import { resolve } from 'import-meta-resolve';
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,7 +9,7 @@ import { parseNativeTurnSeal } from './seal.js';
 
 const packageName = '@noopolis/daimon/runtime';
 let runtime: string | undefined;
-try { runtime = import.meta.resolve(packageName); }
+try { runtime = resolve(packageName, import.meta.url); }
 catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ERR_MODULE_NOT_FOUND') throw error; }
 
 // This task requires Daimon's actual serializer, which its public index does not export.

@@ -1,3 +1,4 @@
+import { resolve } from 'import-meta-resolve';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { canonicalJson, grokBrokerProjectionSchema, grokProjectionSha256, grokSlotPreflightSchema, grokWorkerConfigPins } from './grok.js';
@@ -20,7 +21,7 @@ let daimon: DaimonGrokContract | undefined;
 const packageName = '@noopolis/daimon/runtime';
 let installed = false;
 try {
-  import.meta.resolve(packageName);
+  resolve(packageName, import.meta.url);
   installed = true;
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ERR_MODULE_NOT_FOUND') throw error;
