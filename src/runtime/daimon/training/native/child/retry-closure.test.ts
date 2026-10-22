@@ -20,6 +20,7 @@ afterEach(async () => {
 // Real owned processes, deterministic control responses; no model or HTTP acceptance claim.
 async function fixture() {
   const f = await launchFixture(); roots.push(f.root);
+  f.launch.bootstrap!.entrypoint = 'bootstrap.cjs';
   f.launch.workspace.target = f.launch.workspace.source;
   for (const row of f.launch.projections) row.target = row.source;
   const config = JSON.parse(await readFile(f.launch.config, 'utf8'));

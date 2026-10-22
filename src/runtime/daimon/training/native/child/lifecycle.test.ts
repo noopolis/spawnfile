@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createDaimonNativeAdapter, type NativeTurnEvidence } from '../index.js';
@@ -14,6 +15,9 @@ afterEach(async () => { vi.clearAllMocks(); vi.unstubAllEnvs(); await Promise.al
 async function fixture(mode?: string) { const f = await childFixture(mode); roots.push(f.root); return f; }
 
 it('runs a real fresh worker child with explicit environment, observed native usage and verified normal stop', async () => {
+  const packageRoot = await mkdtemp(join(tmpdir(), 'native-esm-package-')); roots.push(packageRoot);
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ type: 'module' }));
+  vi.stubEnv('TMPDIR', packageRoot);
   const f = await fixture(); vi.stubEnv('UNIT_PARENT_SECRET', 'not-in-child');
   const session = await createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input);
   expect(verifyChildSandbox).toHaveBeenCalledWith(expect.objectContaining({ configSha256: f.launch.configSha256 }), f.input.trialId, f.input.protectedPaths, expect.any(AbortSignal), undefined);

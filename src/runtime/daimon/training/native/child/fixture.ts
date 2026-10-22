@@ -16,6 +16,8 @@ import { sha256 } from '../receipt/index.js';
  */
 export async function childFixture(mode = 'complete', frames?: string) {
   const f = await launchFixture();
+  // TMPDIR may sit below an ESM package (as it does in CI). This worker is CommonJS.
+  f.launch.bootstrap!.entrypoint = 'bootstrap.cjs';
   const reservation = createServer(); await new Promise<void>(resolve => reservation.listen(0, '127.0.0.1', resolve));
   f.launch.host.port = (reservation.address() as { port: number }).port;
   await new Promise<void>(resolve => reservation.close(() => resolve()));
