@@ -16,7 +16,8 @@ vi.mock('node:fs/promises', async importOriginal => {
 
 const roots: string[] = [];
 afterEach(async () => {
-  vi.mocked(appendFile).mockReset();
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  vi.mocked(appendFile).mockReset().mockImplementation(actual.appendFile);
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
 });
 function latch() {

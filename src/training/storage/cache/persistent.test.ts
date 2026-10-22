@@ -30,7 +30,7 @@ it('persists a failed quality grade and original model provenance across an actu
   await cache.put(key,value);
   const result = await child(process.execPath, ['--import','tsx','--input-type=module','-e',
     `import {openJudgeCache} from ${JSON.stringify(modulePath)}; const cache=await openJudgeCache(${JSON.stringify(options)}); console.log(JSON.stringify(await cache.get(${JSON.stringify(key)})));`],
-  {cwd:fileURLToPath(new URL('../../../../..',import.meta.url))});
+  {cwd:fileURLToPath(new URL('../../../..',import.meta.url))});
   expect(JSON.parse(result.stdout)).toEqual(value);
   const hit = await cache.get(key); hit!.sourceCalls![0]!.responseModel = 'mutated';
   expect(await cache.get(key)).toEqual(value);
@@ -43,7 +43,7 @@ it('serializes independent process writes with first-result provenance and bound
   const results = await Promise.all(Array.from({length:4},(_,index) => child(process.execPath,
     ['--import','tsx','--input-type=module','-e',`import {openJudgeCache} from ${JSON.stringify(modulePath)};
     const cache=await openJudgeCache(${JSON.stringify(options)}); await cache.put(${JSON.stringify(contentDigest(String(index)))},${JSON.stringify(value)}); console.log('written');`],
-    {cwd:fileURLToPath(new URL('../../../../..',import.meta.url))})));
+    {cwd:fileURLToPath(new URL('../../../..',import.meta.url))})));
   expect(results.every(result=>result.stdout.trim()==='written')).toBe(true);
   const cache = await openJudgeCache(options);
   expect((await Promise.all(Array.from({length:4},(_,i)=>cache.get(contentDigest(String(i)))))).filter(Boolean)).toHaveLength(3);
@@ -160,7 +160,7 @@ it('reopens evidence-ID grades in another process and preserves first-write prov
   await cache.put(key, { ...evidence, response: evidence.response.replace('0.84', '0.95') });
   const reopened = await child(process.execPath, ['--import', 'tsx', '--input-type=module', '-e',
     `import {openJudgeCache} from ${JSON.stringify(modulePath)}; const cache=await openJudgeCache(${JSON.stringify(options)}); console.log(JSON.stringify(await cache.get(${JSON.stringify(key)})));`],
-  { cwd: fileURLToPath(new URL('../../../../..', import.meta.url)) });
+  { cwd: fileURLToPath(new URL('../../../..', import.meta.url)) });
   expect(JSON.parse(reopened.stdout)).toEqual(evidence);
   const invalidKey = contentDigest('invalid-evidence');
   await expect(cache.put(invalidKey, { ...evidence, response: evidence.response.replace('e-0123456789abcdef0123', 'unknown') }))
@@ -194,6 +194,6 @@ it('reopens historical protocol-retry provenance without creating or rewriting c
   await cache.put(key, historical);
   const reopened = await child(process.execPath, ['--import', 'tsx', '--input-type=module', '-e',
     `import {openJudgeCache} from ${JSON.stringify(modulePath)}; const cache=await openJudgeCache(${JSON.stringify(options)}); console.log(JSON.stringify(await cache.get(${JSON.stringify(key)})));`],
-  { cwd: fileURLToPath(new URL('../../../../..', import.meta.url)) });
+  { cwd: fileURLToPath(new URL('../../../..', import.meta.url)) });
   expect(JSON.parse(reopened.stdout)).toEqual(historical);
 });
