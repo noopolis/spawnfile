@@ -5,6 +5,7 @@ import { main } from './commands.js';
 import { cliFixture, datasetText } from './fixture.js';
 import { readCostConfig } from './dry-run.js';
 import { parseArguments } from './arguments.js';
+import type { SubjectAdapterRegistry } from '../subjects/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -18,7 +19,8 @@ async function fixture() {
 }
 
 describe('training dry-run command', () => {
-  it.each([undefined, {}, { codex: { create: () => { throw new Error('No native construction'); } } }])(
+  const registries: (SubjectAdapterRegistry | undefined)[] = [undefined, {}, { codex: { create: () => { throw new Error('No native construction'); } } }];
+  it.each(registries)(
     'rejects an unknown runtime even when no subject registry is supplied: %j', async subjects => {
       const f = await fixture();
       const before = await readdir(f.root);
