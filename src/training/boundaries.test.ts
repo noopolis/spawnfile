@@ -9,6 +9,12 @@ import { canonicalPath, importTarget, inside } from '../../tooling/training/esli
 
 const root = canonicalPath(fileURLToPath(new URL('../../', import.meta.url)));
 const trainingRoot = path.join(root, 'src/training');
+const owners = {
+  training: canonicalPath(trainingRoot),
+  runtime: canonicalPath(path.join(root, 'src/runtime')),
+  compiler: canonicalPath(path.join(root, 'src/compiler')),
+};
+const runtimePackage = ['@noopolis', 'daimon'].join('/');
 // Retain the training project's deadlines when this file runs in the serial lane.
 vi.setConfig({ testTimeout: 15_000, hookTimeout: 15_000 });
 
@@ -22,19 +28,48 @@ async function sourceFiles(directory: string, typescriptOnly = true): Promise<st
   return files.flat();
 }
 
-function importSpecifiers(source: string): { specifier: string; typeOnly: boolean }[] {
-  const parsed = ts.createSourceFile('source.ts', source, ts.ScriptTarget.Latest, true);
-  const imports = ts.preProcessFile(source, true, true);
+// The preprocessor already finds literal imports. Only omit the AST when every
+// raw import/require word is accounted for. Comments and strings overcount, so
+// ambiguous syntax still takes the full parser path. Ignore export-only entries
+// when accounting for words; AMD and ambient modules conservatively use the AST.
+function needsSyntaxTree(source: string, imports: ts.PreProcessedFileInfo, fromTraining: boolean): boolean {
+  if (/\b(?:define|declare)\b|\\u/u.test(source)) return true;
+  if (fromTraining && (source.includes('`') || source.includes('\\') || source.includes(runtimePackage))) return true;
+  const words = source.match(/\b(?:import|require)\b/gu)?.length ?? 0;
+  // A leading literal can still be part of a computed import expression.
+  // Core's stricter computed-import rule always inspects the full expression.
+  if (fromTraining && words > 0) return true;
+  if (words === 0) return false;
+  const literalImports = /\bexport\b/u.test(source)
+    ? ts.preProcessFile(source.replace(/\bexport\b/gu, '      '), true, true).importedFiles.length
+    : imports.importedFiles.length;
+  return words > literalImports;
+}
+
+function importSpecifiers(imports: ts.PreProcessedFileInfo, parsed?: ts.SourceFile, violations?: string[]): { specifier: string; typeOnly: boolean }[] {
   const specifiers = [...imports.importedFiles, ...imports.referencedFiles].map(item => ({
     specifier: item.fileName,
-    typeOnly: parsed.statements.some(statement => ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly === true &&
-      statement.moduleSpecifier.getStart(parsed) <= item.pos && statement.moduleSpecifier.end >= item.end),
+    typeOnly: parsed?.statements.some(statement => ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly === true &&
+      statement.moduleSpecifier.getStart(parsed) <= item.pos && statement.moduleSpecifier.end >= item.end) ?? false,
   }));
+  if (!parsed) return specifiers;
   const constants = new Map<string, string>();
   const visit = (node: ts.Node) => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
-      ts.isStringLiteral(node.initializer) && ts.isVariableDeclarationList(node.parent) &&
-      (node.parent.flags & ts.NodeFlags.Const) !== 0) constants.set(node.name.text, node.initializer.text);
+    if (violations) {
+      if (ts.isStringLiteralLike(node) && node.text.includes(runtimePackage)) violations.push('runtime package literal');
+      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        (!node.arguments[0] || !ts.isStringLiteral(node.arguments[0]))) violations.push('computed dynamic import');
+    }
+    if (ts.isVariableDeclarationList(node)) {
+      for (const declaration of node.declarations) {
+        if ((node.flags & ts.NodeFlags.Const) !== 0 && ts.isIdentifier(declaration.name) &&
+          declaration.initializer && ts.isStringLiteral(declaration.initializer)) {
+          constants.set(declaration.name.text, declaration.initializer.text);
+        }
+        visit(declaration);
+      }
+      return;
+    }
     if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
       ts.isIdentifier(node.expression) && node.expression.text === 'require')) {
       const argument = node.arguments[0];
@@ -46,31 +81,27 @@ function importSpecifiers(source: string): { specifier: string; typeOnly: boolea
   return specifiers;
 }
 
-function boundaryViolations(filename: string, source: string): string[] {
+function boundaryViolations(filename: string, source: string, resolve = importTarget): string[] {
   const fromTraining = inside(trainingRoot, filename);
   const relative = path.relative(root, filename).split(path.sep).join('/');
   // Only the composition entry points and their adjacent tests may reach across owners.
   const integration = /^src\/runtime\/[^/]+\/training\//u.test(relative) ||
     /^src\/runtime\/training(?:Subjects|Cli)(?:\.test)?\.ts$/u.test(relative);
-  const forbidden = fromTraining ? ['src/runtime', 'src/compiler'] : integration ? [] : ['src/training'];
+  const forbidden = fromTraining ? [owners.runtime, owners.compiler] : integration ? [] : [owners.training];
+  if (forbidden.length === 0) return [];
   const violations: string[] = [];
-  if (fromTraining) {
-    const parsed = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
-    const visit = (node: ts.Node) => {
-      if (ts.isStringLiteralLike(node) && node.text.includes(['@noopolis', 'daimon'].join('/'))) violations.push('runtime package literal');
-      if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-        (!node.arguments[0] || !ts.isStringLiteral(node.arguments[0]))) violations.push('computed dynamic import');
-      ts.forEachChild(node, visit);
-    };
-    visit(parsed);
-  }
-  return [...violations, ...importSpecifiers(source).filter(({ specifier, typeOnly }) => {
+  const imports = ts.preProcessFile(source, true, true);
+  const parsed = relative === 'src/runtime/registry.ts' || needsSyntaxTree(source, imports, fromTraining)
+    ? ts.createSourceFile(filename, source, { languageVersion: ts.ScriptTarget.Latest,
+      jsDocParsingMode: ts.JSDocParsingMode.ParseNone }, false) : undefined;
+  const specifiers = importSpecifiers(imports, parsed, fromTraining ? violations : undefined);
+  return [...violations, ...specifiers.filter(({ specifier, typeOnly }) => {
     if (relative === 'src/runtime/registry.ts' && typeOnly) return false;
     let target = specifier;
     if (target.startsWith('file:')) target = fileURLToPath(target);
     if (!target.startsWith('.') && !path.isAbsolute(target)) return false;
-    const resolved = importTarget(filename, target);
-    return forbidden.some((directory) => inside(canonicalPath(path.join(root, directory)), resolved));
+    const resolved = resolve(filename, target);
+    return forbidden.some((directory) => inside(directory, resolved));
   }).map(({ specifier }) => specifier)];
 }
 
@@ -84,7 +115,18 @@ test('training retains its imported structural and public module gates', async (
 
 test('training stays runtime neutral and Spawnfile continues to delegate externally', async () => {
   const files = (await sourceFiles(path.join(root, 'src')));
-  const violations = await Promise.all(files.map(async (filename) => boundaryViolations(filename, await readFile(filename, 'utf8'))
+  // This read-only inventory shares many imports. Resolve each target canonically
+  // once for this scan, without retaining stale paths between tests or file edits.
+  const targets = new Map<string, string>();
+  const resolve: typeof importTarget = (filename, specifier) => {
+    const key = path.resolve(path.dirname(filename), specifier);
+    const cached = targets.get(key);
+    if (cached !== undefined) return cached;
+    const target = importTarget(filename, specifier);
+    targets.set(key, target);
+    return target;
+  };
+  const violations = await Promise.all(files.map(async (filename) => boundaryViolations(filename, await readFile(filename, 'utf8'), resolve)
     .map((specifier) => `${path.relative(root, filename)} imports ${specifier}`)));
   expect(violations.flat()).toEqual([]);
 });
@@ -98,6 +140,9 @@ test.each([
   ['src/training/evaluation/check.ts', "import runtime = require('../../runtime/index.js');"],
   ['src/training/evaluation/check.ts', "/// <reference path='../../runtime/index.ts' />"],
   ['src/cli/check.ts', "import '../training/index.js';"],
+  ['src/cli/check.ts', "const first = 'node:fs', target = '../training/index.js'; await import(target);"],
+  ['src/cli/check.ts', "const target = '../training/index.js'; requ\\u0069re(target);"],
+  ['src/cli/check.ts', "export { thing } from 'node:fs'; const target = '../training/index.js'; await import(target);"],
   ['src/compiler/runtime/check.ts', "import '../../training/index.js';"],
   ['src/runtime/common.ts', "import '../training/index.js';"],
   ['src/runtime/daimon/adapter.ts', "import '../../training/index.js';"],
@@ -145,6 +190,23 @@ test.each([
 test('training tests retain the runtime package literal boundary', () => {
   expect(boundaryViolations(path.join(trainingRoot, 'subjects/check.test.ts'),
     `const name = '${['@noopolis', 'daimon'].join('/')}';`)).toContain('runtime package literal');
+});
+
+test.each([
+  "const tail = 'compiler/index.js'; await import('../../' + tail);",
+  "export { thing } from 'node:fs'; const target = '../../compiler/index.js'; await import(target);",
+  "define(['node:fs'], () => null); const target = '../../compiler/index.js'; await import(target);",
+  "declare module 'ambient' {} const target = '../../compiler/index.js'; await import(target);",
+  "const target = '../../compiler/index.js'; await import /* comment */ (target);",
+  "const note = `outer ${`inner ${1}`}`; const target = '../../compiler/index.js'; await import(target);",
+  "const note = `outer ${{ value: 1 }.value} tail`; const target = '../../compiler/index.js'; await import(target);",
+  "const pattern = /`/; const target = '../../compiler/index.js'; await import(target);",
+  "const target = '../../compiler/index.js'; require<unknown>(target);",
+  "const target = '../../compiler/index.js'; require?.(target);",
+  "const target = '../../compiler/index.js'; requ\\u0069re(target);",
+  "const hidden = '\\u0040noopolis/daimon';",
+])('retains full syntax checks for complex coupling: %s', source => {
+  expect(boundaryViolations(path.join(trainingRoot, 'evaluation/check.ts'), source)).not.toEqual([]);
 });
 
 test('Daimon package text stays under its runtime owner throughout source files', async () => {
