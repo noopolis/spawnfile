@@ -2,7 +2,7 @@
 
 This is the training core (from Paideia), runtime-neutral; must not import
 ../runtime, ../compiler. Its structural rules run through Vitest and its imported
-per-file coverage floor remains 90%. Runtime adapters remain here until packet 1b.
+per-file coverage floor remains 90%. Runtime adapters live under their runtime owners and enter through subjects/registry.ts.
 
 The child folders own contracts, cases, evaluation, optimization, experiments,
 providers, storage, CLI orchestration, the viewer, and the DSPy Python bridge.

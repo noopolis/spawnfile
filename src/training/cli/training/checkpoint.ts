@@ -18,14 +18,14 @@ export async function commandCheckpoint(args: CliArguments, inputs: Awaited<Retu
   repair?: { receipt: MeasurementRepairReceipt; digest: string }) {
   const integration = dependencies.spawnfile;
   const environment = await integration?.executionIdentity?.(context);
-  if ('context' in inputs && args.flags.resume && !environment) throw new Error('Resuming a native project requires its immutable execution identity');
+  if (inputs.context !== undefined && args.flags.resume && !environment) throw new Error('Resuming a native project requires its immutable execution identity');
   const flags = Object.fromEntries(Object.entries(args.flags).filter(([name]) =>
     !['resume','view','out','spawnfile-context','dry-run'].includes(name)).sort(([a],[b]) => a.localeCompare(b)));
   const identity = createHash('sha256').update(JSON.stringify({
     ...(repair ? {measurementRepair:repair.digest} : {}),
     version:'paideia.command-execution.v1',comparisonCandidateId:context.comparisonCandidateId,providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity),flags,training:args.training,candidate:inputs.candidate.id,
     sourceRoot:inputs.sourceRoot,resources:inputs.resources,model:inputs.model,
-    context:'context' in inputs ? inputs.context : null,
+    context:inputs.context !== undefined ? inputs.context : null,
     integration:integration ? {id:integration.id,version:integration.version,environment:environment ?? null,
       subjectRoot:integration.subjectRoot ?? null,
       ...(integration.judgeCacheRoot === undefined ? {} : {judgeCacheRoot:integration.judgeCacheRoot})} : null,

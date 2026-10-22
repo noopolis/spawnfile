@@ -1,3 +1,4 @@
+import type { SubjectAdapterRegistration } from "../training/subjects/index.js";
 import { readFile } from "node:fs/promises";
 
 import { parse as parseYaml } from "yaml";
@@ -117,6 +118,7 @@ export type RuntimeRegistryInstall =
 export type DaimonCapabilityReceipts = Partial<Record<"amd64" | "arm64", string>>;
 
 export interface RuntimeRegistryEntry {
+  training?: { subject: () => Promise<SubjectAdapterRegistration> };
   defaultBranch: string;
   install?: RuntimeRegistryInstall;
   name: string;
@@ -131,6 +133,7 @@ export const parseRuntimeRegistry = (source: string): RuntimeRegistryEntry[] => 
 
     return Object.entries(parsed.runtimes)
       .map(([name, entry]) => ({
+        ...(name === 'daimon' ? { training: { subject: async () => (await import('./daimon/training/index.js')).daimonTrainingSubject } } : {}),
         defaultBranch: entry.default_branch,
         install: entry.install?.kind === "container_image"
           ? {

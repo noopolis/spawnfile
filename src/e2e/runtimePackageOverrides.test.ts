@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from '../runtime/daimon/packageName.js';
 import os from "node:os";
 import path from "node:path";
 
@@ -18,16 +19,16 @@ describe("applyRuntimePackageOverrides", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-runtime-overrides-"));
     temporaryDirectories.push(directory);
     const packageJsonPath = path.join(directory, "package.json");
-    await writeUtf8File(packageJsonPath, '{"dependencies":{"@noopolis/daimon":"0.1.2"}}\n');
+    await writeUtf8File(packageJsonPath, `{"dependencies":{"${DAIMON_PACKAGE_NAME}":"0.1.2"}}\n`);
 
     await applyRuntimePackageOverrides(packageJsonPath, {
-      "@noopolis/daimon": "file:/tmp/daimon",
+      [`${DAIMON_PACKAGE_NAME}`]: "file:/tmp/daimon",
       "@noopolis/mneme": "file:/tmp/mneme"
     });
 
     expect(JSON.parse(await readUtf8File(packageJsonPath))).toEqual({
       dependencies: {
-        "@noopolis/daimon": "file:/tmp/daimon",
+        [`${DAIMON_PACKAGE_NAME}`]: "file:/tmp/daimon",
         "@noopolis/mneme": "file:/tmp/mneme"
       }
     });
@@ -37,7 +38,7 @@ describe("applyRuntimePackageOverrides", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-runtime-overrides-"));
     temporaryDirectories.push(directory);
     const packageJsonPath = path.join(directory, "package.json");
-    const original = '{"dependencies":{"@noopolis/daimon":"0.1.2"}}\n';
+    const original = `{"dependencies":{"${DAIMON_PACKAGE_NAME}":"0.1.2"}}\n`;
     await writeUtf8File(packageJsonPath, original);
 
     await applyRuntimePackageOverrides(packageJsonPath, undefined);
@@ -54,7 +55,7 @@ describe("assertRuntimePackageOverrideDistsBuilt", () => {
     await writeUtf8File(path.join(directory, "dist", "index.js"), "export const value = 1;\n");
 
     await expect(
-      assertRuntimePackageOverrideDistsBuilt({ "@noopolis/daimon": directory })
+      assertRuntimePackageOverrideDistsBuilt({ [`${DAIMON_PACKAGE_NAME}`]: directory })
     ).resolves.toBeUndefined();
   });
 
@@ -63,10 +64,10 @@ describe("assertRuntimePackageOverrideDistsBuilt", () => {
     temporaryDirectories.push(directory);
 
     await expect(
-      assertRuntimePackageOverrideDistsBuilt({ "@noopolis/daimon": directory })
+      assertRuntimePackageOverrideDistsBuilt({ [`${DAIMON_PACKAGE_NAME}`]: directory })
     ).rejects.toMatchObject({
       code: "runtime_error",
-      message: expect.stringContaining("@noopolis/daimon")
+      message: expect.stringContaining(`${DAIMON_PACKAGE_NAME}`)
     });
   });
 });

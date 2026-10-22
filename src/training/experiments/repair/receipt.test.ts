@@ -67,3 +67,14 @@ it('rejects a FIFO receipt without blocking on its writer',async()=>{
   const result=await promisify(execFile)(process.execPath,['--experimental-strip-types','--input-type=module','-e',program],{timeout:3000});
   expect(result.stdout).toContain('REJECTED_FIFO');
 });
+
+
+it('binds a repair receipt to the injected subject identity without a runtime allowlist', async () => {
+  const f = await fixture();
+  f.receipt.current.adapterId = 'another-subject';
+  f.expected.adapterId = 'another-subject';
+  const envelope = await f.save();
+  expect(await readMeasurementRepair(f.path, f.expected)).toEqual(envelope);
+  f.expected.adapterId = 'other';
+  await expect(readMeasurementRepair(f.path, f.expected)).rejects.toThrow('authority');
+});

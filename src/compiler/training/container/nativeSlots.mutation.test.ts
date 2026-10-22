@@ -31,7 +31,7 @@ const mutations: { file: string; before: string; after: string; title: string; t
 it("kills native slot mutants through behavioral assertions in isolated copies", async () => {
   const sandbox = await mkdtemp(join(tmpdir(), "native-slot-mutations-"));
   try {
-    await cp(join(root, "src"), join(sandbox, "src"), { recursive: true });
+    await cp(join(root, "src"), join(sandbox, "src"), { recursive: true, filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
     await cp(join(root, "package.json"), join(sandbox, "package.json"));
     await symlink(join(root, "node_modules"), join(sandbox, "node_modules"));
     await writeFile(join(sandbox, "vitest.config.mjs"), 'export default {test:{include:["src/**/*.test.ts"]}};');

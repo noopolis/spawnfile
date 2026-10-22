@@ -72,7 +72,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const repair = args.flags['repair-measurements'] ? await readMeasurementRepair(resolve(io.cwd, one(args, 'repair-context')), {
     parentRoot: resolve(io.cwd, one(args, 'repair-measurements')), out: native.out,
     imageId: dependencies.spawnfile?.inferenceExecutionIdentity, adapterId: native.adapter.id,
-    canonicalSourceDigest: 'context' in inputs ? inputs.context.project.sourceDigest : undefined,
+    canonicalSourceDigest: inputs.context !== undefined ? inputs.context.project.sourceDigest : undefined,
   }) : undefined;
   if (repair) await verifyRepairProjection(repair.receipt);
   return withOutput(native.out, async (store) => {

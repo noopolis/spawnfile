@@ -18,7 +18,7 @@ export function readCostConfig(args: CliArguments, io: CliIO) {
 }
 
 export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies: CliDependencies = {}): Promise<number> {
-  const native = args.flags['spawnfile-context'] ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity);
+  const native = args.flags['spawnfile-context'] ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects);
   const train = native.datasets.loadForCost(one(args, 'train'), true);
   const validation = args.flags.validation ? native.datasets.loadForCost(one(args, 'validation'), true) : undefined;
   const test = native.datasets.loadForCost(one(args, 'test'), true);
@@ -32,6 +32,6 @@ export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies
     maxProposals: comparison ? 0 : count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });
   io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id, editableResources: editableResources(native.candidate),
     ...(populationSearch(args.training?.optimizer) ? { search: populationSearch(args.training?.optimizer) } : {}), ...(comparison ? { comparison: { name: comparison.name, candidateId: comparison.candidate.id, optimizerCalls: 0 } } : {}),
-    ...('context' in native ? { spawnfile: native.context, readiness: native.readiness } : {}) })}\n`);
+    ...(native.context !== undefined ? { spawnfile: native.context, readiness: native.readiness } : {}) })}\n`);
   return 0;
 }

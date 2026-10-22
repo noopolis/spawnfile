@@ -8,15 +8,15 @@ import { expect, it } from "vitest";
 
 const run = promisify(execFile);
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
-const test = "src/training/adapters/daimon-native/container/slot.test.ts";
-const verifier = "src/training/adapters/daimon-native/container/slot.ts";
+const test = "src/runtime/daimon/training/native/container/slot.test.ts";
+const verifier = "src/runtime/daimon/training/native/container/slot.ts";
 const loader = "src/training/experiments/concurrency/slots.ts";
 const mutations: { file: string; before: string; after: string; title: string; test?: string }[] = [
   { file: verifier, before: "launch.host.port < slot.ports.base", after: "false", title: "always checks its port block" },
   { file: verifier, before: "!Number.isSafeInteger(slot.ports.base)", after: "false", title: "always checks its port block" },
   { file: verifier, before: "!Number.isSafeInteger(slot.ports.count)", after: "false", title: "always checks its port block" },
   { file: verifier, before: "launch.host.port >= slot.ports.base + slot.ports.count", after: "false", title: "always checks its port block" },
-  { file: "src/training/adapters/daimon-native/container/manifest.ts", before: "if (input.slot) assertLeasedLaunch(launch, input.slot);", after: "", title: "always checks its port block" },
+  { file: "src/runtime/daimon/training/native/container/manifest.ts", before: "if (input.slot) assertLeasedLaunch(launch, input.slot);", after: "", title: "always checks its port block" },
   { file: verifier, before: "declared.source !== root", after: "false", title: "binds every declared Codex root" },
   { file: verifier, before: "declared.target !== root", after: "false", title: "binds every declared Codex root" },
   { file: verifier, before: "matches?.length !== 1 ||", after: "false ||", title: "binds every declared Codex root" },
@@ -32,6 +32,7 @@ it("kills native slot mutants through behavioral assertions in isolated copies",
   const sandbox = await mkdtemp(join(tmpdir(), "native-slot-mutations-"));
   try {
     await cp(join(root, "src/training"), join(sandbox, "src/training"), { recursive: true, filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
+    await cp(join(root, 'src/runtime/daimon/training'), join(sandbox, 'src/runtime/daimon/training'), { recursive: true });
     await cp(join(root, "package.json"), join(sandbox, "package.json"));
     await symlink(join(root, "node_modules"), join(sandbox, "node_modules"));
     await writeFile(join(sandbox, "vitest.config.mjs"), 'export default {test:{include:["src/**/*.test.ts"]}};');

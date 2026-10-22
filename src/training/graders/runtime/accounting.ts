@@ -16,8 +16,10 @@ export function summarizeDecisionAccounting(receipts: DecisionRequestReceipt[]):
 
 /** Failure data excludes diagnostics, request bodies and provider response extensions. */
 export class DecisionAccountingError extends Error {
-  constructor(cause: unknown, readonly decisionAccounting: DecisionAccounting) {
+  readonly decisionAccounting: DecisionAccounting;
+  constructor(cause: unknown, decisionAccounting: DecisionAccounting) {
     super(cause instanceof Error ? cause.message : 'Decision operation failed', { cause });
+    this.decisionAccounting = decisionAccounting;
     this.name = 'DecisionAccountingError';
   }
 }

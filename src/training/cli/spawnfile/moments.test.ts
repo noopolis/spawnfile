@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -33,7 +33,7 @@ async function fixture() {
   });
   const integration: SpawnfileCliIntegration = { id: 'fixture', version: '1', createAdapter: vi.fn(), prepareEnvironment: vi.fn(async () => ({})), momentPreparations: { 'fixture/rewind': prepare } };
   async function paths() {
-    const root = await mkdtemp(join(tmpdir(), 'moment-trial-')); roots.push(root);
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'moment-trial-'))); roots.push(root);
     const paths = { root, workspace: join(root, 'workspace'), runtimeHome: join(root, 'runtime'), control: join(root, 'control') };
     await Promise.all([paths.workspace, paths.runtimeHome, paths.control].map(path => mkdir(path)));
     return paths;

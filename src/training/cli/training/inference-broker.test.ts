@@ -128,3 +128,20 @@ it('fails a stale realm fast to the authored Claude fallback and fails closed wi
   expect(noHome.fake.requests).toHaveLength(0);
   expect(await calls()).toHaveLength(1);
 });
+
+
+it('uses the injected subject hostInference capability for broker judges and releases its grants', async () => {
+  await fakeGrok('success');
+  const fake = fakeGrantAuthority();
+  const sockets: (string | undefined)[] = [];
+  const configured = createTrainingInference({ command: 'train', flags: {}, training: parseDatasetYaml(yaml).dataset.training }, {
+    subjects: { fixture: { create: () => { throw new Error('Judge must not construct a subject'); },
+      hostInference: { grantAuthority: async socket => { sockets.push(socket); return fake.authority; } } } },
+  }, 60_000, { prose: 'grok-4.6' }, { prose: 0 });
+  try {
+    expect((await configured.judges.prose!.provider.generate({ prompt: 'judge', model: 'grok-4.6' })).text).toBe('done');
+    expect(sockets).toEqual([process.env.PAIDEIA_GROK_BROKER_CONTROL_SOCKET]);
+    expect(fake.requests).toEqual([{ model: 'grok-4.6', reasoningEffort: 'low', purpose: 'judge' }]);
+  } finally { await configured.close(); }
+  expect(fake.releases).toHaveLength(1);
+});

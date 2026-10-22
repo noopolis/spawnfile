@@ -39,7 +39,8 @@ export interface GrokClientConfigInput {
 
 /** A closed broker refusal. Anything else a broker call throws means the broker is unavailable. */
 export class GrokGrantRefusal extends Error {
-  constructor(readonly code: GrokGrantRefusalCode) { super(`Grok inference grant refused (${code})`); this.name = 'GrokGrantRefusal'; }
+  readonly code: GrokGrantRefusalCode;
+  constructor(code: GrokGrantRefusalCode) { super(`Grok inference grant refused (${code})`); this.code = code; this.name = 'GrokGrantRefusal'; }
 }
 
 export interface GrokInferenceGrantAuthority {

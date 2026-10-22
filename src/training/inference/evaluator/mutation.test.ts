@@ -23,17 +23,18 @@ const mutations = [
   { file: 'src/training/inference/evaluator/provider.ts', before: 'return { TYPESAFE_API_KEY: key };',
     after: 'process.env.TYPESAFE_API_KEY = key; return { TYPESAFE_API_KEY: key };',
     test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'loads the key only into evaluator transport' },
-  { file: 'src/training/adapters/daimon-native/child/arguments.ts', before: 'const env: NodeJS.ProcessEnv = { HOME: home.target };',
+  { file: 'src/runtime/daimon/training/native/child/arguments.ts', before: 'const env: NodeJS.ProcessEnv = { HOME: home.target };',
     after: 'const env: NodeJS.ProcessEnv = { ...process.env, HOME: home.target };',
-    test: 'src/training/adapters/daimon-native/child/evaluator-environment.test.ts', title: 'never inherits the evaluator' },
+    test: 'src/runtime/daimon/training/native/child/evaluator-environment.test.ts', title: 'never inherits the evaluator' },
 ];
 it('kills each evaluator admission, request, spend, receipt and secret-isolation mutant with its behavioral test', async () => {
   const source = resolve('.'), root = await mkdtemp(join(tmpdir(), 'evaluator-mutations-'));
   try {
     await cp(join(source, 'src/training'), join(root, 'src/training'), { recursive: true,
       filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
+    await cp(join(source, 'src/runtime/daimon/training'), join(root, 'src/runtime/daimon/training'), { recursive: true });
     for (const file of ['package.json', 'tsconfig.json']) await cp(join(source, file), join(root, file));
-    await writeFile(join(root, 'vitest.config.mjs'), 'export default {test:{include:["src/training/**/*.test.ts"]}};');
+    await writeFile(join(root, 'vitest.config.mjs'), 'export default {test:{include:["src/**/*.test.ts"]}};');
     await symlink(resolve('node_modules'), join(root, 'node_modules'));
     await mkdir(join(root, 'tmp'));
     for (const mutation of mutations) {

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import type { InferenceProvider } from '../../contracts/index.js';
 import type { TrainingModel, TrainingRoute } from '../../contracts/training-config.js';
 import { assertModelRequestAdmission, budgetEvaluatorInference, createClaudeInference, createCodexInference, createGrokBrokerInference, createGrokInference, createOllamaInference, createRoutedInference, GrokGrantPool } from '../../inference/index.js';
-import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, loadDaimonGrokGrantAuthority } from '../../adapters/daimon-native/index.js';
+import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, subjectHostInference } from '../../subjects/index.js';
 import { createJudgeCache } from '../../evaluation/index.js';
 import { judgeVersions } from './configuration.js';
 import type { CliArguments } from '../arguments.js';
@@ -89,7 +89,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
 function grokGrantPool(dependencies: CliDependencies): GrokGrantPool {
   const socket = process.env[grokBrokerControlSocketEnv];
   return new GrokGrantPool({ id: socket ?? 'unconfigured',
-    authority: dependencies.grokGrantAuthority ?? (() => loadDaimonGrokGrantAuthority(socket)) });
+    authority: dependencies.grokGrantAuthority ?? (async () => subjectHostInference(dependencies.subjects).grantAuthority(socket)) });
 }
 const brokerHomeRoot = (): string | undefined => process.env[grokGrantHomeRootEnv] || undefined;
 

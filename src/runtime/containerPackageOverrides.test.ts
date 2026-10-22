@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from './daimon/packageName.js';
 import { describe, expect, it } from "vitest";
 
 import {
@@ -11,23 +12,23 @@ import {
 
 describe("resolveInstallPackageSpec", () => {
   it("returns the pinned registry spec when there is no override", () => {
-    expect(resolveInstallPackageSpec("@noopolis/daimon", "0.1.2")).toBe("@noopolis/daimon@0.1.2");
+    expect(resolveInstallPackageSpec(`${DAIMON_PACKAGE_NAME}`, "0.1.2")).toBe(`${DAIMON_PACKAGE_NAME}@0.1.2`);
   });
 
   it("returns the pinned registry spec when overrides exist for other packages only", () => {
     const overrides: RuntimeContainerPackageOverrides = {
       "@noopolis/mneme": { filename: "noopolis-mneme-0.1.1.tgz" }
     };
-    expect(resolveInstallPackageSpec("@noopolis/daimon", "0.1.2", overrides)).toBe(
-      "@noopolis/daimon@0.1.2"
+    expect(resolveInstallPackageSpec(`${DAIMON_PACKAGE_NAME}`, "0.1.2", overrides)).toBe(
+      `${DAIMON_PACKAGE_NAME}@0.1.2`
     );
   });
 
   it("returns the vendored tarball path when this exact package is overridden", () => {
     const overrides: RuntimeContainerPackageOverrides = {
-      "@noopolis/daimon": { filename: "noopolis-daimon-0.1.2.tgz" }
+      [`${DAIMON_PACKAGE_NAME}`]: { filename: "noopolis-daimon-0.1.2.tgz" }
     };
-    expect(resolveInstallPackageSpec("@noopolis/daimon", "0.1.2", overrides)).toBe(
+    expect(resolveInstallPackageSpec(`${DAIMON_PACKAGE_NAME}`, "0.1.2", overrides)).toBe(
       `${VENDOR_CONTAINER_DIR}/noopolis-daimon-0.1.2.tgz`
     );
   });
@@ -35,12 +36,12 @@ describe("resolveInstallPackageSpec", () => {
 
 describe("needsVendorCopyCommand", () => {
   it("is false with no overrides", () => {
-    expect(needsVendorCopyCommand(["@noopolis/daimon", "@noopolis/mneme"])).toBe(false);
+    expect(needsVendorCopyCommand([`${DAIMON_PACKAGE_NAME}`, "@noopolis/mneme"])).toBe(false);
   });
 
   it("is false when overrides exist but none match the given package names", () => {
     expect(
-      needsVendorCopyCommand(["@noopolis/daimon"], {
+      needsVendorCopyCommand([`${DAIMON_PACKAGE_NAME}`], {
         "@noopolis/mneme": { filename: "noopolis-mneme-0.1.1.tgz" }
       })
     ).toBe(false);
@@ -48,7 +49,7 @@ describe("needsVendorCopyCommand", () => {
 
   it("is true when at least one given package name is overridden", () => {
     expect(
-      needsVendorCopyCommand(["@noopolis/daimon", "@noopolis/mneme"], {
+      needsVendorCopyCommand([`${DAIMON_PACKAGE_NAME}`, "@noopolis/mneme"], {
         "@noopolis/mneme": { filename: "noopolis-mneme-0.1.1.tgz" }
       })
     ).toBe(true);

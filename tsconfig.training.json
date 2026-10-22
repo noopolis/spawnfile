@@ -14,7 +14,9 @@
   },
   "include": [
     "src/training/**/*.ts",
-    "tooling/training/**/*.ts"
+    "tooling/training/**/*.ts",
+    "src/runtime/daimon/training/**/*.ts",
+    "src/runtime/codex-exec/**/*.ts"
   ],
   "exclude": [
     "src/training/copyAssets.ts"

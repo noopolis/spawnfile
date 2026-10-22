@@ -167,7 +167,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   `eleanor-home`), both with `wake: mentions` — an agent only wakes when a
   room message @mentions their id, so turn-taking is explicit rather than
   both agents waking in parallel off every message. The fixture's `pi` runtime install
-  recipe pins the published `@noopolis/daimon@0.1.2` and
+  recipe pins the published `Daimon@0.1.2` and
   `@noopolis/mneme@0.1.1` releases. Local package overrides remain an explicit
   development option and are never inferred from checkout layout. Both agents
   use the same real-Codex

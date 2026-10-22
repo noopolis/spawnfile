@@ -90,3 +90,11 @@ installation commands shared by `container.ts` and the training-native parent
 renderer. Keep this one authority; never weaken parent verification or add
 separate evaluator CLI installations. Its adjacent tests execute verification
 against matching, missing and mismatched install files.
+
+Training subject registration is optional. Registry entries expose an async
+`training.subject()` loader; only `trainingSubjects.ts` resolves it, so ordinary
+compiler and CLI startup never evaluates training adapters. The scoped training
+typecheck/build also covers the moved adapters and supplies their strict checks.
+`trainingCli.ts` composes the imported training CLI separately from the existing
+external Paideia delegation. `codex-exec/` is a standalone subject, not a compiled
+runtime. `trainingSubjects.test.ts` owns default factory composition coverage.

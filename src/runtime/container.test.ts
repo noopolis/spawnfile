@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from './daimon/packageName.js';
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -85,7 +86,7 @@ describe("runtime container install recipes", () => {
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
       `mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`,
-      `cd ${RUNTIME_INSTALL_ROOT}/pi && npm install --omit=dev --no-fund --no-audit @noopolis/daimon@0.1.2 @noopolis/mneme@0.1.1 @earendil-works/pi-coding-agent@0.79.10 @earendil-works/pi-ai@0.79.10`
+      `cd ${RUNTIME_INSTALL_ROOT}/pi && npm install --omit=dev --no-fund --no-audit ${DAIMON_PACKAGE_NAME}@0.1.2 @noopolis/mneme@0.1.1 @earendil-works/pi-coding-agent@0.79.10 @earendil-works/pi-ai@0.79.10`
     ]);
   });
 
@@ -100,7 +101,7 @@ describe("runtime container install recipes", () => {
   it("installs overridden runtime packages from the vendored tarball path in the Pi recipe", async () => {
     const recipe = await createRuntimeInstallRecipe("pi", {
       packageOverrides: {
-        "@noopolis/daimon": { filename: "noopolis-daimon-0.1.2.tgz" },
+        [`${DAIMON_PACKAGE_NAME}`]: { filename: "noopolis-daimon-0.1.2.tgz" },
         "@noopolis/mneme": { filename: "noopolis-mneme-0.1.1.tgz" }
       }
     });
@@ -114,25 +115,25 @@ describe("runtime container install recipes", () => {
 
   it("keeps the pinned registry spec for Pi recipe packages without an override entry", async () => {
     const recipe = await createRuntimeInstallRecipe("pi", {
-      packageOverrides: { "@noopolis/daimon": { filename: "noopolis-daimon-0.1.2.tgz" } }
+      packageOverrides: { [`${DAIMON_PACKAGE_NAME}`]: { filename: "noopolis-daimon-0.1.2.tgz" } }
     });
 
     expect(recipe.commands[1]).toContain("@noopolis/mneme@0.1.1");
     expect(recipe.commands[1]).toContain("/opt/spawnfile/vendor/noopolis-daimon-0.1.2.tgz");
-    expect(recipe.commands[1]).not.toContain("@noopolis/daimon@0.1.2");
+    expect(recipe.commands[1]).not.toContain(`${DAIMON_PACKAGE_NAME}@0.1.2`);
   });
 
   it("omits the vendor copy command when the Pi recipe has no overrides", async () => {
     const recipe = await createRuntimeInstallRecipe("pi", {});
     expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands[1]).toContain("@noopolis/daimon@0.1.2");
+    expect(recipe.commands[1]).toContain(`${DAIMON_PACKAGE_NAME}@0.1.2`);
   });
 
   it("omits the vendor copy command when a prebuilt Pi base image is configured, even with overrides set", async () => {
     process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-pi-runtime:test";
 
     const recipe = await createRuntimeInstallRecipe("pi", {
-      packageOverrides: { "@noopolis/daimon": { filename: "noopolis-daimon-0.1.2.tgz" } }
+      packageOverrides: { [`${DAIMON_PACKAGE_NAME}`]: { filename: "noopolis-daimon-0.1.2.tgz" } }
     });
 
     expect(recipe.copyCommands).toEqual([]);

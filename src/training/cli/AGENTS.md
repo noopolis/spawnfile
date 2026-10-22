@@ -31,7 +31,7 @@ Owns explicit local commands, configuration selection and human diagnostics.
   snapshots during train/evaluate. Pages never launch work or write evidence.
   Live projections omit test identities until selection freezes; completed replay
   uses the explicit invocation's frozen candidate and operator access.
-- `launch.ts` owns process signals and exit status. `main.ts` is the executable shim.
+- `launch.ts` owns process signals and exit status. The executable shim and subject composition live outside the core in the runtime layer.
   Run adjacent tests, CLI process tests and real DSPy through injected subject
   callbacks; those tests do not claim subscription/native-agent acceptance.
 - Surface unsupported capabilities, missing credentials, incomplete observations

@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from '../../../runtime/daimon/packageName.js';
 import { execFileSync } from "node:child_process";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -103,15 +104,15 @@ it("hands Docker a normalized context and never runs a layer after the distribut
   expect(instructions.filter(line => line.startsWith("COPY --from"))).toHaveLength(2);
   expect(dockerfile.match(/ln -s \S+ \S+/gu)).toEqual([
     'ln -s "$library" /usr/local/lib/daimon/libfaketime.so.1',
-    "ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon node_modules/@noopolis/daimon",
+    `ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/${DAIMON_PACKAGE_NAME} node_modules/${DAIMON_PACKAGE_NAME}`,
     "ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude",
     "ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia",
     "ln -s /opt/training/spawnfile/dist/cli/index.js /opt/training/bin/spawnfile",
     "ln -s /opt/training/paideia /opt/training/integration/node_modules/@noopolis/paideia",
     "ln -s /opt/training/spawnfile /opt/training/integration/node_modules/spawnfile",
-    "ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/integration/node_modules/@noopolis/daimon",
+    `ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/${DAIMON_PACKAGE_NAME} /opt/training/integration/node_modules/${DAIMON_PACKAGE_NAME}`,
     // The v3 root entrypoint imports Daimon's public /runtime export for the broker projection.
-    "ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/spawnfile/node_modules/@noopolis/daimon"]);
+    `ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/${DAIMON_PACKAGE_NAME} /opt/training/spawnfile/node_modules/${DAIMON_PACKAGE_NAME}`]);
   // Both fixed broker executable paths come from the native parent's own runtime install, never a second build.
   expect(dockerfile).toContain("install -o root -g root -m 0555 /opt/spawnfile/runtime-installs/daimon/bin/grok /usr/local/bin/grok");
   expect(dockerfile).toContain("install -o root -g root -m 0555 /opt/spawnfile/runtime-installs/daimon/bin/daimon-engine-broker /opt/daimon/bin/daimon-engine-broker");

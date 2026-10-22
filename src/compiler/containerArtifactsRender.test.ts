@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from '../runtime/daimon/packageName.js';
 import { execFile as execFileCallback } from "node:child_process";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -586,7 +587,7 @@ describe("renderDockerfile", () => {
     expect(dockerfile).toContain(
       "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
-    expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @noopolis/daimon");
+    expect(dockerfile).not.toContain(`npm install --omit=dev --no-fund --no-audit ${DAIMON_PACKAGE_NAME}`);
     expect(dockerfile.indexOf("COPY --from=noopolis/spawnfile-runtime-daimon")).toBeLessThan(
       dockerfile.indexOf("COPY container/rootfs/ /")
     );

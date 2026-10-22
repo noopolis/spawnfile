@@ -35,7 +35,7 @@ function routes(): Record<string,JudgeRoute> {
 
 it('runs real CLI plan evaluation twice, renders Jinja, protects cache and retains original judge provenance without new usage',async()=>{
   const f=await fixture(); let generations=0; const protectedPaths:string[][]=[];
-  const dependencies={...f.dependencies,adapter:(runtime:'codex'|'daimon',options:{model:string;timeoutMs:number})=>{
+  const dependencies={...f.dependencies,adapter:(runtime:string,options:{model:string;timeoutMs:number})=>{
     const adapter=f.dependencies.adapter!(runtime,options);
     return {...adapter,async start(input:Parameters<typeof adapter.start>[0]) {
       protectedPaths.push([...input.protectedPaths??[]]); return adapter.start(input);
@@ -184,7 +184,7 @@ it('uses writable execution cache storage with readonly dataset inputs through t
   const judgeCacheRoot = await realpath(outputBase);
   const dependencies = { ...f.dependencies,
     spawnfile: { id: 'container', version: '1', judgeCacheRoot, inferenceExecutionIdentity: 'image:one', createAdapter: vi.fn(), prepareEnvironment: vi.fn() },
-    adapter: (runtime: 'codex' | 'daimon', options: { model: string; timeoutMs: number }) => {
+    adapter: (runtime: string, options: { model: string; timeoutMs: number }) => {
       const adapter = f.dependencies.adapter!(runtime, options);
       return { ...adapter, async start(input: Parameters<typeof adapter.start>[0]) {
         protectedPaths.push([...input.protectedPaths ?? []]); return adapter.start(input);

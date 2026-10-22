@@ -9,7 +9,7 @@ const receiptSchema = z.object({
   version: z.literal('paideia.measurement-repair.v1'),
   parent: z.object({ root: id, imageId: sha, experimentId: id, executionIdentity: id, manifestDigest: sha,
     checkpoints: z.object({ command: sha, training: sha, host: sha, optimizer: sha }).strict(), trainingIdentity: id }).strict(),
-  current: z.object({ imageId: sha, canonicalSourceDigest: sha, adapterId: z.literal('daimon-native') }).strict(),
+  current: z.object({ imageId: sha, canonicalSourceDigest: sha, adapterId: id }).strict(),
   compatibility: z.object({ version: z.literal('spawnfile.daimon-dspy-compatibility.v1'), digest: sha,
     components: z.record(id, sha), inputs: z.record(id, sha) }).strict(),
 }).strict();

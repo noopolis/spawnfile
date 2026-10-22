@@ -1,7 +1,7 @@
 import { judgeVersions, createTrainingInference, prepareJudgeCaches } from './training/index.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { createCodexAdapter, createDaimonAdapter } from '../adapters/index.js';
+import { resolveSubjectAdapter } from '../subjects/index.js';
 import { snapshotCandidate, type ResourceMapping } from '../candidates/index.js';
 import { createEvaluationRegistry } from '../evaluation/index.js';
 import { count, judgeCitationRepairs, one, pairs, type CliArguments } from './arguments.js';
@@ -10,7 +10,7 @@ import type { CliDependencies, CliIO } from './types.js';
 import { spawnfileEnvironment } from './spawnfile/index.js';
 import { prepareSpawnfileInputs } from './spawnfile/index.js';
 import type { StoredTrialOptions } from '../experiments/index.js';
-import { createExperimentSlotFreshness } from '../adapters/daimon-native/index.js';
+import { createExperimentSlotFreshness } from '../subjects/index.js';
 
 export function resourceMappings(args: CliArguments): ResourceMapping[] {
   const instructions = args.flags.instructions ?? [];
@@ -29,16 +29,16 @@ export function resourceMappings(args: CliArguments): ResourceMapping[] {
 }
 
 /** File selection only; deliberately has no runtime or inference construction. */
-export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string) {
+export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string, subjects?: CliDependencies['subjects']) {
   const runtime = one(args, 'runtime');
-  if (runtime !== 'codex' && runtime !== 'daimon') throw new Error('Supported native runtimes: codex, daimon');
+  if (!runtime || subjects && !Object.hasOwn(subjects, runtime)) throw new Error(`Supported native runtimes: ${Object.keys(subjects ?? {}).join(', ')}`);
   const model = one(args, 'model');
   const sourceRoot = resolve(io.cwd, one(args, 'source-root', io.cwd));
   const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
   const judges = pairs(args.flags.judge ?? []);
   const datasets = new CliDatasets(judges, io.cwd, { inferenceExecutionIdentity: executionIdentity }, judgeVersions(args.training, executionIdentity, Object.keys(judges)), args.frozenDataset);
-  return { runtime: runtime as 'codex' | 'daimon', model, sourceRoot, out, candidate, judges, datasets,
+  return { context: undefined, readiness: undefined, runtime, model, sourceRoot, out, candidate, judges, datasets,
     citationRepairs: judgeCitationRepairs(args, judges),
     maxTrials: count(args, 'max-trials', 20, 10000),
     resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),
@@ -47,7 +47,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
 
 export async function prepareCliInputs(args: CliArguments, io: CliIO, dependencies: CliDependencies) {
   return args.flags['spawnfile-context']
-    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity);
+    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects);
 }
 
 export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number,
@@ -56,22 +56,22 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   const { runtime, model, judges, datasets } = inputs;
   const graders = await datasets.buildGraders(dependencies.grader, args.command === 'train');
   // One Paideia-owned freshness store per experiment, in its durable output state.
-  const services = 'context' in inputs ? { grokSlots: createExperimentSlotFreshness(inputs.out) } : undefined;
-  const adapter = 'context' in inputs
+  const services = inputs.context !== undefined ? { grokSlots: createExperimentSlotFreshness(inputs.out) } : undefined;
+  const adapter = inputs.context !== undefined
     ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs, grokSlots: services!.grokSlots })
-    : dependencies.adapter?.(runtime as 'codex' | 'daimon', { model, timeoutMs })
-      ?? (runtime === 'codex' ? createCodexAdapter({ model, timeoutMs }) : createDaimonAdapter({ model, timeoutMs }));
+    : dependencies.adapter?.(runtime, { model, timeoutMs })
+      ?? resolveSubjectAdapter(dependencies.subjects, runtime, { model, timeoutMs });
   const configured = createTrainingInference(args, dependencies, inferenceTimeoutMs, judges, inputs.citationRepairs);
   let cacheRoots: Awaited<ReturnType<typeof prepareJudgeCaches>>;
   try { cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out, dependencies.spawnfile?.judgeCacheRoot); }
   catch (error) { await configured.close(); throw error; }
   const inference = args.training?.comparison ? undefined : configured.inference;
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
-  if ('context' in inputs) {
+  if (inputs.context !== undefined) {
     const context = inputs.context;
     prepareEnvironment = spawnfileEnvironment(dependencies.spawnfile!, context, services!);
   }
-  const subjectRoot = 'context' in inputs ? dependencies.spawnfile!.subjectRoot : undefined;
+  const subjectRoot = inputs.context !== undefined ? dependencies.spawnfile!.subjectRoot : undefined;
   return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot, closeInference: configured.close,
     registry: createEvaluationRegistry(),
     evaluation: { judges: configured.judges, graders,

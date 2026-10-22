@@ -22,7 +22,7 @@ const realBridgeTests = [
 // Vitest supports perFile only globally. Exact-file glob thresholds preserve
 // Paideia's floor without applying per-file thresholds to existing Spawnfile code.
 const trainingThresholds = Object.fromEntries(globSync(
-  ["src/training/**/*.ts", "tooling/training/**/*.ts"],
+  ["src/training/**/*.ts", "src/runtime/daimon/training/**/*.ts", "src/runtime/codex-exec/**/*.ts", "tooling/training/**/*.ts"],
   { cwd: fileURLToPath(new URL(".", import.meta.url)),
     exclude: ["**/*.test.ts", "**/*.d.ts", "src/training/copyAssets.ts"] },
 ).map(file => [file, { branches: 90, functions: 90, lines: 90, statements: 90 }]));
@@ -58,12 +58,14 @@ export default defineConfig({
         ...trainingThresholds
       }
     },
+    // Bound memory and filesystem contention across the compiler and imported training suites.
+    maxWorkers: 4,
     environment: "node",
     projects: [
       { extends: true, test: { name: "spawnfile", include: ["src/**/*.test.ts"],
-        exclude: [...configDefaults.exclude, "src/training/**", "src/runtime/pi/appControlDeliveryMetadata.test.ts"],
+        exclude: [...configDefaults.exclude, "src/training/**", "src/runtime/daimon/training/**", "src/runtime/codex-exec/**", "src/runtime/pi/appControlDeliveryMetadata.test.ts"],
         sequence: { groupOrder: 0 } } },
-      { extends: true, test: { name: "training", include: ["src/training/**/*.test.ts", "tooling/training/**/*.test.ts"],
+      { extends: true, test: { name: "training", include: ["src/training/**/*.test.ts", "src/runtime/daimon/training/**/*.test.ts", "src/runtime/codex-exec/**/*.test.ts", "tooling/training/**/*.test.ts"],
         exclude: [...configDefaults.exclude, ...realBridgeTests], testTimeout: 15_000, hookTimeout: 15_000,
         sequence: { groupOrder: 0 } } },
       { extends: true, test: { name: "real-bridge", include: realBridgeTests,

@@ -98,7 +98,7 @@ it("kills each key-guarantee mutant in an isolated source copy, without changing
   try {
     // An isolated source tree avoids racing the normal suite and never mutates public files.
     for (const file of ["src", "package.json", "vitest.config.ts", "runtimes.yaml", "moltnet-releases.json"]) {
-      await cp(path.join(root, file), path.join(sandbox, file), { recursive: true });
+      await cp(path.join(root, file), path.join(sandbox, file), { recursive: true, filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
     }
     await symlink(path.join(root, "node_modules"), path.join(sandbox, "node_modules"));
     await mkdir(path.join(sandbox, "coverage")); await mkdir(path.join(sandbox, "tmp"));

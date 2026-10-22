@@ -5,7 +5,8 @@ import type { BlobReference } from '../storage/index.js';
 import type { DatasetRegistry, EditPolicy, NativePreparationContext, StoredTrialOptions } from '../index.js';
 import type { TrainingMomentPreparation } from './spawnfile/moments.js';
 import type { SpawnfileTrainingContext } from './spawnfile/index.js';
-import type { GrokSlotFreshnessStore } from '../adapters/daimon-native/index.js';
+import type { SubjectAdapterRegistry } from '../subjects/index.js';
+import type { GrokSlotFreshnessStore } from '../subjects/index.js';
 
 /**
  * Experiment-owned services the runner hands to every integration hook. The
@@ -27,13 +28,14 @@ export interface CliIO {
 
 /** Tests inject only the native/inference boundaries; experiment/storage code stays real. */
 export interface CliDependencies {
+  subjects?: SubjectAdapterRegistry;
   grader?: GraderDependencies;
   /** Container integrations may bind internally; the launcher must publish only on host loopback. */
   viewerBindHost?: '127.0.0.1' | '0.0.0.0';
-  adapter?: (runtime: 'codex' | 'daimon', options: { model: string; timeoutMs: number }) => SubjectAdapter;
+  adapter?: (runtime: string, options: { model: string; timeoutMs: number }) => SubjectAdapter;
   inference?: (timeoutMs: number) => InferenceProvider;
   modelInference?: (model: TrainingModel, timeoutMs: number) => InferenceProvider;
-  /** Broker-grant authority seam; defaults to Daimon over the container-supplied control socket. */
+  /** Broker-grant authority seam; defaults to the injected subject capability over the container control socket. */
   grokGrantAuthority?: () => Promise<GrokInferenceGrantAuthority>;
   /** Trusted project composition. Registration is static; native factory runs only after preflight. */
   spawnfile?: SpawnfileCliIntegration;

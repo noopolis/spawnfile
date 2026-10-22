@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from '../daimon/packageName.js';
 export const renderPiPreludeSource = (): string => String.raw`import { createHash } from "node:crypto";
 import path from "node:path";
 import { execFile, spawn } from "node:child_process";
@@ -5,8 +6,8 @@ import { appendFileSync, closeSync, openSync } from "node:fs";
 import { createServer } from "node:http";
 import { cp, mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import { PiHarnessAdapter, stampTurnInputSubmitted, stampTurnOutputCompleted } from "@noopolis/daimon/pi";
-import { emitControlWakeAccepted, emitControlWakeDenied, emitDeliveryWakeAccepted } from "@noopolis/daimon/observability";
+import { PiHarnessAdapter, stampTurnInputSubmitted, stampTurnOutputCompleted } from "${DAIMON_PACKAGE_NAME}/pi";
+import { emitControlWakeAccepted, emitControlWakeDenied, emitDeliveryWakeAccepted } from "${DAIMON_PACKAGE_NAME}/observability";
 import { installAgentSchedules } from "./schedule.mjs";
 import {
   createOllamaEmbeddingProvider,

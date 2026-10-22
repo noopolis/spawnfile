@@ -1,14 +1,17 @@
 {
   "extends": "./tsconfig.training.json",
   "compilerOptions": {
-    "rootDir": "src/training",
-    "outDir": "dist/training"
+    "rootDir": "src",
+    "outDir": "dist"
   },
   "include": [
-    "src/training/**/*.ts"
+    "src/training/**/*.ts",
+    "src/runtime/daimon/training/**/*.ts",
+    "src/runtime/codex-exec/**/*.ts"
   ],
   "exclude": [
     "src/training/**/*.test.ts",
-    "src/training/copyAssets.ts"
+    "src/training/copyAssets.ts",
+    "src/runtime/**/*.test.ts"
   ]
 }
