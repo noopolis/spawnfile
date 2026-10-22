@@ -3,12 +3,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint, type Linter } from 'eslint';
 import ts from 'typescript';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { trainingLintConfig } from '../../tooling/training/eslint/index.js';
 import { canonicalPath, importTarget, inside } from '../../tooling/training/eslint/index.js';
 
 const root = canonicalPath(fileURLToPath(new URL('../../', import.meta.url)));
 const trainingRoot = path.join(root, 'src/training');
+// Retain the training project's deadlines when this file runs in the serial lane.
+vi.setConfig({ testTimeout: 15_000, hookTimeout: 15_000 });
 
 async function sourceFiles(directory: string, typescriptOnly = true): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });

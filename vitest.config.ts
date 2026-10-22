@@ -19,6 +19,14 @@ const realBridgeTests = [
   "src/training/optimization/runner.test.ts",
 ];
 
+// Whole-source AST scans and nested Vitest processes contend with ordinary workers.
+// Give them a serial lane on every platform; keep each project's existing deadlines.
+const sourceGateTests = [
+  "src/training/boundaries.test.ts",
+  "src/deployment/providerRuntimeBoundary.test.ts",
+  "src/compiler/training/execution.mutation.test.ts",
+];
+
 // Vitest supports perFile only globally. Exact-file glob thresholds preserve
 // Paideia's floor without applying per-file thresholds to existing Spawnfile code.
 const trainingThresholds = Object.fromEntries(globSync(
@@ -63,13 +71,15 @@ export default defineConfig({
     environment: "node",
     projects: [
       { extends: true, test: { name: "spawnfile", include: ["src/**/*.test.ts"],
-        exclude: [...configDefaults.exclude, "src/training/**", "src/runtime/daimon/training/**", "src/runtime/codex-exec/**", "src/runtime/pi/appControlDeliveryMetadata.test.ts"],
+        exclude: [...configDefaults.exclude, ...sourceGateTests, "src/training/**", "src/runtime/daimon/training/**", "src/runtime/codex-exec/**", "src/runtime/pi/appControlDeliveryMetadata.test.ts"],
         sequence: { groupOrder: 0 } } },
       { extends: true, test: { name: "training", include: ["src/training/**/*.test.ts", "src/runtime/daimon/training/**/*.test.ts", "src/runtime/codex-exec/**/*.test.ts", "tooling/training/**/*.test.ts"],
-        exclude: [...configDefaults.exclude, ...realBridgeTests], testTimeout: 15_000, hookTimeout: 15_000,
+        exclude: [...configDefaults.exclude, ...sourceGateTests, ...realBridgeTests], testTimeout: 15_000, hookTimeout: 15_000,
         sequence: { groupOrder: 0 } } },
+      { extends: true, test: { name: "source-gates", include: sourceGateTests,
+        pool: "forks", poolOptions: { forks: { singleFork: true } }, sequence: { groupOrder: 1 } } },
       { extends: true, test: { name: "real-bridge", include: realBridgeTests,
-        pool: "forks", poolOptions: { forks: { singleFork: true } }, testTimeout: 15_000, hookTimeout: 15_000, sequence: { groupOrder: 1 } } }
+        pool: "forks", poolOptions: { forks: { singleFork: true } }, testTimeout: 15_000, hookTimeout: 15_000, sequence: { groupOrder: 2 } } }
     ],
     // Whole-src scans and durable filesystem I/O can outlive the 5s default under full-fork load.
     testTimeout: 30_000,
