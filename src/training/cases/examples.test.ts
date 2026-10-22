@@ -35,7 +35,7 @@ const registry: DatasetRegistry = {
   } },
 };
 function newsroom(name: string): ResolvedDataset {
-  const sourceName = new URL(`../../examples/newsroom-reporting/evals/${name}.paideia.yaml`, import.meta.url);
+  const sourceName = new URL(`../../../examples/training/newsroom-reporting/evals/${name}.paideia.yaml`, import.meta.url);
   return resolveDataset(parseDatasetYaml(readFileSync(sourceName, 'utf8'), { sourceName: sourceName.pathname }),
     { registry, subject: 'scribe', requireGroups: true, unlockedSetupPaths: ['clock', 'delivery'] });
 }
@@ -54,7 +54,7 @@ describe('unchanged newsroom example authoring', () => {
     expect(() => validateDatasetSplit(train, test)).not.toThrow();
   });
   it('fails without actual registered project support instead of accepting fake generic execution', () => {
-    const source = readFileSync(new URL('../../examples/newsroom-reporting/evals/train.paideia.yaml', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../../../examples/training/newsroom-reporting/evals/train.paideia.yaml', import.meta.url), 'utf8');
     expect(() => resolveDataset(parseDatasetYaml(source))).toThrow(/unsupported evaluator/);
   });
 });
@@ -116,7 +116,7 @@ records:
 });
 
 it('resolves the documented quality/efficiency stage with unchanged hard floors', () => {
-  const text = readFileSync(new URL('../../docs/token-efficiency.md', import.meta.url), 'utf8');
+  const text = readFileSync(new URL('../../../docs/training/token-efficiency.md', import.meta.url), 'utf8');
   const yaml = /```yaml\n([\s\S]*?)```/.exec(text)![1]!;
   const stage = parse(yaml);
   const source = stringify({ schema: 'paideia.dataset.v1', id: 'quality-efficiency', stages: [stage],

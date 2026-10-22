@@ -91,7 +91,7 @@ test('a symlinked checkout retains required-guide checks', async () => {
 test('generated dependencies and build output share the lint ignore policy; hidden implementation stays checked', async () => {
   const fixture = await lintFixture();
   await fixture.guides('viewer');
-  for (const directory of ['dist', '.astro', 'node_modules', '.venv', 'coverage', '.runtime', '.paideia']) {
+  for (const directory of ['dist', '.astro', 'node_modules', '.venv', 'coverage', '.runtime', '.paideia', '__pycache__', '.pytest_cache', 'paideia_dspy_bridge.egg-info']) {
     await fixture.file(`viewer/${directory}/nested/generated.ts`);
   }
   expect(await fixture.lint('export const x = 1;', 'viewer/page.ts')).toEqual([]);

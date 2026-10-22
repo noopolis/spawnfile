@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { cliFixture, datasetText, fixtureAdapter } from './fixture.js';
 import { main } from './commands.js';
 import { loadInvocationViewer, startLiveViewer } from './viewer.js';
-import { projectTrials } from '../../viewer/index.js';
+import { projectTrials } from '../viewer/index.js';
 import type { DspyResult } from '../optimization/index.js';
 import { snapshotCandidate, deriveAuthoredCandidate } from '../candidates/index.js';
 import { openExperimentStore } from '../storage/index.js';

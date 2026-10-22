@@ -1,12 +1,12 @@
 import { existsSync, lstatSync, readFileSync, readdirSync, readlinkSync } from 'node:fs';
 import path from 'node:path';
-import { generatedDirectories, implementationRoots } from './paths.js';
+import { generatedDirectories, implementationDirectories } from './paths.js';
 
 type LayoutViolation = { messageId: 'guide' | 'crowded'; data: { directory: string; count?: number } };
 
 export function inspectLayout(root: string): LayoutViolation[] {
   const violations: LayoutViolation[] = [];
-  const pending = [...implementationRoots].map((name) => path.join(root, name)).filter((directory) => existsSync(directory));
+  const pending = implementationDirectories(root).map((name) => path.join(root, name)).filter((directory) => existsSync(directory));
   for (const directory of pending) {
     const guide = path.join(directory, 'AGENTS.md');
     const link = path.join(directory, 'CLAUDE.md');
@@ -18,7 +18,7 @@ export function inspectLayout(root: string): LayoutViolation[] {
     const entries = readdirSync(directory, { withFileTypes: true });
     const count = entries.filter((entry) => !entry.isDirectory() && entry.name !== '.DS_Store').length;
     if (count > 30) violations.push({ messageId: 'crowded', data: { directory: label, count } });
-    pending.push(...entries.filter((entry) => entry.isDirectory() && !generatedDirectories.has(entry.name))
+    pending.push(...entries.filter((entry) => entry.isDirectory() && !generatedDirectories.has(entry.name) && !entry.name.endsWith('.egg-info'))
       .map((entry) => path.join(directory, entry.name)));
   }
   return violations;

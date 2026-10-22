@@ -63,7 +63,7 @@ async function project() {
       } }; },
   };
   const args = ['train', '--train', 'train.yaml', '--spawnfile-context', f.path, '--editable', 'AGENTS.md',
-    '--bridge-command', resolve('bridges/dspy/.venv/bin/paideia-dspy')];
+    '--bridge-command', resolve('src/training/dspy/.venv/bin/paideia-dspy')];
   return { ...f, args, dependencies, io, stdout, stderr, calls, native, recover() { failure = false; image = newImage; } };
 }
 

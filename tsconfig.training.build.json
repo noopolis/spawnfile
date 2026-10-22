@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.training.json",
+  "compilerOptions": {
+    "rootDir": "src/training",
+    "outDir": "dist/training"
+  },
+  "include": [
+    "src/training/**/*.ts"
+  ],
+  "exclude": [
+    "src/training/**/*.test.ts",
+    "src/training/copyAssets.ts"
+  ]
+}

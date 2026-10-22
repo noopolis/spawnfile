@@ -16,7 +16,7 @@ describe('executable command entry', () => {
   });
   it('runs the actual CLI process against real files and verifies positive output and malformed-input failure', async () => {
     const fixture = await cliFixture(); roots.push(fixture.root);
-    const cli = resolve('src/cli/main.ts');
+    const cli = resolve('src/training/cli/main.ts');
     const lines: string[] = [];
     const invoke = (file: string) => runProcess({ command: process.execPath,
       args: ['--import', 'tsx', cli, 'validate', file], cwd: process.cwd(), env: { PATH: process.env.PATH },

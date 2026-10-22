@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ESLint, type Linter } from 'eslint';
 import { afterEach } from 'vitest';
-import config from '../../eslint.config.js';
+import { trainingLintConfig } from './config.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -30,7 +30,7 @@ export async function lintFixture(options: { aliasedCwd?: boolean } = {}) {
   const cwd = options.aliasedCwd ? path.join(root, 'checkout-alias') : root;
   if (options.aliasedCwd) await symlink(root, cwd);
   // typescript-eslint's configuration type predates ESLint 10's language index signature.
-  const eslint = new ESLint({ cwd, overrideConfigFile: true, overrideConfig: config as unknown as Linter.Config[] });
+  const eslint = new ESLint({ cwd, overrideConfigFile: true, overrideConfig: trainingLintConfig as unknown as Linter.Config[] });
   async function lint(code: string, relative = 'src/example/file.ts') {
     const filename = await file(relative, code);
     // ESLint ignores physical paths outside its lexical cwd before rules run.

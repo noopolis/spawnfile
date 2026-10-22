@@ -6,7 +6,7 @@ import { main, type InvocationIndex } from '../index.js';
 import { cliFixture, datasetText } from '../fixture.js';
 import { loadInvocationViewer } from '../viewer.js';
 import type { CliFailureReport } from './failure.js';
-import * as viewer from '../../../viewer/index.js';
+import * as viewer from '../../viewer/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

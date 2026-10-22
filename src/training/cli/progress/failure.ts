@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { CandidateManifest } from '../../candidates/index.js';
 import type { CostReport, TrainingCostPlan, TrainingReport, TrialReport } from '../../experiments/index.js';
 import type { ExperimentStore } from '../../storage/index.js';
-import { projectTrials, projectViewerData, type ViewerData } from '../../../viewer/index.js';
+import { projectTrials, projectViewerData, type ViewerData } from '../../viewer/index.js';
 import type { InvocationIndex } from '../types.js';
 import type { RescoreReport } from '../../experiments/replay/index.js';
 

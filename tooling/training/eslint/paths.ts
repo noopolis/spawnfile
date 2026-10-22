@@ -2,8 +2,8 @@ import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 export const implementationRoots = new Set(['src', 'viewer', 'tooling']);
-export const generatedDirectories = new Set(['node_modules', 'dist', '.astro', '.venv', 'coverage', '.runtime', '.paideia']);
-export const generatedFilePatterns = [...generatedDirectories].map((name) => `**/${name}/**`).concat('.tmp/**');
+export const generatedDirectories = new Set(['node_modules', 'dist', '.astro', '.venv', 'coverage', '.runtime', '.paideia', '__pycache__', '.pytest_cache']);
+export const generatedFilePatterns = [...generatedDirectories].map((name) => `**/${name}/**`).concat('.tmp/**', '**/*.egg-info/**');
 
 export function canonicalPath(filename: string): string {
   const absolute = path.resolve(filename);
@@ -12,7 +12,17 @@ export function canonicalPath(filename: string): string {
 }
 
 export function pathParts(root: string, filename: string): string[] {
-  return path.relative(root, filename).split(path.sep);
+  const parts = path.relative(root, filename).split(path.sep);
+  // Preserve Paideia's module owners inside the imported Spawnfile subtree.
+  if (parts[0] === 'src' && parts[1] === 'training') {
+    return parts[2] === 'viewer' ? parts.slice(2) : ['src', ...parts.slice(2)];
+  }
+  return parts[0] === 'tooling' && parts[1] === 'training' ? ['tooling', ...parts.slice(2)] : parts;
+}
+
+export function implementationDirectories(root: string): string[] {
+  return existsSync(path.join(root, 'src/training'))
+    ? ['src/training', 'tooling/training'] : [...implementationRoots];
 }
 
 export function inside(root: string, filename: string): boolean {

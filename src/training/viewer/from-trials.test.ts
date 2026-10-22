@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { snapshotCandidate } from '../src/candidates/index.js';
-import type { RescoreReport } from '../src/experiments/replay/index.js';
+import { snapshotCandidate } from '../candidates/index.js';
+import type { RescoreReport } from '../experiments/replay/index.js';
 import { trialDetails } from './cockpit/evidence.js';
-import type { TrialReport } from '../src/experiments/index.js';
-import type { DspyResult } from '../src/optimization/index.js';
-import { summarizeCosts } from '../src/experiments/costs/index.js';
+import type { TrialReport } from '../experiments/index.js';
+import type { DspyResult } from '../optimization/index.js';
+import { summarizeCosts } from '../experiments/costs/index.js';
 import { projectViewerData } from './projection.js';
 import { projectTrials, projectTrainingReport } from './index.js';
 

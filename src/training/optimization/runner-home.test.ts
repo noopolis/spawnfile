@@ -40,7 +40,7 @@ it('Python Path.home resolves the supplied home without ambient identity and cle
   vi.stubEnv('HOME', '/ambient-secret-home'); const homes = observeHomes();
   const root = await directory(), receipt = join(root, 'home.json');
   const { options } = simulatedOptions();
-  options.bridge = { command: resolve('bridges/dspy/.venv/bin/python'), cwd: process.cwd(), timeoutMs: 2000,
+  options.bridge = { command: resolve('src/training/dspy/.venv/bin/python'), cwd: process.cwd(), timeoutMs: 2000,
     args: ['-c', `import json,pathlib,sys\npathlib.Path(${JSON.stringify(receipt)}).write_text(json.dumps({'home':str(pathlib.Path.home())}))\nsys.exit(3)`] };
   await expect(runDspyOptimization(options)).rejects.toThrow('unsuccessfully (3)');
   expect(JSON.parse(await readFile(receipt, 'utf8')).home).toBe(homes[0]);

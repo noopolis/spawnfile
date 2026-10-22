@@ -1,4 +1,4 @@
-import type { ViewerData } from '../../../viewer/index.js';
+import type { ViewerData } from '../../viewer/index.js';
 import type { Observation } from '../../contracts/execution.js';
 import type { EvaluationMeasurement } from '../../contracts/evaluation.js';
 import type { TrialEvent } from '../../experiments/trials/index.js';

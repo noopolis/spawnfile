@@ -1,5 +1,5 @@
-import type { Usage } from '../src/contracts/index.js';
-import type { CostReport, ModelPrice, TrainingCostPlan } from '../src/experiments/costs/index.js';
+import type { Usage } from '../contracts/index.js';
+import type { CostReport, ModelPrice, TrainingCostPlan } from '../experiments/costs/index.js';
 import type { ViewerCosts, ViewerCostTokens, ViewerPriceSource } from './types.js';
 
 function priceSource(price: ModelPrice | null): ViewerPriceSource | null {

@@ -1,9 +1,9 @@
-import type { CandidateManifest } from '../src/candidates/index.js';
-import type { EvaluationResult } from '../src/contracts/index.js';
-import { trialScore, type TrialReport, type TrainingReport, type ComparisonReport } from '../src/experiments/index.js';
-import type { DspyResult } from '../src/optimization/index.js';
-import type { CostReport, TrainingCostPlan } from '../src/experiments/costs/index.js';
-import type { RescoreReport } from '../src/experiments/replay/index.js';
+import type { CandidateManifest } from '../candidates/index.js';
+import type { EvaluationResult } from '../contracts/index.js';
+import { trialScore, type TrialReport, type TrainingReport, type ComparisonReport } from '../experiments/index.js';
+import type { DspyResult } from '../optimization/index.js';
+import type { CostReport, TrainingCostPlan } from '../experiments/costs/index.js';
+import type { RescoreReport } from '../experiments/replay/index.js';
 import type { ViewerCheck, ViewerData } from './types.js';
 import { projectCosts } from './costs.js';
 

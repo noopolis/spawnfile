@@ -1,4 +1,4 @@
-import type { InferenceModelBasis, JudgeFailure, ObservationCoverage, Usage } from '../src/contracts/index.js';
+import type { InferenceModelBasis, JudgeFailure, ObservationCoverage, Usage } from '../contracts/index.js';
 
 /** A caller-filtered presentation projection. Never pass raw captures or prompts. */
 export interface ViewerData {

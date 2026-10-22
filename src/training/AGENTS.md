@@ -1,7 +1,11 @@
-# Core Source
+# Training Core
 
-Owns the TypeScript product modules. ESLint and per-file coverage enforce the
-structure and verification rules; see the root development guide.
+This is the training core (from Paideia), runtime-neutral; must not import
+../runtime, ../compiler. Its structural rules run through Vitest and its imported
+per-file coverage floor remains 90%. Runtime adapters remain here until packet 1b.
+
+The child folders own contracts, cases, evaluation, optimization, experiments,
+providers, storage, CLI orchestration, the viewer, and the DSPy Python bridge.
 
 - Keep contracts runtime-neutral. Runtime integrations consume public interfaces;
   core rules cannot import vendor adapters or sibling implementation files.

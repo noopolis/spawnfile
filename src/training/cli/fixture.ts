@@ -27,7 +27,7 @@ export async function cliFixture() {
   };
   const nativeArgs = ['--runtime', 'codex', '--model', 'explicit-fixture', '--instructions', 'AGENTS.md', '--out', 'out'];
   return { root, io, stdout, stderr, dependencies, observedInstructions, nativeArgs,
-    bridge: resolve('bridges/dspy/.venv/bin/paideia-dspy') };
+    bridge: resolve('src/training/dspy/.venv/bin/paideia-dspy') };
 }
 
 export function fixtureAdapter(id: string, observedInstructions: string[], mode: 'candidate' | 'pass' | 'failed' | 'stalled' = 'candidate'): SubjectAdapter {

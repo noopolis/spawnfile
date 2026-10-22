@@ -184,7 +184,7 @@ it('retains malformed judgments as unscorable protocol evidence instead of shopp
 it('does not invoke any judge or rerun an agent that failed before producing the required article', async () => {
   const generate = vi.fn<InferenceProvider['generate']>(async () => judgment());
   const { options, progress } = await fixture(provider('unused-judge', generate));
-  const start = vi.fn(async () => { throw new Error('Missing external fixture'); });
+  const start = vi.fn<TrainingOptions['native']['adapter']['start']>(async () => { throw new Error('Missing external fixture'); });
   options.native.adapter = { ...options.native.adapter, start };
   baselineOptimizer();
   await expect(trainAgent(options)).rejects.toThrow('infrastructure');
@@ -199,7 +199,7 @@ it.each(['quota', 'invalid-response'] as const)('resumes real DSPy after %s usin
     return judgment();
   });
   const { options, starts, writes } = await fixture(judge);
-  options.bridge = { command: join(process.cwd(), 'bridges/dspy/.venv/bin/paideia-dspy'),
+  options.bridge = { command: join(process.cwd(), 'src/training/dspy/.venv/bin/paideia-dspy'),
     cwd: process.cwd(), timeoutMs: 10_000 };
   options.budget = { maxMetricCalls: 3, maxProposals: 1 };
   options.checkpoint = { directory: `${options.native.storeRoot}-checkpoint`, resume: false, identity: 'real-training-fixture' };

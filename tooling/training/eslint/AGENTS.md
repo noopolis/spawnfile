@@ -1,7 +1,8 @@
 # Structural ESLint rules
 
 Owns line targets, directory budgets and module import boundaries. Public seam:
-index.ts exports the local plugin. Rules may read repository metadata, never
+index.ts exports the local plugin, training-only lint config, and path helpers.
+plugin.ts assembles the rules; config.ts is consumed by the Vitest gate. Rules may read repository metadata, never
 change files. Paths are rooted in ESLint's explicit cwd, including fixture tests.
 
 - Check all managed implementation directories, including data-only descendants,

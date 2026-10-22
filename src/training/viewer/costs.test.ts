@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { summarizeCosts, resolveCostAssumptions, type ModelPrice, type TrainingCostPlan } from '../src/experiments/costs/index.js';
-import type { Usage } from '../src/contracts/index.js';
+import { summarizeCosts, resolveCostAssumptions, type ModelPrice, type TrainingCostPlan } from '../experiments/costs/index.js';
+import type { Usage } from '../contracts/index.js';
 import { projectCosts } from './costs.js';
 import { viewerFixture } from './fixture.js';
 import { projectViewerData } from './projection.js';

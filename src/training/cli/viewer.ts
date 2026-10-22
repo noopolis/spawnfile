@@ -7,7 +7,7 @@ import { summarizeCosts, type CostReport, type ModelPrice, type TrainingCostPlan
 import type { DspyResult } from '../optimization/index.js';
 import type { RescoreReport } from '../experiments/replay/index.js';
 import { hydrateEvaluationJson, openExperimentStore, type ExperimentStore } from '../storage/index.js';
-import { projectComparisonReport, projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../../viewer/index.js';
+import { projectComparisonReport, projectTrainingReport, projectTrials, startViewer, type ViewerData } from '../viewer/index.js';
 import type { CliIO } from './types.js';
 import { readCliText } from './datasets.js';
 import { loadFailureView, createActivityTracker, createGenerationTracker } from './progress/index.js';

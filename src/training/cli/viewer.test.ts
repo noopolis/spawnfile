@@ -10,7 +10,7 @@ import type { RescoreReport } from '../experiments/replay/index.js';
 import type { TrialReport } from '../experiments/index.js';
 import type { DspyResult } from '../optimization/index.js';
 import { summarizeCosts } from '../experiments/costs/index.js';
-import * as viewer from '../../viewer/index.js';
+import * as viewer from '../viewer/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });

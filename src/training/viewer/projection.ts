@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { judgeFailureCauses } from '../src/contracts/index.js';
+import { judgeFailureCauses } from '../contracts/index.js';
 import type { ViewerCheck, ViewerData } from './types.js';
 
 const text = z.string().max(16384);

@@ -338,8 +338,8 @@ assert source == before
 assert all(item["result"]["feedback"] == source["feedback"] for item in session.results[:2])
 print(json.dumps(payloads))
 `;
-  const payloads = JSON.parse(execFileSync(resolve('bridges/dspy/.venv/bin/python'), ['-c', script], {
-    cwd: resolve('bridges/dspy'), input: JSON.stringify(projected), encoding: 'utf8', timeout: 30000, maxBuffer: 2_000_000,
+  const payloads = JSON.parse(execFileSync(resolve('src/training/dspy/.venv/bin/python'), ['-c', script], {
+    cwd: resolve('src/training/dspy'), input: JSON.stringify(projected), encoding: 'utf8', timeout: 30000, maxBuffer: 2_000_000,
   }));
   expect(payloads.map((payload: { phase: string }) => payload.phase)).toEqual(['planning', 'realization']);
   for (const payload of payloads) {
