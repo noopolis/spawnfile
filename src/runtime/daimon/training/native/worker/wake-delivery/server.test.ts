@@ -14,7 +14,7 @@ import { activityFixture, configFixture, receiptFixture, traceFixture } from '..
 import { createTransportDelivery } from './transport.js';
 import type { NativeAcceptance, NativeAcceptanceResult, NativeWakeRequest } from './types.js';
 
-// Resolve the optional installed package only through its public runtime export.
+// Resolve the built pinned checkout's public runtime entry: mandatory in CI, opt-in locally.
 // Acceptance persistence below is a double; parsing/digest and rejection are real.
 interface DaimonWakeContract {
   parseWakeAcceptanceRequest(value: unknown): NativeWakeRequest;
@@ -24,7 +24,7 @@ interface DaimonWakeContract {
 let daimon: DaimonWakeContract | undefined;
 const packageName = daimonCheckoutRuntime();
 if (packageName) {
-  // An installed but incompatible peer is a contract failure, never a skipped check.
+  // A supplied but incompatible checkout is a contract failure, never a skipped check.
   // eslint-disable-next-line structure/module-boundaries -- Test-only opt-in imports the explicit built checkout, never an ambient dependency.
   const loaded = await import(packageName) as Record<string, unknown>;
   const required = ['parseWakeAcceptanceRequest', 'wakeAcceptanceDigest', 'createOrganizationRuntimeControlHost'];

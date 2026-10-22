@@ -21,10 +21,13 @@ async function fixture() {
 describe('training dry-run command', () => {
   const registries: (SubjectAdapterRegistry | undefined)[] = [undefined, {}, { codex: { create: () => { throw new Error('No native construction'); } } }];
   it.each(registries)(
-    'rejects an unknown runtime even when no subject registry is supplied: %j', async subjects => {
+    'rejects an unknown runtime with absent or explicit subjects before native or inference construction: %j', async subjects => {
       const f = await fixture();
       const before = await readdir(f.root);
-      expect(await main(f.args.map(arg => arg === 'codex' ? 'unknown-runtime' : arg), f.io, { subjects })).toBe(2);
+      const adapter = vi.fn(() => { throw new Error('No native construction'); });
+      const inference = vi.fn(() => { throw new Error('No inference construction'); });
+      expect(await main(f.args.map(arg => arg === 'codex' ? 'unknown-runtime' : arg), f.io, { subjects, adapter, inference })).toBe(2);
+      expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
       expect(f.stderr.join('')).toContain('Supported native runtimes');
       expect(f.stdout).toEqual([]);
       expect(await readdir(f.root)).toEqual(before);

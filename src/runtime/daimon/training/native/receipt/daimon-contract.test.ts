@@ -20,7 +20,7 @@ const required = ['resolveOrganizationGrokBrokerProjection', 'grokBrokerProjecti
 let daimon: DaimonGrokContract | undefined;
 const packageName = daimonCheckoutRuntime();
 if (packageName) {
-  // An installed but incompatible peer is a contract failure, never a skipped check.
+  // A supplied but incompatible checkout is a contract failure, never a skipped check.
   // eslint-disable-next-line structure/module-boundaries -- Test-only opt-in imports the explicit built checkout, never an ambient dependency.
   const loaded = await import(packageName) as Record<string, unknown>;
   if (!required.every(name => typeof loaded[name] === 'function')) throw new Error('Installed Daimon lacks the required Grok contract exports');
