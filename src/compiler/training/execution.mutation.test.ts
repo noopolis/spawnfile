@@ -1,13 +1,52 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 
-const run = promisify(execFile);
 const root = fileURLToPath(new URL("../../../", import.meta.url));
+
+function runOwned(args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }, timeoutMs = 25_000) {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, args, { ...options, detached: true, stdio: "ignore" });
+    let reaped = false;
+    const timer = setTimeout(() => {
+      // Only signal the group while its leader is still ours; a reaped PID may be reused.
+      if (reaped || child.pid === undefined) return;
+      try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
+    }, timeoutMs);
+    child.once("exit", () => { reaped = true; clearTimeout(timer); });
+    child.once("error", error => { clearTimeout(timer); reject(error); });
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(Object.assign(new Error("Mutation runner did not succeed"), { code, signal }));
+    });
+  });
+}
+
+it("reaps a timed-out runner and its worker before restoring the mutation copy", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "mutation-process-group-"));
+  const pidFile = path.join(directory, "worker-pid");
+  let worker = 0;
+  const script = `const {spawn}=require('node:child_process');const worker=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(worker.pid));setInterval(()=>{},1000);`;
+  const stopped = runOwned(["-e", script], { cwd: directory, env: { ...process.env, TYPESAFE_API_KEY: undefined } }, 2_000)
+    .then(() => new Error("Runner unexpectedly succeeded"), (error: unknown) => error);
+  try {
+    // Observe the worker while alive: a missing worker cannot prove descendant cleanup.
+    await vi.waitFor(async () => { worker = Number(await readFile(pidFile, "utf8")); expect(worker).toBeGreaterThan(0); }, 1_500);
+    expect(() => process.kill(worker, 0)).not.toThrow();
+    expect(await stopped).toMatchObject({ code: null, signal: "SIGKILL" });
+    await vi.waitFor(() => expect(() => process.kill(worker, 0), "owned worker cleanup guarantee")
+      .toThrow(expect.objectContaining({ code: "ESRCH" })), 5_000);
+  } finally {
+    await stopped;
+    if (worker) { try { process.kill(worker, "SIGKILL"); } catch { /* Already reaped. */ } }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 const mutations = [
   { name: "timestamp normalization refusal boundary", file: "src/compiler/training/moments.ts",
     before: 'entries.push(entry);\n      try {\n        const lineage = `moment:${hash([plan.agent.id, normalizeInstant(example.at), example.wake])}`;\n        entry.lineage = lineage;',
@@ -115,12 +154,12 @@ it.each(mutations)("kills $name in an isolated source copy", async mutation => {
   try {
     // Delete stale evidence; run exactly one mutant against its intended assertion.
     await rm(path.join(sandbox, "coverage/vitest-results.json"), { force: true });
-    let result: { code: number; stdout: string; stderr: string } | undefined;
+    let result: { code: number | null } | undefined;
     try {
-      await run(process.execPath, [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--coverage.enabled=false",
+      await runOwned([path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--coverage.enabled=false",
         "--maxWorkers=1", "--minWorkers=1", mutation.test, "-t", mutation.title], {
         // Leave time to reap the child and restore the shared copy before this case expires.
-        cwd: sandbox, timeout: 25_000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024,
+        cwd: sandbox,
         env: { ...process.env, TYPESAFE_API_KEY: undefined, TMPDIR: path.join(sandbox, "tmp") }
       });
     } catch (error) { result = error as typeof result; }
