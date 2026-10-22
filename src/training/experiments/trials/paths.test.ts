@@ -199,3 +199,9 @@ it('passes the real separated workspace through preparation and native start, ca
   await expect(stat(report.paths.workspace)).rejects.toMatchObject({ code: 'ENOENT' });
   expect(fixture.journal.at(-1)?.type).toBe('trial.completed');
 });
+
+
+it('refuses undeclared evaluator sidecars in the default trial fixture', async () => {
+  const fixture = await setup();
+  await expect(fixture.options.evaluation.readText('private-sidecar.md')).rejects.toThrow('unregistered sidecar');
+});
