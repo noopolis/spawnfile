@@ -50,6 +50,7 @@ interface Lane { key: string; spec: GrokGrantKey; grant?: GrokInferenceGrant; re
  * Grants are released on any failure, when idle, and on close.
  */
 export class GrokGrantPool {
+  private readonly options: GrokGrantPoolOptions;
   readonly id: string;
   private readonly lanes: Lane[] = [];
   private waiters: (() => void)[] = [];
@@ -64,7 +65,8 @@ export class GrokGrantPool {
   private readonly releases: GrokGrantReleases;
   private readonly now: () => number;
 
-  constructor(private readonly options: GrokGrantPoolOptions) {
+  constructor(options: GrokGrantPoolOptions) {
+    this.options = options;
     this.id = options.id;
     this.lanesPerRoute = options.lanesPerRoute ?? 2;
     this.idleReleaseMs = options.idleReleaseMs ?? 30_000;

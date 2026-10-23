@@ -18,10 +18,11 @@ export interface GrokGrantReleaseOptions {
  * counted against the local cap. Failed releases retry with bounded backoff.
  */
 export class GrokGrantReleases {
+  private readonly options: GrokGrantReleaseOptions;
   private readonly pending = new Map<string, { expires: number; timer: ReturnType<typeof setTimeout> }>();
   private readonly loops = new Set<Promise<void>>();
 
-  constructor(private readonly options: GrokGrantReleaseOptions) {}
+  constructor(options: GrokGrantReleaseOptions) { this.options = options; }
 
   /** Grants the broker may still count. */
   count(): number {
