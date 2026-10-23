@@ -12,7 +12,8 @@ import {
   parseDaimonPublishInputs,
   renderRuntimesYamlPin,
   resolvePublishedRepository,
-  resolvePublishedTag
+  resolvePublishedTag,
+  resolvePublishManifestSha256
 } from "./daimon-publish-inputs.ts";
 import { createDaimonImageBuildArgs, tagExists } from "./publish-daimon-runtime.ts";
 
@@ -27,6 +28,20 @@ test("checked-in publish inputs pin a full Daimon commit, both architectures, an
   assert.equal(`${inputs.registry}/${inputs.image}`, "docker.io/noopolis/spawnfile-runtime-daimon");
   assert.equal(resolvePublishedTag(inputs), `${inputs.daimon.package_version}-${inputs.daimon.commit.slice(0, 7)}`);
   assert.notEqual(resolvePublishedTag(inputs), "latest");
+});
+
+test("publication uses its explicit manifest pin before the runtime re-pin", () => {
+  const raw = checkedIn();
+  const pinned = `sha256:${digest("9")}`;
+  const vendored = `sha256:${digest("e")}`;
+  const inputs = parseDaimonPublishInputs({ ...raw, contract_manifest_sha256: pinned });
+  assert.equal(inputs.contract_manifest_sha256, pinned);
+  assert.equal(resolvePublishManifestSha256(inputs, vendored), pinned);
+  delete raw.contract_manifest_sha256;
+  assert.equal(resolvePublishManifestSha256(parseDaimonPublishInputs(raw), vendored), vendored);
+  for (const invalid of [null, undefined, "latest", "sha256:bad"]) {
+    assert.throws(() => parseDaimonPublishInputs({ ...raw, contract_manifest_sha256: invalid }), /contract_manifest_sha256/u);
+  }
 });
 
 test("Daimon Dockerfile manifest literals accept the vendored contract", () => {

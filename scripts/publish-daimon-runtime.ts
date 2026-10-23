@@ -20,7 +20,8 @@ import {
   parseDaimonPublishInputs,
   renderRuntimesYamlPin,
   resolvePublishedRepository,
-  resolvePublishedTag
+  resolvePublishedTag,
+  resolvePublishManifestSha256
 } from "./daimon-publish-inputs.ts";
 import type { DaimonPublishArchitecture, DaimonPublishInputs, PublishedPlatform } from "./daimon-publish-inputs.ts";
 
@@ -100,7 +101,7 @@ const buildPlatform = (options: {
   const packagePath = packDaimon(options.checkout, architecture, stage);
   const manifestSha256 = sha256(execFileSync("tar", ["-xOf", packagePath, "package/dist/runtime/contract-manifest.json"]));
   if (manifestSha256 !== options.manifestSha256) {
-    throw new Error(`Daimon ${architecture} package manifest ${manifestSha256} is not the vendored contract ${options.manifestSha256}`);
+    throw new Error(`Daimon ${architecture} package manifest ${manifestSha256} is not the publication contract ${options.manifestSha256}`);
   }
   const grok = readPinnedGrokCli(architecture);
   const agy = inputs.agy.platforms[architecture];
@@ -187,7 +188,7 @@ const main = (): void => {
     process.stdout.write(`${repository}:${tag} already exists; refusing to move a published tag (pass --force to republish)\n`);
     return;
   }
-  const manifestSha256 = readFileSync(vendoredManifestDigestPath, "utf8").trim();
+  const manifestSha256 = resolvePublishManifestSha256(inputs, readFileSync(vendoredManifestDigestPath, "utf8").trim());
   const workDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-daimon-publish-"));
   try {
     const checkout = prepareDaimonCheckout(inputs, workDirectory);
