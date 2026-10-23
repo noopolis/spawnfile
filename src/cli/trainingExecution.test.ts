@@ -169,6 +169,14 @@ it("preserves cancellation while flushing a final unterminated receipt", async (
     streams: { stdout: () => controller.abort(), stderr() {} } })).toBe(130);
 });
 
+it("flushes an unterminated diagnostic when the core throws", async () => {
+  const stderr = vi.fn();
+  const error = new Error("core failed");
+  core.mockImplementation(async (_argv, io) => { io.stderr("partial diagnostic"); throw error; });
+  await expect(runTraining({ ...options(), streams: { stdout() {}, stderr } })).rejects.toBe(error);
+  expect(stderr).toHaveBeenCalledExactlyOnceWith("partial diagnostic");
+});
+
 it("abandons an externally cancelled core even if it ignores the signal", async () => {
   const controller = new AbortController();
   core.mockImplementation(async (_argv, io) => {

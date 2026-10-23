@@ -115,6 +115,11 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
       throw failure("Training exited without the required final training receipt");
     }
     return code;
+  } catch (error) {
+    if (active) flush();
+    if (active && performance.now() >= deadline) expire();
+    if (!active) return await stopped;
+    throw error;
   } finally {
     active = false;
     clearTimeout(timer);
