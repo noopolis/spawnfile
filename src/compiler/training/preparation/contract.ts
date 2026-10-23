@@ -1,3 +1,4 @@
+import { DAIMON_BROKER_ENGINE_ID } from "../../../runtime/daimon/index.js";
 import path from "node:path";
 import { z } from "zod";
 import { trainingEvaluatorRoutesSchema, trainingEvaluatorSecretsSchema } from "../container/evaluators.js";
@@ -36,7 +37,7 @@ const bounds = DAIMON_GROK_ENGINE_BROKER.turnLimits.bounds;
  */
 export const trainingBrokerSchema = z.object({
   maxRunRequests: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(1000),
-  engine: z.literal("grok"),
+  engine: z.literal(DAIMON_BROKER_ENGINE_ID),
   agentId: z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
   model: z.enum(DAIMON_GROK_BROKER_MODELS),
   reasoningEffort: z.enum(DAIMON_GROK_BROKER_REASONING_EFFORTS),

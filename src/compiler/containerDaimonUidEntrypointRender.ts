@@ -1,3 +1,4 @@
+import { DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -106,10 +107,10 @@ const opaqueMountTargets = (runtimePlans: RuntimeTargetPlan[]): string[] =>
       ...(plan.opaqueMountTargets ?? []),
       ...(plan.resources ?? []).map((resource) => resource.linkPath),
       ...Object.entries(plan.engineByNodeId ?? {})
-        .filter(([, engine]) => engine === "codex")
+        .filter(([, engine]) => getDaimonEngineDescriptor(engine)?.auth.staging === "portable-file")
         .map(([nodeId, engine]) => path.posix.join(
           plan.instancePaths.instanceRoot ?? "", DAIMON_RUNTIME_HOMES_DIRECTORY,
-          nodeSlug(nodeId), ".daimon-inbound", `${engine}-auth`
+          nodeSlug(nodeId), getDaimonEngineDescriptor(engine)!.credentialMaterial!.sourceRelativePath!
         ))
     ])
     .filter((target) => target.startsWith("/"))
@@ -302,7 +303,7 @@ export const renderDaimonUidEntrypoint = (
     'gid="$uid"',
     `runtime_command=(${quote("/opt/spawnfile/entrypoint.sh")} --spawnfile-runtime-identity "$uid" "$gid")`,
     'if [ "$#" -gt 0 ]; then',
-    `  if [ "$#" -ne 5 ] || [ "$1" != auth ] || [ "$2" != agy ] || [ "$3" != login ] || [ "$4" != --config ] || [ "$5" != ${quote(daimonConfigPath ?? "")} ]; then echo "Unsupported Daimon container command" >&2; exit 1; fi`,
+    `  if [ "$#" -ne 5 ] || [ "$1" != auth ] || [ "$2" != ${DAIMON_SECRET_SERVICE_ENGINE_ID} ] || [ "$3" != login ] || [ "$4" != --config ] || [ "$5" != ${quote(daimonConfigPath ?? "")} ]; then echo "Unsupported Daimon container command" >&2; exit 1; fi`,
     `  runtime_command=(bash ${quote(daimonStartPath)} "$@")`,
     "fi",
     // Fail closed BEFORE the ownership guard touches anything: an unbacked

@@ -1,3 +1,4 @@
+import { DAIMON_BROKER_ENGINE_ID } from "../../../runtime/daimon/index.js";
 import { createHash } from "node:crypto";
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -77,5 +78,5 @@ export const prepareTrainingBroker = async (
   });
   const declarationPath = path.join(staging, "training-broker.json");
   if (write) await writeFile(declarationPath, `${JSON.stringify(declaration)}\n`, { mode: 0o444, flag: "wx" });
-  return { declarationPath, launch: { engine: "grok", realmVolume: broker.realmVolume, bootstrap, declaration: declarationPath } };
+  return { declarationPath, launch: { engine: DAIMON_BROKER_ENGINE_ID, realmVolume: broker.realmVolume, bootstrap, declaration: declarationPath } };
 };

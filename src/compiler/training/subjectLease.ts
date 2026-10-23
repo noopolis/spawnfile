@@ -1,10 +1,11 @@
+import { DAIMON_BROKER_ENGINE_ID, DAIMON_PORTABLE_ENGINE_ID, getDaimonEngineDescriptor } from "../../runtime/daimon/index.js";
 import { DAIMON_PACKAGE_NAME } from '../../runtime/daimon/packageName.js';
 import { readFile } from "node:fs/promises";
 import type { Socket } from "node:net";
 import path from "node:path";
 
 import { SpawnfileError } from "../../shared/index.js";
-import { DAIMON_ENGINE_CREDENTIALS, DAIMON_GROK_ENGINE_BROKER, type DaimonGrokBrokerModel, type DaimonGrokBrokerReasoningEffort } from "../../runtime/daimon/contractManifest.js";
+import { DAIMON_GROK_ENGINE_BROKER, type DaimonGrokBrokerModel, type DaimonGrokBrokerReasoningEffort } from "../../runtime/daimon/contractManifest.js";
 import { parseTrainingBrokerDeclaration } from "./broker/declaration.js";
 import { TRAINING_BROKER_DECLARATION_FILE, TRAINING_ROOT, TRAINING_SLOTS_FILE, trainingSlotDescriptors } from "./broker/paths.js";
 import { loadDaimonProjectionModule, resolveTrainingSlotProjection } from "./broker/projection.js";
@@ -37,8 +38,8 @@ export interface TrainingSubjectBrokerSection {
 }
 
 export type TrainingSubjectAgent =
-  | { id: string; engine: "codex"; model: string }
-  | { id: string; engine: "grok"; model: DaimonGrokBrokerModel; reasoningEffort: DaimonGrokBrokerReasoningEffort };
+  | { id: string; engine: typeof DAIMON_PORTABLE_ENGINE_ID; model: string }
+  | { id: string; engine: typeof DAIMON_BROKER_ENGINE_ID; model: DaimonGrokBrokerModel; reasoningEffort: DaimonGrokBrokerReasoningEffort };
 
 export interface TrainingSubjectLease {
   agent: TrainingSubjectAgent;
@@ -101,8 +102,10 @@ const canonical = (label: string, value: unknown): string => {
 export const leaseTrainingSubject = async (options: LeaseTrainingSubjectOptions): Promise<TrainingSubjectLease> => {
   options.signal.throwIfAborted();
   if (!Number.isInteger(options.slot) || options.slot < 0) invalid("Training subject lease requires a slot index");
-  if (options.engine === "grok") return leaseGrokSubject(options);
-  if (options.engine === "codex") return leaseCodexSubject(options);
+  const subject = getDaimonEngineDescriptor(options.engine)?.training.subject;
+  // These versioned lease variants implement only the two released identities.
+  if (subject?.supported && subject.isolation === "broker-worker" && options.engine === DAIMON_BROKER_ENGINE_ID) return leaseGrokSubject(options);
+  if (subject?.supported && subject.isolation === "native-sandbox" && options.engine === DAIMON_PORTABLE_ENGINE_ID) return leaseCodexSubject(options);
   return invalid(`Training subject engine ${String(options.engine)} is not supported; lease a codex or grok subject`);
 };
 
@@ -130,7 +133,7 @@ const leaseGrokSubject = async (options: LeaseTrainingSubjectOptions): Promise<T
     usageLedger: descriptor.usageLedger, preflightReceipt: descriptor.preflightReceipt, context: TRAINING_ROOT
   };
   return {
-    agent: { id: declaration.agentId, engine: "grok", model: declaration.model, reasoningEffort: declaration.reasoningEffort },
+    agent: { id: declaration.agentId, engine: DAIMON_BROKER_ENGINE_ID, model: declaration.model, reasoningEffort: declaration.reasoningEffort },
     workspace: { source: descriptor.workspace, target: descriptor.workspace },
     // The projection digest binds exactly the slot workspace and runtime home; nothing else may be writable.
     projections: [{ role: "home", source: descriptor.runtimeHome, target: descriptor.runtimeHome }],
@@ -169,11 +172,11 @@ const loadDaimonRuntime = async (): Promise<unknown> => {
 
 /** The Codex credential leaf Daimon reads, from its public export, refused unless it equals the vendored manifest. */
 const codexCredentialRelativePath = async (load: () => Promise<unknown> = loadDaimonRuntime): Promise<string> => {
-  let daimon: { ENGINE_CREDENTIAL_MATERIAL?: { codex?: { sourceRelativePath?: unknown } } };
+  let daimon: { ENGINE_CREDENTIAL_MATERIAL?: Record<string, { sourceRelativePath?: unknown }> };
   try { daimon = await load() as typeof daimon; }
   catch { return refused(`The training image must install ${DAIMON_PACKAGE_NAME} with its public /runtime export`); }
-  const relative = daimon?.ENGINE_CREDENTIAL_MATERIAL?.codex?.sourceRelativePath;
-  if (relative !== DAIMON_ENGINE_CREDENTIALS.codex.sourceRelativePath) {
+  const relative = daimon?.ENGINE_CREDENTIAL_MATERIAL?.[DAIMON_PORTABLE_ENGINE_ID]?.sourceRelativePath;
+  if (typeof relative !== "string" || relative !== getDaimonEngineDescriptor(DAIMON_PORTABLE_ENGINE_ID)!.credentialMaterial!.sourceRelativePath) {
     return refused("The installed Daimon Codex credential material differs from this compiler's vendored manifest");
   }
   return relative;
@@ -218,7 +221,7 @@ const leaseCodexSubject = async (options: LeaseTrainingSubjectOptions): Promise<
     invalid("Codex trial roots must not overlap the subject workspace");
   }
   return {
-    agent: { id: options.agentId, engine: "codex", model: options.model! },
+    agent: { id: options.agentId, engine: DAIMON_PORTABLE_ENGINE_ID, model: options.model! },
     workspace: { source: workspace, target: workspace },
     projections: [{ role: "home", source: home, target: home }, { role: "memory", source: memory, target: memory },
       { role: "transport", source: transport, target: transport }],

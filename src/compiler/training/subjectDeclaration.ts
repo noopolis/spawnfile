@@ -1,3 +1,4 @@
+import { DAIMON_BROKER_ENGINE_ID, DAIMON_PORTABLE_ENGINE_ID, getDaimonEngineDescriptor } from "../../runtime/daimon/index.js";
 import { SpawnfileError } from "../../shared/index.js";
 import { resolveDaimonEngine } from "../../runtime/daimon/config.js";
 import { resolveDaimonGrokTurnLimits } from "../../runtime/daimon/grokTurnLimits.js";
@@ -32,21 +33,22 @@ const LIMITS = [["maxRequests", "max_requests"], ["maxTokens", "max_tokens"], ["
  */
 export const assertTrainingSubjectDeclaration = async (
   projectRoot: string, agentId: string, broker?: TrainingSubjectDeclaredBroker
-): Promise<"codex" | "grok"> => {
+): Promise<typeof DAIMON_PORTABLE_ENGINE_ID | typeof DAIMON_BROKER_ENGINE_ID> => {
   const project = await loadTrainingProject(projectRoot);
   const agents = project.compilePlan.nodes.filter((node): node is CompilePlanNode & { value: ResolvedAgentNode } => node.value.kind === "agent");
   const node = selectTrainingAgent(agents, agentId).value;
   if (node.runtime.name !== "daimon") return refuse(`Training subject ${agentId} must declare runtime daimon, not ${node.runtime.name}`);
   const engine = resolveDaimonEngine(node);
   const declared = resolveDaimonGrokTurnLimits(node.runtime.options.turn_limits);
-  if (engine === "codex") {
+  const subject = getDaimonEngineDescriptor(engine)?.training.subject;
+  if (subject?.supported && subject.isolation === "native-sandbox" && engine === DAIMON_PORTABLE_ENGINE_ID) {
     if (node.runtime.options.codex_policy !== "workspace-no-network") {
       refuse(`Codex training subject ${agentId} requires explicit codex_policy: workspace-no-network on its Daimon declaration`);
     }
     if (broker !== undefined || declared !== undefined) refuse(`Codex training subject ${agentId} takes no broker slot and no turn_limits`);
     return engine;
   }
-  if (engine !== "grok") return refuse(`Training subject ${agentId} uses Daimon engine ${engine}; only codex and grok subjects train`);
+  if (!subject?.supported || subject.isolation !== "broker-worker" || engine !== DAIMON_BROKER_ENGINE_ID) return refuse(`Training subject ${agentId} uses Daimon engine ${engine}; only codex and grok subjects train`);
   if (!broker) return refuse(`Grok training subject ${agentId} requires its leased broker slot`);
   for (const [native, authored] of LIMITS) {
     if (declared?.[native] !== broker.limits[native]) {

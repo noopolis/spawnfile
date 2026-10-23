@@ -2,8 +2,11 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { SpawnfileError } from "../../shared/index.js";
+import { SpawnfileError } from "../../shared/errors.js";
 import { DAIMON_WAKE_MOMENTS, isDaimonWakeMoments } from "./wakeMoments.js";
+import { DAIMON_V5_ENGINE_DESCRIPTORS } from "./engineDescriptors.generated.js";
+import { DAIMON_PINNED_BROKER_DESCRIPTOR, DAIMON_PINNED_PORTABLE_DESCRIPTOR, DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR, parseDaimonEngineDescriptors, type DaimonEngineDescriptors } from "./engineDescriptorSchema.js";
+import { daimonContractManifestV6Schema } from "./contractManifestSchema.js";
 
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v5" as const;
@@ -12,136 +15,16 @@ export const DAIMON_CONTRACT_MANIFEST_SHA256 =
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
-export const DAIMON_ENGINE_KINDS = ["agy", "codex", "grok"] as const;
+/** Compatibility aliases; all runtime facts come from the generated static descriptors. */
+export const DAIMON_ENGINE_KINDS = Object.freeze(Object.keys(DAIMON_V5_ENGINE_DESCRIPTORS).sort());
 export const DAIMON_ORGANIZATION_RUNTIME_CONFIG_VERSIONS = ["noopolis.daimon.organization-runtime.v1", "noopolis.daimon.organization-runtime.v2"] as const;
-export const DAIMON_ENGINE_CREDENTIALS = {
-  codex: {
-    destinationRelativePath: ".codex/auth.json",
-    directoryMode: 0o700,
-    fileMode: 0o600,
-    sourceRelativePath: ".daimon-inbound/codex-auth",
-    sourceSlot: "codex-auth"
-  },
-} as const;
-export const DAIMON_GROK_SUBSCRIPTION_REALM = {
-  agentCredentialRelativePath: ".grok/auth.json",
-  bootstrapMountPath: "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
-  bootstrapSourceSlot: "grok-auth",
-  directoryMode: 0o700,
-  durableMountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
-  fileMode: 0o600,
-  maxCredentialBytes: 64 * 1024
-} as const;
-export const DAIMON_GROK_BROKER_MODELS = ["grok-4.6", "grok-4.5", "grok-build"] as const;
-export const DAIMON_GROK_BROKER_REASONING_EFFORTS = ["low", "medium", "high"] as const;
+export const DAIMON_ENGINE_CREDENTIALS = { [DAIMON_PINNED_PORTABLE_DESCRIPTOR.id]: DAIMON_PINNED_PORTABLE_DESCRIPTOR.credentialMaterial } as const;
+export const DAIMON_GROK_SUBSCRIPTION_REALM = DAIMON_PINNED_BROKER_DESCRIPTOR.auth.realm;
+export const DAIMON_GROK_ENGINE_BROKER = DAIMON_PINNED_BROKER_DESCRIPTOR.broker;
+export const DAIMON_GROK_BROKER_MODELS = DAIMON_GROK_ENGINE_BROKER.worker.models;
+export const DAIMON_GROK_BROKER_REASONING_EFFORTS = DAIMON_GROK_ENGINE_BROKER.worker.reasoningEfforts;
 export type DaimonGrokBrokerModel = typeof DAIMON_GROK_BROKER_MODELS[number];
 export type DaimonGrokBrokerReasoningEffort = typeof DAIMON_GROK_BROKER_REASONING_EFFORTS[number];
-/**
- * Byte mirror of Daimon's `GROK_ENGINE_BROKER` (daimon
- * `src/contracts/runtimeContractManifest.ts`), attested key-for-key against the
- * vendored `contract-manifest.json` by `parseDaimonContractManifest`.
- */
-export const DAIMON_GROK_ENGINE_BROKER = {
-  nativeAbiVersion: 2,
-  nativeExecutablePath: "/opt/daimon/bin/daimon-engine-broker",
-  grokExecutablePath: "/usr/local/bin/grok",
-  registrationPath: "/etc/daimon-engine-broker/registrations.bin",
-  credentialHomePath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
-  turnStorePath: "/var/lib/spawnfile/daimon/grok-subscription-realm/turns",
-  controlSocketPath: "/run/daimon-engine-broker/control.sock",
-  backendSocketPath: "/run/daimon-engine-broker/backend.sock",
-  launcherSocketPath: "/run/daimon-engine-broker/launcher.sock",
-  serviceConfigPath: "/etc/daimon-engine-broker/service.json",
-  providerProxy: { host: "127.0.0.1", port: 43_123 },
-  mcpFacade: { host: "127.0.0.1", port: 43_124, path: "/mcp" },
-  identities: { organizationUid: 2_000, brokerUid: 2_100, firstWorkerUid: 2_200 },
-  grokCliVersion: "1.0.34",
-  grokCliBuild: "3736acbc8658",
-  grokCliArtifacts: {
-    arm64: { url: "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-1.0.34-linux-aarch64", sha256: "39ab87666877d64ef3a40aa60fbe0c3b6a6acd7001b78fe60e2c76bb6cfc4a94", bytes: 136_090_504 },
-    x64: { url: "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-1.0.34-linux-x86_64", sha256: "be5905e107d2b8b5f3c142d21ecfe4c8fd32a913d2fd551b788707930c4dc80d", bytes: 163_035_648 }
-  },
-  worker: {
-    modelId: "daimon-broker-grok",
-    models: DAIMON_GROK_BROKER_MODELS,
-    reasoningEfforts: DAIMON_GROK_BROKER_REASONING_EFFORTS,
-    defaultModel: "grok-4.6",
-    defaultReasoningEffort: "low",
-    toolIds: ["run_terminal_cmd", "read_file", "grep", "list_dir", "search_tool", "use_tool"],
-    visibleTools: ["grep", "list_dir", "read_file", "run_terminal_command", "search_tool", "use_tool"],
-    maxTurns: 48,
-    systemPromptSha256: "2c31c0085a54a4efbf9c0cf0b8124c56e47f38691b7f0c7fa233a74abaa8ddf8",
-    configSha256: {
-      "grok-4.6": { low: "ab58499ac32678097c146479896f2b8a8e2b0e39aea22dc0a60b6227e370538e", medium: "df1a5cc84346e7f6bf6090492fbd19faaefb42953e3bb2e8c6cbc0572242403f", high: "65b0212564fb74042b1503d293fb8d3620276033264c0efade2a539ca09218e3" },
-      "grok-4.5": { low: "8247127c3625ff7c5d8d527a53596b89ec6557a821ac46cfd00bd122b90daff6", medium: "59288cee61297bb8c002097061a48f77b09d310754187a253ee089f7172a9155", high: "c63c3387ce92d94ec3f690abfe98942afcd7c9e17ff84816bbe751f340ab251f" },
-      "grok-build": { low: "fb343f2809903f26d21681470943235031f946e99085542fd89555eb7782cbb5", medium: "8a587ef75c90eab70d19b24583e60051d6fba9d90c558839fdbb15588b4cc656", high: "a23724e00d670caee185ba7690d2daa868173e53905cf446f5329666f01ab4e3" }
-    },
-    clockedConfigSha256: {
-      "grok-4.5": {"high": "907d8967960c342b442d6d256b2585f3c85bd846a78578f596f0b605403d6d34", "low": "3c4f3515b21c1bffb3fb770e2ecb4b918b6c43d5e77c1fd47e1e6698d1fedee7", "medium": "9117e12b2f3f6fa045799592969cbaae1c2f3b1ea79330badac8655b9b41dd7a"},
-      "grok-4.6": {"high": "203744f6f0dfc0bc80cfb896880497edfd9b3de4dcf33060e8ef4d2ef5f220a7", "low": "751f1dcd04983e5e5883df5a8fefa04f201e187e5ef1f344d3bf83f950830432", "medium": "f1406f93a8091eb0c09e07321254a9c783a89b0bbf5548d9613d53a8d087a517"},
-      "grok-build": {"high": "6efddadc82c38020d3351829e54bb09fa456cd6d76ea1247902794d82a4a3ffa", "low": "a8c63ba910623a0686930c27db0733f4a2588c7fca9dd7da25c3f18027720ab5", "medium": "6afcd2b90c0d19794f8c0d22147a0f011946a92e613f89dae98b0ca729313101"},
-    },
-    taskClock: {"directoryMode": 493, "directoryPath": "/run/daimon-engine-broker/task-clock/slot-0", "fileMode": 420, "ownerUid": 2100, "preloadPath": "/usr/local/lib/daimon/libfaketime.so.1", "rootDirectoryPath": "/run/daimon-engine-broker/task-clock", "slotDirectoryPattern": "/run/daimon-engine-broker/task-clock/slot-{slot}", "slotFilePattern": "/run/daimon-engine-broker/task-clock/slot-{slot}/faketime", "timestampFilePath": "/run/daimon-engine-broker/task-clock/slot-0/faketime", "version": "noopolis.daimon.grok-broker-task-clock.v2", "workerView": "own-directory-visible-sibling-directories-denied"},
-    home: {
-      directory: { uid: 0, group: "worker", mode: 0o1771 },
-      sessionsDirectory: { relativePath: "sessions", uid: 0, group: "worker", mode: 0o1771 },
-      readOnlyFiles: { names: ["config.toml", "managed_config.toml", "requirements.toml", "sandbox.toml", "trusted_folders.toml"], uid: 0, gid: 0, mode: 0o444 },
-      sandboxEvents: { relativePath: "sessions/sandbox-events.jsonl", owner: "worker", group: "broker", mode: 0o640 },
-      privateTmp: { relativeToWorkerHome: "tmp", owner: "worker", mode: 0o700 },
-      sharedTmp: { paths: ["/tmp", "/var/tmp"], uid: 0, maxGroupExclusive: 2_200, otherMode: 0o4, mode: 0o1774 },
-      organizationRuntimeHome: { owner: "organization", group: "worker", mode: 0o710 },
-      spillDirectory: { relativeToRuntimeHome: "tool-output", owner: "organization", group: "worker", mode: 0o2750, fileMode: 0o640 }
-    }
-  },
-  bounds: { promptBytes: 65_536, capabilityBytes: 4_096, capabilityBundleBytes: 8_196, outputBytes: 262_144 },
-  controlProtocolVersion: "noopolis.daimon.engine-broker.v4",
-  turnRecordVersions: ["noopolis.daimon.engine-broker-turn.v1", "noopolis.daimon.engine-broker-turn.v2"],
-  serviceConfigVersions: ["noopolis.daimon.engine-broker-service.v1", "noopolis.daimon.engine-broker-service.v2", "noopolis.daimon.engine-broker-service.v3"],
-  slotRouting: {"controlCaller": "organization", "key": "slot", "repeatedAgentIds": true, "resetRequest": "reset_slot", "resetResponse": "slot_reset", "slotEnvironment": "DAIMON_ENGINE_BROKER_SLOT", "turnStoreDirectory": "slot-{slot}", "workersMayControl": false},
-  runRequestBudget: {"countsCredentialRetries": true, "fileName": "run-requests.json", "includesInferenceGrants": true, "maximumField": "maxRunRequests", "storeField": "runRequestStore"},
-  turnLimits: {
-    keys: ["maxRequests", "maxTokens", "timeoutMs"],
-    v1Defaults: { maxRequests: 32, maxTokens: 300_000, timeoutMs: 240_000 },
-    bounds: { maxRequests: [1, 48], maxTokens: [1, 10_000_000], timeoutMs: [1_000, 3_600_000] },
-    limitReasons: ["tokens", "requests", "timeout", "none"],
-    wakeMayOnlyLower: true,
-    tokenCeilingOvershoot: "at-most-one-request",
-    maxInFlightRequests: 1,
-    requestUsageMaxTokens: 500_000,
-    missingUsageEstimate: { inputBytesPerToken: 2, outputTokens: 4_096 }
-  },
-  wakeLimitEnvironment: { timeoutMs: "DAIMON_ENGINE_WAKE_TIMEOUT_MS", maxTokens: "DAIMON_ENGINE_WAKE_TOKEN_CEILING" },
-  projectionVersion: "noopolis.daimon.grok-broker-projection.v3",
-  slotPreflightVersion: "noopolis.daimon.grok-slot-preflight.v2",
-  inferenceGrants: {
-    requestKinds: ["request_inference_grant", "release_inference_grant"],
-    purposes: ["judge", "optimizer"],
-    tokenPrefix: "inference_",
-    ttlMs: 600_000,
-    limits: { maxRequests: 64, maxTokens: 2_000_000 },
-    maxLiveGrants: 8,
-    maxInFlightRequestsPerGrant: 1,
-    bodyMembers: ["messages", "model", "reasoning_effort", "response_format", "stream", "stream_options"],
-    messageRoles: ["system", "user", "assistant"],
-    failureCodes: ["auth_stale", "grant_limit", "invalid_request", "unavailable"],
-    ledgerVersion: "noopolis.daimon.inference-usage.v1",
-    ledgerDedupeKey: ["grant", "request"],
-    client: {
-      modelId: "daimon-inference-grok",
-      envKey: "DAIMON_INFERENCE_GRANT",
-      configSha256: {
-        "grok-4.6": { low: "79314d039f787e4ebfec7dacf57adc969086b948f564dec008f0ed6367e6062f", medium: "6f538de0547c0c4e6a3f04ae08595ceadadabb06b75f6b6ee4c428744bb95cd8", high: "5652656effa82f0c4f09cf8226b16e6140332a5a358b571194bb5563312367ac" },
-        "grok-4.5": { low: "a07f7436f1268bb399ec233c65d3b3d8fb99a11a1f175f8da1ca133c9367bc74", medium: "1f4c0d4dad1f3b09419b5739db6423a09e0049abc091594c64123a75dd53dfb9", high: "ffbc33728b821e9854fbc7c93601e599225da421ecfd6ebf10d314afcc28d6f2" },
-        "grok-build": { low: "ca15c6a562a008227d39c51d3a3a83715663089b3784e8b46debb1fb67b3c4a1", medium: "01783fb6beadcf6f8486fff0836820ad43fab5662b812a907fe9cfdb83e9804d", high: "98d16f2b7d12f4eb540d625c853e51d227933e204923e43e8b9b4176f10aca2c" }
-      }
-    }
-  },
-  artifacts: {
-    sourceSha256: "15836d7ad69f12ef581a6e5b8635c9db43b2177dac609160c0749d3d1fefbaa8",
-    x64Sha256: "95aa9c272225e74ff9f45f54dde4bc30aee324e9ba24d8a876db9151c81b454d",
-    arm64Sha256: "d0dc1c03197c3e90f09b66ad7c89b4f7b448d06dc84c03b247dce976d6018d6e"
-  }
-} as const;
 /**
  * Where the Daimon broker writes its per-turn usage ledger, and what this
  * compiler provisions. Deliberately kept out of `DAIMON_GROK_ENGINE_BROKER`:
@@ -170,24 +53,18 @@ export const DAIMON_GROK_TURN_USAGE_LEDGER = {
    */
   rotateBytes: 64 * 1024 * 1024
 } as const;
-export const DAIMON_AGY_SUBSCRIPTION_REALM = {
-  directoryMode: 0o700,
-  durableMountPath: "/var/lib/spawnfile/daimon/agy-subscription-realm",
-  fileMode: 0o600,
-  maxUnlockBytes: 4_096,
-  unlockMountPath: "/var/lib/spawnfile/daimon/agy-unlock-secret",
-  unlockSourceSlot: "agy-unlock-secret"
-} as const;
+export const DAIMON_AGY_SUBSCRIPTION_REALM = DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR.auth.realm;
 
-export type DaimonEngine = typeof DAIMON_ENGINE_KINDS[number];
+export type DaimonEngine = string;
 export type DaimonPortableEngine = keyof typeof DAIMON_ENGINE_CREDENTIALS;
-type DaimonCredentialMaterial = (typeof DAIMON_ENGINE_CREDENTIALS)[DaimonPortableEngine];
+type DaimonCredentialMaterial = { readonly destinationRelativePath: string; readonly directoryMode: 448; readonly fileMode: 384; readonly sourceRelativePath: string; readonly sourceSlot: string };
 
 export interface DaimonContractManifest {
+  readonly engines: DaimonEngineDescriptors;
   readonly wakeMoments?: typeof DAIMON_WAKE_MOMENTS;
   readonly agySubscriptionRealm: typeof DAIMON_AGY_SUBSCRIPTION_REALM;
   readonly consumedConfigFields: readonly string[];
-  readonly engineCredentialMaterial: Readonly<Record<DaimonPortableEngine, DaimonCredentialMaterial>>;
+  readonly engineCredentialMaterial: Readonly<Record<string, DaimonCredentialMaterial>>;
   readonly grokSubscriptionRealm: typeof DAIMON_GROK_SUBSCRIPTION_REALM;
   readonly grokEngineBroker: typeof DAIMON_GROK_ENGINE_BROKER;
   readonly supportedEngineKinds: readonly DaimonEngine[];
@@ -199,7 +76,7 @@ export interface DaimonContractManifest {
     concurrentSameAgentTurns: false;
     externalEffectsExactlyOnce: false;
   }>;
-  readonly version: typeof DAIMON_CONTRACT_MANIFEST_VERSION;
+  readonly version: typeof DAIMON_CONTRACT_MANIFEST_VERSION | "noopolis.daimon.runtime-contract-manifest.v6";
 }
 
 export interface VerifiedDaimonContractManifest {
@@ -279,13 +156,18 @@ const matchesGrokEngineBroker = (value: unknown): value is typeof DAIMON_GROK_EN
 
 export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifest => {
   const root = asRecord(raw, "root");
+  const v6 = root.version === "noopolis.daimon.runtime-contract-manifest.v6";
+  if (v6 && !daimonContractManifestV6Schema.safeParse(root).success) return fail("has an invalid v6 schema");
+  if (!v6 && Object.hasOwn(root, "engines")) return fail("v5 must use the generated descriptor mirror");
+  const engines = parseDaimonEngineDescriptors(v6 ? root.engines : DAIMON_V5_ENGINE_DESCRIPTORS);
+  const engineKinds = Object.keys(engines).sort();
   const hasWakeMoments = Object.hasOwn(root, "wakeMoments");
   if (hasWakeMoments && !isDaimonWakeMoments(root.wakeMoments)) return fail("has an unsupported wakeMoments contract");
   const configFields = hasWakeMoments ? [...expectedConfigFields, DAIMON_WAKE_MOMENTS.configField] : expectedConfigFields;
   if (
-    root.version !== DAIMON_CONTRACT_MANIFEST_VERSION ||
+    (!v6 && root.version !== DAIMON_CONTRACT_MANIFEST_VERSION) ||
     !Array.isArray(root.supportedEngineKinds) ||
-    root.supportedEngineKinds.join("\0") !== "agy\0codex\0grok" ||
+    root.supportedEngineKinds.join("\0") !== engineKinds.join("\0") ||
     !Array.isArray(root.consumedConfigFields) ||
     root.consumedConfigFields.join("\0") !== configFields.join("\0") ||
     !Array.isArray(root.wakeAcceptanceTypes) ||
@@ -303,8 +185,8 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
     semantics.activeDeliveryIdempotency !== "unbounded-until-terminal" || semantics.terminalReceiptHorizon !== 2_048 ||
     semantics.recovery !== "at-least-once-with-stable-wake-id" || semantics.concurrentSameAgentTurns !== false || semantics.externalEffectsExactlyOnce !== false) return fail("has unsupported delivery semantics");
   const materials = asRecord(root.engineCredentialMaterial, "engineCredentialMaterial");
-  if (!exactKeys(materials, ["codex"])) return fail("has unsupported credential material");
-  for (const engine of ["codex"] as const) {
+  if (!v6 && !exactKeys(materials, Object.keys(DAIMON_ENGINE_CREDENTIALS))) return fail("has unsupported credential material");
+  for (const engine of Object.keys(DAIMON_ENGINE_CREDENTIALS) as DaimonPortableEngine[]) {
     if (!matchesCredentialMaterial(materials[engine], DAIMON_ENGINE_CREDENTIALS[engine])) {
       return fail(`has unsafe ${engine} credential material`);
     }
@@ -318,20 +200,35 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   if (!matchesGrokEngineBroker(root.grokEngineBroker)) {
     return fail("has unsafe Grok engine broker material");
   }
+  if (v6) {
+    const portable = Object.values(engines).filter((entry) => entry.auth.staging === "portable-file");
+    for (const descriptor of portable) {
+      if (canonicalJson(materials[descriptor.id]) !== canonicalJson(descriptor.credentialMaterial)) return fail("has inconsistent engine credential material");
+    }
+    if (portable.length !== Object.keys(materials).length) return fail("has inconsistent engine credential material");
+    const brokers = Object.values(engines).filter((entry) => entry.broker !== null);
+    const broker = brokers[0];
+    if (brokers.length !== 1 || !broker || canonicalJson(broker.broker) !== canonicalJson(root.grokEngineBroker)
+      || canonicalJson(broker.auth.realm) !== canonicalJson(root.grokSubscriptionRealm)) return fail("has inconsistent engine broker material");
+    const secretServices = Object.values(engines).filter((entry) => entry.auth.staging === "secret-service");
+    const secretService = secretServices[0];
+    if (secretServices.length !== 1 || !secretService || canonicalJson(secretService.auth.realm) !== canonicalJson(root.agySubscriptionRealm)) return fail("has inconsistent engine realm material");
+  }
   return Object.freeze({
+    engines: Object.freeze(engines),
     agySubscriptionRealm: Object.freeze({ ...DAIMON_AGY_SUBSCRIPTION_REALM }),
     consumedConfigFields: Object.freeze([...configFields]),
     ...(hasWakeMoments ? { wakeMoments: DAIMON_WAKE_MOMENTS } : {}),
-    engineCredentialMaterial: Object.freeze({ ...DAIMON_ENGINE_CREDENTIALS }),
+    engineCredentialMaterial: Object.freeze(v6 ? materials as Record<string, DaimonCredentialMaterial> : { ...DAIMON_ENGINE_CREDENTIALS }),
     grokSubscriptionRealm: Object.freeze({ ...DAIMON_GROK_SUBSCRIPTION_REALM }),
     grokEngineBroker: Object.freeze({ ...DAIMON_GROK_ENGINE_BROKER }),
-    supportedEngineKinds: Object.freeze([...DAIMON_ENGINE_KINDS]),
+    supportedEngineKinds: Object.freeze(engineKinds),
     wakeAcceptanceTypes: Object.freeze(["manual", "message", "schedule", "external"] as const),
     deliverySemantics: Object.freeze({
       activeDeliveryIdempotency: "unbounded-until-terminal", terminalReceiptHorizon: 2_048,
       recovery: "at-least-once-with-stable-wake-id", concurrentSameAgentTurns: false, externalEffectsExactlyOnce: false
     }),
-    version: DAIMON_CONTRACT_MANIFEST_VERSION
+    version: v6 ? "noopolis.daimon.runtime-contract-manifest.v6" : DAIMON_CONTRACT_MANIFEST_VERSION
   });
 };
 

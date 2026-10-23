@@ -1,3 +1,4 @@
+import { getDaimonEngineDescriptor } from "../../../runtime/daimon/index.js";
 import { resolveDaimonEngine } from "../../../runtime/daimon/config.js";
 import { resolveTrainingContextGraph } from "../context.js";
 import { trainingContextSchema, type TrainingContext } from "../contract.js";
@@ -10,7 +11,7 @@ export const assertTrainingSubjectIsolation = async (
   const parsed = trainingContextSchema.parse(context);
   const { selected } = await resolveTrainingContextGraph(parsed.project.manifest, parsed.agent.id);
   const agent = selected.value;
-  if (agent.runtime.name !== "daimon" || resolveDaimonEngine(agent) !== "codex" ||
+  if (agent.runtime.name !== "daimon" || getDaimonEngineDescriptor(resolveDaimonEngine(agent))?.training.subject.isolation !== "native-sandbox" ||
     agent.runtime.options.codex_policy !== "workspace-no-network" || agent.execution?.sandbox?.mode !== "workspace") {
     throw Error("codex-native-sandbox subject isolation requires the selected training agent to use runtime daimon, engine codex, and strict codex_policy: workspace-no-network (execution.sandbox.mode: workspace)");
   }

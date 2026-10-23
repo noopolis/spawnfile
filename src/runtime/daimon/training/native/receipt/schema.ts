@@ -1,4 +1,4 @@
-import { daimonTrainingDeclaration } from '../../../index.js';
+import { DAIMON_BROKER_ENGINE_ID, DAIMON_PORTABLE_ENGINE_ID, DAIMON_GROK_BROKER_MODELS, DAIMON_GROK_BROKER_REASONING_EFFORTS, daimonTrainingDeclaration } from '../../../index.js';
 import { compatibleWireLiteral } from '../../../../../training/index.js';
 import { isAbsolute, posix } from 'node:path';
 import { z } from 'zod';
@@ -16,8 +16,8 @@ const positive = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 /** Engines a launch receipt can select. v1 receipts are always Codex. */
 export const nativeEngines = z.enum(daimonTrainingDeclaration.engines);
 /** Daimon's closed Grok broker lists; the launch records the declaration, never a default. */
-export const grokModels = ['grok-4.6', 'grok-4.5', 'grok-build'] as const;
-export const grokReasoningEfforts = ['low', 'medium', 'high'] as const;
+export const grokModels = DAIMON_GROK_BROKER_MODELS;
+export const grokReasoningEfforts = DAIMON_GROK_BROKER_REASONING_EFFORTS;
 /** Evaluator roots every Grok slot must deny to its worker uid (R4). */
 export const grokEvaluatorRoles = ['run-root', 'context', 'sealed-inputs', 'judge-home', 'slot-ledger'] as const;
 
@@ -45,8 +45,8 @@ const common = {
   }),
 };
 const credential = z.strictObject({ source: absolute, target: nativePath });
-const codexAgent = z.strictObject({ id: identity, engine: nativeEngines.extract(['codex']), model: z.string().trim().min(1).max(256) });
-const grokAgent = z.strictObject({ id: identity, engine: nativeEngines.extract(['grok']), model: z.enum(grokModels), reasoningEffort: z.enum(grokReasoningEfforts) });
+const codexAgent = z.strictObject({ id: identity, engine: z.literal(DAIMON_PORTABLE_ENGINE_ID), model: z.string().trim().min(1).max(256) });
+const grokAgent = z.strictObject({ id: identity, engine: z.literal(DAIMON_BROKER_ENGINE_ID), model: z.enum(grokModels), reasoningEffort: z.enum(grokReasoningEfforts) });
 
 /**
  * The inputs Daimon's `resolveOrganizationGrokBrokerProjection` needs, plus the
@@ -98,7 +98,7 @@ export const containerPaths = { config: '/run/spawnfile-training/config.json', c
   bootstrap: '/opt/training/bootstrap' } as const;
 
 export function isGrokLaunch<T extends NativeLaunch>(launch: T): launch is T & GrokNativeLaunch {
-  return launch.agent.engine === 'grok';
+  return launch.agent.engine === DAIMON_BROKER_ENGINE_ID;
 }
 
 const nested = (parent: string, child: string): boolean => child === parent || child.startsWith(parent === '/' ? '/' : `${parent}/`);

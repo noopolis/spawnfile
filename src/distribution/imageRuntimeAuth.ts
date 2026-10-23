@@ -1,3 +1,4 @@
+import { getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../auth/index.js";
@@ -8,15 +9,10 @@ import {
 import { fileExists } from "../filesystem/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
 import {
-  DAIMON_AGY_SUBSCRIPTION_REALM,
-  DAIMON_ENGINE_CREDENTIALS,
-  DAIMON_GROK_SUBSCRIPTION_REALM
-} from "../runtime/daimon/contractManifest.js";
-import {
   assertDaimonCredentialContainerOwner,
   assertSafeDaimonSourceFile,
-  DAIMON_AGY_UNLOCK_SOURCE_ENV,
   DAIMON_CREDENTIAL_CONTAINER_UID,
+  daimonSourceEnvironmentName,
   daimonSourcePathForEngine
 } from "../runtime/daimon/runAuth.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -73,7 +69,7 @@ export const prepareDaimonImageAuthMounts = async (
   if (JSON.stringify(engineNodeIds) !== JSON.stringify([...instance.node_ids].sort())) {
     throw new SpawnfileError("validation_error", "Daimon image engine map does not match its declared agents");
   }
-  if (engines.some(([, engine]) => engine !== "agy" && engine !== "codex" && engine !== "grok")) {
+  if (engines.some(([, engine]) => !getDaimonEngineDescriptor(engine))) {
     throw new SpawnfileError("validation_error", "Daimon image report declares an unsupported engine");
   }
   const root = daimonInstanceRoot(instance);
@@ -84,31 +80,37 @@ export const prepareDaimonImageAuthMounts = async (
     if (!slug || slugs.has(slug)) throw new SpawnfileError("validation_error", "Daimon image report has an unsafe agent id");
     slugs.set(slug, nodeId);
   }
-  const codexSource = engines.some(([, engine]) => engine === "codex")
-    ? daimonSourcePathForEngine("codex", environment, authProfile) : null;
-  if (codexSource) {
-    const ownerUid = await assertSafeDaimonSourceFile(codexSource, "codex", 64 * 1024, "codex");
-    assertDaimonCredentialContainerOwner(ownerUid, "codex", containerCredentialUid);
+  const descriptors = [...new Set(engines.map(([, engine]) => engine))]
+    .map((engine) => getDaimonEngineDescriptor(engine)!);
+  // Keep portable leaves, broker bootstrap, then realm unlock mounts in the
+  // existing order while resolving every engine's staging contract from data.
+  for (const descriptor of descriptors) {
+    if (descriptor.auth.staging !== "portable-file") continue;
+    const source = daimonSourcePathForEngine(descriptor.id, environment, authProfile);
+    const ownerUid = await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
+    assertDaimonCredentialContainerOwner(ownerUid, descriptor.id, containerCredentialUid);
+    for (const [nodeId, engine] of engines) {
+      if (engine !== descriptor.id) continue;
+      const target = path.posix.join(root, "runtime-homes", daimonNodeSlug(nodeId), descriptor.credentialMaterial!.sourceRelativePath!);
+      mounts.push("-v", `${source}:${target}:ro`);
+    }
   }
-  for (const [nodeId, engine] of engines) {
-    if (engine !== "codex") continue;
-    const slug = daimonNodeSlug(nodeId);
-    const target = path.posix.join(root, "runtime-homes", slug, DAIMON_ENGINE_CREDENTIALS.codex.sourceRelativePath);
-    mounts.push("-v", `${codexSource}:${target}:ro`);
+  for (const descriptor of descriptors) {
+    if (descriptor.auth.staging !== "broker-realm") continue;
+    // Broker bootstrap leaves are read and staged by root, so they deliberately
+    // do not require ownership by the eventual organization uid.
+    const source = daimonSourcePathForEngine(descriptor.id, environment);
+    await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
+    mounts.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
   }
-  // The Grok bootstrap leaf is deliberately exempt from the container-owner
-  // assertion; see the matching note in runAuth.ts.
-  if (engines.some(([, engine]) => engine === "grok")) {
-    const source = daimonSourcePathForEngine("grok", environment);
-    await assertSafeDaimonSourceFile(source, "grok", DAIMON_GROK_SUBSCRIPTION_REALM.maxCredentialBytes, "grok");
-    mounts.push("-v", `${source}:${DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath}:ro`);
-  }
-  if (engines.some(([, engine]) => engine === "agy")) {
-    const source = environment[DAIMON_AGY_UNLOCK_SOURCE_ENV]?.trim();
+  for (const descriptor of descriptors) {
+    if (descriptor.auth.staging !== "secret-service") continue;
+    const realm = descriptor.auth.realm;
+    const source = environment[daimonSourceEnvironmentName(realm.unlockSourceSlot)]?.trim();
     if (!source) throw new SpawnfileError("validation_error", "Daimon runtime auth is missing the operator-authorized AGY realm unlock artifact");
-    const ownerUid = await assertSafeDaimonSourceFile(source, "AGY realm unlock", DAIMON_AGY_SUBSCRIPTION_REALM.maxUnlockBytes);
+    const ownerUid = await assertSafeDaimonSourceFile(source, "AGY realm unlock", realm.maxUnlockBytes);
     assertDaimonCredentialContainerOwner(ownerUid, "AGY realm unlock", containerCredentialUid);
-    mounts.push("-v", `${source}:${DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath}:ro`);
+    mounts.push("-v", `${source}:${realm.unlockMountPath}:ro`);
   }
   return mounts;
 };

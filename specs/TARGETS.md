@@ -2,6 +2,51 @@
 
 Status: evolving
 
+## Daimon contract manifests
+
+Spawnfile accepts `noopolis.daimon.runtime-contract-manifest.v5` and
+`noopolis.daimon.runtime-contract-manifest.v6`. Both retain canonical JSON
+bytes, the SHA-256 sidecar, and the image capability receipt binding. Accepting
+v6 does not make a v5 image attest a new digest; publication and re-pinning
+remain required when Daimon starts emitting v6.
+
+v6 retains every v5 section and adds `engines: { <id>: descriptor }`.
+`supportedEngineKinds` MUST equal the sorted descriptor keys; each key MUST
+equal its descriptor's `id`. A descriptor contains:
+
+- `authKinds`, `auth` (method/provider, staging kind, credential format, modes,
+  bounds and realm), `credentialMaterial`, `homeDirectory`, `homeEnvironment`,
+  `requiredBinaries`, and optional Pi auth/provider associations;
+- `modelSelection` (configurability, model and effort vocabulary, defaults,
+  pairing and broker requirements), `sandbox`, and `capabilities`;
+- `training.subject` (support and isolation) and `training.inferenceGrants`;
+- `broker`, either null or the complete versioned broker contract.
+
+The structural JSON Schema is exported as
+`DAIMON_CONTRACT_MANIFEST_V6_JSON_SCHEMA` by the Daimon adapter. The parser also
+checks inventory, capability, credential and legacy-section consistency.
+Unknown descriptor fields, unsafe credential paths/modes, and unsupported
+broker or realm ABIs fail closed. Existing broker pins and model/effort
+vocabulary must agree across the descriptor and retained legacy sections.
+The retained broker and Secret Service realm ABIs each have exactly one owning
+engine; duplicate owners are rejected before staging or compilation.
+
+v5 has no descriptor section. Its descriptors come exclusively from the
+checked-in generated mirror for the exact full Daimon commit in `runtimes.yaml`.
+`scripts/generate-daimon-engine-descriptors.ts` reads that commit's static Git
+objects from `SPAWNFILE_DAIMON_SOURCE_DIR`, without executing upstream code or
+reading dirty working-tree files. It writes the JSON mirror, SHA-256 sidecar,
+and typed data module. `--check` reproduces all three; CI uses the same pinned
+Daimon checkout as the existing manifest/parity tests. Ordinary tests also bind
+the mirror's commit, bytes and typed data to the registry pin.
+
+Compilation, diagnostics, training registration, broker selection and auth
+staging consume resolved descriptors. Engine omission defaults, source-language
+provider restrictions, credential imports/writeback, mount identities, budgets,
+and training admission remain Spawnfile policy. Historical wire identities and
+volume names remain unchanged. Pi and standalone training subjects retain their
+own inventories. Daimon remains the owner of executable handlers and live turns.
+
 `src/target` defines the project-neutral public target-resource contracts. The
 six v1 identities are `spawnfile.target-resource.request.v1`,
 `spawnfile.target-resource.receipt.v1`,

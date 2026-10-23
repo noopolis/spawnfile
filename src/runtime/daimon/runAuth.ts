@@ -8,20 +8,16 @@ import type { ResolvedAuthProfile } from "../../auth/index.js";
 import type { RuntimeAuthPreparationInput, RuntimeAuthPreparationResult } from "../types.js";
 
 import {
-  DAIMON_AGY_SUBSCRIPTION_REALM,
   assertDaimonRuntimeHome,
-  DAIMON_ENGINE_CREDENTIALS,
-  DAIMON_ENGINE_KINDS,
-  DAIMON_GROK_SUBSCRIPTION_REALM,
   DAIMON_ORGANIZATION_RUNTIME_CONFIG_VERSIONS,
   type DaimonEngine
 } from "./contractManifest.js";
+import { DAIMON_ENGINE_DESCRIPTORS, DAIMON_ENGINES, DAIMON_PORTABLE_ENGINE_ID, DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "./engines.js";
 import { DAIMON_ORGANIZATION_UID } from "./runtimeIdentity.js";
 
 const MAX_OPAQUE_CREDENTIAL_BYTES = 64 * 1024;
 export const DAIMON_GROK_ACCESS_TOKEN_MIN_BYTES = 32;
 export const DAIMON_GROK_REFRESH_TOKEN_MIN_BYTES = 16;
-export const DAIMON_AGY_UNLOCK_SOURCE_ENV = "SPAWNFILE_DAIMON_SOURCE_AGY_UNLOCK_SECRET";
 
 interface DaimonConfigAgent {
   engine: { kind: DaimonEngine };
@@ -36,31 +32,42 @@ const fail = (message: string): never => {
 export const daimonSourceEnvironmentName = (slot: string): string =>
   `SPAWNFILE_DAIMON_SOURCE_${slot.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase()}`;
 
+const descriptorForEngine = (engine: string) =>
+  getDaimonEngineDescriptor(engine) ?? fail(`has an undeclared engine ${engine}`);
+
+const sourceSlotForEngine = (engine: string): string => {
+  const descriptor = descriptorForEngine(engine);
+  if (descriptor.auth.staging === "portable-file") {
+    return descriptor.credentialMaterial?.sourceSlot ?? fail(`engine ${engine} has no declared credential source slot`);
+  }
+  if (descriptor.auth.staging === "broker-realm") return descriptor.auth.realm.bootstrapSourceSlot;
+  return descriptor.auth.realm.unlockSourceSlot;
+};
+
+export const DAIMON_AGY_UNLOCK_SOURCE_ENV = daimonSourceEnvironmentName(
+  sourceSlotForEngine(DAIMON_SECRET_SERVICE_ENGINE_ID)
+);
+
 export const daimonSourcePathForEngine = (
-  engine: "codex" | "grok",
+  engine: string,
   environment: Record<string, string | undefined> = process.env,
   authProfile: ResolvedAuthProfile | null = null
 ): string => {
-  const declaredSource = environment[
-    daimonSourceEnvironmentName(engine === "grok"
-      ? DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapSourceSlot
-      : DAIMON_ENGINE_CREDENTIALS.codex.sourceSlot)
-  ]?.trim();
+  const descriptor = descriptorForEngine(engine);
+  const declaredSource = environment[daimonSourceEnvironmentName(sourceSlotForEngine(engine))]?.trim();
   if (declaredSource) return declaredSource;
-  if (engine === "codex" && authProfile) {
-    const imported = authProfile.imports.codex;
+  if (descriptor.auth.staging === "secret-service") {
+    return fail(`is missing the operator-authorized ${engine.toUpperCase()} realm unlock artifact`);
+  }
+  // Import selection is Spawnfile policy; realm credentials remain runtime-owned.
+  if (engine === DAIMON_PORTABLE_ENGINE_ID && authProfile) {
+    const imported = authProfile.imports[DAIMON_PORTABLE_ENGINE_ID as keyof typeof authProfile.imports];
     return path.join(
-      imported?.path ?? fail("selected auth profile has no imported codex credential"),
-      "auth.json"
+      imported?.path ?? fail(`selected auth profile has no imported ${engine} credential`),
+      descriptor.auth.fileName
     );
   }
-  const home = os.homedir();
-  switch (engine) {
-    case "codex":
-      return path.join(process.env.CODEX_HOME || path.join(home, ".codex"), "auth.json");
-    case "grok":
-      return path.join(process.env.GROK_HOME || path.join(home, ".grok"), "auth.json");
-  }
+  return path.join(environment[descriptor.homeEnvironment] || path.join(os.homedir(), descriptor.homeDirectory), descriptor.auth.fileName);
 };
 
 const sourceFileIdentity = (entry: Awaited<ReturnType<typeof lstat>>): string =>
@@ -136,7 +143,7 @@ export const assertSafeDaimonSourceFile = async (
   sourcePath: string,
   label: string,
   maxBytes = MAX_OPAQUE_CREDENTIAL_BYTES,
-  portableKind?: "codex" | "grok"
+  portableKind?: string
 ): Promise<number> => {
   let entry: Awaited<ReturnType<typeof lstat>>;
   try {
@@ -183,21 +190,28 @@ export const assertSafeDaimonSourceFile = async (
   return callerUid;
 };
 
-const hasRefreshableCredential = (kind: "codex" | "grok", bytes: Buffer): boolean => {
+const hasRefreshableCredential = (kind: string, bytes: Buffer): boolean => {
   let parsed: unknown;
   try { parsed = JSON.parse(bytes.toString("utf8")); } catch { return false; }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const descriptor = descriptorForEngine(kind);
+  const format = descriptor.auth.format;
+  if (!format) return false;
   const root = parsed as Record<string, unknown>;
-  const source = kind === "codex"
-    ? ((root.tokens && typeof root.tokens === "object" && !Array.isArray(root.tokens)) ? root.tokens as Record<string, unknown> : root)
-    : Object.entries(root).find(([key, value]) => /^https:\/\/auth\.x\.ai::/u.test(key) && value && typeof value === "object" && !Array.isArray(value))?.[1] as Record<string, unknown> | undefined;
+  const container = format.containerKey ? root[format.containerKey] : undefined;
+  const source = format.entryKeyPattern
+    ? Object.entries(root).find(([key, value]) => new RegExp(format.entryKeyPattern!, "u").test(key) && value && typeof value === "object" && !Array.isArray(value))?.[1] as Record<string, unknown> | undefined
+    : container && typeof container === "object" && !Array.isArray(container)
+      ? container as Record<string, unknown> : format.fallbackToRoot ? root : undefined;
   if (!source) return false;
-  const access = kind === "grok" ? source.key : source.access_token ?? source.accessToken ?? source.token;
-  const refresh = kind === "grok" ? source.refresh_token : source.refresh_token ?? source.refreshToken;
+  const access = format.accessTokenKeys.map((key) => source[key]).find((value) => value !== null && value !== undefined);
+  const refresh = format.refreshTokenKeys.map((key) => source[key]).find((value) => value !== null && value !== undefined);
   if (typeof access !== "string" || !access.trim() || typeof refresh !== "string" || !refresh.trim()) return false;
-  if (kind === "grok" && (access.length < DAIMON_GROK_ACCESS_TOKEN_MIN_BYTES
+  // Compiler preflight retains the native broker's credential length boundary.
+  if (descriptor.auth.staging === "broker-realm" && (access.length < DAIMON_GROK_ACCESS_TOKEN_MIN_BYTES
     || refresh.length < DAIMON_GROK_REFRESH_TOKEN_MIN_BYTES)) return false;
-  return kind !== "grok" || (typeof source.expires_at === "string" && Number.isFinite(Date.parse(source.expires_at)));
+  const expires = format.expiresAtKey ? source[format.expiresAtKey] : undefined;
+  return !format.expiresAtKey || (typeof expires === "string" && Number.isFinite(Date.parse(expires)));
 };
 
 const assertContainedPath = (root: string, candidate: string): string => {
@@ -240,7 +254,7 @@ const parseConfigAgents = (source: string): DaimonConfigAgent[] => {
       : undefined;
     if (typeof agent.id !== "string" || !agent.id || typeof agent.runtimeHomePath !== "string"
       || typeof engineKind !== "string"
-      || !(DAIMON_ENGINE_KINDS as readonly string[]).includes(engineKind)) {
+      || !DAIMON_ENGINES.includes(engineKind)) {
       fail("generated organization config has an invalid agent credential target");
     }
     const agentId = agent.id as string;
@@ -256,30 +270,28 @@ const parseConfigAgents = (source: string): DaimonConfigAgent[] => {
   return agents.sort((left, right) => left.id.localeCompare(right.id));
 };
 
-const resolveCredentialSource = (
-  agent: DaimonConfigAgent & { engine: { kind: "codex" } },
-  authProfile: ResolvedAuthProfile | null
-): string => daimonSourcePathForEngine(agent.engine.kind, process.env, authProfile);
-
 const prepareNeutralIngress = async (
   outputDirectory: string,
-  agent: DaimonConfigAgent & { engine: { kind: "codex" } }
+  agent: DaimonConfigAgent
 ): Promise<string> => {
+  const credential = descriptorForEngine(agent.engine.kind).credentialMaterial;
+  const sourceRelativePath = credential?.sourceRelativePath
+    ?? fail(`engine ${agent.engine.kind} has no declared credential ingress path`);
   const rootfs = path.join(outputDirectory, "container", "rootfs");
   const runtimeHome = assertContainedPath(rootfs, path.join(rootfs, `.${agent.runtimeHomePath}`));
   const inbound = assertContainedPath(
     runtimeHome,
-    path.join(runtimeHome, path.posix.dirname(DAIMON_ENGINE_CREDENTIALS[agent.engine.kind].sourceRelativePath))
+    path.join(runtimeHome, path.posix.dirname(sourceRelativePath))
   );
   await mkdir(runtimeHome, { mode: 0o700, recursive: true });
   await chmod(runtimeHome, 0o700);
   await mkdir(inbound, { mode: 0o700, recursive: true });
   await chmod(inbound, 0o700);
-  return path.posix.join(agent.runtimeHomePath, DAIMON_ENGINE_CREDENTIALS[agent.engine.kind].sourceRelativePath);
+  return path.posix.join(agent.runtimeHomePath, sourceRelativePath);
 };
 
 /**
- * Binds Codex leaves per agent and one Grok bootstrap leaf per organization.
+ * Binds portable leaves per agent and each declared realm once per organization.
  * Every leaf is validated from a stable descriptor and mounted read-only;
  * Daimon alone owns writable credential state and refresh reconciliation.
  */
@@ -287,13 +299,9 @@ export const prepareDaimonRuntimeAuth = async (
   input: RuntimeAuthPreparationInput
 ): Promise<RuntimeAuthPreparationResult> => {
   const containerCredentialUid = input.containerCredentialUid ?? DAIMON_CREDENTIAL_CONTAINER_UID;
-  const allowedSourceEnvironments = new Set([
-    ...Object.values(DAIMON_ENGINE_CREDENTIALS).map((credential) =>
-      daimonSourceEnvironmentName(credential.sourceSlot)
-    ),
-    daimonSourceEnvironmentName(DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapSourceSlot),
-    DAIMON_AGY_UNLOCK_SOURCE_ENV
-  ]);
+  const allowedSourceEnvironments = new Set(Object.keys(DAIMON_ENGINE_DESCRIPTORS).map((engine) =>
+    daimonSourceEnvironmentName(sourceSlotForEngine(engine))
+  ));
   for (const name of Object.keys(process.env)) {
     if (name.startsWith("SPAWNFILE_DAIMON_SOURCE_") && !allowedSourceEnvironments.has(name)) {
       return fail(`source slot environment ${name} is not declared by the consumed manifest`);
@@ -309,40 +317,35 @@ export const prepareDaimonRuntimeAuth = async (
   const agents = parseConfigAgents(configSource);
   const mountArgs: string[] = [];
   for (const agent of agents) {
-    if (agent.engine.kind !== "codex") continue;
-    const portableAgent = agent as DaimonConfigAgent & {
-      engine: { kind: "codex" };
-    };
-    const sourcePath = resolveCredentialSource(portableAgent, input.authProfile);
-    const ingressPath = await prepareNeutralIngress(input.outputDirectory, portableAgent);
+    const descriptor = descriptorForEngine(agent.engine.kind);
+    if (descriptor.auth.staging !== "portable-file") continue;
+    const sourcePath = daimonSourcePathForEngine(agent.engine.kind, process.env, input.authProfile);
+    const ingressPath = await prepareNeutralIngress(input.outputDirectory, agent);
     const ownerUid = await assertSafeDaimonSourceFile(
-      sourcePath, agent.engine.kind, MAX_OPAQUE_CREDENTIAL_BYTES, "codex"
+      sourcePath, agent.engine.kind, descriptor.auth.maxCredentialBytes, agent.engine.kind
     );
     assertDaimonCredentialContainerOwner(ownerUid, agent.engine.kind, containerCredentialUid);
     mountArgs.push("-v", `${sourcePath}:${ingressPath}:ro`);
   }
-  // No container-owner assertion for the Grok bootstrap leaf: unlike the Codex
-  // credential and the AGY unlock secret, nothing in the organization runtime
-  // process reads it. The live Grok path goes through the engine broker, which
-  // runs under its own uid and reads only its durable realm, so pinning this
-  // leaf to the organization uid would refuse deployments that work today.
-  if (agents.some((agent) => agent.engine.kind === "grok")) {
-    const sourcePath = daimonSourcePathForEngine("grok");
-    await assertSafeDaimonSourceFile(
-      sourcePath, "grok", DAIMON_GROK_SUBSCRIPTION_REALM.maxCredentialBytes, "grok"
-    );
-    mountArgs.push("-v", `${sourcePath}:${DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath}:ro`);
-  }
-  if (agents.some((agent) => agent.engine.kind === "agy")) {
-    const source = process.env[DAIMON_AGY_UNLOCK_SOURCE_ENV]?.trim();
-    if (!source) return fail("is missing the operator-authorized AGY realm unlock artifact");
-    const ownerUid = await assertSafeDaimonSourceFile(
-      source,
-      "AGY realm unlock",
-      DAIMON_AGY_SUBSCRIPTION_REALM.maxUnlockBytes
-    );
-    assertDaimonCredentialContainerOwner(ownerUid, "AGY realm unlock", containerCredentialUid);
-    mountArgs.push("-v", `${source}:${DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath}:ro`);
+  // Realm auth is staged once per organization, in the historical mount order.
+  for (const staging of ["broker-realm", "secret-service"] as const) {
+    for (const engine of new Set(agents.map((agent) => agent.engine.kind))) {
+      const descriptor = descriptorForEngine(engine);
+      if (descriptor.auth.staging !== staging) continue;
+      const source = daimonSourcePathForEngine(engine);
+      if (descriptor.auth.staging === "broker-realm") {
+        const realm = descriptor.auth.realm;
+        // The organization uid never reads broker bootstrap material.
+        await assertSafeDaimonSourceFile(source, engine, descriptor.auth.maxCredentialBytes, engine);
+        mountArgs.push("-v", `${source}:${realm.bootstrapMountPath}:ro`);
+      } else if (descriptor.auth.staging === "secret-service") {
+        const realm = descriptor.auth.realm;
+        const label = `${engine.toUpperCase()} realm unlock`;
+        const ownerUid = await assertSafeDaimonSourceFile(source, label, realm.maxUnlockBytes);
+        assertDaimonCredentialContainerOwner(ownerUid, label, containerCredentialUid);
+        mountArgs.push("-v", `${source}:${realm.unlockMountPath}:ro`);
+      }
+    }
   }
   return {
     coveredModelSecrets: [],

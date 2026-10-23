@@ -218,4 +218,15 @@ agent while `runtimes.yaml` pins Daimon < 0.2.2 (from its
 `createDaimonContainerTargets`. The local runtime identity carries no version,
 so it does not lift the guard.
 
-`engines.ts` owns the pinned engine vocabulary shared by compilation and runtime training registration. Training providers own subscription transport and engine-broker grants; training/services owns durable slot freshness. Keep adapter-specific launch constraints even when an engine is present in the broader runtime vocabulary.
+`engines.ts` resolves the engine vocabulary shared by compilation, auth and
+training from the packaged manifest. `contractManifestSchema.ts` exports the v6
+structural JSON Schema; `engineDescriptorSchema.ts` validates descriptors and
+their cross-field relationships. v5 uses the generated
+`engine-descriptors.json`/`.sha256` and `engineDescriptors.generated.ts`, produced
+by `scripts/generate-daimon-engine-descriptors.ts` from static Git objects at the
+registry's exact pin; CI reproduces them. v6 carries those descriptors directly
+in `engines`. Engine selection follows capabilities and staging roles, while
+omission defaults, historical wire identities and compiler admission stay local
+policy. Training providers own subscription transport and engine-broker grants;
+training/services owns durable slot freshness. Presence in the runtime inventory
+does not imply verified training containment.
