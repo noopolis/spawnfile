@@ -59,7 +59,11 @@ it('hits a pre-rename evidence-ID judgment without changing current request or s
     'paideia.judgment-cache.v3', '', 'fixed', request.system, oldPrompt, check.minimum,
   ])).digest('hex')}`;
   const cache = createJudgeCache({ maxEntries: 5 });
-  cache.put(oldKey, { response: (await f.generate.mock.results[0]!.value).text, sourceCallId: 'pre-rename-paid' });
+  // Executed origin/main's evidenceUnits + judgmentCacheKey at 624a972.
+  const historicalKey = 'sha256:daacdecf332c8e67cf5ca8451e19f31fd7aee3086b57c102087cd5f4228f0f9d';
+  expect(oldKey).toBe(historicalKey);
+  cache.put(historicalKey, { response: JSON.stringify({ score: 0.8, verdict: 'pass',
+    reasons: ['A quantity lacks support.'], evidenceIds: ['e-26706cfb1408de22a65e'] }), sourceCallId: 'pre-rename-paid' });
   f.context.judges.narrow!.cache = cache;
   f.generate.mockClear();
   expect(await evaluateRubric(check, f.context)).toMatchObject({ status: 'fail', cache: { sourceCallId: 'pre-rename-paid' } });
