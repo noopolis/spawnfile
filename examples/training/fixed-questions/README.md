@@ -1,6 +1,6 @@
 # Fixed reader questions
 
-`evals/delivery.paideia.yaml` shows mechanical code checks, fixed decision-model
+`evals/delivery.spawnfile-training.yaml` shows mechanical code checks, fixed decision-model
 questions and the existing LLM rubric in one record. `item.grader.yaml` contains
 six human-authored questions. Each additional case selects its own frozen grader
 file through record.checks and supplies its own record.context.grounding.

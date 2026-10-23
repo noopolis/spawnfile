@@ -1,8 +1,8 @@
 # Named dataset fixtures
 
 **Implemented dataset fixtures.** The strict resolver implements the merging and
-conflict rules below. The example [training](../examples/newsroom-reporting/evals/train.paideia.yaml)
-and [test](../examples/newsroom-reporting/evals/test.paideia.yaml) datasets demonstrate this surface.
+conflict rules below. The example [training](../examples/newsroom-reporting/evals/train.spawnfile-training.yaml)
+and [test](../examples/newsroom-reporting/evals/test.spawnfile-training.yaml) datasets demonstrate this surface.
 
 ## Declaration and selection
 

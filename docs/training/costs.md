@@ -1,6 +1,6 @@
 # Cost estimates and observed usage
 
-Paideia reports the hypothetical API price of model tokens even when a subscription
+Training reports the hypothetical API price of model tokens even when a subscription
 pays for inference. This is not a subscription invoice or a quota percentage.
 Every named judge has its own `--judge NAME=MODEL` selection; `--optimizer-model`
 selects reflection independently of the subject model.
@@ -17,7 +17,7 @@ a workspace or calls a model. Neither `--out` nor `--bridge-command` is required
 Spawnfile's `train --dry-run` delegates to this same planner after supplying its
 verified canonical source inventory.
 
-The `paideia.training-cost-plan.v1` result includes:
+The `spawnfile.training.training-cost-plan.v1` result includes:
 
 - Subject trials, each named judge and optimizer proposals, with separate models.
 - Development calls and two reserved held-out passes, for baseline and selection.
@@ -44,7 +44,7 @@ one. The strict YAML format accepts `assumptions` and exact-model `prices` overr
 Each omitted section keeps the shipped default. For example:
 
 ```yaml
-schema: paideia.cost-config.v1
+schema: spawnfile.training.cost-config.v1
 assumptions:
   subject:
     inputTokens: {low: 20000, high: 180000}
@@ -67,14 +67,14 @@ over the network.
 
 ## After execution
 
-The stored report contains the cost plan and a separate `paideia.cost-report.v1`.
+The stored report contains the cost plan and a separate `spawnfile.training.cost-report.v1`.
 Its rows retain observed subject, judge and optimizer usage, model attribution,
 outcomes, API-equivalent ranges and incomplete evidence. Costs persist without
 the optional viewer. Failed experiments retain a progress journal and protected
 diagnostics even when they never produce a completed invocation index.
 When execution fails after output initialization, `invocation.json` records
-`outcome: failed` and points to a protected `paideia.cli-failure.v1` report.
-`paideia view OUT_DIRECTORY` replays its partial development results and failure
+`outcome: failed` and points to a protected `spawnfile.training.cli-failure.v1` report.
+The prepared training image’s `train view OUT_DIRECTORY` entrypoint replays its partial development results and failure
 status without repeating inference. Recorded costs include all observed calls and
 unknown usage; sealed case/trial identities and provider diagnostics stay out of
 the view. Raw artifacts retain their original access rules. A storage failure can

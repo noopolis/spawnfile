@@ -1,12 +1,12 @@
 # Training controls in the dataset
 
-`train.paideia.yaml` may contain `training` beside its records and criteria. No
+`train.spawnfile-training.yaml` may contain `training` beside its records and criteria. No
 additional experiment or judge configuration file is required. This document
 describes the validated authoring contract; provider execution, caching and CLI
 integration must independently implement each control before accepting a run.
 
 ```yaml
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: writing-development
 training:
   models:
@@ -46,7 +46,7 @@ training:
     max_entries: 1000
   recovery:
     max_attempts: 2
-  test: test.paideia.yaml
+  test: test.spawnfile-training.yaml
   validation_groups: [held-out-development]
   seed: 0
 checks:
@@ -108,14 +108,14 @@ reject this field until their adapters support it.
 `grok-broker` runs judges and the optimizer through short Daimon broker inference
 grants instead of a desktop login; training containers select it. Its `model` is one
 of `grok-4.6`, `grok-4.5` or `grok-build`, and `reasoning_effort` (`low`, `medium` or
-`high`) is required. The container supplies `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` (the
-broker control socket) and `PAIDEIA_GROK_GRANT_HOME_ROOT` (a private evaluator
+`high`) is required. The container supplies `SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET` (the
+broker control socket) and `SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT` (a private evaluator
 directory for per-call Grok homes, owned by the training user with mode 0700); without them, without an installed Daimon, or when
-Daimon's client config no longer matches Paideia's pin, every call fails closed. A
+Daimon's client config no longer matches Spawnfile training's pin, every call fails closed. A
 route may not mix `grok-broker` with `grok-subscription`. A stale broker realm fails
 `auth-stale` immediately: later routes on the same broker are skipped, while an
 authored fallback on another provider (for example Claude) may still run. Usage is
-recorded by Paideia per call with source `grok-broker-grant.result.usage.lower-bound`.
+recorded by Training per call with source `grok-broker-grant.result.usage.lower-bound`.
 
 Judge templates declare Jinja source; parsing validates their shape, while the
 evaluation layer owns rendering and rejects unsupported template behavior before
@@ -157,11 +157,11 @@ or selected evidence must prevent inappropriate reuse.
 ## Execution and limits
 
 The CLI now consumes these controls directly. `spawnfile train` forwards the
-canonical agent context; Paideia loads the named judges and optimizer, performs
+canonical agent context; Training loads the named judges and optimizer, performs
 preflight, runs bounded DSPy optimization, freezes selection, and evaluates the
 sealed test. A registered isolated project preparation is still required for a
 canonical Spawnfile environment. Install the packaged DSPy bridge executable
-`paideia-dspy` on PATH, or select its explicit executable with `--bridge-command`.
+`spawnfile-training-dspy` on PATH, or select its explicit executable with `--bridge-command`.
 
 Classified quota, transport, unavailable, individual attempt timeout and attested
 `invalid-response` schema failures advance to the next configured model. `timeout_ms` bounds the whole route, including
@@ -182,7 +182,7 @@ or spending guarantees.
 
 DSPy proposals request a JSON object whose exact keys are the selected editable
 resources and whose values are replacement text. Grok and Claude use their native
-JSON-schema controls; local Ollama uses `format`. Paideia also validates the whole
+JSON-schema controls; local Ollama uses `format`. Training also validates the whole
 completed response before accepting it, then checks the candidate's edit policy.
 This does not change the authored rubric or permit edits to locked sections.
 Custom inference integrations receive optional `responseSchema`; unsupported
@@ -443,7 +443,7 @@ training:
         - resource: agents/foreman/AGENTS.md
           source: variants/skill-guided/AGENTS.md
   validation_groups: [validation]
-  test: test.paideia.yaml
+  test: test.spawnfile-training.yaml
   budget: { max_trials: 10, timeout_ms: 3600000 }
 ```
 
@@ -463,7 +463,7 @@ Omit `optimizer`, `max_proposals` and bridge flags. `--dry-run` estimates those 
 pairs and judge routes with zero optimizer cost, retaining the usual unknown-cost
 and unverified-preparation disclosures.
 
-The separate `paideia.comparison.v1` report records both candidate identities,
+The separate `spawnfile.training.comparison.v1` report records both candidate identities,
 per-case scores and differences, original captures and costs. The cockpit names
 both arms and shows their chronological measurements without a GEPA panel. Valid
 failed grades are retained; infrastructure interruptions remain incomplete. Exact
@@ -481,7 +481,7 @@ Completed optimizer runs export [local training reports and candidate bundles](t
 
 ## Explicit authored validation and historical cases
 
-`train --validation validation.paideia.yaml` selects a separate validation dataset;
+`train --validation validation.spawnfile-training.yaml` selects a separate validation dataset;
 `training.validation` provides the same dataset-relative default. This retains every
 train record and the validation dataset's own identity. It is mutually exclusive
 with `validation_groups` and `--validation-group`. Execution, comparison and dry-run
@@ -503,8 +503,8 @@ it must rewind using the authored metadata. All other role/phase mismatches fail
 before the callback runs, and rewind evidence must retain the authored role.
 
 The callback returns ordinary environment fields plus `momentReceipt` with
-`version: paideia.training-moment-prepared.v1`, trialId, example, momentRoot and at.
-Paideia verifies an initially absent destination, a real isolated directory,
+`version: spawnfile.training.training-moment-prepared.v1`, trialId, example, momentRoot and at.
+Training verifies an initially absent destination, a real isolated directory,
 receipt identity and the rewind's materialized `moment.json` plus successful
 `leak-check.json` before starting the adapter. Missing hooks, stale/shared roots,
 refused rewinds, mismatched identities and cancellation fail the trial. The

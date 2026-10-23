@@ -16,7 +16,7 @@ Project files + case ─→ Native adapter ─→ Real agent ─→ Capture + ev
 ## What is portable
 
 The project supplies its own source resources, cases, criteria and registered fixture
-tools. Paideia has no built-in newsroom vocabulary or special project paths. Each
+tools. Training has no built-in newsroom vocabulary or special project paths. Each
 adapter receives one resolved trial: immutable candidate manifest, visible task input,
 workspace files, selected runtime/model profile, reset state, fixture tool bindings,
 budgets and required observations. Evaluator-only material is not part of that input.
@@ -83,33 +83,33 @@ Local source inspection confirms Daimon's public `AgentStartInput` accepts `id`,
 `name`, `instructions`, `workspacePath`, `runtimeHomePath` and optional tool names.
 The handle accepts a `WakeEvent` with task `text` and exposes wake/status/stop.
 The published Pi adapter additionally exposes memory, custom-tool and opt-in native
-capture settings. The CLI-engine route has now completed isolated native Paideia trials through
+capture settings. The CLI-engine route has now completed isolated native Training trials through
 these public seams. Required isolated-instruction and per-instance causal-context
 changes are in the local Daimon feature worktree; an older runtime fails preflight.
 
 However, the current Pi resource loader returns empty skills, prompt templates and
 agent-file collections. Placing a `SKILL.md` in a workspace does not make that a
 registered native skill. A generic public resource-loading extension belongs in
-Daimon; Paideia should consume it and test it. Do not hide the gap by concatenating
+Daimon; Training should consume it and test it. Do not hide the gap by concatenating
 all skill bodies into `instructions` or importing private Daimon implementation files.
 The production CLI-engine route has different observability and must be tested
 separately rather than inheriting claims from native Pi.
 
 Spawnfile continues to own its source-format compilation. For an existing Spawnfile
 agent, an optional preparation integration uses its public compile surface and receipt,
-tracking how candidate source edits reach runtime files. Paideia must not grow a second
+tracking how candidate source edits reach runtime files. Training must not grow a second
 Spawnfile compiler. Other native adapters must work with no Spawnfile installed.
 
 ## Colocated evaluation and packaging
 
-**Agreed layout; generic Paideia implementation available.** Keep `evals/` next to the canonical native
-agent/project definition. Paideia remains the shared evaluation and optimization tool;
+**Agreed layout; generic Training implementation available.** Keep `evals/` next to the canonical native
+agent/project definition. Training remains the shared evaluation and optimization tool;
 the datasets and editable-source selections belong with the agent they train. A trial
 uses an isolated candidate copy and records its explicit overrides, preserving the
 source project as baseline. Dataset location never changes the native working directory.
 
-The agreed dataset naming is `<name>.paideia.yaml`, with `train.paideia.yaml` and
-`test.paideia.yaml` as the example pair. The local `spawnfile train` implementation
+The agreed dataset naming is `<name>.spawnfile-training.yaml`, with `train.spawnfile-training.yaml` and
+`test.spawnfile-training.yaml` as the example pair. The local `spawnfile train` implementation
 calls its own training core in-process: Spawnfile supplies its canonical agent
 and environment, and the core owns evaluation, optimization and isolated trials.
 The bundled training CLI also supports explicit Markdown resources and native runtimes.
@@ -139,8 +139,8 @@ and terminal outcome. Missing capabilities may surface after cognition starts; t
 attempts remain failures with retained usage, not successful preflight evidence.
 
 Spawnfile projects add `.spawnignore`, using the proposed patterns `**/evals/` and
-`**/.paideia/` for evaluator definitions and generated experiment artifacts. These files
-remain readable to trusted Paideia preparation; only permitted task inputs and candidate
+`**/.spawnfile-training/` for evaluator definitions and generated experiment artifacts. These files
+remain readable to trusted Training preparation; only permitted task inputs and candidate
 resources reach the subject. Dataset YAML stays tracked in Git. Generated experiment
 state is also excluded from Git; `.spawnignore` and `.gitignore` have separate purposes.
 
@@ -153,8 +153,8 @@ an explicit snapshot contract, not a silently altered mutable Git checkout. An e
 required native input conflicting with an exclusion must fail rather than disappear.
 
 Current Spawnfile has no `.spawnignore` support. Its Git resources clone repositories
-and bundle resources extract supplied archives. Paideia must not claim this convention
-enforces isolation today or implement a second Spawnfile packager. Paideia still owns
+and bundle resources extract supplied archives. Training must not claim this convention
+enforces isolation today or implement a second Spawnfile packager. Training still owns
 case-specific source views, reference separation and held-out-data checks, which remain
 necessary even after generic packaging exclusion exists. Other native adapters retain
 their own packaging contracts and do not require a Spawnfile ignore file.
@@ -177,6 +177,6 @@ identity resource remains unchanged. Native skill loading is still unsupported a
 needs its own propagation and negative conformance tests before being advertised.
 
 DSPy modifies declared
-text components, Paideia creates fresh trials, evaluators produce evidence-backed
+text components, Training creates fresh trials, evaluators produce evidence-backed
 feedback, validation selects, and a sealed test measures generalization. Prompt
 optimization does not update model weights or automatically deploy source changes.

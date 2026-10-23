@@ -1,4 +1,4 @@
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: native-formatting-test
 subject: native-formatting
 

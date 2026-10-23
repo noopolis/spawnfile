@@ -1,13 +1,13 @@
 # Executable atomic graders
 
 A Spawnfile `training.graders: {quality: training/quality.grader.yaml}` entry
-points to a **grader file**, not a check-template file. Paideia consumes the
+points to a **grader file**, not a check-template file. Training consumes the
 protected lowered path through its existing `eval: grader` check. This contract implements
 atomic grading without golden labels or a calibration file; probabilities are
 uncalibrated JEV judgments, not established ground truth.
 
 ```yaml
-schema: paideia.atomic-grader.v1
+schema: spawnfile.training.atomic-grader.v1
 id: quality
 templates: quality.templates.yaml
 extractor:

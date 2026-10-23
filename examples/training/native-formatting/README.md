@@ -10,8 +10,8 @@ native-formatting/
 ├── SOUL.md                 locked identity, passed as native instructions
 ├── PROMPT.md               editable instruction, passed as native instructions
 └── evals/
-    ├── train.paideia.yaml  Alpha training + Beta internal validation
-    └── test.paideia.yaml   Gamma sealed comparison after selection freezes
+    ├── train.spawnfile-training.yaml  Alpha training + Beta internal validation
+    └── test.spawnfile-training.yaml   Gamma sealed comparison after selection freezes
 ```
 
 Each record adds an exact expected output to the identical shared shape check.

@@ -1,6 +1,6 @@
 # Implemented system and evidence
 
-Paideia now has a working local evaluation and prompt-training path. This page
+Training now has a working local evaluation and prompt-training path. This page
 separates the executable core from the project integrations still being designed.
 
 ## Working components

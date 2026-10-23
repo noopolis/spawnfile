@@ -1,7 +1,7 @@
 # Newsroom Dataset Example
 
-Owns an illustrative Spawnfile/environment, evals/train.paideia.yaml,
-evals/test.paideia.yaml, the proposed .spawnignore policy and one README.
+Owns an illustrative Spawnfile/environment, evals/train.spawnfile-training.yaml,
+evals/test.spawnfile-training.yaml, the proposed .spawnignore policy and one README.
 Both datasets follow docs/authoring.md and contain their records inline.
 
 - Keep the authoring surface small. Do not reintroduce case-per-file manifests,

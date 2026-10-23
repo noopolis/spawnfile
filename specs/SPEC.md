@@ -1917,7 +1917,7 @@ All commands share one convention:
 - `1` — runtime failure: a compile, build, Docker, or other operation that failed after input validation passed.
 
 Per-command notes below reference this convention rather than restating exit numbers.
-`train` preserves Paideia's completed failed-check exit 1 and cancellation exits 130/143; empty success receipts fail.
+`train` preserves Spawnfile training's completed failed-check exit 1 and cancellation exits 130/143; empty success receipts fail.
 
 #### `spawnfile init`
 

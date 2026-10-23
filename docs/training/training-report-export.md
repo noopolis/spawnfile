@@ -1,6 +1,6 @@
 # Local training report export
 
-Completed optimizer training (`paideia.training.v1`) writes `REPORT.md` and
+Completed optimizer training (`spawnfile.training.training.v1`) writes `REPORT.md` and
 `REPORT.json` in the command output. This includes completed runs whose selected
 candidate fails quality checks. Failed/interrupted attempts, evaluation-only runs,
 legacy untyped reports and fixed authored comparisons retain their existing
@@ -17,7 +17,7 @@ exact evaluated manifest so completed resume exports the same bundles. Unchanged
 empty. Patches preserve final-newline and CRLF differences and apply to baseline
 source files with ordinary `git apply`. Diffs also appear in Markdown.
 
-JSON uses `paideia.training-export.v1`: selected/baseline identities, candidate
+JSON uses `spawnfile.training.training-export.v1`: selected/baseline identities, candidate
 manifests, split/example measurements, optimizer round provenance, failing-check
 rows and summaries, paired held-out differences, duration, request accounting,
 existing cost receipts and cost plan. The original complete training envelope

@@ -1,6 +1,6 @@
 # Authoring Examples
 
-Owns readable integration examples used to refine Paideia's YAML authoring surface.
+Owns readable integration examples used to refine Spawnfile training's YAML authoring surface.
 These are draft YAML/native declarations with Markdown explanations, separate from
 implemented task corpora in evals/.
 

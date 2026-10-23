@@ -1,6 +1,6 @@
-# Illustrative paideia.dataset.v1. All records are inline; no per-case YAML files.
+# Illustrative spawnfile.training.dataset.v1. All records are inline; no per-case YAML files.
 # Names, revisions and hashes are synthetic; no real corpus is referenced or included.
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: newsroom-reporting-train
 subject: scribe
 setup:

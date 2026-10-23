@@ -8,7 +8,7 @@ golden labels, calibration path and scoring policy. Spawnfile only maps names:
 ## Grader format
 
 ```yaml
-schema: paideia.grader.v1
+schema: spawnfile.training.grader.v1
 id: writing
 golden: writing.labels.yaml
 calibration: writing.calibration.json
@@ -117,7 +117,8 @@ paragraph/article reads retain the original text. The setting, matching patterns
 and movement algorithm version enter sentence-question and expansion identity.
 
 ```sh
-paideia grader expand --grader writing.grader.yaml --output report.json --context evidence=evidence.md
+# Inside a prepared training image:
+train grader expand --grader writing.grader.yaml --output report.json --context evidence=evidence.md
 ```
 
 `--output` is the input report JSON file. The command prints
@@ -174,7 +175,7 @@ usage. Escalations continue to share the existing per-output call budget.
 ## Labels and resume
 
 ```yaml
-schema: paideia.labels.v1
+schema: spawnfile.training.labels.v1
 grader: writing
 labelers:
   reviewer: { kind: human, name: Reviewer }
@@ -209,7 +210,7 @@ context belongs to that historical output; it is never trial-time context.
 Instance keys are `<question>`, `<question>@p0`, or `<question>@p0.s0`.
 Every revision of one source family shares `lineage`, the split/exclusion unit.
 Optional `example: { dataset: training, id: example-1 }` binds dataset ancestry.
-The input manifest uses `schema: paideia.grader-inputs.v1` and an `items` array
+The input manifest uses `schema: spawnfile.training.grader-inputs.v1` and an `items` array
 of `{id, lineage, output: {from: ...}, context: {evidence: {from: ...}}}` entries.
 
 Labeling batches identical projections per teacher. One malformed-JSON repair is
@@ -234,12 +235,12 @@ remain readable. Credentials never enter labels or calibration artifacts.
 
 ## Importing editor and human labels
 
-`paideia grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]`
+The prepared training image’s entrypoint accepts `train grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]`
 imports external editorial verdicts or human review sheets without model calls.
 The import accepts YAML or JSON; referenced paths resolve beside the import file:
 
 ```yaml
-schema: paideia.label-import.v1
+schema: spawnfile.training.label-import.v1
 grader: writing
 labelers:
   editor: { kind: editor, name: Editor verdicts, source: Mapped editorial verdicts }
@@ -291,7 +292,7 @@ npm ci
 npm run build
 node dist/src/cli/main.js grader validate --grader training/writing.grader.yaml
 node dist/src/cli/main.js grader label --grader training/writing.grader.yaml --inputs training/inputs.yaml --teachers reader,reviewer --adjudication 20
-node dist/src/cli/main.js grader calibrate --grader training/writing.grader.yaml --exclude-dataset evals/test.paideia.yaml --report training/calibration.md
+node dist/src/cli/main.js grader calibrate --grader training/writing.grader.yaml --exclude-dataset evals/test.spawnfile-training.yaml --report training/calibration.md
 node dist/src/cli/main.js grader grade --grader training/writing.grader.yaml --output report.json --context evidence=sources.md
 ```
 
@@ -578,7 +579,7 @@ their caller's receipt collector. Concurrent invocations never read each other's
 receipt history. Cached scores add no current request/cost. Mock transport
 and command tests verify this contract; live hosted availability is unverified.
 
-Failed grading or calibration emits a `paideia.grader-failure.v1` JSON result
+Failed grading or calibration emits a `spawnfile.training.grader-failure.v1` JSON result
 with sanitized `decisionAccounting` before exiting nonzero. Receipts include
 completed requests and failed attempts from every candidate already started;
 unknown usage stays unknown, while measured usage remains visible per receipt.

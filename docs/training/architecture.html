@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paideia — architectural view</title>
+<title>Training — architectural view</title>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; }
@@ -49,7 +49,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <body>
 <main>
 <header>
-<p class="eyebrow">Paideia · architecture and implementation · 13 September 2026</p>
+<p class="eyebrow">Training · architecture and implementation · 13 September 2026</p>
 <h1>The architecture, from YAML to a tested agent.</h1>
 <p>A native project and its environment, one YAML per dataset, and a bounded loop that evaluates and improves selected instructions.</p>
 <div class="status"><p><strong>Working evaluation and training core.</strong> Real DSPy optimization improved a held-out formatting task through native Codex and Daimon. The YAML resolver, evaluators, capture store and local viewer are implemented. The newsroom example is a synthetic authoring fixture; native project preparation, skills and memory parity are still missing.</p></div>
@@ -57,27 +57,27 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </header>
 <section id="architecture">
 <p class="number">01 / Components and ownership</p>
-<h2>Paideia surrounds the native agent.</h2>
+<h2>Training surrounds the native agent.</h2>
 <div class="diagram-section">
 <figure><figcaption>Architecture · native subjects and independent inference</figcaption><div class="diagram-scroll" tabindex="0" aria-label="Architecture · native subjects and independent inference — scroll horizontally on small screens">
-<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-system-title paideia-system-desc">
-<title id="paideia-system-title">Architecture · native subjects and independent inference</title><desc id="paideia-system-desc">Paideia resolves native projects, captures isolated agents, evaluates their work and feeds training results to DSPy; independent inference supplies judging and reflection, while a local viewer reads saved evidence.</desc>
-<defs><marker id="paideia-system-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
-<marker id="paideia-system-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
-<marker id="paideia-system-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="training-system-title training-system-desc">
+<title id="training-system-title">Architecture · native subjects and independent inference</title><desc id="training-system-desc">Training resolves native projects, captures isolated agents, evaluates their work and feeds training results to DSPy; independent inference supplies judging and reflection, while a local viewer reads saved evidence.</desc>
+<defs><marker id="training-system-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="training-system-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="training-system-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
 <style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
-<rect class="zone" x="320" y="56" width="912" height="584" rx="8"/><text class="zone-label" x="336" y="80">PAIDEIA / PUBLIC ADAPTER CONTRACTS</text>
-<path class="edge" d="M280 160 H360" marker-end="url(#paideia-system-arrow)"/>
-<path class="edge" d="M540 220 V320" marker-end="url(#paideia-system-arrow)"/>
-<path class="edge" d="M540 440 V520" marker-end="url(#paideia-system-arrow)"/>
-<path class="edge" d="M720 560 H808 Q816 560 816 552 V388 Q816 380 824 380 H920" marker-end="url(#paideia-system-arrow)"/>
-<path class="edge" d="M920 408 H848 Q840 408 840 416 V592 Q840 600 832 600 H720" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
-<path class="edge" d="M1080 320 V220" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
-<path class="edge" d="M920 160 H720" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
-<path class="edge" d="M1120 520 V440" marker-end="url(#paideia-system-link)" style="stroke:#2e5aa8"/>
-<path class="edge" d="M1200 568 H1232 Q1240 568 1240 560 V168 Q1240 160 1232 160 H1200" marker-end="url(#paideia-system-link)" style="stroke:#2e5aa8"/>
-<path class="edge" d="M360 568 H280" marker-end="url(#paideia-system-arrow)" stroke-dasharray="4 4"/>
-<path class="edge" d="M720 192 H752 Q760 192 760 200 V256 Q760 264 768 264 H984 Q992 264 992 272 V320" marker-end="url(#paideia-system-arrow)"/>
+<rect class="zone" x="320" y="56" width="912" height="584" rx="8"/><text class="zone-label" x="336" y="80">TRAINING / PUBLIC ADAPTER CONTRACTS</text>
+<path class="edge" d="M280 160 H360" marker-end="url(#training-system-arrow)"/>
+<path class="edge" d="M540 220 V320" marker-end="url(#training-system-arrow)"/>
+<path class="edge" d="M540 440 V520" marker-end="url(#training-system-arrow)"/>
+<path class="edge" d="M720 560 H808 Q816 560 816 552 V388 Q816 380 824 380 H920" marker-end="url(#training-system-arrow)"/>
+<path class="edge" d="M920 408 H848 Q840 408 840 416 V592 Q840 600 832 600 H720" marker-end="url(#training-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M1080 320 V220" marker-end="url(#training-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M920 160 H720" marker-end="url(#training-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M1120 520 V440" marker-end="url(#training-system-link)" style="stroke:#2e5aa8"/>
+<path class="edge" d="M1200 568 H1232 Q1240 568 1240 560 V168 Q1240 160 1232 160 H1200" marker-end="url(#training-system-link)" style="stroke:#2e5aa8"/>
+<path class="edge" d="M360 568 H280" marker-end="url(#training-system-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M720 192 H752 Q760 192 760 200 V256 Q760 264 768 264 H984 Q992 264 992 272 V320" marker-end="url(#training-system-arrow)"/>
 <rect x="848" y="456" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="892" y="472" text-anchor="middle">RESULTS</text>
 <rect x="764" y="128" width="112" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="820" y="144" text-anchor="middle">CANDIDATE</text>
 <rect x="1088" y="252" width="112" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="1144" y="268" text-anchor="middle">TRAIN ONLY</text>
@@ -111,8 +111,8 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </div></figure>
 <aside class="aside">
 <p><strong>The subject adapter runs the agent.</strong> The inference adapter supplies the optimizer and semantic judges. They are separate routes, even when they use the same subscription.</p>
-<p>Paideia supplies a task, environment and limits. The agent chooses its own actions and tools.</p>
-<p>Spawnfile prepares native workspaces. Daimon runs one agent. Moltnet transports messages. Mneme supplies memory. Paideia uses their public contracts.</p>
+<p>Training supplies a task, environment and limits. The agent chooses its own actions and tools.</p>
+<p>Spawnfile prepares native workspaces. Daimon runs one agent. Moltnet transports messages. Mneme supplies memory. Training uses their public contracts.</p>
 <p><strong>Any native agent can be adapted.</strong> Missing observations or editable surfaces remain explicit; an adapter cannot invent evidence to make the same checks pass.</p>
 </aside>
 </div>
@@ -121,31 +121,31 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <section id="yaml">
 <p class="number">02 / What the author writes</p>
 <h2>One native project. One YAML file per dataset.</h2>
-<p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/evals/train.paideia.yaml">evals/train.paideia.yaml</a>, <a href="../examples/newsroom-reporting/evals/test.paideia.yaml">evals/test.paideia.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
-<p>The agreed <a href="../examples/newsroom-reporting/.spawnignore">.spawnignore</a> policy declares planned exclusions for evaluation definitions and generated training artifacts. Enforcement is not implemented; see the <a href="harnessing.md#colocated-evaluation-and-packaging">native packaging contract</a>. The standalone example stays in Paideia; real projects will train their canonical native definition with explicit trial overrides.</p>
-<p><strong>Implemented local entry point:</strong> <code>spawnfile train</code> delegates to Paideia using the canonical native agent/environment. Canonical extraction and the public CLI handoff are implemented; native execution requires a registered isolated preparation. Paideia owns training and also accepts explicit Markdown resources for native Codex/Daimon trials. Datasets use <code>&lt;name&gt;.paideia.yaml</code> and declare <code>schema: paideia.dataset.v1</code>; the invocation assigns train/test roles explicitly. Newsroom training acceptance has not completed.</p>
+<p>The newsroom example has a <a href="../examples/newsroom-reporting/Spawnfile">Spawnfile</a>, its Markdown environment, <a href="../examples/newsroom-reporting/evals/train.spawnfile-training.yaml">evals/train.spawnfile-training.yaml</a>, <a href="../examples/newsroom-reporting/evals/test.spawnfile-training.yaml">evals/test.spawnfile-training.yaml</a> and <a href="../examples/newsroom-reporting/README.md">one README</a>. Every record is inline. Other agents keep their own native project format.</p>
+<p>The agreed <a href="../examples/newsroom-reporting/.spawnignore">.spawnignore</a> policy declares planned exclusions for evaluation definitions and generated training artifacts. Enforcement is not implemented; see the <a href="harnessing.md#colocated-evaluation-and-packaging">native packaging contract</a>. The standalone example stays in Training; real projects will train their canonical native definition with explicit trial overrides.</p>
+<p><strong>Implemented local entry point:</strong> <code>spawnfile train</code> delegates to Training using the canonical native agent/environment. Canonical extraction and the public CLI handoff are implemented; native execution requires a registered isolated preparation. Training owns training and also accepts explicit Markdown resources for native Codex/Daimon trials. Datasets use <code>&lt;name&gt;.spawnfile-training.yaml</code> and declare <code>schema: spawnfile.training.dataset.v1</code>; the invocation assigns train/test roles explicitly. Newsroom training acceptance has not completed.</p>
 <figure><figcaption>YAML · what reaches the agent and what stays outside</figcaption><div class="diagram-scroll" tabindex="0" aria-label="YAML · what reaches the agent and what stays outside — scroll horizontally on small screens">
-<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-yaml-title paideia-yaml-desc">
-<title id="paideia-yaml-title">YAML · what reaches the agent and what stays outside</title><desc id="paideia-yaml-desc">One inline-record dataset sends setup and typed context to trusted preparation, verified prompt and file inputs to the subject, and checks, references and context to evaluators only.</desc>
-<defs><marker id="paideia-yaml-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
-<marker id="paideia-yaml-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
-<marker id="paideia-yaml-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="training-yaml-title training-yaml-desc">
+<title id="training-yaml-title">YAML · what reaches the agent and what stays outside</title><desc id="training-yaml-desc">One inline-record dataset sends setup and typed context to trusted preparation, verified prompt and file inputs to the subject, and checks, references and context to evaluators only.</desc>
+<defs><marker id="training-yaml-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="training-yaml-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="training-yaml-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
 <style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
 <rect class="zone" x="880" y="224" width="360" height="208" rx="8"/><text class="zone-label" x="896" y="248">SUBJECT ACCESS</text>
 <rect class="zone" x="880" y="448" width="360" height="176" rx="8"/><text class="zone-label" x="896" y="472">EVALUATOR ACCESS ONLY</text>
-<path class="edge" d="M280 304 H312 Q320 304 320 296 V144 Q320 136 328 136 H400" marker-end="url(#paideia-yaml-arrow)"/>
-<path class="edge" d="M280 332 H400" marker-end="url(#paideia-yaml-arrow)"/>
-<path class="edge" d="M280 360 H312 Q320 360 320 368 V532 Q320 540 328 540 H400" marker-end="url(#paideia-yaml-arrow)"/>
-<path class="edge" d="M680 136 H920" marker-end="url(#paideia-yaml-arrow)"/>
-<path class="edge" d="M1040 184 V272" marker-end="url(#paideia-yaml-arrow)"/>
-<path class="edge" d="M680 328 H920" marker-end="url(#paideia-yaml-arrow)"/>
-<path class="edge" d="M680 560 H920" marker-end="url(#paideia-yaml-arrow)"/>
-<path class="edge" d="M680 160 H784 Q792 160 792 168 V320 a8 8 0 0 0 0 16 V508 Q792 516 800 516 H920" marker-end="url(#paideia-yaml-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M280 304 H312 Q320 304 320 296 V144 Q320 136 328 136 H400" marker-end="url(#training-yaml-arrow)"/>
+<path class="edge" d="M280 332 H400" marker-end="url(#training-yaml-arrow)"/>
+<path class="edge" d="M280 360 H312 Q320 360 320 368 V532 Q320 540 328 540 H400" marker-end="url(#training-yaml-arrow)"/>
+<path class="edge" d="M680 136 H920" marker-end="url(#training-yaml-arrow)"/>
+<path class="edge" d="M1040 184 V272" marker-end="url(#training-yaml-arrow)"/>
+<path class="edge" d="M680 328 H920" marker-end="url(#training-yaml-arrow)"/>
+<path class="edge" d="M680 560 H920" marker-end="url(#training-yaml-arrow)"/>
+<path class="edge" d="M680 160 H784 Q792 160 792 168 V320 a8 8 0 0 0 0 16 V508 Q792 516 800 516 H920" marker-end="url(#training-yaml-arrow)" stroke-dasharray="4 4"/>
 <rect x="1048" y="208" width="112" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="1104" y="224" text-anchor="middle">ENVIRONMENT</text>
 <rect x="824" y="296" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="868" y="312" text-anchor="middle">PATH + HASH</text>
 <rect x="800" y="416" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="844" y="432" text-anchor="middle">CONTEXT</text>
 <g class="node" data-kind="input"><rect x="40" y="276" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="40" y="276" width="240" height="112" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
-<text class="node-name" x="60" y="308" style="font-size:20px">One dataset YAML</text><text class="node-note" x="60" y="336">train.paideia.yaml</text><text class="node-note" x="60" y="360">or test.paideia.yaml</text>
+<text class="node-name" x="60" y="308" style="font-size:20px">One dataset YAML</text><text class="node-note" x="60" y="336">train.spawnfile-training.yaml</text><text class="node-note" x="60" y="360">or test.spawnfile-training.yaml</text>
 </g>
 <g class="node" data-kind="plain"><rect x="400" y="88" width="280" height="96" rx="8" fill="#f5f5f5"/><rect x="400" y="88" width="280" height="96" rx="8" fill="#ffffff" stroke="#4f5d75"/>
 <text class="node-name" x="420" y="120" style="font-size:20px">Setup + context</text><text class="node-note" x="420" y="148">Recipe + typed parameters</text>
@@ -182,7 +182,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 </tbody></table></div>
 <p>The invocation selects project, subject, dataset roles, editable prompt sections, inference routes and budgets. Resolution creates a locked run manifest. There is no mandatory extra experiment YAML; invocation syntax is still to design.</p>
 <details><summary>Read one training record</summary>
-<p>From <a href="../examples/newsroom-reporting/evals/train.paideia.yaml"><code>train.paideia.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. Names, revisions and hashes are synthetic, and the declared private archive stays external. Shared setup and stages remain in the same YAML.</p>
+<p>From <a href="../examples/newsroom-reporting/evals/train.spawnfile-training.yaml"><code>train.spawnfile-training.yaml</code></a>. <code>afternoon-assignment</code> supplies clock/delivery; <code>kestrel-evidence</code> supplies context and the four pinned file selectors, including the evaluator-only reference. Names, revisions and hashes are synthetic, and the declared private archive stays external. Shared setup and stages remain in the same YAML.</p>
 <pre><code>  - id: kestrel-reporting
     group: kestrel-2026-09-12
     use: [afternoon-assignment, kestrel-evidence]
@@ -213,15 +213,15 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <h2>A real run can seed a reviewed test case.</h2>
 <p><strong>Proposed, not implemented.</strong> Select a real assignment wake, a bounded multi-wake episode or a failure worth repeating. Extract the original task and immutable source references into the same dataset schema; named fixtures reuse shared context. No second dataset format or per-run YAML is required.</p>
 <figure><figcaption>Captured runs · review real experience into datasets</figcaption><div class="diagram-scroll" tabindex="0" aria-label="Captured runs · review real experience into datasets — scroll horizontally on small screens">
-<svg viewBox="0 0 1280 288" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-distillation-title paideia-distillation-desc">
-<title id="paideia-distillation-title">Captured runs · review real experience into datasets</title><desc id="paideia-distillation-desc">A native run capture supplies an exact task and pre-wake context. Paideia pins available evidence and marks missing state, an author reviews independent criteria and groups related runs, and the result uses the same inline-record dataset schema.</desc>
-<defs><marker id="paideia-distillation-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
-<marker id="paideia-distillation-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
-<marker id="paideia-distillation-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<svg viewBox="0 0 1280 288" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="training-distillation-title training-distillation-desc">
+<title id="training-distillation-title">Captured runs · review real experience into datasets</title><desc id="training-distillation-desc">A native run capture supplies an exact task and pre-wake context. Training pins available evidence and marks missing state, an author reviews independent criteria and groups related runs, and the result uses the same inline-record dataset schema.</desc>
+<defs><marker id="training-distillation-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="training-distillation-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="training-distillation-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
 <style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
-<path class="edge" d="M280 136 H360" marker-end="url(#paideia-distillation-arrow)"/>
-<path class="edge" d="M600 136 H680" marker-end="url(#paideia-distillation-arrow)"/>
-<path class="edge" d="M920 136 H1000" marker-end="url(#paideia-distillation-arrow)"/>
+<path class="edge" d="M280 136 H360" marker-end="url(#training-distillation-arrow)"/>
+<path class="edge" d="M600 136 H680" marker-end="url(#training-distillation-arrow)"/>
+<path class="edge" d="M920 136 H1000" marker-end="url(#training-distillation-arrow)"/>
 <g class="node" data-kind="input"><rect x="40" y="80" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="40" y="80" width="240" height="112" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
 <text class="node-name" x="60" y="112" style="font-size:20px">Recorded native run</text><text class="node-note" x="60" y="140">Task · tools · outputs</text><text class="node-note" x="60" y="164">Pre-wake context</text>
 </g>
@@ -232,7 +232,7 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <text class="node-name" x="700" y="112" style="font-size:20px">Review + group</text><text class="node-note" x="700" y="140">Author rules separately</text><text class="node-note" x="700" y="164">Group related runs</text>
 </g>
 <g class="node" data-kind="store"><rect x="1000" y="80" width="240" height="112" rx="8" fill="#f5f5f5"/><rect x="1000" y="80" width="240" height="112" rx="8" fill="rgba(45,49,66,.05)" stroke="#4f5d75"/>
-<text class="node-name" x="1020" y="112" style="font-size:20px">*.paideia.yaml</text><text class="node-note" x="1020" y="140">Same record schema</text><text class="node-note" x="1020" y="164">References stay hidden</text>
+<text class="node-name" x="1020" y="112" style="font-size:20px">*.spawnfile-training.yaml</text><text class="node-note" x="1020" y="140">Same record schema</text><text class="node-note" x="1020" y="164">References stay hidden</text>
 </g>
 <line class="legend-rule" x1="40" y1="236" x2="1240" y2="236"/><text class="legend" x="40" y="264">Proposed · stored outputs are observations, not gold answers · private captures remain outside agent mounts</text>
 </svg>
@@ -246,19 +246,19 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <h2>One Kestrel assignment, one isolated Scribe.</h2>
 <div class="diagram-section">
 <figure><figcaption>One trial · Scribe reports from the Kestrel packet</figcaption><div class="diagram-scroll narrow" tabindex="0" aria-label="One trial · Scribe reports from the Kestrel packet — scroll horizontally on small screens">
-<svg viewBox="0 0 960 1080" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-trial-title paideia-trial-desc">
-<title id="paideia-trial-title">One trial · Scribe reports from the Kestrel packet</title><desc id="paideia-trial-desc">A fresh native environment receives one Moltnet wake; Scribe reports, validates, files and hands off the article, then captured acceptance evidence must pass mechanics before semantic judging.</desc>
-<defs><marker id="paideia-trial-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
-<marker id="paideia-trial-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
-<marker id="paideia-trial-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<svg viewBox="0 0 960 1080" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="training-trial-title training-trial-desc">
+<title id="training-trial-title">One trial · Scribe reports from the Kestrel packet</title><desc id="training-trial-desc">A fresh native environment receives one Moltnet wake; Scribe reports, validates, files and hands off the article, then captured acceptance evidence must pass mechanics before semantic judging.</desc>
+<defs><marker id="training-trial-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="training-trial-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="training-trial-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
 <style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
-<path class="edge" d="M480 160 V200" marker-end="url(#paideia-trial-arrow)"/>
-<path class="edge" d="M480 288 V328" marker-end="url(#paideia-trial-arrow)"/>
-<path class="edge" d="M480 416 V456" marker-end="url(#paideia-trial-arrow)"/>
-<path class="edge" d="M480 544 V584" marker-end="url(#paideia-trial-arrow)"/>
-<path class="edge" d="M480 672 V704" marker-end="url(#paideia-trial-arrow)"/>
-<path class="edge" d="M480 816 V880" marker-end="url(#paideia-trial-arrow)"/>
-<path class="edge" d="M592 760 H736" marker-end="url(#paideia-trial-arrow)"/>
+<path class="edge" d="M480 160 V200" marker-end="url(#training-trial-arrow)"/>
+<path class="edge" d="M480 288 V328" marker-end="url(#training-trial-arrow)"/>
+<path class="edge" d="M480 416 V456" marker-end="url(#training-trial-arrow)"/>
+<path class="edge" d="M480 544 V584" marker-end="url(#training-trial-arrow)"/>
+<path class="edge" d="M480 672 V704" marker-end="url(#training-trial-arrow)"/>
+<path class="edge" d="M480 816 V880" marker-end="url(#training-trial-arrow)"/>
+<path class="edge" d="M592 760 H736" marker-end="url(#training-trial-arrow)"/>
 <rect x="488" y="832" width="40" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="508" y="848" text-anchor="middle">YES</text>
 <rect x="628" y="728" width="64" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="660" y="744" text-anchor="middle">NO</text>
 <g class="node" data-kind="input"><rect x="280" y="72" width="400" height="88" rx="8" fill="#f5f5f5"/><rect x="280" y="72" width="400" height="88" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>
@@ -304,30 +304,30 @@ footer { padding-top: 24px; font-size: 12px; color: var(--muted); }
 <tr><td>Clock and wake</td><td>Agent, tools and runtime share the declared emulated wall clock. Capture the real active wake ID; do not substitute a record/message ID or submit a duplicate direct wake.</td></tr>
 <tr><td>Accepted artifact</td><td>A read-only collector joins current admitted filing, authentic receipt and committed bytes for this owner/edition/story. Validation JSON, admitted JSON, file hash and Git commit keep their separate identities.</td></tr>
 </tbody></table></div>
-<p>A failed preflight prevents the paid run, but static validation or a generic preflight does not prove this exact compiled environment can complete the task. Verify the selected image, mounts, authentication, shell and task tools together. A failed task and its observed usage are recorded; Paideia does not file an article on the agent’s behalf to repair its score.</p>
+<p>A failed preflight prevents the paid run, but static validation or a generic preflight does not prove this exact compiled environment can complete the task. Verify the selected image, mounts, authentication, shell and task tools together. A failed task and its observed usage are recorded; Training does not file an article on the agent’s behalf to repair its score.</p>
 <details><summary>Where sensors and multiple turns fit</summary>
-<p>These records use supplied sensor packets; no live research is sent. A future research-loop record can use ordered <code>turns</code>: observe an actual research request, then deliver a recorded or explicitly emulated response through Moltnet, and observe the resumed native agent. Paideia supplies external stimuli; the agent still decides whether to request research. No sensor-answer trace has been supplied for these records.</p>
+<p>These records use supplied sensor packets; no live research is sent. A future research-loop record can use ordered <code>turns</code>: observe an actual research request, then deliver a recorded or explicitly emulated response through Moltnet, and observe the resumed native agent. Training supplies external stimuli; the agent still decides whether to request research. No sensor-answer trace has been supplied for these records.</p>
 </details>
 </section>
 <section id="training">
 <p class="number">05 / How prompts change</p>
 <h2>Train on feedback; test after freezing.</h2>
 <figure><figcaption>Training · compile candidates, then test after freezing</figcaption><div class="diagram-scroll" tabindex="0" aria-label="Training · compile candidates, then test after freezing — scroll horizontally on small screens">
-<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="paideia-training-title paideia-training-desc">
-<title id="paideia-training-title">Training · compile candidates, then test after freezing</title><desc id="paideia-training-desc">Native training trials supply feedback to DSPy and training-only selection; a frozen candidate is compared with baseline on sealed test data and exported with a local evidence report.</desc>
-<defs><marker id="paideia-training-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
-<marker id="paideia-training-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
-<marker id="paideia-training-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<svg viewBox="0 0 1280 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="training-training-title training-training-desc">
+<title id="training-training-title">Training · compile candidates, then test after freezing</title><desc id="training-training-desc">Native training trials supply feedback to DSPy and training-only selection; a frozen candidate is compared with baseline on sealed test data and exported with a local evidence report.</desc>
+<defs><marker id="training-training-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+<marker id="training-training-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+<marker id="training-training-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
 <style>.node-name{font:600 20px Geist,Arial,sans-serif;fill:#2d3142}.node-note{font:16px Geist,Arial,sans-serif;fill:#4f5d75}.tech,.edge-label,.zone-label,.legend{font:12px 'Geist Mono',monospace;fill:#4f5d75}.edge{fill:none;stroke:#4f5d75;stroke-width:1.5}.zone{fill:rgba(45,49,66,.02);stroke:#bfc0c0;stroke-dasharray:4 4}.legend-rule{stroke:#bfc0c0;stroke-width:1}</style><rect width="100%" height="100%" fill="#f5f5f5"/>
 <rect class="zone" x="360" y="56" width="880" height="392" rx="8"/><text class="zone-label" x="376" y="80">TRAINING / BOUNDED FEEDBACK</text>
 <rect class="zone" x="360" y="472" width="880" height="180" rx="8"/><text class="zone-label" x="376" y="496">SEALED TEST</text>
-<path class="edge" d="M280 160 H400" marker-end="url(#paideia-training-arrow)"/>
-<path class="edge" d="M720 144 H920" marker-end="url(#paideia-training-arrow)"/>
-<path class="edge" d="M1080 200 V312" marker-end="url(#paideia-training-arrow)"/>
-<path class="edge" d="M920 376 H792 Q784 376 784 368 a8 8 0 0 1 0 -16 V192 Q784 184 776 184 H720" marker-end="url(#paideia-training-arrow)" stroke-dasharray="4 4"/>
-<path class="edge" d="M920 184 H840 Q832 184 832 192 V352 Q832 360 824 360 H720" marker-end="url(#paideia-training-arrow)"/>
-<path class="edge" d="M560 416 V520" marker-end="url(#paideia-training-arrow)"/>
-<path class="edge" d="M720 576 H920" marker-end="url(#paideia-training-arrow)"/>
+<path class="edge" d="M280 160 H400" marker-end="url(#training-training-arrow)"/>
+<path class="edge" d="M720 144 H920" marker-end="url(#training-training-arrow)"/>
+<path class="edge" d="M1080 200 V312" marker-end="url(#training-training-arrow)"/>
+<path class="edge" d="M920 376 H792 Q784 376 784 368 a8 8 0 0 1 0 -16 V192 Q784 184 776 184 H720" marker-end="url(#training-training-arrow)" stroke-dasharray="4 4"/>
+<path class="edge" d="M920 184 H840 Q832 184 832 192 V352 Q832 360 824 360 H720" marker-end="url(#training-training-arrow)"/>
+<path class="edge" d="M560 416 V520" marker-end="url(#training-training-arrow)"/>
+<path class="edge" d="M720 576 H920" marker-end="url(#training-training-arrow)"/>
 <rect x="1088" y="244" width="104" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="1140" y="260" text-anchor="middle">FEEDBACK</text>
 <rect x="568" y="444" width="88" height="24" rx="4" fill="#f5f5f5"/><text class="edge-label" x="612" y="460" text-anchor="middle">FREEZE</text>
 <g class="node" data-kind="input"><rect x="40" y="100" width="240" height="100" rx="8" fill="#f5f5f5"/><rect x="40" y="100" width="240" height="100" rx="8" fill="rgba(79,93,117,.10)" stroke="#4f5d75"/>

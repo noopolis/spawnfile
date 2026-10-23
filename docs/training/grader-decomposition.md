@@ -9,7 +9,7 @@ quality still requires a real corpus run and the reference gate.
 ## Authoring templates
 
 ```yaml
-schema: paideia.check-templates.v1
+schema: spawnfile.training.check-templates.v1
 kinds:
   claim: A verbatim factual proposition, preserving qualifiers.
   display: A headline, deck or kicker span.
@@ -87,7 +87,7 @@ reference; they do not assume the original output is correct.
 Use the existing input manifest shape, with paths relative to the manifest:
 
 ```yaml
-schema: paideia.grader-inputs.v1
+schema: spawnfile.training.grader-inputs.v1
 items:
   - id: output-1
     lineage: source-family-1

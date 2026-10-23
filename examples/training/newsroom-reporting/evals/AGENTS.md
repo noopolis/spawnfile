@@ -1,6 +1,6 @@
 # Newsroom Evaluation Datasets
 
-Owns train.paideia.yaml and test.paideia.yaml: one YAML per dataset, with inline records and named
+Owns train.spawnfile-training.yaml and test.spawnfile-training.yaml: one YAML per dataset, with inline records and named
 fixtures. The parent README is the only walkthrough; inherit its project guide.
 
 - Keep evidence selectors relative to their named native resource, never this folder.

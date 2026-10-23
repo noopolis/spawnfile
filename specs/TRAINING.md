@@ -14,13 +14,13 @@ the subject's model runs in the same container under a root-provisioned broker,
 the evaluator recycles that slot between trials through a single-verb root
 supervisor, and judges spend the one dedicated training Grok login through
 bounded inference grants instead of holding it. Import that login with
-`spawnfile auth import grok --profile paideia-training --from <directory>`; the
+`spawnfile auth import grok --profile spawnfile-training --from <directory>`; the
 desktop `~/.grok` is refused, because a training run rotates the credential it
 is given.
 
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer \
-  --train evals/train.paideia.yaml --test evals/test.paideia.yaml \
+  --train evals/train.spawnfile-training.yaml --test evals/test.spawnfile-training.yaml \
   --editable agents/writer/AGENTS.md --cost-config local-costs.yaml --dry-run
 ```
 
@@ -33,8 +33,10 @@ does not interpret checkpoints, repeat trials or deploy the optimized candidate.
 `--agent` accepts an exact resolved node ID or an unambiguous short authored name;
 omission is allowed only for one-agent projects. Exact IDs take precedence; ambiguous
 short names fail with a list of exact IDs. Prefix/fuzzy matching is forbidden.
-`--paideia-command` has been removed. Training uses the bundled core and subject
+Training uses the bundled core and subject
 registry; no external training executable or package is installed or located.
+
+History: Paideia was renamed to Spawnfile training. Legacy wire IDs, environment variables and explicit dataset filenames remain readable; new values win over deprecated environment aliases, ambiguous filename pairs fail, and incompatible execution/bridge/image receipts require re-prepare. Original stored content hashes are verified before interpretation.
 
 ## Authoring
 
@@ -142,7 +144,7 @@ spawnfile train ./Spawnfile --agent agent:writer --plan
 trailing newline, then exits 0. `--train` is not required with `--plan`; `--dry-run`
 does not change plan behavior. Selection accepts an exact compiled agent ID or an unambiguous short name; omission
 requires exactly one agent. Planning reads local sources and builds the resolved
-graph; it MUST NOT create a training context, invoke Paideia, emit compiled artifacts,
+graph; it MUST NOT create a training context, invoke training, emit compiled artifacts,
 build images, use Docker/auth, or execute training. Execution consumes this authoring plan when the selected agent has targets.
 Projects without targets retain the explicit delegated `--train` path.
 
@@ -231,25 +233,25 @@ An integration that does not support a dataset override MUST reject it explicitl
 
 Authored `--dry-run` prints the lowered execution receipt plus the selected container
 configuration (and any image override), then exits 0. It reads local files only: no
-context capture, Paideia estimator, auth contents, Docker, hooks, output allocation or
+context capture, training estimator, auth contents, Docker, hooks, output allocation or
 writes. `--plan` continues printing only the deterministic authoring plan. Without
-any authored targets the existing explicit dataset dry-run remains the Paideia estimator.
+any authored targets the existing explicit dataset dry-run remains the training estimator.
 
 Actual training follows the existing preparation and container launcher. A protected,
-read-only JSON receipt at `/run/paideia/execution.json` contains `version`, `authoring`, `datasetPins`,
+read-only JSON receipt at `/run/spawnfile-training/execution.json` contains `version`, `authoring`, `datasetPins`,
 `optimizer`, `args`, and `output`; all filesystem addresses are mapped into declared
 container mounts. `trainingExecutionSchema` validates the strict public shape, and
 `TRAINING_EXECUTION_FILE` exposes its conventional location. Integration consumes this
 receipt for moment/case lowering, validation dataset handoff and population search;
-these controls are not invented Paideia CLI flags. The legacy context contract is unchanged.
+these controls are not invented training CLI flags. The legacy context contract is unchanged.
 Authored execution MUST inspect the resolved immutable image before container creation
 and require the label `com.spawnfile.training.execution=spawnfile.training-execution.v1`.
 This label declares that `/opt/training/bin/train` accepts
-`--spawnfile-execution /run/paideia/execution.json`, validates the receipt, lowers
+`--spawnfile-execution /run/spawnfile-training/execution.json`, validates the receipt, lowers
 authored examples into executable cases, hands off validation data and graders, and
 applies effective optimizer controls and explicit argv overrides. It MUST reject
 unsupported controls instead of ignoring them. Spawnfile passes this argument to the
-entrypoint. Existing Paideia consumers without this contract MUST fail explicitly;
+entrypoint. Existing Training consumers without this contract MUST fail explicitly;
 the packaged recipe MUST NOT automatically claim compatibility for an arbitrary
 integration. Integration/image authors own the implementation and capability label.
 For packaged `image.build`, the integration author explicitly declares support with
@@ -501,7 +503,7 @@ the plan's exact-agent selection (inferred only for a single-agent project).
 It requires neither `--train` nor `--training-config`. It is mutually exclusive
 with `--plan`. `--history` is OPTIONAL and applies only to materialization. The
 command resolves the authoring plan and selected example using local files. It
-MUST NOT invoke cognition, Paideia, Docker, authentication, network access, or
+MUST NOT invoke cognition, Training, Docker, authentication, network access, or
 compiled-artifact emission. `materializeTrainingMoment({plan, project, example,
 historyDir?, out})` exposes the same operation to trial preparation. Selection,
 input enumeration, and historical cuts are available as pure library functions.
@@ -963,7 +965,7 @@ tests MUST keep them identical to the exported runtime contracts.
 
 The host calls the training composition with the resolved context object and
 explicit training options. The container reads the same strict context from
-`--spawnfile-context /run/paideia/context.json`; that file is evaluator-only.
+`--spawnfile-context /run/spawnfile-training/context.json`; that file is evaluator-only.
 Dry-run requires neither `--out` nor an optimizer bridge; actual training requires `--out`.
 The receiver must save any provenance needed later in its own protected experiment.
 The strict `spawnfile.training-context.v1` schema appears below and is generated from
@@ -998,7 +1000,7 @@ established from actual compilation/runtime receipts, never invented from this c
 
 Dry-run resolves local sources and calls the training core to validate datasets and estimate costs.
 It does not compile, use Docker/auth, call models, or start an optimizer. Its final JSON
-receipt must have `schema: paideia.training-cost-plan.v1` and `modelCallsMade: 0`.
+receipt must have `schema: spawnfile.training.training-cost-plan.v1` and `modelCallsMade: 0`.
 Unimplemented native preparation is reported as unsupported, not ready to execute.
 
 Actual execution requires a supported preparation integration. Each candidate must
@@ -1022,7 +1024,7 @@ and reserves both judge attempts without adding subject trials or optimizer prop
 Exit 0 requires the mode's final receipt. Completed actual runs also require
 `status: completed` and a nonempty `index` path; exit 1 preserves completed failed checks.
 Training-core errors return exit 2. Host dry-run requires a final
-`paideia.training-cost-plan.v1` receipt with `modelCallsMade: 0`. The in-process
+`spawnfile.training.training-cost-plan.v1` receipt with `modelCallsMade: 0`. The in-process
 host path forwards cancellation through an AbortSignal and enforces its outer
 command deadline: timeout fails, aborts the core and abandons the invocation,
 discarding subsequent output even if the core ignores cancellation. It removes
@@ -2457,7 +2459,7 @@ An authored-execution image consumer calls `lowerTrainingMoments` with the loade
 project, resolved plan, a fresh output root and optional case preparation callback.
 It invokes the existing rewind for each unique role/dataset/example; repeated
 target references do not create repeated cases. It writes explicit
-`train.paideia.json`, optional `validation.paideia.json`, and `test.paideia.json`,
+`train.spawnfile-training.json`, optional `validation.spawnfile-training.json`, and `test.spawnfile-training.json`,
 then passes their paths using `--train`, `--validation`, and `--test`. The
 case callback supplies application terminal checks or stages, setup, references
 and outputs; missing checks refuse the case. Each dataset names the declared
@@ -2470,7 +2472,7 @@ rewinds, timestamp normalization failures and failed hook preparations are skipp
 with no replacement. A timestamp that cannot be normalized retains its authored
 value and refusal reason, with null lineage; later examples are still processed. A role with
 no executable examples stops execution after persisting its report. IDs must be
-unique within a split; Paideia enforces disjoint IDs, groups and lineage across
+unique within a split; Training enforces disjoint IDs, groups and lineage across
 splits. Lineage binds agent, normalized historical instant and exact wake bytes,
 so renaming an example cannot hide the same historical moment in another split.
 
@@ -2481,12 +2483,12 @@ and hook. `context.trainingMomentProvenance` carries the rewind report. Case inp
 is the authored message envelope. The default hook name is `spawnfile/rewind`;
 the executing integration must register it or the explicitly declared name.
 
-Paideia dispatches the hook with fresh trial paths before native adapter startup.
+Training dispatches the hook with fresh trial paths before native adapter startup.
 A hook calls `materializeTrainingCase` into that trial's control/moment root,
 then prepares runtime mounts, task clock, external responses and output collection
 from those fresh bytes. Never run from the lowering snapshot or reuse another
 trial's mutable state. The helper verifies declared wake/instant and historical
-startedAt still agree with the accepted lowering. Paideia requires a matching
+startedAt still agree with the accepted lowering. Training requires a matching
 trial-bound preparation receipt and reads the moment/leak-check reports before
 starting the subject. Refusal prevents that trial from running. Application
 reconstruction, responders and accepted-output extraction belong in the named

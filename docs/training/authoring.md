@@ -1,4 +1,4 @@
-# Paideia dataset YAML
+# Training dataset YAML
 
 **Implemented authoring surface.** The strict YAML parser, fixture resolver, evaluator
 registry and native training loop use this schema. Native environment configuration
@@ -8,7 +8,7 @@ need registered implementations; an example name alone does not install one.
 ## The authoring unit
 
 One YAML file is one dataset. Its records are inline. An existing Spawnfile and its
-environment define the subject; Paideia does not require agent.yaml, runtime.yaml,
+environment define the subject; Spawnfile training does not require agent.yaml, runtime.yaml,
 experiment.yaml or a separate YAML for every case. Other adapters consume their own
 native project configuration without requiring Spawnfile or Daimon.
 
@@ -19,14 +19,14 @@ The public API and local CLI resolve these selections explicitly. See the
 [native formatting example](../examples/native-formatting/README.md) for a completed
 Codex/Daimon training and held-out comparison.
 
-Keep datasets under `evals/` beside the native project; use `train.paideia.yaml` and
-`test.paideia.yaml` for the two datasets when helpful. They have the same
+Keep datasets under `evals/` beside the native project; use `train.spawnfile-training.yaml` and
+`test.spawnfile-training.yaml` for the two datasets when helpful. They have the same
 schema. Filenames do not confer access control: the invocation binds the training and
 sealed-test roles. A validation partition may be selected by evidence group within
 training data; a separate validation file is optional, not a required third dataset.
 
-The `.paideia.yaml` suffix identifies the authoring surface and preserves ordinary YAML
-tooling. Content declares `schema: paideia.dataset.v1`; the filename never replaces it.
+The `.spawnfile-training.yaml` suffix identifies the authoring surface and preserves ordinary YAML
+tooling. Content declares `schema: spawnfile.training.dataset.v1`; the filename never replaces it.
 
 Spawnfile projects use the agreed `.spawnignore` shape to declare packaging exclusions;
 enforcement is not implemented. See [native packaging](harnessing.md#colocated-evaluation-and-packaging).
@@ -39,7 +39,7 @@ are not implemented.
 ## Smallest dataset
 
 ```yaml
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: arithmetic
 records:
   - id: addition
@@ -59,7 +59,7 @@ starts with fresh state. No implicit trimming, case folding or normalizing occur
 
 | Dataset field | Meaning |
 | --- | --- |
-| `schema` | Required version discriminator: `paideia.dataset.v1` |
+| `schema` | Required version discriminator: `spawnfile.training.dataset.v1` |
 | `id` | Required stable dataset ID |
 | `subject` | Optional native subject identity; must match the selected native project |
 | `setup` | Optional typed environment recipe and declared emulation parameters |
@@ -99,7 +99,7 @@ canonical merge, conflict, policy and isolation rules. The example datasets use 
 ## Select the inputs
 
 ```yaml
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: newsroom-reporting
 subject: scribe
 records:
@@ -121,7 +121,7 @@ records:
         outcome: succeeded
 ```
 
-Selectors like the one above, and the [example datasets](../examples/newsroom-reporting/evals/train.paideia.yaml),
+Selectors like the one above, and the [example datasets](../examples/newsroom-reporting/evals/train.spawnfile-training.yaml),
 are resolved against pinned repository bytes; a missing or wrong hash must fail. The
 hash here is synthetic. Calling validation is just one observable behavior, not proof
 that validation passed or the final output is correct. The example dataset uses
@@ -147,7 +147,7 @@ missing dependency closure or unbounded access to excluded answers blocks the tr
 
 ## Environment fidelity and emulation
 
-`setup.profile` selects a registered, versioned project recipe. Paideia's core does
+`setup.profile` selects a registered, versioned project recipe. Spawnfile training's core does
 not contain newsroom assignments, edition dates or Moltnet-specific business logic.
 The recipe may restore snapshots, construct authentic fixture state and replay external
 messages through the same public tool/transport contracts used by the subject.
@@ -240,7 +240,7 @@ implicitly templated or evaluated.
 
 A proposed `input.message` specifies network, credential-bound sender, target and
 text/JSON for a fixture transport adapter. A scripted sensor answer is revealed only
-when the prerequisite request exists. If delivery triggers a native wake, Paideia must
+when the prerequisite request exists. If delivery triggers a native wake, Training must
 not submit a duplicate direct wake. Native execution/session behavior remains native.
 The agent chooses and calls its own tools; turn sequencing supplies stimuli only.
 

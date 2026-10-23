@@ -7,7 +7,7 @@ container termination. No Docker socket enters the container. Dry-run remains a
 host-only estimate and does not use Docker or model authentication.
 
 Brokered training uses `spawnfile.training-container.v4` with `slots` from 1 to 8
-(default 4). Paideia optimization defaults to the provisioned descriptor count; an
+(default 4). Training optimization defaults to the provisioned descriptor count; an
 explicit smaller `--concurrency` is allowed. The launcher does not inject this flag,
 so authored comparisons retain serial execution. Every lease has separate worker identity, workspace, homes,
 state, ledgers and a 100-port block. The integration must use its leased paths and
@@ -21,8 +21,8 @@ and mapped `--out` directory. Container cleanup retains this volume so `--resume
 cannot reset the cap; each new run uses a fresh output directory. Changing the cap
 for an existing journal is refused. Remove the budget volume only when retiring
 that run and its checkpoints. Slot state remains tmpfs and credentials stay on their
-separate realm volume. The launcher sets `PAIDEIA_MODEL_REQUEST_CAP=broker`;
-Paideia rejects non-broker inference routes (including fallbacks and legacy
+separate realm volume. The launcher sets `SPAWNFILE_TRAINING_MODEL_REQUEST_CAP=broker`;
+Training rejects non-broker inference routes (including fallbacks and legacy
 defaults) and native graders in capped runs before constructing their providers.
 
 ## Launch contract
@@ -51,7 +51,7 @@ mounted or selected. The image must contain all dependencies and its integration
 All sources must already exist at exactly canonical paths (no `..`, redundant
 separators or symlink aliases). Host input roots must not overlap. Inputs are read-only and
 cannot overlap the writable output root. Auth declarations accept only regular
-leaf files, mounted read-only at `/run/paideia-auth/<provider>`; no whole CLI home
+leaf files, mounted read-only at `/run/spawnfile-training-auth/<provider>`; no whole CLI home
 or configuration directory is accepted. This checks declared paths, not arbitrary
 secret contents inside user-selected input bytes. Input roots must contain only
 the experiment's intended source and evidence.
@@ -63,7 +63,7 @@ creating a uniquely labelled container, then uses the immutable image ID.
 The image entrypoint receives:
 
 ```text
-/opt/training/bin/train train --spawnfile-context /run/paideia/context.json ...
+/opt/training/bin/train train --spawnfile-context /run/spawnfile-training/context.json ...
 ```
 
 Canonical context source paths and CLI dataset/resource/output paths are mapped
@@ -80,14 +80,14 @@ owns its runtime configuration.
 
 `--view <port>` accepts one explicit port from 1 to 65535 and publishes it only
 on host `127.0.0.1` at that same port. Port zero is unsupported in container mode.
-The trusted image integration binds its Paideia viewer to the container interface;
+The trusted image integration binds its Training viewer to the container interface;
 public URLs still use host loopback. Removing the owned container removes that
 port mapping. Persisted events also remain available for later local replay.
 
 ## Native subscription bootstrap
 
 The public `spawnfile/auth` module exports `stageTrainingAuth({home,provider,source?})`.
-It copies opaque bytes from `/run/paideia-auth/<provider>` by default into an
+It copies opaque bytes from `/run/spawnfile-training-auth/<provider>` by default into an
 existing canonical runtime home. An explicit provisioned source leaf is accepted.
 It creates only the fixed private directory and native auth leaf, never overwrites
 an existing or refreshed credential, and returns a non-secret versioned receipt.
@@ -108,7 +108,7 @@ is not silently copied back to the host bootstrap file.
 
 ## Completion and cancellation
 
-The host forwards container stdout/stderr and requires the final Paideia training
+The host forwards container stdout/stderr and requires the final Training training
 receipt, a matching stopped container exit status, and a real completion artifact
 within the declared output root. A successful `docker create` or client exit alone
 never means the experiment completed.
@@ -148,7 +148,7 @@ context. The command does not configure or start a machine-global VM.
   "integration": { "settings": { "input": "evals", "path": "settings.json" } },
   "inputs": [
     { "id": "project", "source": "../project", "destination": "/run/training/inputs/project" },
-    { "id": "evals", "source": ".", "include": ["settings.json", "train.paideia.yaml", "test.paideia.yaml"], "destination": "/run/training/inputs/evals" }
+    { "id": "evals", "source": ".", "include": ["settings.json", "train.spawnfile-training.yaml", "test.spawnfile-training.yaml"], "destination": "/run/training/inputs/evals" }
   ],
   "output": { "source": "../runs/author", "destination": "/run/training/output" },
   "auth": []
@@ -216,13 +216,13 @@ chmod's in-image modes without a whole-tree RUN after every distribution copy
 (`runtime-images/training/AGENTS.md`). The recipe text is part of the image digest,
 so this change rebuilds existing training images once.
 
-The installed integration reads `/run/paideia/preparation.json` using
+The installed integration reads `/run/spawnfile-training/preparation.json` using
 `parseTrainingMappedPreparation` from `spawnfile/training`. This protected
 `spawnfile.training-preparation.v1` receipt contains the preparation digest,
 immutable image ID, named container bindings, output root, installed package
 paths and the input-relative settings reference. `packagePaths.training` names
 `/opt/training/spawnfile/dist/training`; `bridge` names its `dspy` child and
-`nativeWorker` names Spawnfile’s built runtime adapter. Legacy `/run/paideia/*`
+`nativeWorker` names Spawnfile’s built runtime adapter. Legacy `/run/spawnfile-training/*`
 mounts and versioned wire IDs remain unchanged in this migration. It contains no host paths or
 credentials. The integration resolves its own typed settings; Spawnfile never
 rewrites arbitrary JSON strings or invokes a host project preparation script.
@@ -230,12 +230,12 @@ rewrites arbitrary JSON strings or invokes a host project preparation script.
 Dry-run hashes and validates local inputs but performs no Docker, auth or
 preparation writes. Exact resume checks current source identity and preserved
 snapshots/receipts, then requires the saved immutable image. It never rebuilds
-a replacement under an existing experiment identity. Paideia independently
+a replacement under an existing experiment identity. Training independently
 checks its experiment checkpoint and cumulative budgets.
 
 ## Explicit measurement repair fork
 
-`spawnfile train PROJECT --training-config evals/training.json --train evals/train.paideia.yaml --out runs/repair --repair-measurements runs/parent`
+`spawnfile train PROJECT --training-config evals/training.json --train evals/train.spawnfile-training.yaml --out runs/repair --repair-measurements runs/parent`
 creates a new experiment from captured work. The declaration's output must match
 `--out` and be fresh/disjoint. It does not weaken ordinary `--resume`. To resume
 this child, retain the same repair arguments and add `--resume`.
@@ -264,16 +264,16 @@ Compiler comparison excludes the separately pinned training modules so corrected
 evaluation and repair transport can change. Optimizer Python and
 locks stay pinned; only checkpoint/protocol import plumbing and documentation may
 change. Generated `.coverage`, `.pytest_cache` and `coverage.json` are excluded
-explicitly, never arbitrary dotfiles. Paideia separately verifies candidate,
+explicitly, never arbitrary dotfiles. Training separately verifies candidate,
 criteria, budgets, splits, native capture closure and repair eligibility.
 
 Only `runs/`, `blobs/` and the four command/training/host/optimizer checkpoint JSON
 files are copied into a sealed read-only parent projection. Runtime homes, auth,
 mutable caches and invocation databases are excluded. The exact projection manifest
-and checkpoint bytes are hashed. `/run/paideia/repair.json` is a protected read-only
-`paideia.measurement-repair.v1` receipt; the launcher forwards its fixed path via
+and checkpoint bytes are hashed. `/run/spawnfile-training/repair.json` is a protected read-only
+`spawnfile.training.measurement-repair.v1` receipt; the launcher forwards its fixed path via
 `--repair-context` together with `--repair-measurements /run/training/inputs/repair-parent`. Both refer to the verified read-only projection; no host paths or credentials are forwarded.
-Paideia owns error-only rescoring, retaining successful historical pass/fail results,
+Spawnfile training owns error-only rescoring, retaining successful historical pass/fail results,
 paired optimizer import, cumulative accounting and the new experiment lineage.
 A repair receipt does not itself assert that any judgment or continuation succeeded.
 
@@ -295,7 +295,7 @@ block to the declarative preparation; everything else in v2 is unchanged.
     "architecture": "arm64",
     "limits": { "maxRequests": 32, "maxTokens": 300000, "timeoutMs": 240000 },
     "realmVolume": "spawnfile-training-grok-realm",
-    "bootstrap": "./secrets/paideia-training-grok/auth.json",
+    "bootstrap": "./secrets/spawnfile-training-grok/auth.json",
     "unenforcedBindPolicy": "refuse"
   }
 }
@@ -336,7 +336,7 @@ Slot preflight checks the actual installed config digest, clock owners/modes,
 library identity, worker readability and denied writes. Its unchanged
 `grok-slot-preflight.v2` receipt binds projection v3, including
 `workerConfigVariant: "clocked"`, `workerConfigSha256` and `taskClock`.
-Paideia must request that same variant when recomputing the projection and use
+Training must request that same variant when recomputing the projection and use
 control protocol v4; an old projection or protocol is refused. Shared startup
 reclaims the clock subtree before clearing the broker root and recreates `+0`.
 
@@ -354,7 +354,7 @@ need Docker/Linux and do not follow from rendering or mode tests alone.
 | engine broker backend | 2100 | empty | `setpriv --reuid 2100` |
 | control relay | 2100 | empty | `setpriv --reuid 2100` |
 | slot supervisor | 0 | same as the entrypoint | in-process with the entrypoint |
-| `train` — Paideia, DSPy, judges | 2000 | empty, verified from `/proc/self/status` | `setpriv --bounding-set=-all` |
+| `train` — Training, DSPy, judges | 2000 | empty, verified from `/proc/self/status` | `setpriv --bounding-set=-all` |
 | model tools | 2200 | empty | the native launcher alone can `setuid` there |
 
 `CAP_FOWNER` and `CAP_DAC_OVERRIDE` are deliberately absent, so provisioning
@@ -408,14 +408,14 @@ Integrations consume these through `spawnfile/training` and never import
   a generation of at least 1, and surfaces a supervisor refusal with its reason.
 - `leaseTrainingSubject({ slot, engine, agentId, model?, freshness?, trialRoots?, signal, loadDaimon? })`
   returns `{ agent, workspace, projections, credentials, broker?, roots, ports, generation?, env }`
-  for `paideia.daimon-native.launch.v2`. For Grok it reads the broker
+  for `spawnfile.training.daimon-native.launch.v2`. For Grok it reads the broker
   declaration, resolves the slot's registration and Daimon projection exactly as
   the root entrypoint does, recycles with `freshness.expectedNonce`, requires
   the receipt path to be the slot descriptor's and the generation to reach
   `freshness.minGeneration`, and returns the broker section with the
   provisioner's verbatim deny list and profile digest. For Codex it derives the
   home, memory and transport projections from the evaluator's trial roots and
-  binds the `/run/paideia-auth/codex` ingress to
+  binds the `/run/spawnfile-training-auth/codex` ingress to
   `<home>/<ENGINE_CREDENTIAL_MATERIAL.codex.sourceRelativePath>`, refused unless
   the installed Daimon's material equals the vendored manifest. Other engines
   are refused.
@@ -440,7 +440,7 @@ would deny the one caller it exists for.
 ### Credential lineage
 
 ```
-spawnfile auth import grok --profile paideia-training --from <dir>
+spawnfile auth import grok --profile spawnfile-training --from <dir>
         │  refuses ~/.grok and $GROK_HOME outright; --from is required
         ▼
   profile store  ──►  declaration `broker.bootstrap`  ──►  read-only bind
@@ -456,8 +456,8 @@ spawnfile auth import grok --profile paideia-training --from <dir>
 
 The launch refuses a bootstrap that resolves to the desktop `~/.grok/auth.json`,
 both at preparation and again before `docker create`. Judges never hold the
-credential: the container exports `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` and a
-private `PAIDEIA_GROK_GRANT_HOME_ROOT` (`2000:2000 0700`, denied to every worker
+credential: the container exports `SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET` and a
+private `SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT` (`2000:2000 0700`, denied to every worker
 uid) to the `train` child, and each judge lane asks the broker for a bounded
 inference grant.
 
@@ -467,14 +467,14 @@ setgid uid 2000 could not read a single usage or inference row it paid for.
 
 ### Evaluator roots and deny list
 
-`paideia.daimon-native.launch.v2`'s five evaluator roles carry these real
+`spawnfile.training.daimon-native.launch.v2`'s five evaluator roles carry these real
 container paths, and every one of them is a deny entry in the worker's sandbox
 profile and a canary in the receipt:
 
 | role | path |
 | --- | --- |
 | run-root | `/run/training/output` |
-| context | `/run/paideia` |
+| context | `/run/spawnfile-training` |
 | sealed-inputs | `/run/training/inputs` |
 | judge-home | `/run/training/grants` |
 | slot-ledger | `/run/training/slots/<i>/usage` |
@@ -486,7 +486,7 @@ The rest of the deny list is `/etc/daimon-engine-broker`,
 (the Grok bootstrap, the realm and `/run/training/slots/<i>/state`, the slot state
 root that holds the wake-acceptance store). The caller's
 `config.json`, `launch.json`, `token`, `env`, `control`, `preparation.json` and
-`repair.json` are covered by the single `/run/paideia` mask rather than listed
+`repair.json` are covered by the single `/run/spawnfile-training` mask rather than listed
 individually — Grok materializes each deny target inside bubblewrap as the
 worker uid and cannot create one inside a directory only uid 2000 may write.
 
@@ -526,7 +526,7 @@ complete; and under `profile-only` the run root's only boundary is the
 bubblewrap `deny` list, which the same namespace route that motivated the
 sealed-inputs seal can lift. Sealing the run root the same way means moving the
 bind below a baked `0750` ancestor, which changes a container path
-`paideia.daimon-native.launch.v2` names, so it is deliberately not done here.
+`spawnfile.training.daimon-native.launch.v2` names, so it is deliberately not done here.
 
 ### The sealed datasets
 
