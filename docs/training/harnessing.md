@@ -121,8 +121,9 @@ implemented and tested across the actual CLIs. A native run still requires a
 registered isolated project preparation; unsupported projects fail before cognition.
 Dataset roles resolve explicitly in the invocation, never merely from filenames.
 
-An installed project entry point imports `launch` from `spawnfile/dist/training/cli/index.js` and
-passes a `SpawnfileCliIntegration`. Its static preparation definitions validate case
+An installed project entry point imports composed `launch` from
+`spawnfile/dist/runtime/trainingCli.js` and passes a `SpawnfileCliIntegration`
+(the type is exported by `spawnfile/dist/training/cli/index.js`). Its static preparation definitions validate case
 parameters, its edit policies may narrow explicitly selected instruction/skill files,
 and its adapter/preparation callbacks consume the canonical receipt. Identity stays
 locked. The container recipe declares its project integration entry point. Host dry-run
