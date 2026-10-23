@@ -3,16 +3,17 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as optimization from '../../optimization/index.js';
 import { openExperimentStore } from '../../storage/index.js';
-import { cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
+import { installDefaultBridgeFixture, cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import type { TrainingReport } from '../../experiments/index.js';
 import { loadInvocationViewer } from '../viewer.js';
 
 const roots: string[] = [];
-afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 it.each([undefined, 'zero', 'stage-score'] as const)('threads YAML deferred scoring through callbacks, held-out and export (%s)', async deferred => {
   const f = await cliFixture(); roots.push(f.root);
+  vi.stubEnv('PATH', `${await installDefaultBridgeFixture(f.root)}:${process.env.PATH ?? ''}`);
   const dataset = (id: string, records: string[]) => ({ schema: 'spawnfile.training.dataset.v1', id,
     stages: [{ id: 'article', checks: [{ id: 'filed', eval: 'equals', input: 'output.text', value: 'BAD' }],
       gate: { passed: 'filed' }, score: { linear: { filed: 1 } } }],
@@ -65,6 +66,7 @@ it.each([undefined, 'zero', 'stage-score'] as const)('threads YAML deferred scor
 
 it('preserves stage rewards in the failed invocation viewer after concurrent metric callbacks', async () => {
   const f = await cliFixture(); roots.push(f.root);
+  vi.stubEnv('PATH', `${await installDefaultBridgeFixture(f.root)}:${process.env.PATH ?? ''}`);
   await writeFile(join(f.root, 'train.yaml'), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'train',
     stages: [{ id: 'filed', checks: [{ id: 'article', eval: 'equals', input: 'output.text', value: 'BAD' }],
       gate: { passed: 'article' }, score: { linear: { article: 1 } } }],

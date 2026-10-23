@@ -1,5 +1,5 @@
 import { createTrainingProviderRegistry } from '../../../src/runtime/trainingProviders.js';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { SubjectAdapter } from '../../../src/training/contracts/index.js';
@@ -52,4 +52,11 @@ export function fixtureAdapter(id: string, observedInstructions: string[], mode:
       };
     },
   };
+}
+
+/** A fail-closed executable for tests that replace optimization before any bridge process. */
+export async function installDefaultBridgeFixture(root: string): Promise<string> {
+  const directory = join(root, 'bridge-bin'); await mkdir(directory);
+  await writeFile(join(directory, 'spawnfile-training-dspy'), '#!/bin/sh\nexit 91\n', { mode: 0o700 });
+  return directory;
 }

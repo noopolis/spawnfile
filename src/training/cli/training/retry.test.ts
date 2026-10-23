@@ -4,14 +4,15 @@ import { join } from 'node:path';
 import * as optimization from '../../optimization/index.js';
 import { openExperimentStore } from '../../storage/index.js';
 import type { TrainingReport } from '../../experiments/index.js';
-import { cliFixture, datasetText, fixtureAdapter } from '../../../../fixtures/support/training/cli-fixture.js';
+import { installDefaultBridgeFixture, cliFixture, datasetText, fixtureAdapter } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 
 const roots: string[] = [];
-afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 it.each([0, 1, 2])('threads YAML retries through native attempt %i, exit status and local exports', async failedOrdinal => {
   const f = await cliFixture(); roots.push(f.root);
+  vi.stubEnv('PATH', `${await installDefaultBridgeFixture(f.root)}:${process.env.PATH ?? ''}`);
   await writeFile(join(f.root, 'train.yaml'), `${datasetText([{ id: 'a', group: 'a' }, { id: 'b', group: 'b' }])}
 training:
   models: { reflect: { provider: ollama, model: offline } }
@@ -67,6 +68,7 @@ training:
 it.each(['eligible', 'behavior', 'worker-stop-only', 'exhausted'] as const)(
   'resumes the frozen sealed comparison under the existing retry rules: %s', async kind => {
     const f = await cliFixture(); roots.push(f.root);
+    vi.stubEnv('PATH', `${await installDefaultBridgeFixture(f.root)}:${process.env.PATH ?? ''}`);
     await writeFile(join(f.root, 'train.yaml'), `${datasetText([{ id: 'a', group: 'a' }, { id: 'b', group: 'b' }])}
 training:
   models: { reflect: { provider: ollama, model: offline } }

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { authoredArguments } from '../../../../fixtures/support/training/providers.js';
 import { parseArguments } from '../arguments.js';
@@ -118,6 +118,12 @@ it('autonomously completes real DSPy training from authored YAML with the instal
   const f = await fixture({ models: { reflection: { provider: 'claude-subscription', model: 'reflection' } },
     optimizer: { model: 'reflection' }, budget: { max_trials: 6, max_proposals: 1, timeout_ms: 15000 },
     validation_groups: ['b'], test: 'test.yaml', seed: 0 });
+  const expectedBridge = await realpath(f.bridge);
+  const executionIdentity = vi.fn((context: { bridge?: { command: string } }) => {
+    expect(context?.bridge?.command).toBe(expectedBridge);
+    return 'pinned-bridge-fixture';
+  });
+  f.dependencies.spawnfile = { id: 'pinned-bridge-test', version: '1', executionIdentity, createAdapter() { throw Error('unused'); }, async prepareEnvironment() { throw Error('unused'); } };
   const originalPath = process.env.PATH;
   process.env.PATH = `${dirname(f.bridge)}:${originalPath ?? ''}`;
   try {
@@ -128,6 +134,7 @@ it('autonomously completes real DSPy training from authored YAML with the instal
     const index = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));
     const store = await openExperimentStore(join(f.root, 'out'));
     const report = JSON.parse((await store.readBlob(index.report, { audience: 'evaluator', phase: 'test', frozenCandidateIds: [index.candidateId] })).toString());
+    expect(executionIdentity).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ bridge: expect.objectContaining({ command: expectedBridge }) }));
     expect(report.optimizer.provenance).toMatchObject({ optimizer: 'dspy.GEPA', evaluations: 4, proposals: 1 });
     expect(report.heldOut.map((entry: { meanScore: number }) => entry.meanScore)).toEqual([0, 1]);
     expect(report.trials).toHaveLength(6);
