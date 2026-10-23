@@ -38,7 +38,9 @@ export function graderBackends(grader: Grader, dependencies: GraderDependencies 
   return Object.fromEntries(decisionModels(grader).filter(model => !ids || ids.has(model.id)).map(model => {
     try { return [model.id, graderBackend(graderForModel(grader, model), dependencies)]; }
     catch (cause) {
-      const reason = cause instanceof Error && cause.message === 'TypeSafe requires TYPESAFE_API_KEY' ? cause.message : 'failed to start';
+      // Only owner-authored static errors are safe; injected transports may echo credentials.
+      const safe = /^(?:TypeSafe requires (?:TYPESAFE_API_KEY|a pinned versioned model)|Invalid (?:evaluator route policy|evaluator TypeSafe secret file|TypeSafe endpoint|TypeSafe transport options|TypeSafe concurrency)|Capped TypeSafe evaluator requires the declared hosted endpoint)$/u;
+      const reason = cause instanceof Error && safe.test(cause.message) ? cause.message : 'startup diagnostic withheld';
       throw new Error(`Decision model ${model.id}: ${reason}`, { cause });
     }
   }));

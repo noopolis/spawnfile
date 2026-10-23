@@ -254,3 +254,23 @@ it('validates configured train and inherited test through actual CLI resolution 
   await writeFile(join(f.root, 'test.yaml'), JSON.stringify(rubric));
   expect(() => validateDatasetSplit(train, first.datasets.load('test.yaml', true))).toThrow('shared evaluation plan drift');
 });
+
+it('carries the resolution provider registry into real capped TypeSafe grader construction', async () => {
+  const f = await graderFixture();
+  const registry = f.dependencies.inferenceProviders!;
+  const definition = { ...f.grader, calibration: 'identity', max_spend_usd: 1, teachers: [], golden: { schema: 'spawnfile.training.labels.v1', labelers: {}, labels: [] }, escalate: { to: 'none', between: [0, 1] }, uncalibrated: 'refuse',
+    model: { backend: 'typesafe', name: 'jev-1.13.0' } };
+  await writeFile(f.graderFile, JSON.stringify(definition));
+  const policy = join(f.root, 'routes.json');
+  await writeFile(policy, JSON.stringify({ version: 'spawnfile.training.evaluator-routes.v1', receiptPath: join(f.root, 'receipts.json'), routes: [
+    { provider: 'codex-subscription', purpose: 'proposals', model: 'test', maxRequests: 1 },
+    { provider: 'typesafe', purpose: 'decisions', model: 'jev-1.13.0', maxRequests: 1, maxSpendUsd: 1 },
+  ] }));
+  const secret = join(f.root, 'synthetic-key'); await writeFile(secret, 'synthetic-test-key');
+  vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', policy);
+  vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', secret);
+  const datasets = new CliDatasets({}, f.root, { inferenceProviders: registry });
+  datasets.load('reports.yaml', false);
+  const runtimes = await datasets.buildGraders();
+  expect(await runtimes[f.graderFile]!.backend.identity()).toMatchObject({ backend: 'typesafe', model: 'jev-1.13.0' });
+});

@@ -124,6 +124,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     if (volumeEnabled) {
       outputVolume = createTrainingOutputVolume({ name, image: expectedImage, host: prepared.config.output.source, scratch: privateRoot,
         uid, gid, runtimeUid: prepared.config.broker ? 2000 : uid, runtimeGid: prepared.config.broker ? 2000 : gid,
+        authSources: [...prepared.config.auth, ...prepared.config.evaluatorSecrets ?? []].map(auth => auth.source),
         context: prepared.config.dockerContext, call: (args, cleanup) => call(args, cleanup, false, 120_000), stderr: options.streams.stderr });
       await outputVolume.seed();
     }
