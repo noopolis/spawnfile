@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import { nativeDeferredTrial } from './deferred-trial.js';
-import { trialScore } from '../../../../../training/experiments/index.js';
+import { trialScore } from '../../../../../training/index.js';
 
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];

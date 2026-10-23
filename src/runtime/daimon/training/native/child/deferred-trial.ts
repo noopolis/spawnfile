@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { childFixture } from './fixture.js';
-import { parseDatasetYaml, resolveDataset } from '../../../../../training/cases/index.js';
-import { createEvaluationRegistry } from '../../../../../training/evaluation/index.js';
-import { runTrial, type TrialOptions, type TrialReport } from '../../../../../training/experiments/index.js';
+import { parseDatasetYaml, resolveDataset } from '../../../../../training/index.js';
+import { createEvaluationRegistry } from '../../../../../training/index.js';
+import { runTrial, type TrialOptions, type TrialReport } from '../../../../../training/index.js';
 import { createDaimonNativeAdapter } from '../index.js';
-import type { SubjectAdapter, SubjectSession, SubjectTurnResult } from '../../../../../training/contracts/execution.js';
+import type { SubjectAdapter, SubjectSession, SubjectTurnResult } from '../../../../../training/index.js';
 
 /** One required artifact the filing would produce, so the verdict is exactly the subject's. */
 export const filing = () => resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1

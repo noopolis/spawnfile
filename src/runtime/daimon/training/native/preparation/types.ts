@@ -1,4 +1,4 @@
-import type { TrialSlot } from '../../../../../training/contracts/trial-slot.js';
+import type { TrialSlot } from '../../../../../training/index.js';
 import type { GrokSlotFreshness, GrokSlotFreshnessStore } from '../child/index.js';
 import type { GrokBrokerLaunch, NativeLaunch } from '../receipt/index.js';
 

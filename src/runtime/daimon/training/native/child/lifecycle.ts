@@ -1,8 +1,8 @@
-import { canonicalWireId } from '../../../../../training/contracts/index.js';
+import { canonicalWireId } from '../../../../../training/index.js';
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEvidenceMissing } from '../../../../../training/contracts/execution.js';
+import type { StopReceipt, StopUnconfirmed, SubjectStartupDiagnostic, TerminalEvidenceMissing } from '../../../../../training/index.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { admittedExecutions, declaredLimitStop, executionClosed, validateNativeFrame, AMBIGUOUS_NATIVE_EXECUTION, type NativeActivity, type NativeStopEvidence,
   type TerminalEvidence } from '../worker/index.js';
@@ -11,7 +11,7 @@ import { engineWakeTimeoutMs, parseTransportSource, type TransportDeliverySource
 import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironment, validateChildPaths } from './arguments.js';
 import { verifyChildSandbox } from './sandbox.js';
 import type { NativeChildExecution } from './types.js';
-import type { GrokSlotFreshnessStore } from '../../../../../training/subjects/index.js';
+import type { GrokSlotFreshnessStore } from '../../services/index.js';
 import { childDiagnostics } from './diagnostics.js';
 
 /** One fresh worker process in the caller's existing container; no Docker or remote proof. */

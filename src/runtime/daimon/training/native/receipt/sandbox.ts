@@ -1,4 +1,4 @@
-import { compatibleWireLiteral } from '../../../../../training/contracts/index.js';
+import { compatibleWireLiteral } from '../../../../../training/index.js';
 import { z } from 'zod';
 import { sha256 } from './paths.js';
 

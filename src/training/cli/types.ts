@@ -1,23 +1,15 @@
+import type { InferenceProviderRegistry } from '../contracts/inference-registry.js';
 import type { GraderDependencies } from './grader/index.js';
 import type { TrainingModel } from '../contracts/training-config.js';
-import type { GrokInferenceGrantAuthority, InferenceProvider, SubjectAdapter } from '../contracts/index.js';
+import type { InferenceGrantAuthority, InferenceProvider, SubjectAdapter } from '../contracts/index.js';
 import type { BlobReference } from '../storage/index.js';
 import type { DatasetRegistry, EditPolicy, NativePreparationContext, StoredTrialOptions } from '../index.js';
 import type { TrainingMomentPreparation } from './spawnfile/moments.js';
 import type { SpawnfileTrainingContext } from './spawnfile/index.js';
 import type { SubjectAdapterRegistry } from '../subjects/index.js';
-import type { GrokSlotFreshnessStore } from '../subjects/index.js';
 
-/**
- * Experiment-owned services the runner hands to every integration hook. The
- * same `grokSlots` store goes to preparation (`prepareNativeSubject` mints from
- * it) and to the adapter's `NativeChildExecution.grokSlots` (the child accepts
- * into it); it lives in the run's output directory, so integrations never
- * configure a slot freshness file.
- */
-export interface NativeTrialServices {
-  grokSlots: GrokSlotFreshnessStore;
-}
+/** Adapter-owned durable experiment services, passed unchanged to integration hooks. */
+export type NativeTrialServices = Readonly<Record<string, unknown>>;
 
 export interface CliIO {
   cwd: string;
@@ -28,7 +20,10 @@ export interface CliIO {
 
 /** Tests inject only the native/inference boundaries; experiment/storage code stays real. */
 export interface CliDependencies {
+  inferenceProviders?: InferenceProviderRegistry;
   subjects?: SubjectAdapterRegistry;
+  /** Runtime composition supplies durable native services; the core treats their keys as opaque. */
+  createTrialServices?: (stateRoot: string) => NativeTrialServices;
   /** Canonical host context, validated against pinned source bytes without a temporary receipt file. */
   spawnfileContext?: SpawnfileTrainingContext;
   grader?: GraderDependencies;
@@ -38,7 +33,7 @@ export interface CliDependencies {
   inference?: (timeoutMs: number) => InferenceProvider;
   modelInference?: (model: TrainingModel, timeoutMs: number) => InferenceProvider;
   /** Broker-grant authority seam; defaults to the injected subject capability over the container control socket. */
-  grokGrantAuthority?: () => Promise<GrokInferenceGrantAuthority>;
+  grantAuthority?: () => Promise<InferenceGrantAuthority>;
   /** Trusted project composition. Registration is static; native factory runs only after preflight. */
   spawnfile?: SpawnfileCliIntegration;
 }
@@ -72,7 +67,7 @@ export interface SpawnfileCliIntegration {
   } | undefined>;
   /** Hash of immutable preparation/image/tool/evidence inputs; excludes credentials and generated state. */
   executionIdentity?: (context: CliExecutionIdentityContext) => string | Promise<string>;
-  createAdapter(context: SpawnfileTrainingContext, options: { model: string; timeoutMs: number; grokSlots: GrokSlotFreshnessStore }): SubjectAdapter;
+  createAdapter(context: SpawnfileTrainingContext, options: { model: string; timeoutMs: number } & NativeTrialServices): SubjectAdapter;
   prepareEnvironment(paths: Parameters<NonNullable<StoredTrialOptions['prepareEnvironment']>>[0], signal: AbortSignal,
     trial: NativePreparationContext, context: SpawnfileTrainingContext, services: NativeTrialServices): ReturnType<NonNullable<StoredTrialOptions['prepareEnvironment']>>;
 }

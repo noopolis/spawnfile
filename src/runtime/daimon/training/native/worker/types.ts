@@ -1,4 +1,4 @@
-import type { DeclaredLimit } from '../../../../../training/contracts/execution.js';
+import type { DeclaredLimit } from '../../../../../training/index.js';
 import type { NativeLaunch } from '../receipt/index.js';
 import type { NativeAcceptanceResult, TransportEvidence } from './wake-delivery/index.js';
 import type { NativeTaskClockEvidence } from '../receipt/index.js';

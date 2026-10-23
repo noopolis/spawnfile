@@ -1,8 +1,8 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { Observation } from '../../../../training/contracts/execution.js';
-import { captureObservation } from '../../../../training/capture/index.js';
+import type { Observation } from '../../../../training/index.js';
+import { captureObservation } from '../../../../training/index.js';
 import { launchFixture } from './test-fixtures.js';
 import * as child from './child/index.js';
 import { sha256 } from './receipt/index.js';

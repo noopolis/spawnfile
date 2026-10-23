@@ -6,8 +6,8 @@ import { parseArguments } from '../training/cli/arguments.js';
 import { resourceMappings } from '../training/cli/native.js';
 import { prepareNative } from './trainingSubjects.js';
 import { main } from './trainingCli.js';
-import { cliFixture, fixtureAdapter } from '../training/cli/fixture.js';
-import { contextFixture } from '../training/cli/spawnfile/fixture.js';
+import { cliFixture, fixtureAdapter } from '../../fixtures/support/training/cli-fixture.js';
+import { contextFixture } from '../../fixtures/support/training/spawnfile-fixture.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -89,8 +89,8 @@ describe('explicit native resource and inference selection', () => {
   it('owns one slot freshness store per experiment in its output state, shared by preparation and the adapter across resume', async () => {
     const f = await cliFixture(), context = await contextFixture(); roots.push(f.root, context.root);
     const seen: GrokSlotFreshnessStore[] = [];
-    const integration = { id: 'fixture', version: '1', createAdapter: vi.fn((_context: unknown, options: { grokSlots: GrokSlotFreshnessStore }) => {
-      seen.push(options.grokSlots); return f.dependencies.adapter!('daimon', { model: 'gpt-5.5', timeoutMs: 1000 });
+    const integration = { id: 'fixture', version: '1', createAdapter: vi.fn((_context: unknown, options: { model: string; timeoutMs: number; [service: string]: unknown }) => {
+      seen.push(options.grokSlots as GrokSlotFreshnessStore); return f.dependencies.adapter!('daimon', { model: 'gpt-5.5', timeoutMs: 1000 });
     }), prepareEnvironment: vi.fn(async (..._args: unknown[]) => ({})) };
     const args = parseArguments(['evaluate', 'data.yaml', '--spawnfile-context', context.path, '--out', 'out']);
     const first = await prepareNative(args, f.io, { ...f.dependencies, spawnfile: integration }, 1000);

@@ -1,15 +1,13 @@
-import type { GrokInferenceGrantAuthority, SubjectAdapter } from '../contracts/index.js';
+import type { InferenceGrantAuthority, SubjectAdapter } from '../contracts/index.js';
 
 export interface SubjectAdapterOptions { model: string; timeoutMs: number }
 export interface SubjectAdapterRegistration {
   create(options: SubjectAdapterOptions): SubjectAdapter;
   /** Optional host-broker capability; implementation belongs to the subject adapter. */
-  hostInference?: { grantAuthority(socketPath: string | undefined): Promise<GrokInferenceGrantAuthority> };
+  hostInference?: { grantAuthority(socketPath: string | undefined): Promise<InferenceGrantAuthority> };
 }
 export type SubjectAdapterRegistry = Readonly<Record<string, SubjectAdapterRegistration>>;
 
-export const grokBrokerControlSocketEnv = 'SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET';
-export const grokGrantHomeRootEnv = 'SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT';
 
 export function resolveSubjectAdapter(registry: SubjectAdapterRegistry | undefined, id: string, options: SubjectAdapterOptions): SubjectAdapter {
   const registration = registry && Object.hasOwn(registry, id) ? registry[id] : undefined;

@@ -4,7 +4,7 @@ import { launchFixture } from '../test-fixtures.js';
 import { grokLaunchFrom } from '../grok-fixtures.js';
 import { assertLeasedLaunch } from './slot.js';
 import { loadNativeLaunch } from './manifest.js';
-import type { TrialSlot } from '../../../../../training/contracts/trial-slot.js';
+import type { TrialSlot } from '../../../../../training/index.js';
 
 it('admits a shared-uid Codex lease through manifest loading and always checks its port block', async () => {
   const f = await launchFixture();

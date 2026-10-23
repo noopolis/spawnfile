@@ -1,3 +1,5 @@
+import { createTrainingProviderRegistry } from './trainingProviders.js';
+import { createExperimentSlotFreshness } from './daimon/training/services/index.js';
 import { loadRuntimeRegistry, type RuntimeRegistryEntry } from './registry.js';
 import { createCodexAdapter } from './codex-exec/training/index.js';
 import type { SubjectAdapterRegistry } from '../training/subjects/index.js';
@@ -17,7 +19,11 @@ export async function createTrainingSubjects(entries?: readonly RuntimeRegistryE
 }
 
 export async function trainingDependencies(dependencies: CliDependencies = {}): Promise<CliDependencies> {
-  return { ...dependencies, subjects: dependencies.subjects ?? await createTrainingSubjects() };
+  const subjects = dependencies.subjects ?? await createTrainingSubjects();
+  return { ...dependencies, subjects,
+    inferenceProviders: dependencies.inferenceProviders ?? createTrainingProviderRegistry({ ...dependencies, subjects }),
+    createTrialServices: dependencies.createTrialServices ?? (stateRoot => ({ grokSlots: createExperimentSlotFreshness(stateRoot) })),
+  };
 }
 
 /** Shared host/container composition of the runtime-neutral training CLI. */

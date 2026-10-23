@@ -9,7 +9,7 @@ import { startOwnedChild } from './lifecycle.js';
 import { configFixture, launchFixture } from '../test-fixtures.js';
 import { createNativeObserver } from '../observations.js';
 import { sumNativeUsage } from '../external.js';
-import type { Usage, Observation } from '../../../../../training/contracts/execution.js';
+import type { Usage, Observation } from '../../../../../training/index.js';
 import { createWorkerController } from '../worker/index.js';
 import type { NativeHost, NativeReceipt, TerminalEvidence, WorkerOptions } from '../worker/index.js';
 

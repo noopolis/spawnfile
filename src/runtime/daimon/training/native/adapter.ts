@@ -1,4 +1,4 @@
-import { canonicalWireId } from '../../../../training/contracts/index.js';
+import { canonicalWireId } from '../../../../training/index.js';
 import { join } from 'node:path';
 import { nativeTrialArtifactsRoot } from './receipt/index.js';
 import { admittedNativeEvidence, type NativeTurnEvidence } from './outcome.js';
@@ -6,7 +6,7 @@ import { boundedTransportCall, requestTransportDelivery, transportTerminalBindin
   type NativeExecutionHandle, type NativeTransportDelivery, type PreparedTransportDelivery } from './transport/index.js';
 import { startOwnedChild, type NativeChildExecution } from './child/index.js';
 import { nextExternalInput, weakestNativeCoverage, type NativeExternalInputs } from './external.js';
-import type { SubjectAdapter, SubjectTurnResult } from '../../../../training/contracts/execution.js';
+import type { SubjectAdapter, SubjectTurnResult } from '../../../../training/index.js';
 import { MAX_EXTERNAL_DELIVERIES, engineWakeTimeoutMs, type TerminalEvidence, type DeliveryControls } from './worker/index.js';
 import { dockerCommand, workerRequest, type DockerCommand } from './container/index.js';
 import { startOwnedContainer } from './container/index.js';

@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { FixtureTool, Observation, SubjectStart } from '../../../../training/contracts/execution.js';
+import type { FixtureTool, Observation, SubjectStart } from '../../../../training/index.js';
 import { createDaimonAdapter } from './adapter.js';
 import type { DaimonModule, NativeHandle, NativeTool } from './public.js';
 

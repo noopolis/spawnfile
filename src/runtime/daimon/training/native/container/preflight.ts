@@ -1,4 +1,4 @@
-import { canonicalWireId } from '../../../../../training/contracts/index.js';
+import { canonicalWireId } from '../../../../../training/index.js';
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { VerifiedNativeLaunch } from '../receipt/index.js';

@@ -1,4 +1,4 @@
-import type { SubjectTurnResult } from '../../../../training/contracts/execution.js';
+import type { SubjectTurnResult } from '../../../../training/index.js';
 import type { TerminalEvidence } from './worker/index.js';
 
 type Admission = NonNullable<SubjectTurnResult['admission']>;

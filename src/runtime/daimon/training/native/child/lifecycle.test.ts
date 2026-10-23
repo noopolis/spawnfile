@@ -8,7 +8,7 @@ import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
 import { verifyChildSandbox } from './sandbox.js';
 import { grokLaunchFrom } from '../grok-fixtures.js';
-import { subjectStartupDiagnostic } from '../../../../../training/experiments/index.js';
+import { subjectStartupDiagnostic } from '../../../../../training/index.js';
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
 afterEach(async () => { vi.clearAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

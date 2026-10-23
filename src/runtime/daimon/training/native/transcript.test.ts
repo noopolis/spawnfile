@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Observation } from '../../../../training/contracts/execution.js';
+import type { Observation } from '../../../../training/index.js';
 import { createNativeObserver } from './observations.js';
 import { launchFixture } from './test-fixtures.js';
 import { NATIVE_TRANSCRIPT_SCHEMA, parseGrokTranscript, readNativeTranscript, selectTranscriptSession,

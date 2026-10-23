@@ -3,9 +3,9 @@ import { createHash } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import { admittedNativeEvidence } from './outcome.js';
 import { createDaimonNativeAdapter } from './index.js';
-import { runTrial } from '../../../../training/experiments/index.js';
-import { createEvaluationRegistry } from '../../../../training/evaluation/index.js';
-import { parseDatasetYaml, resolveDataset } from '../../../../training/cases/index.js';
+import { runTrial } from '../../../../training/index.js';
+import { createEvaluationRegistry } from '../../../../training/index.js';
+import { parseDatasetYaml, resolveDataset } from '../../../../training/index.js';
 import { dockerFixture, activityFixture, launchFixture, receiptFixture, traceFixture, unadmittedFixture } from './test-fixtures.js';
 
 it('publishes only bound evidence and refuses foreign activity or delivery attribution', async () => {

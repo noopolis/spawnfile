@@ -4,9 +4,9 @@ import { createDaimonNativeAdapter } from '../index.js';
 import { childFixture } from './fixture.js';
 import { filing, nativeDeferredTrial } from './deferred-trial.js';
 import { startOwnedChild } from './lifecycle.js';
-import { createEvaluationRegistry } from '../../../../../training/evaluation/index.js';
-import { runTrial, trialScore } from '../../../../../training/experiments/index.js';
-import type { SubjectAdapter, SubjectSession } from '../../../../../training/contracts/execution.js';
+import { createEvaluationRegistry } from '../../../../../training/index.js';
+import { runTrial, trialScore } from '../../../../../training/index.js';
+import type { SubjectAdapter, SubjectSession } from '../../../../../training/index.js';
 
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];

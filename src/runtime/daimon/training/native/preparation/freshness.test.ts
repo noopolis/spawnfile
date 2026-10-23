@@ -2,7 +2,7 @@ import { lstat, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createExperimentSlotFreshness, experimentSlotFreshnessFile } from '../../../../../training/subjects/index.js';
+import { createExperimentSlotFreshness, experimentSlotFreshnessFile } from '../../services/index.js';
 import { prepareNativeSubject } from './subject.js';
 import { fakeProvisioner, grokLease, grokSubject, trialRoots } from './fixtures.js';
 

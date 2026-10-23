@@ -2,7 +2,7 @@ import { lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { GrokGrantRefusal, grokGrantRefusalCodes, type GrokClientConfigInput, type GrokGrantRefusalCode, type GrokInferenceGrant,
-  type GrokInferenceGrantAuthority } from '../../../../../training/contracts/inference-grants.js';
+  type GrokInferenceGrantAuthority } from '../../providers/grok-broker/grants.js';
 import { daimonGrokInferenceClientPin as PIN } from './pins.js';
 
 /** Structural slice of `@noopolis/daimon/runtime` this binding uses. */
@@ -19,8 +19,8 @@ export interface DaimonGrantModule {
   GROK_ENGINE_BROKER: { inferenceGrants: { maxLiveGrants: number; failureCodes: readonly string[]; client: { modelId: string; envKey: string; configSha256: unknown } } };
 }
 
-import { grokBrokerControlSocketEnv } from '../../../../../training/subjects/index.js';
-export { grokBrokerControlSocketEnv, grokGrantHomeRootEnv } from '../../../../../training/subjects/index.js';
+import { grokBrokerControlSocketEnv } from '../../providers/grok-broker/grants.js';
+export { grokBrokerControlSocketEnv, grokGrantHomeRootEnv } from '../../providers/grok-broker/grants.js';
 
 const loadRuntime = async (): Promise<unknown> => {
   const packageName = '@noopolis/daimon/runtime';

@@ -1,6 +1,7 @@
+import { prepareCodexEnvironment, savedCodexHome } from '../../../codex-exec/training/environment.js';
 import path from 'node:path';
-import type { Observation, StopReceipt, SubjectAdapter, Usage } from '../../../../training/contracts/execution.js';
-import { canonicalProtectedPaths, prepareCodexEnvironment, savedCodexHome } from '../../../../training/subjects/index.js';
+import type { Observation, StopReceipt, SubjectAdapter, Usage } from '../../../../training/index.js';
+import { canonicalProtectedPaths } from '../../../../training/index.js';
 import { loadDaimon, type DaimonModule, type NativeTool } from './public.js';
 
 export interface DaimonOptions {

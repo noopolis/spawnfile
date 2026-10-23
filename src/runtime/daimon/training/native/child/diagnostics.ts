@@ -1,7 +1,7 @@
-import { canonicalWireId } from '../../../../../training/contracts/index.js';
+import { canonicalWireId } from '../../../../../training/index.js';
 import { lstat, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { SubjectStartupCapture, SubjectStartupDiagnostic } from '../../../../../training/contracts/execution.js';
+import type { SubjectStartupCapture, SubjectStartupDiagnostic } from '../../../../../training/index.js';
 
 const limit = 65_536;
 /** Published tails are for identifying a defect class, not for reading a transcript. */

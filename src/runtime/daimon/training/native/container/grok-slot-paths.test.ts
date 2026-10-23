@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { chmod, mkdir, mkdtemp, readdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SubjectStart } from '../../../../../training/contracts/execution.js';
+import type { SubjectStart } from '../../../../../training/index.js';
 import { grokProjectionFor, slotPreflightFor, fixtureNonce } from '../grok-fixtures.js';
 import { grokProjectionSha256, nativeTrialArtifactsRoot, sha256, type GrokBrokerProjection, type GrokNativeLaunch } from '../receipt/index.js';
 import { loadNativeLaunch } from './manifest.js';

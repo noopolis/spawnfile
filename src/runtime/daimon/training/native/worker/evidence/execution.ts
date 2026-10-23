@@ -1,4 +1,4 @@
-import type { DeclaredLimit } from '../../../../../../training/contracts/execution.js';
+import type { DeclaredLimit } from '../../../../../../training/index.js';
 import type { NativeActivity, NativeEvidence, NativeReceipt, NativeTrace, NativeUsage } from '../types.js';
 
 /** The closed set Daimon may record on a delivery it returned to the inbox for restart. */

@@ -1,4 +1,4 @@
-import type { TerminalEvidenceMissing } from '../../../../training/contracts/execution.js';
+import type { TerminalEvidenceMissing } from '../../../../training/index.js';
 import { bindTerminalEvidence } from './child/index.js';
 import { wakeEvidenceFile, type TerminalEvidence, type TransportDeliverySource } from './worker/index.js';
 import type { VerifiedNativeLaunch } from './receipt/index.js';

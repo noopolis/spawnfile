@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { rm } from 'node:fs/promises';
 import { createDaimonNativeAdapter } from './adapter.js';
 import { dockerFixture, launchFixture } from './test-fixtures.js';
-import type { Observation } from '../../../../training/contracts/execution.js';
+import type { Observation } from '../../../../training/index.js';
 
 test('adapter resumes only sourced deferred work and captures all usage once with external input provenance', async () => {
   const fixture = await launchFixture();
