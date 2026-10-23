@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint, type Linter } from 'eslint';
@@ -22,10 +22,11 @@ vi.setConfig({ testTimeout: 15_000, hookTimeout: 15_000 });
 
 async function sourceFiles(directory: string, typescriptOnly = true): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
-  const files = await Promise.all(entries.map((entry) => {
+  const files = await Promise.all(entries.map(async (entry) => {
     const filename = path.join(directory, entry.name);
-    if (['.venv', '__pycache__', '.pytest_cache', 'node_modules', '.coverage', 'htmlcov'].includes(entry.name)) return Promise.resolve([]);
-    return entry.isDirectory() ? sourceFiles(filename, typescriptOnly) : Promise.resolve(entry.isFile() && (!typescriptOnly || /\.[cm]?tsx?$/.test(entry.name)) ? [filename] : []);
+    if (['.venv', '__pycache__', '.pytest_cache', 'node_modules', '.coverage', 'htmlcov'].includes(entry.name)) return [];
+    const kind = entry.isSymbolicLink() ? await stat(filename) : entry;
+    return kind.isDirectory() ? sourceFiles(filename, typescriptOnly) : kind.isFile() && (!typescriptOnly || /\.[cm]?tsx?$/.test(entry.name)) ? [filename] : [];
   }));
   return files.flat();
 }
@@ -248,6 +249,11 @@ function namedEngineViolations(filename: string, source: string): string[] {
 test('non-test training files contain no engine names', async () => {
   const files = await sourceFiles(trainingRoot, false);
   const violations = await Promise.all(files.map(async filename => {
+    // The Python packaging alias is a symlink to the frozen authority outside core.
+    // No other linked file is exempt, and a copied/replaced alias is scanned.
+    const alias = path.join(trainingRoot, 'dspy/spawnfile_training_dspy/legacy_wire_aliases.json');
+    const authority = path.join(owners.trainingLegacy, 'trainingLegacyWireAliases.json');
+    if (filename === alias && canonicalPath(filename) === authority) return undefined;
     const hits = namedEngineViolations(filename, await readFile(filename, 'utf8'));
     return hits.length ? `${path.relative(root, filename)}: ${hits.join(', ')}` : undefined;
   }));
@@ -277,4 +283,10 @@ test('runtime training accepts neutral contracts and the explicit public barrel'
     expect(boundaryViolations(path.join(root, 'src/runtime/daimon/training/check.ts'),
       `import '../../../training/${target}.js';`)).toEqual([]);
   }
+});
+
+
+test('the single legacy packaging alias resolves to the shared frozen authority', () => {
+  expect(canonicalPath(path.join(trainingRoot, 'dspy/spawnfile_training_dspy/legacy_wire_aliases.json')))
+    .toBe(path.join(owners.trainingLegacy, 'trainingLegacyWireAliases.json'));
 });

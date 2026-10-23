@@ -93,7 +93,7 @@ Runtime training implementations MAY import neutral contracts and the core's pub
 `src/training/index.ts` entry point. The public entry point additionally supplies
 process execution, schema validation, diagnostics, capture, path-protection and
 synthetic evidence helpers. Private implementation imports are forbidden. Non-test
-core files MUST contain no engine-name text; the boundary gate has no exceptions.
+core files MUST contain no engine-name text; the only boundary exception is the Python packaging symlink to the shared frozen wire-alias table, verified by canonical target.
 
 Runtime registry entries declare their training adapter ID and engine vocabulary.
 Launch schemas consume that vocabulary; adapter-specific execution constraints
