@@ -58,7 +58,7 @@ it('refuses symlinked state, reclaims a dead owner lock and times out behind a l
   try {
     const file = join(root, 'slots.json');
     const target = join(root, 'elsewhere.json');
-    await writeFile(target, JSON.stringify({ schema: 'paideia.daimon-native.grok-slot-freshness.v1', slots: {} }));
+    await writeFile(target, JSON.stringify({ schema: 'spawnfile.training.daimon-native.grok-slot-freshness.v1', slots: {} }));
     await symlink(target, file);
     await expect(createGrokSlotFreshnessStore(file).request(0)).rejects.toThrow('never a symlink');
     await rm(file);

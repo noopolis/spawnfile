@@ -62,7 +62,7 @@ daimon-inference-grok` with the same isolation flags. Init must report
 `apiKeySource: "user"` and that model id; subscription mode still requires `oauth`.
 The response model is the grant's broker-enforced catalog model; usage is labelled
 `grok-broker-grant.result.usage.lower-bound` on route `grok-broker-grant`. Budgets
-use this Paideia usage, not the broker inference ledger.
+use this Training usage, not the broker inference ledger.
 
 The plain-string 401 `Unauthorized (401) from http://127.0.0.1:<port>/v1/chat/completions:
 auth_stale` and a grant refused `auth_stale` are `auth-stale`: routing skips every later

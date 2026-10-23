@@ -8,7 +8,7 @@ import { DSPY_SCHEMA, startSchema, type DspyRequest } from './protocol.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-async function directory() { const root = await mkdtemp(join(tmpdir(), 'paideia-fork-')); roots.push(root); return root; }
+async function directory() { const root = await mkdtemp(join(tmpdir(), 'training-fork-')); roots.push(root); return root; }
 const sha = (bytes: Uint8Array) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 async function fixture() {
   const parent = await directory(), child = await directory();

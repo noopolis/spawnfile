@@ -11,8 +11,8 @@ export interface ContainerInspection {
   State: { Running: boolean; Status: string; ExitCode: number };
   Config: { Labels?: Record<string, string>; Image: string };
 }
-export const ownerLabel = 'paideia.daimon-native.owner';
-export const trialLabel = 'paideia.daimon-native.trial';
+export const ownerLabel = 'training.daimon-native.owner';
+export const trialLabel = 'training.daimon-native.trial';
 
 export function dockerCommand(command = 'docker'): DockerCommand {
   return async (args, options = {}) => new Promise((resolve, reject) => {

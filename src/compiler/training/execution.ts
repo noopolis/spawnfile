@@ -11,7 +11,7 @@ import { trainingPreparationSchema } from "./preparation/contract.js";
 import { readBoundedJson } from "./preparation/inputs.js";
 import { trainingContainerConfigSchema, trainingImageSchema } from "./container/contract.js";
 
-export const TRAINING_EXECUTION_FILE = "/run/paideia/execution.json";
+export const TRAINING_EXECUTION_FILE = "/run/spawnfile-training/execution.json";
 export { TRAINING_EXECUTION_CAPABILITY_LABEL, TRAINING_EXECUTION_VERSION } from "./contract.js";
 export const trainingExecutionSchema = z.object({
   version: z.literal("spawnfile.training-execution.v1"),

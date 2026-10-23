@@ -2,7 +2,7 @@ import type { DecisionRequest } from '../../contracts/grading.js';
 
 // v4 fingerprints Jev input preparation. Regenerate calibration; earlier scores
 // cannot distinguish servers that truncate inputs from servers that refuse them.
-export const DECISION_PROMPT_VERSION = 'paideia.grader-prompt.v4';
+export const DECISION_PROMPT_VERSION = 'spawnfile.training.grader-prompt.v4';
 export const DECISION_LETTERS = 'ABCDEFGHIJKLMNOP';
 
 export function validateDecisionRequest(request: DecisionRequest): void {

@@ -8,7 +8,7 @@ import { optionsFor, expectedOptions } from './questions.js';
 
 export function graderInput(): Record<string, unknown> {
   return {
-    schema: 'paideia.grader.v1', id: 'writing', golden: 'labels.yaml', calibration: 'calibration.json',
+    schema: 'spawnfile.training.grader.v1', id: 'writing', golden: 'labels.yaml', calibration: 'calibration.json',
     context: { evidence: { description: 'sources' } },
     teachers: [{ id: 'c', provider: 'claude', model: 'm' }],
     model: { backend: 'teacher', teacher: 'c' }, escalate: { to: 'c', between: [0.3, 0.7] },
@@ -132,7 +132,7 @@ describe('grader formats', () => {
   });
 
   it('accepts inline labels with implied grader and rejects invalid inline labels', () => {
-    const golden = { schema: 'paideia.labels.v1', labelers: {}, labels: [] };
+    const golden = { schema: 'spawnfile.training.labels.v1', labelers: {}, labels: [] };
     expect(parseGrader({ ...graderInput(), golden }).golden).toEqual(golden);
     expect(() => parseGrader({ ...graderInput(), golden: { ...golden, grader: 'other' } })).toThrow('does not match');
     expect(() => parseGrader({ ...graderInput(), golden: { ...golden, labels: [{ id: 'invalid' }] } })).toThrow('golden');

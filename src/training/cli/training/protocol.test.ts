@@ -9,7 +9,7 @@ import { openExperimentStore } from '../../storage/index.js';
 it.each(['off', 'exact', 'persistent'] as const)('runs evidence-ID CLI training with %s cache, real GEPA and completed resume', async mode => {
   const f = await cliFixture();
   try {
-    const dataset = { schema: 'paideia.dataset.v1', id: 'protocol',
+    const dataset = { schema: 'spawnfile.training.dataset.v1', id: 'protocol',
       stages: [{ id: 'writing', checks: [{ id: 'clarity', eval: 'llm-rubric', input: 'output.text',
         judge: 'editor', minimum: 0.8, rubric: { prompt: 'Reply OK.' } }],
       score: { linear: { clarity: 1 } }, gate: { passed: 'clarity' } }] };

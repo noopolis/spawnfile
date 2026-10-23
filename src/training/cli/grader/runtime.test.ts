@@ -21,8 +21,8 @@ const provider: InferenceProvider = { id: 'claude-subscription',
 async function fixture(model: NonNullable<Grader['model']> = { backend: 'jev-http', endpoint: 'http://localhost:8123', name: 'decision' }) {
   const root = await mkdtemp(join(tmpdir(), 'grader-runtime-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml');
-  const source = parseGrader({ schema: 'paideia.grader.v1', id: 'report',
-    golden: { schema: 'paideia.labels.v1', labelers: {}, labels: [] }, calibration: 'calibration.json',
+  const source = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'report',
+    golden: { schema: 'spawnfile.training.labels.v1', labelers: {}, labels: [] }, calibration: 'calibration.json',
     teachers: [{ id: 'teacher', provider: 'claude', model: 'opus' }], model,
     escalate: { to: 'teacher', between: [0.4, 0.6] },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }],
@@ -32,7 +32,7 @@ async function fixture(model: NonNullable<Grader['model']> = { backend: 'jev-htt
     score: async () => { throw new Error('Builder must not score'); } };
   const grader = await loadGrader(graderFile);
   const golden = await loadLabels(grader.golden, grader);
-  const calibration: CalibrationFile = { schema: 'paideia.grader-calibration.v1',
+  const calibration: CalibrationFile = { schema: 'spawnfile.training.grader-calibration.v1',
     identity: createCalibrationIdentity(grader, { backendModel: await backendIdentity(grader, backend),
       golden: golden.goldenDigest, promptTemplateVersion: DECISION_PROMPT_VERSION, seed: 'seed', exclusions: [] }),
     questions: { q: { status: 'calibrated', failures: [],
@@ -86,21 +86,21 @@ it('refuses changed backend, golden, rubric, prompt and exclusion identities bef
   await writeFile(f.grader.calibration, JSON.stringify(f.calibration));
   await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('identity mismatch: questions');
   const excluded = join(f.root, 'test.yaml');
-  await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', records: [{ id: 'sealed' }] }));
+  await writeFile(excluded, stringify({ schema: 'spawnfile.training.dataset.v1', records: [{ id: 'sealed' }] }));
   f.calibration = structuredClone(original);
   f.calibration.identity.exclusions = [{ dataset: excluded, digest: sha256(await readFile(excluded)) }];
   await writeFile(f.grader.calibration, JSON.stringify(f.calibration));
-  await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', records: [{ id: 'changed' }] }));
+  await writeFile(excluded, stringify({ schema: 'spawnfile.training.dataset.v1', records: [{ id: 'changed' }] }));
   await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('identity mismatch: exclusions');
   expect(f.factory).not.toHaveBeenCalled();
 });
 
 it('refuses changed golden content and stale stored votes rather than treating prior labels as current', async () => {
   const f = await fixture();
-  f.source.golden = { schema: 'paideia.labels.v1', labelers: { human: { kind: 'human', name: 'Reader' } }, labels: [] };
+  f.source.golden = { schema: 'spawnfile.training.labels.v1', labelers: { human: { kind: 'human', name: 'Reader' } }, labels: [] };
   await writeFile(f.graderFile, stringify(f.source));
   await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('identity mismatch: golden');
-  f.source.golden = { schema: 'paideia.labels.v1', labelers: { teacher: { kind: 'model', provider: 'claude', model: 'opus' } },
+  f.source.golden = { schema: 'spawnfile.training.labels.v1', labelers: { teacher: { kind: 'model', provider: 'claude', model: 'opus' } },
     labels: [{ id: 'o', lineage: 'o', output: { body: ['Report.'] }, context: {}, votes: { q: { teacher: 'yes' } }, provenance: {} }] };
   await writeFile(f.graderFile, stringify(f.source));
   await expect(buildGradingRuntime(f.graderFile, f.dependencies)).rejects.toThrow('Stale vote');

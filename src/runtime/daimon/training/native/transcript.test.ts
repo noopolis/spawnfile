@@ -45,7 +45,7 @@ const trace = (promptText: string, replyChars: number): NativeTrace => ({
 });
 
 test('the capture recovers the wake text and the reply, and Daimon\'s own digest confirms them', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-transcript-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-transcript-'));
   try {
     const runtimeHome = await engineHome(root, { 'session-a': rows() });
     const capture = await readNativeTranscript(runtimeHome, trace(WAKE, REPLY.length));
@@ -66,7 +66,7 @@ test('the capture recovers the wake text and the reply, and Daimon\'s own digest
 });
 
 test('a wake text that is not what Daimon recorded is reported as a difference, never as agreement', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-transcript-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-transcript-'));
   try {
     const runtimeHome = await engineHome(root, { 'session-a': rows() });
     const capture = await readNativeTranscript(runtimeHome, trace('a different prompt entirely', 4));
@@ -78,7 +78,7 @@ test('a wake text that is not what Daimon recorded is reported as a difference, 
 });
 
 test('a turn with no reply publishes the prompt and says the reply is absent', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-transcript-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-transcript-'));
   try {
     const runtimeHome = await engineHome(root, { 'session-a': rows(WAKE, null) });
     const capture = await readNativeTranscript(runtimeHome, trace(WAKE, 0));
@@ -117,7 +117,7 @@ test('credential-shaped text is withheld with its detector named, and its digest
 });
 
 test('the digest selects among sibling sessions, and too many sessions is refused', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-transcript-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-transcript-'));
   try {
     const runtimeHome = await engineHome(root, { 'session-a': rows('another turn'), 'session-b': rows() });
     const capture = await readNativeTranscript(runtimeHome, trace(WAKE, REPLY.length));
@@ -133,7 +133,7 @@ test('the digest selects among sibling sessions, and too many sessions is refuse
 });
 
 test('a Codex home, a recycled home and a symlinked transcript publish nothing', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-transcript-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-transcript-'));
   try {
     assert.equal(await readNativeTranscript(join(root, 'missing')), undefined);
     const runtimeHome = await engineHome(root, {});
@@ -178,7 +178,7 @@ test('the observer publishes the transcript as an operator-only diagnostic that 
 });
 
 test('non-session entries are skipped and a sessions root that is not a directory is refused', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-transcript-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-transcript-'));
   try {
     const runtimeHome = await engineHome(root, { 'session-a': rows() });
     const sessions = join(runtimeHome, '.grok', 'sessions');

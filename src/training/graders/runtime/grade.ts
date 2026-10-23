@@ -142,5 +142,5 @@ function resultIdentity(options: GradeOptions, identity = options.calibration.id
     identity: { calibration: identity, calibrationDigest: stableDigest(calibration), escalation: stableDigest(grader.escalate),
       teacherPolicy: stableDigest({ escalation: grader.calibration === 'identity' ? null : teacherPolicyDigest(grader.teachers.find(t => t.id === grader.escalate.to)!),
         uncalibrated: grader.uncalibrated }),
-      scoringPolicy: stableDigest({ version: 'paideia.grading.v1', questions: grader.questions, gates: grader.gates, score: grader.score }) } };
+      scoringPolicy: stableDigest({ version: 'spawnfile.training.grading.v1', questions: grader.questions, gates: grader.gates, score: grader.score }) } };
 }

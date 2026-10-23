@@ -3,7 +3,7 @@ import { selectedFiles } from './splits.js';
 
 /** Contains no native inputs or executable evaluation record. */
 export interface CostRecord {
-  schema: 'paideia.cost-record.v1';
+  schema: 'spawnfile.training.cost-record.v1';
   id: string;
   group?: string;
   lineage?: string[];
@@ -11,7 +11,7 @@ export interface CostRecord {
   costChecks: Array<{ check: CheckNode; live: boolean }>;
 }
 export interface CostDataset {
-  schema: 'paideia.cost-dataset.v1';
+  schema: 'spawnfile.training.cost-dataset.v1';
   id: string;
   subject?: string;
   sourceDigest: string;
@@ -23,7 +23,7 @@ export interface CostDataset {
 export function projectDatasetCost(dataset: ResolvedDataset): CostDataset {
   const profiles = new Set<string>();
   for (const record of dataset.records) if (typeof record.setup?.profile === 'string') profiles.add(record.setup.profile);
-  return { schema: 'paideia.cost-dataset.v1', id: dataset.id, subject: dataset.subject,
+  return { schema: 'spawnfile.training.cost-dataset.v1', id: dataset.id, subject: dataset.subject,
     sourceDigest: dataset.sourceDigest, structureDigest: dataset.sharedPlanDigest,
     preparation: { status: 'unverified', profiles: [...profiles].sort(), checks: ['availability', 'locks', 'parameter-semantics'] },
     records: dataset.records.map(projectRecordCost) };
@@ -39,5 +39,5 @@ function projectRecordCost(record: ResolvedRecord): CostRecord {
   }
   for (const turn of record.turns ?? []) for (const check of turn.checks ?? []) add(check);
   for (const check of record.live.checks) add(check, true);
-  return { schema: 'paideia.cost-record.v1', id: record.id, group: record.group, ...(record.lineage ? { lineage: [...record.lineage] } : {}), selectedFiles: structuredClone(selectedFiles(record)), costChecks };
+  return { schema: 'spawnfile.training.cost-record.v1', id: record.id, group: record.group, ...(record.lineage ? { lineage: [...record.lineage] } : {}), selectedFiles: structuredClone(selectedFiles(record)), costChecks };
 }

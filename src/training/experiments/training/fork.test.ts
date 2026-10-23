@@ -9,7 +9,7 @@ import { repairDigest } from '../repair/index.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 it('resumes interrupted training fork initialization exactly once with cumulative counters', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-training-fork-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-training-fork-')); roots.push(root);
   const options = { id: 'parent', baseline: { id: 'baseline' }, native: { adapter: { id: 'fixture' } },
     inference: { provider: { id: 'fixture' }, model: 'model' }, budget: { maxMetricCalls: 4, maxProposals: 1 },
     checkpoint: { directory: join(root, 'parent'), identity: 'original', maxRecoveryAttempts: 2 } } as TrainingOptions;

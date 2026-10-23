@@ -5,3 +5,7 @@ export * from "./redaction.js";
 export * from "./types.js";
 export * from "./volumeNames.js";
 export * from "./daimonCodexDocker.js";
+
+export { legacyWireAliases, canonicalWireId, compatibleWireLiteral, wireIdMatches, hasLegacyTrainingDistribution } from './trainingLegacyWire.js';
+export { trainingEnvironment, normalizedTrainingEnvironment } from './trainingLegacyEnvironment.js';
+export { checkTrainingFilename, readTrainingBytes } from './trainingLegacyFiles.js';

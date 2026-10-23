@@ -29,7 +29,7 @@ const nextTurn = () => new Promise<void>(resolve => setImmediate(resolve));
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'grader-models-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml');
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'calibration.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'calibration.json',
     teachers: [{ id: 't', provider: 'claude', model: 'teacher' }],
     models: ['a', 'b'].map(id => ({ id, backend: 'jev-http', endpoint: `http://localhost/${id}`, name: id })),
     escalate: { to: 't', between: [0.4, 0.6] },
@@ -39,7 +39,7 @@ async function fixture() {
     group: `g${i}`, good: i % 2 === 0, rawPGood: 0.5, source: 'human' as const }));
   const split = splitCalibration(population, '0');
   const fit = new Set(split.fit.map(row => row.group));
-  const labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { h: { kind: 'human', name: 'Human' } },
+  const labels = { schema: 'spawnfile.training.labels.v1', grader: 'g', labelers: { h: { kind: 'human', name: 'Human' } },
     labels: population.map((row, i) => {
       const output = { id: row.group, good: row.good };
       const instances = expandInstances(grader, output);

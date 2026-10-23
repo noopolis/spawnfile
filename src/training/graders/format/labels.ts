@@ -1,3 +1,5 @@
+import { checkTrainingFilename } from '../../platform/index.js';
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
@@ -13,7 +15,7 @@ const labelerSchema = z.union([
   z.strictObject({ kind: z.literal('editor'), name: z.string().min(1), source: z.string().min(1).optional() }),
 ]);
 export const labelsSchema = z.strictObject({
-  schema: z.literal('paideia.labels.v1'), grader: identifier,
+  schema: compatibleWireLiteral('spawnfile.training.labels.v1'), grader: identifier,
   labelers: z.record(identifier, labelerSchema),
   labels: z.array(z.strictObject({
     id: identifier, lineage: identifier,
@@ -85,6 +87,7 @@ async function resolveValue(value: Label['output'], directory: string, label: st
 }
 
 export async function loadLabels(source: Grader['golden'], grader: Grader): Promise<{ labels: Labels; goldenDigest: string }> {
+  if (typeof source === 'string') checkTrainingFilename(source);
   const labels = typeof source === 'string' ? parseLabelsYaml(await readFile(source, 'utf8'), grader)
     : parseLabels({ ...source, grader: source.grader ?? grader.id }, grader);
   const directory = typeof source === 'string' ? path.dirname(source) : sourceDirectory(grader);

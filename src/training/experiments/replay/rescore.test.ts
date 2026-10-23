@@ -12,7 +12,7 @@ test('appends a new immutable terminal evaluation without workspaces, native wor
   const before = await readFile(originalPath);
   const source = (await store.readReplay('trial', options.access)).evaluations[0]!;
   const rescored = await rescoreStoredTrial(options);
-  expect(rescored).toMatchObject({ schema: 'paideia.rescore.v1', scope: 'final-stages', status: 'pass', execution: 'completed',
+  expect(rescored).toMatchObject({ schema: 'spawnfile.training.rescore.v1', scope: 'final-stages', status: 'pass', execution: 'completed',
     original: { evaluationId: 'original', digest: source.digest, status: 'fail', candidateId: 'candidate' },
     evaluation: { status: 'pass' }, criteria: { datasetId: 'revised-criteria', stages: options.dataset.records[0]!.effectiveStages } });
   expect(rescored.coverage).toEqual(report.snapshot.coverage);
@@ -64,7 +64,7 @@ test('only explicit rescoring invokes its configured judge, with frozen criteria
       model: 'review-model', usage: { inputTokens: 4, cachedInputTokens: null, outputTokens: 1, reasoningTokens: null, source: 'fixture-judge' }, route: 'test' };
   });
   const judge: InferenceProvider = { id: 'test', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false }, generate };
-  const yaml = `schema: paideia.dataset.v1
+  const yaml = `schema: spawnfile.training.dataset.v1
 id: revised-criteria
 checks: [{id: prose, eval: llm-rubric, input: output.text, evidence: 'input:files', judge: editor, rubric: {file: rubric.md}, minimum: 0.8}]
 records: [{id: story, input: {prompt: Never execute}, context: {origin: new}}]

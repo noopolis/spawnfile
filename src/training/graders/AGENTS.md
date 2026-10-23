@@ -4,7 +4,7 @@ Owns runtime-neutral grader parsing, instance projections, label consensus,
 calibration, aggregation and calibrated runtime orchestration. Public seam:
 index.ts and focused child barrels. Runtime decisions use injected contracts.
 Never import inference, adapters, experiments, optimization or CLI code.
-Provider construction/transports and deep Paideia check validation belong to callers.
+Provider construction/transports and deep Training check validation belong to callers.
 Runtime identity checks precede scoring; escalation groups share one call per
 projection and overflow remains missing. The neutral admission planner orders only
 requested projections by first instance, including forced-teacher requests. Labels never enter grading projections.

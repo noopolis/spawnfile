@@ -8,7 +8,7 @@ export interface EvidenceUnit {
   digest: string;
   value: string | number | boolean | null | unknown[] | Record<string, never>;
 }
-export interface EvidencePacket { schema: 'paideia.evidence-units.v1'; units: EvidenceUnit[] }
+export interface EvidencePacket { schema: 'spawnfile.training.evidence-units.v1'; units: EvidenceUnit[] }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 
 /** Lossless, deterministic primitive leaves. IDs attest pointers, never factual support. */
@@ -46,5 +46,5 @@ export function evidenceUnits(sources: Readonly<Record<string, unknown>>): Evide
     } else throw new Error('Evidence must contain finite JSON values');
   };
   for (const source of Object.keys(sources).sort()) walk(sources[source], source, '', 0);
-  return { schema: 'paideia.evidence-units.v1', units };
+  return { schema: 'spawnfile.training.evidence-units.v1', units };
 }

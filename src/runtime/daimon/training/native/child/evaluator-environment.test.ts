@@ -11,11 +11,11 @@ it('never inherits the evaluator TypeSafe key or secret-file binding into the su
   f.launch.workspace.target = f.launch.workspace.source;
   for (const row of f.launch.projections) row.target = row.source;
   vi.stubEnv('TYPESAFE_API_KEY', 'EVALUATOR_ONLY_MARKER');
-  vi.stubEnv('PAIDEIA_TYPESAFE_SECRET_FILE', '/run/paideia/secrets/typesafe');
-  vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', '/run/paideia/evaluator-routes.json');
+  vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', '/run/spawnfile-training/secrets/typesafe');
+  vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', '/run/spawnfile-training/evaluator-routes.json');
   const env = await nativeChildEnvironment(f.launch);
   expect(env, 'evaluator secret never enters subject environment').not.toHaveProperty('TYPESAFE_API_KEY');
-  expect(env).not.toHaveProperty('PAIDEIA_TYPESAFE_SECRET_FILE');
-  expect(env).not.toHaveProperty('PAIDEIA_EVALUATOR_ROUTES_FILE');
+  expect(env).not.toHaveProperty('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE');
+  expect(env).not.toHaveProperty('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE');
   expect(JSON.stringify(env)).not.toContain('EVALUATOR_ONLY_MARKER');
 });

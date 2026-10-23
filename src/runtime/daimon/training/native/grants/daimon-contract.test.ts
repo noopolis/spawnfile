@@ -11,7 +11,7 @@ import { loadDaimonGrokGrantAuthority } from './authority.js';
 import { daimonGrokInferenceClientPin as PIN } from './pins.js';
 import { scriptedBrokerSocket } from './test-socket.js';
 
-/** Pins Paideia's broker-grant binding to the built registry checkout; mandatory in CI, opt-in locally. */
+/** Pins Training's broker-grant binding to the built registry checkout; mandatory in CI, opt-in locally. */
 let daimon: Record<string, unknown> | undefined;
 const packageName = daimonCheckoutRuntime();
 if (packageName) {
@@ -31,7 +31,7 @@ const grantFrame = (request: Record<string, unknown>, n: number) => ({ kind: 'in
   limits: { maxRequests: 64, maxTokens: 2_000_000, timeoutMs: 600_000 } });
 
 describe.skipIf(!daimon)('Daimon inference grant contract parity (requires SPAWNFILE_DAIMON_CHECKOUT)', () => {
-  it('renders production client config bytes that hash to every Paideia pin', async () => {
+  it('renders production client config bytes that hash to every Training pin', async () => {
     broker = await scriptedBrokerSocket(() => undefined);
     const authority = await loadDaimonGrokGrantAuthority(broker.socketPath, async () => daimon);
     for (const model of grokGrantModels) for (const reasoningEffort of grokGrantReasoningEfforts) {
@@ -51,7 +51,7 @@ describe.skipIf(!daimon)('Daimon inference grant contract parity (requires SPAWN
       return grantFrame(request, ++issued);
     });
     const socketPath = broker.socketPath;
-    root = await mkdtemp(path.join(tmpdir(), 'paideia-grant-contract-')); await chmod(root, 0o700);
+    root = await mkdtemp(path.join(tmpdir(), 'training-grant-contract-')); await chmod(root, 0o700);
     const pool = new GrokGrantPool({ id: socketPath, authority: () => loadDaimonGrokGrantAuthority(socketPath, async () => daimon), capBackoffMs: [1, 2] });
     const seen: { env: NodeJS.ProcessEnv; config: string; model: string }[] = [];
     const process = (options: ProcessOptions): RunningProcess => ({ write: async () => undefined, endInput: () => undefined,

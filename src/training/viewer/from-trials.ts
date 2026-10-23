@@ -47,7 +47,7 @@ export function projectTrials(options: TrialProjectionOptions): ViewerData {
   if (options.comparison && options.optimizer) throw new Error('Authored comparison cannot contain optimizer provenance');
   const measurement = (trial:TrialReport) => options.rescores?.findLast(score=>score.runId===trial.id) ?? trial;
   const data: ViewerData = {
-    schema: 'paideia.viewer.v1', experiment: { id: options.id, title: options.title, phase: options.phase,
+    schema: 'spawnfile.training.viewer.v1', experiment: { id: options.id, title: options.title, phase: options.phase,
       status: options.status, updatedAt: options.updatedAt }, cases: options.cases,
     trials: options.trials.map((trial) => ({ id: trial.id, caseId: trial.recordId, candidateId: trial.candidateId,
       status: `${measurement(trial).status} (${measurement(trial) === trial ? '' : `rescored; original ${trial.status}; `}${trial.execution}; host work ${trial.hostWork})`, score: displayedScore(measurement(trial), options.scoring),

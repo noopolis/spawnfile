@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -22,7 +23,7 @@ export async function readParentCheckpoints(receipt: MeasurementRepairReceipt) {
   };
   const [command, training, host] = await Promise.all([read('command'), read('training'), read('host')]);
   await read('optimizer');
-  if (command.schema !== 'paideia.command-checkpoint.v1' || command.id !== receipt.parent.experimentId ||
+  if (canonicalWireId(command.schema) !== 'spawnfile.training.command-checkpoint.v1' || command.id !== receipt.parent.experimentId ||
       command.identity !== receipt.parent.executionIdentity || training.state?.identity !== receipt.parent.trainingIdentity ||
       trainingDigest(training.state) !== training.digest) throw new Error('Parent checkpoint identities disagree with repair authority');
   if (training.state.optimizer !== undefined) throw new Error('Measurement repair cannot reopen frozen selection or sealed tests');

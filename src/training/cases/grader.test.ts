@@ -6,18 +6,18 @@ import { parseDatasetYaml, resolveDataset } from './index.js';
 import { validateGraderParameters } from './grader.js';
 import { resolveStages } from './plans.js';
 
-const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'report', golden: 'golden.yaml', calibration: 'calibration.json',
+const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'report', golden: 'golden.yaml', calibration: 'calibration.json',
   context: { evidence: { description: 'Sources' } }, teachers: [{ id: 'teacher', provider: 'claude', model: 'model' }],
   model: { backend: 'ollama-logprobs', endpoint: 'http://localhost:11434', name: 'model' },
   escalate: { to: 'teacher', between: [0.4, 0.6] }, questions: [{ id: 'clear', type: 'yes-no', expected: 'yes', reads: ['context.evidence', 'output.body'] }],
   score: { method: 'weighted' } });
-const calibration = { schema: 'paideia.grader-calibration.v1', identity: createCalibrationIdentity(grader, {
+const calibration = { schema: 'spawnfile.training.grader-calibration.v1', identity: createCalibrationIdentity(grader, {
   backendModel: 'model', promptTemplateVersion: 'v1', golden: 'a'.repeat(64), seed: '', exclusions: [],
 }), questions: {} };
 const check = { id: 'quality', eval: 'grader', grader: 'rubrics/report.yaml', input: 'artifact:article', context: { evidence: 'input:files' } };
 function resolve(overrides: Record<string, unknown> = {}, file = grader, source = JSON.stringify(calibration)) {
   const resources: Record<string, string> = { 'rubrics/report.yaml': stringify(file), 'rubrics/calibration.json': source };
-  return resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id: 'dataset', checks: [{ ...check, ...overrides }],
+  return resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id: 'dataset', checks: [{ ...check, ...overrides }],
     records: [{ id: 'r', input: { prompt: 'Write' }, outputs: { article: 'out.json' } }] }), { sourceName: '/project/dataset.yaml' }), {
     readCriterionFile: path => { if (!resources[path]) throw new Error('missing file'); return resources[path]; },
   });
@@ -92,7 +92,7 @@ describe('grader resolution', () => {
 });
 
 it('resolves explicit identity grading with per-record protected context and no calibration sidecar', () => {
-  const fixed = parseGrader({ schema: 'paideia.grader.v1', id: 'fixed', calibration: 'identity',
+  const fixed = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'fixed', calibration: 'identity',
     context: { evidence: { description: 'Human frozen grounding' } },
     model: { backend: 'typesafe', name: 'jev-1.13.0' }, max_spend_usd: 1,
     questions: [{ id: 'q', type: 'yes-no', ask: 'Does the answer give the count?', expected: 'yes', reads: ['context.evidence', 'output.body'] }],
@@ -105,17 +105,17 @@ it('resolves explicit identity grading with per-record protected context and no 
 
 it('resolves the three-family example and distinct fixed question sets on separate records', async () => {
   const root = 'examples/training/fixed-questions/evals/';
-  const source = await readFile(`${root}delivery.paideia.yaml`, 'utf8');
+  const source = await readFile(`${root}delivery.spawnfile-training.yaml`, 'utf8');
   const graderSource = await readFile(`${root}item.grader.yaml`, 'utf8');
   const options = { readCriterionFile: () => graderSource, registry: { judges: { prose: { version: 'test' } } } };
-  const resolved = resolveDataset(parseDatasetYaml(source, { sourceName: '/project/delivery.paideia.yaml' }), options);
+  const resolved = resolveDataset(parseDatasetYaml(source, { sourceName: '/project/delivery.spawnfile-training.yaml' }), options);
   expect(resolved.records[0]!.effectiveStages[0]!.checks.map(node => node.eval)).toEqual(['word-count', 'values-in-source', 'grader', 'llm-rubric']);
   const first = { ...check, grader: 'first.yaml', context: { evidence: 'context:grounding' } };
   const second = { ...structuredClone(first), grader: 'second.yaml' };
-  const fixed = parseGrader({ ...grader, calibration: 'identity', teachers: [], golden: { schema: 'paideia.labels.v1', labels: [], labelers: {} },
+  const fixed = parseGrader({ ...grader, calibration: 'identity', teachers: [], golden: { schema: 'spawnfile.training.labels.v1', labels: [], labelers: {} },
     escalate: { to: 'none', between: [0, 1] } });
   const files = { 'first.yaml': stringify(fixed), 'second.yaml': stringify({ ...fixed, questions: [{ ...fixed.questions[0], ask: 'A distinct question?', expected: 'no' }] }) };
-  const cases = resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id: 'd', records: [
+  const cases = resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id: 'd', records: [
     { id: 'a', input: { prompt: 'Task A' }, outputs: { article: 'a.json' }, context: { grounding: 'Facts A' }, checks: [first] },
     { id: 'b', input: { prompt: 'Task B' }, outputs: { article: 'b.json' }, context: { grounding: 'Facts B' }, checks: [second] },
   ] })), { readCriterionFile: name => files[name as keyof typeof files] });

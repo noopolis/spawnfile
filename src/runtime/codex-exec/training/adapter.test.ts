@@ -9,7 +9,7 @@ import { codexArguments, combineSignals, createCodexAdapter } from './adapter.js
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 async function fixture(): Promise<{ input: SubjectStart; authHome: string }> {
-  const root = await mkdtemp(path.join(tmpdir(), 'paideia-codex-unit-')); roots.push(root);
+  const root = await mkdtemp(path.join(tmpdir(), 'training-codex-unit-')); roots.push(root);
   const authHome = path.join(root, 'auth'); await mkdir(authHome); await writeFile(path.join(authHome, 'auth.json'), '{}');
   return { authHome, input: { trialId: 'trial', workspacePath: path.join(root, 'workspace'), runtimeHomePath: path.join(root, 'runtime'),
     instructions: 'candidate instructions', model: 'explicit', onObservation: () => undefined } };

@@ -13,10 +13,10 @@ export const daimonProjectionGolden: GrokBrokerProjection = {
   "workerUid": 2200,
   "slot": 0,
   "profilePath": "/var/lib/daimon-workers/2200/.grok/sandbox.toml",
-  "profileSha256": "2a1dcab471092eab77565838b17a5cf138489e3daa1349612ebcedcdb69e23c4",
+  "profileSha256": "efbc0366c3f754a23aceed7cb063ce67b49ee1b87956542c2193e6c34b45e761",
   "denyPaths": [
-    "/run/paideia",
-    "/run/paideia/control",
+    "/run/spawnfile-training",
+    "/run/spawnfile-training/control",
     "/run/training/inputs",
     "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
     "/var/lib/spawnfile/daimon/grok-subscription-realm"
@@ -45,7 +45,7 @@ export const daimonProjectionGolden: GrokBrokerProjection = {
     "eventsPath": "/var/lib/daimon-workers/2200/.grok/sessions/sandbox-events.jsonl"
   }
 };
-export const daimonProjectionGoldenSha256 = '542d5feed20765ce8eff4122a109a499cf85249829a40368b32e5a805a7156f0';
+export const daimonProjectionGoldenSha256 = 'eb9fe5430db97b3e9aea8d3a4ec4b2a4771db15917d7c41594338599d96932f5';
 export const daimonClockedProjectionGolden: GrokBrokerProjection = {
   "version": "noopolis.daimon.grok-broker-projection.v3",
   "agentId": "foreman",
@@ -54,10 +54,10 @@ export const daimonClockedProjectionGolden: GrokBrokerProjection = {
   "workerUid": 2200,
   "slot": 0,
   "profilePath": "/var/lib/daimon-workers/2200/.grok/sandbox.toml",
-  "profileSha256": "2a1dcab471092eab77565838b17a5cf138489e3daa1349612ebcedcdb69e23c4",
+  "profileSha256": "efbc0366c3f754a23aceed7cb063ce67b49ee1b87956542c2193e6c34b45e761",
   "denyPaths": [
-    "/run/paideia",
-    "/run/paideia/control",
+    "/run/spawnfile-training",
+    "/run/spawnfile-training/control",
     "/run/training/inputs",
     "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
     "/var/lib/spawnfile/daimon/grok-subscription-realm"
@@ -99,7 +99,7 @@ export const daimonClockedProjectionGolden: GrokBrokerProjection = {
     "eventsPath": "/var/lib/daimon-workers/2200/.grok/sessions/sandbox-events.jsonl"
   }
 };
-export const daimonClockedProjectionGoldenSha256 = 'c2494499be3778dcdaec460bf3d24b1cc933ed0622079329792c87732ed9e0ac';
+export const daimonClockedProjectionGoldenSha256 = 'c06709c076b4ba1a15c10f0f3f7c1bcd46217355d81e1cfb7d1d2c25194fbd68';
 
 export const fixtureNonce = '5f0e2a1c9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f';
 const realm = ['/var/lib/spawnfile/daimon/grok-bootstrap-auth', '/var/lib/spawnfile/daimon/grok-subscription-realm'];
@@ -110,31 +110,31 @@ const realm = ['/var/lib/spawnfile/daimon/grok-bootstrap-auth', '/var/lib/spawnf
  * Always evaluator roots the slot receipt denies to the worker uid — never the
  * subject's own workspace or runtime home, which are the two writable roots.
  */
-export const grokProtectedPaths = (root: string): string[] => [join(root, 'run-paideia'), join(root, 'paideia')];
+export const grokProtectedPaths = (root: string): string[] => [join(root, 'run-training'), join(root, 'training')];
 
 /**
  * Turns a Codex launch fixture into a Grok v2 child launch shaped like the
  * broker-capable training container.
  *
  * The container fixes `<slot>/workspace`, `<slot>/runtime-home` and
- * `<slot>/state` as siblings and keeps every Paideia control input in the
- * denied `/run/paideia` root, so the fixture root stands in for the slot root:
+ * `<slot>/state` as siblings and keeps every Training control input in the
+ * denied `/run/spawnfile-training` root, so the fixture root stands in for the slot root:
  * the trial runtime home is the single writable projection, the control root is
- * its sibling `state/`, and config/token/env move into the denied `paideia/`
+ * its sibling `state/`, and config/token/env move into the denied `training/`
  * evaluator root. Every evaluator root is a real directory under `root`.
  */
 export async function grokLaunchFrom<T extends NativeLaunch>(launch: T, root: string, runtimeHome = join(root, 'runtime')): Promise<T & GrokNativeLaunch> {
   const slot = join(root, 'slots', '0');
   const state = join(root, 'state');
-  const controls = join(root, 'paideia');
-  const roots = { 'run-root': join(root, 'run-paideia'), context: controls, 'sealed-inputs': join(root, 'sealed'),
+  const controls = join(root, 'training');
+  const roots = { 'run-root': join(root, 'run-training'), context: controls, 'sealed-inputs': join(root, 'sealed'),
     'judge-home': join(root, 'judge-grok-home'), 'slot-ledger': join(slot, 'usage') } as const;
   for (const path of [...Object.values(roots), state]) await mkdir(path, { recursive: true, mode: 0o700 });
   const moved = { config: join(controls, 'config.json'), tokenFile: join(controls, 'token'), envFile: join(controls, 'environment') } as const;
   for (const key of ['config', 'tokenFile', 'envFile'] as const) { await copyFile(launch[key], moved[key]); await chmod(moved[key], 0o600); }
   const home = launch.projections.find(row => row.role === 'home')!;
   const next = launch as unknown as T & GrokNativeLaunch;
-  Object.assign(next, { schema: 'paideia.daimon-native.launch.v2', agent: { id: launch.agent.id, engine: 'grok', model: 'grok-4.6', reasoningEffort: 'low' },
+  Object.assign(next, { schema: 'spawnfile.training.daimon-native.launch.v2', agent: { id: launch.agent.id, engine: 'grok', model: 'grok-4.6', reasoningEffort: 'low' },
     credentials: [], limits: { maxTokens: 8000000, wakeTokenCeiling: 1000000 }, ...moved, controlRoot: state,
     projections: [{ role: 'home', source: runtimeHome, target: home.source === home.target ? runtimeHome : home.target }],
     broker: { projectionVersion: 'noopolis.daimon.grok-broker-projection.v3', workerConfigVariant: launch.taskClock ? 'clocked' : 'unclocked',

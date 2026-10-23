@@ -11,7 +11,7 @@ export function simulatedOptions(): {
     id: 'typescript-gepa', components: { 'AGENTS.md': '\n  Keep identity.\n\n', 'skills/report/SKILL.md': '# Report\n' },
     trainCaseIds: ['train'], validationCaseIds: ['validation-secret'],
     budget: { maxMetricCalls: 10, maxProposals: 2 }, seed: 7,
-    bridge: { command: path.resolve('src/training/dspy/.venv/bin/paideia-dspy'), cwd: process.cwd(), timeoutMs: 10_000 },
+    bridge: { command: path.resolve('src/training/dspy/.venv/bin/spawnfile-training-dspy'), cwd: process.cwd(), timeoutMs: 10_000 },
     validateComponents: () => undefined,
     evaluate: async (request) => {
       evaluations.push(request);

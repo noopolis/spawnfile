@@ -11,7 +11,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 it('rejects a real FIFO without waiting for a writer', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-cli-fifo-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-cli-fifo-')); roots.push(root);
   const fifo = join(root, 'input');
   await execute('mkfifo', [fifo], { timeout: 3000 });
   const script = `

@@ -19,7 +19,7 @@ const observed: ObservationCoverage[] = [{ channel: 'tools', completeness: 'comp
 
 /** The newsroom shape: one artifact the filing produces and the sequence that must produce it. */
 function newsroom() {
-  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  return resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: newsroom
 stages:
   - id: accepted-article
@@ -54,7 +54,7 @@ function closedTurn(coverage: ObservationCoverage[], status: SubjectTurnResult['
 }
 /** One required artifact and nothing else, so the trial's verdict is exactly its verdict. */
 function filing() {
-  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  return resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: filing
 stages:
   - id: accepted-filing
@@ -197,7 +197,7 @@ it('never turns an unmeasurable evaluation into a behavioural zero', async () =>
     await writeFile(join(input.workspacePath, 'article.json'), '{"body":"Filed"}');
     return deferredTurn(observed);
   });
-  task.options.record = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  task.options.record = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: newsroom-broken
 checks:
 - {id: body, eval: contains-any, input: 'artifact:accepted-article#not-a-pointer', values: [Filed]}

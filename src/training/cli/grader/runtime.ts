@@ -1,3 +1,5 @@
+import { checkTrainingFilename } from '../../platform/index.js';
+import { canonicalWireId } from '../../contracts/index.js';
 import { parseYaml } from '../../graders/format/index.js';
 import { buildAtomicRuntime } from './atomic/index.js';
 import { readFile } from 'node:fs/promises';
@@ -54,6 +56,7 @@ export async function buildGradingRuntime(graderFile: string, dependencies: Grad
 /** Public grader-file dispatch used by native training/evaluation hosts. */
 export async function buildExecutableGradingRuntime(file: string, dependencies: GraderDependencies = {}, signal?: AbortSignal) {
   signal?.throwIfAborted();
+  checkTrainingFilename(file);
   const value = parseYaml(await readFile(file, 'utf8')) as { schema?: string };
-  return value?.schema === 'paideia.atomic-grader.v1' ? buildAtomicRuntime(file, dependencies) : buildGradingRuntime(file, dependencies, signal);
+  return canonicalWireId(value?.schema) === 'spawnfile.training.atomic-grader.v1' ? buildAtomicRuntime(file, dependencies) : buildGradingRuntime(file, dependencies, signal);
 }

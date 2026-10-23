@@ -78,7 +78,7 @@ describe('protocol/process failures', () => {
 
   it('reports failed executable launch with zero host attempts', async () => {
     const { options } = simulatedOptions();
-    options.bridge.command = '/missing-paideia-dspy';
+    options.bridge.command = '/missing-spawnfile-training-dspy';
     await expect(runDspyOptimization(options)).rejects.toMatchObject({ evidence: { evaluations: 0, proposals: 0, hostWork: 'settled' },
       message: expect.stringContaining('ENOENT') });
   });

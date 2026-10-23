@@ -20,9 +20,9 @@ it('substitutes every declared secret and never publishes a named environment va
 });
 
 it('publishes a credential path as a class and keeps ordinary paths readable', () => {
-  const result = redactNativeDiagnostic('cannot read /var/lib/spawnfile/realm/auth.json for /run/paideia/config.json', []);
+  const result = redactNativeDiagnostic('cannot read /var/lib/spawnfile/realm/auth.json for /run/spawnfile-training/config.json', []);
   expect(result.clean).toBe(true);
-  expect(result.text).toBe(`cannot read ${redactedPathMarker} for /run/paideia/config.json`);
+  expect(result.text).toBe(`cannot read ${redactedPathMarker} for /run/spawnfile-training/config.json`);
 });
 
 it('refuses to call a stream clean when it carries a credential nobody declared', () => {
@@ -47,7 +47,7 @@ it('treats a declared value too short to carry credential entropy as not a redac
 });
 
 async function capture(): Promise<{ root: string; make: (secrets?: string[]) => ReturnType<typeof childDiagnostics> }> {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'paideia-diagnostics-')));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'training-diagnostics-')));
   await chmod(root, 0o700);
   roots.push(root);
   return { root, make: (secrets = []) => childDiagnostics(root, 'trial', 'a'.repeat(64), secrets) };
@@ -104,15 +104,15 @@ it('errs toward withholding: any long opaque run that is not a content digest is
 it('publishes a frame schema and its detector when the frame message itself cannot be published', async () => {
   const f = await capture();
   const leaking = await f.make();
-  leaking.append(Buffer.from(`${JSON.stringify({ schema: 'paideia.daimon-native.start-failed.v1',
+  leaking.append(Buffer.from(`${JSON.stringify({ schema: 'spawnfile.training.daimon-native.start-failed.v1',
     error: `upstream refused Bearer sk-${'A1b2C3d4'.repeat(6)}` })}\n`), false);
   await leaking.save(1, null);
   const diagnostic = leaking.startupFailure(new Error('boom')).diagnostic;
   // The bytes are withheld, but the layer that failed and the reason it was withheld both land.
   expect(diagnostic.redaction).toBe('withheld');
-  expect(diagnostic.frames).toEqual([{ stream: 'stderr', schema: 'paideia.daimon-native.start-failed.v1', withheldBy: ['bearer', 'opaque-run'] }]);
+  expect(diagnostic.frames).toEqual([{ stream: 'stderr', schema: 'spawnfile.training.daimon-native.start-failed.v1', withheldBy: ['bearer', 'opaque-run'] }]);
   expect(diagnostic.withheld).toEqual([{ stream: 'stderr', bytes: expect.any(Number), lines: 2,
-    frame: 'paideia.daimon-native.start-failed.v1', detectors: ['bearer', 'opaque-run'] }]);
+    frame: 'spawnfile.training.daimon-native.start-failed.v1', detectors: ['bearer', 'opaque-run'] }]);
   expect(diagnostic.reason).toBe('Native worker exited with code 1: boom');
   expect(diagnostic.exitCode).toBe(1);
   expect(JSON.stringify(diagnostic)).not.toContain('sk-');
@@ -122,11 +122,11 @@ it('publishes a caller bootstrap frame as the reason when the worker itself neve
   const f = await capture();
   const bootstrap = await f.make();
   bootstrap.append(Buffer.from('plain progress line\n'), false);
-  bootstrap.append(Buffer.from(`${JSON.stringify({ schema: 'example.paideia.bootstrap-failed.v1',
+  bootstrap.append(Buffer.from(`${JSON.stringify({ schema: 'example.spawnfile.training.bootstrap-failed.v1',
     message: 'launch.v2 receipt rejected by the private bootstrap' })}\n`), false);
   await bootstrap.save(1, null);
   const diagnostic = bootstrap.startupFailure(new Error('Native worker exited or failed before readiness')).diagnostic;
-  expect(diagnostic.reason).toBe('example.paideia.bootstrap-failed.v1: launch.v2 receipt rejected by the private bootstrap');
+  expect(diagnostic.reason).toBe('example.spawnfile.training.bootstrap-failed.v1: launch.v2 receipt rejected by the private bootstrap');
   expect(diagnostic.redaction).toBe('applied');
 });
 
@@ -137,7 +137,7 @@ it('hands the caller an unredacted operator capture it never publishes itself', 
   await leaking.save(1, null);
   const failure = leaking.startupFailure(new Error('boom'));
   expect(failure.capture.basename).toBe('OPERATOR-ONLY.native-startup-capture.json');
-  expect(JSON.parse(failure.capture.content)).toMatchObject({ schema: 'paideia.daimon-native.operator-capture.v1', exitCode: 1 });
+  expect(JSON.parse(failure.capture.content)).toMatchObject({ schema: 'spawnfile.training.daimon-native.operator-capture.v1', exitCode: 1 });
   expect(failure.capture.content).toContain('unit-transport-value-not-a-login');
   expect(JSON.stringify(failure.diagnostic)).not.toContain('unit-transport-value-not-a-login');
 });

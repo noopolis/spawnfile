@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../shared/index.js';
 import { type TrainingContext, type TrainingExecution } from "../compiler/training/index.js";
 import { launchTrainingContainer } from "../compiler/training/container/index.js";
 import { runTrainingDocker } from "../compiler/training/container/process.js";
@@ -24,7 +25,7 @@ const validCostReceipt = (line: string): boolean => {
   try {
     const receipt: unknown = JSON.parse(line);
     return typeof receipt === "object" && receipt !== null &&
-      "schema" in receipt && receipt.schema === "paideia.training-cost-plan.v1" &&
+      "schema" in receipt && canonicalWireId(receipt.schema) === "spawnfile.training.training-cost-plan.v1" &&
       "modelCallsMade" in receipt && receipt.modelCallsMade === 0;
   } catch { return false; }
 };

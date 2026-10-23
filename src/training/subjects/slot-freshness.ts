@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../contracts/index.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open, readFile, rename, unlink } from 'node:fs/promises';
@@ -5,9 +6,9 @@ import { dirname, isAbsolute } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import { z } from 'zod';
 
-const schema = 'paideia.daimon-native.grok-slot-freshness.v1';
+const schema = 'spawnfile.training.daimon-native.grok-slot-freshness.v1';
 const nonce = z.string().regex(/^[a-f0-9]{64}$/u);
-const stateSchema = z.strictObject({ schema: z.literal(schema),
+const stateSchema = z.strictObject({ schema: compatibleWireLiteral(schema),
   slots: z.record(z.string().regex(/^(?:0|[1-9][0-9]{0,15})$/u), z.strictObject({ lastGeneration: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), pendingNonce: nonce.optional() })) });
 type State = z.infer<typeof stateSchema>;
 const lockSchema = z.strictObject({ pid: z.number().int().positive(), token: z.string().min(1) });

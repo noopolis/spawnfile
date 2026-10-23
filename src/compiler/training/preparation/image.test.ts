@@ -21,7 +21,7 @@ async function fixture() { const f = await preparationFixture(); roots.push(f.ro
 it("binds actual runtime bytes, locks, recipe, native parent, platform and entry into image identity", async () => {
   const f = await fixture(); const plan = () => planTrainingImage(f.build, f.root, [], f.own);
   const initial = await plan();
-  for (const file of ["own/dist/runtime/trainingCli.js", "own/dist/training/dspy/paideia_dspy/__init__.py", "own/dist/training/dspy/requirements.lock", "integration/entry.ts", "bootstrap/start.ts", "own/dist/cli/index.js", "own/runtime-images/training/Dockerfile"]) {
+  for (const file of ["own/dist/runtime/trainingCli.js", "own/dist/training/dspy/spawnfile_training_dspy/__init__.py", "own/dist/training/dspy/requirements.lock", "integration/entry.ts", "bootstrap/start.ts", "own/dist/cli/index.js", "own/runtime-images/training/Dockerfile"]) {
     const previous = await readFile(path.join(f.root, file)); await f.put(file, "changed");
     expect((await plan()).digest).not.toBe(initial.digest); await writeFile(path.join(f.root, file), previous);
   }
@@ -158,7 +158,7 @@ it("stages only Spawnfile training and runs the integration's hook through its o
     import { writeFile } from 'node:fs/promises';
     await launch(process.argv.slice(2), { beforeTraining: () => writeFile(process.env.HOOK_RECEIPT, 'hook-ran') });`);
   const plan = await planTrainingImage(f.build, f.root, [], f.own);
-  expect(plan.files.every(file => !file.destination.startsWith("paideia/") && !file.destination.startsWith("bridge/"))).toBe(true);
+  expect(plan.files.every(file => !file.destination.startsWith("training/") && !file.destination.startsWith("bridge/"))).toBe(true);
   const parent = fileURLToPath(new URL("../../../../.tmp/", import.meta.url));
   await mkdir(parent, { recursive: true });
   const staging = await mkdtemp(path.join(parent, "training-image-entry-")), receipt = path.join(f.root, "hook.json");
@@ -168,9 +168,9 @@ it("stages only Spawnfile training and runs the integration's hook through its o
   await symlink(path.join(staging, "spawnfile"), path.join(staging, "integration/node_modules/spawnfile"));
   const entry = path.join(staging, "train");
   await writeFile(entry, plan.entry.replace("/usr/local/bin/node", JSON.stringify(process.execPath)).replaceAll("/opt/training", staging));
-  const result = await promisify(execFile)("/bin/sh", [entry, "train", "--spawnfile-context", "/run/paideia/context.json"],
+  const result = await promisify(execFile)("/bin/sh", [entry, "train", "--spawnfile-context", "/run/spawnfile-training/context.json"],
     { env: { ...process.env, HOOK_RECEIPT: receipt } });
-  expect(JSON.parse(result.stdout)).toEqual({ argv: ["train", "--spawnfile-context", "/run/paideia/context.json"], source: "spawnfile" });
+  expect(JSON.parse(result.stdout)).toEqual({ argv: ["train", "--spawnfile-context", "/run/spawnfile-training/context.json"], source: "spawnfile" });
   expect(await readFile(receipt, "utf8")).toBe("hook-ran");
 });
 

@@ -4,7 +4,7 @@ import { createCalibrationIdentity, parseCalibration, type CalibrationFile } fro
 /** Explicit raw probabilities, with zero labeled observations; never a fitted calibration. */
 export function createIdentityCalibration(grader: Grader, backendModel: string, promptTemplateVersion: string): CalibrationFile {
   if (grader.calibration !== 'identity') throw new Error('Identity calibration must be explicitly authored');
-  return parseCalibration({ schema: 'paideia.grader-calibration.v1',
+  return parseCalibration({ schema: 'spawnfile.training.grader-calibration.v1',
     identity: createCalibrationIdentity(grader, { backendModel, promptTemplateVersion,
       golden: stableDigest({ mode: 'identity', labels: null }), seed: '', exclusions: [] }),
     questions: Object.fromEntries(allQuestions(grader).map(question => [question.id, {

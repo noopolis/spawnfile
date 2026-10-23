@@ -18,7 +18,7 @@ describe('bounded process protocol', () => {
 
   it('rejects invalid bounds before launch and reports failed executable launch', async () => {
     expect(() => runProcess(options('', { timeoutMs: 0 }))).toThrow('positive');
-    const missing = runProcess(options('', { command: '/missing-paideia-executable' }));
+    const missing = runProcess(options('', { command: '/missing-training-executable' }));
     const result = await missing.completion;
     expect(result.error).toContain('ENOENT');
     expect((await missing.stop('cleanup')).quiescence).toBe('confirmed');

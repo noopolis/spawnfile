@@ -32,7 +32,7 @@ const within = (candidate: string, root: string): boolean => candidate === root 
  * The one training slot's deny list: Daimon's own protected set for a
  * single-agent organization (Grok bootstrap, realm, and the slot state root that
  * holds the wake-acceptance store) plus everything this container provisions that the subject must not read —
- * the evaluator roots, the caller's protected `/run/paideia` paths, the broker
+ * the evaluator roots, the caller's protected `/run/spawnfile-training` paths, the broker
  * control and registration roots, the grant home root, the inference ledger,
  * the per-slot ledger, turn store and supervisor socket directory.
  *

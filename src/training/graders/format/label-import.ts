@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import { identifier, parseSchema, parseYaml } from './common.js';
 import { labelsSchema } from './labels.js';
@@ -5,7 +6,7 @@ import type { Grader } from './grader.js';
 
 const reference = z.strictObject({ from: z.string().min(1) });
 const importSchema = z.strictObject({
-  schema: z.literal('paideia.label-import.v1'), grader: identifier,
+  schema: compatibleWireLiteral('spawnfile.training.label-import.v1'), grader: identifier,
   labelers: labelsSchema.shape.labelers,
   items: z.array(z.strictObject({
     id: identifier, lineage: identifier,

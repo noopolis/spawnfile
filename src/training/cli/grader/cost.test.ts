@@ -6,7 +6,7 @@ const call: EscalationCostCall = { outputId: 'a', projectionDigest: 'digest', in
 const attempt = { usage: { inputTokens: 20, outputTokens: 3 }, wall_ms: 100 };
 function labels(entries: Record<string, unknown> = {}): Labels {
   const receipt = { instance_keys: ['r', 'q'], projection_digest: 'digest', attempts: [attempt, attempt], ...entries };
-  return { schema: 'paideia.labels.v1', grader: 'g', labelers: { c: { kind: 'model', provider: 'claude', model: 'm' } },
+  return { schema: 'spawnfile.training.labels.v1', grader: 'g', labelers: { c: { kind: 'model', provider: 'claude', model: 'm' } },
     labels: [{ id: 'a', lineage: 'a', output: {}, context: {}, votes: {}, provenance: {
       c: { votes: { q: receipt, r: structuredClone(receipt) } } as Label['provenance'][string] } }] };
 }

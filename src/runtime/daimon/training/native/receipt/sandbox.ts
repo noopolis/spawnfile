@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../../../../training/contracts/index.js';
 import { z } from 'zod';
 import { sha256 } from './paths.js';
 
@@ -9,8 +10,8 @@ const projectionSchema = z.strictObject({
   sandboxArgs: z.array(z.string().max(131072)).length(7),
 });
 export type NativeSandboxProjection = z.infer<typeof projectionSchema>;
-export const nativeSandboxReceiptSchema = 'paideia.daimon-native.sandbox-projection.v1';
-const receiptSchema = z.strictObject({ schema: z.literal(nativeSandboxReceiptSchema), trialId: z.string().min(1),
+export const nativeSandboxReceiptSchema = 'spawnfile.training.daimon-native.sandbox-projection.v1';
+const receiptSchema = z.strictObject({ schema: compatibleWireLiteral(nativeSandboxReceiptSchema), trialId: z.string().min(1),
   configSha256: z.string().regex(/^[a-f0-9]{64}$/u), projectionSha256: z.string().regex(/^[a-f0-9]{64}$/u), projection: projectionSchema });
 export type NativeSandboxReceipt = z.infer<typeof receiptSchema>;
 

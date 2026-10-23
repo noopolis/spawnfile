@@ -36,7 +36,7 @@ function runner(events: unknown[], seen: Seen[], exitCode = 0, patch: object = {
 }
 
 let root: string;
-beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), 'paideia-grant-root-')); await chmod(root, 0o700); });
+beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), 'training-grant-root-')); await chmod(root, 0o700); });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 function setup(events: unknown[] = success, fake = fakeGrantAuthority(), patch: Partial<GrokBrokerInferenceOptions> = {}, exitCode = 0) {
@@ -121,7 +121,7 @@ it('fails a stale realm fast: one CLI call, grant released, no retry on the same
 
 it('fails closed without a broker, pin or private home and never launches a desktop Grok', async () => {
   const seen: Seen[] = [];
-  const unavailable = new GrokGrantPool({ id: 'unset', authority: async () => { throw new Error('PAIDEIA_GROK_BROKER_CONTROL_SOCKET is not set'); } });
+  const unavailable = new GrokGrantPool({ id: 'unset', authority: async () => { throw new Error('SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET is not set'); } });
   const noBroker = createGrokBrokerInference({ pool: unavailable, homeRoot: root, purpose: 'optimizer', reasoningEffort: 'medium', process: runner(success, seen) });
   await expect(noBroker.generate({ prompt: 'p', model: 'grok-4.6' })).rejects.toMatchObject({ kind: 'unsupported' });
   const fake = fakeGrantAuthority();

@@ -2,7 +2,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 export const implementationRoots = new Set(['src', 'viewer', 'tooling']);
-export const generatedDirectories = new Set(['node_modules', 'dist', '.astro', '.venv', 'coverage', '.runtime', '.paideia', '__pycache__', '.pytest_cache']);
+export const generatedDirectories = new Set(['node_modules', 'dist', '.astro', '.venv', 'coverage', '.runtime', '.spawnfile-training', '__pycache__', '.pytest_cache']);
 export const generatedFilePatterns = [...generatedDirectories].map((name) => `**/${name}/**`).concat('.tmp/**', '**/*.egg-info/**');
 
 export function canonicalPath(filename: string): string {
@@ -13,7 +13,7 @@ export function canonicalPath(filename: string): string {
 
 export function pathParts(root: string, filename: string): string[] {
   const parts = path.relative(root, filename).split(path.sep);
-  // Preserve Paideia's module owners inside the imported Spawnfile subtree.
+  // Preserve Training's module owners inside the imported Spawnfile subtree.
   if (parts[0] === 'src' && parts[1] === 'training') {
     return parts[2] === 'viewer' ? parts.slice(2) : ['src', ...parts.slice(2)];
   }

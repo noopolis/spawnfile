@@ -4,7 +4,7 @@ import { projectDatasetCost } from './cost-projection.js';
 import { validateDatasetSplit, validateCostDatasetSplit } from './splits.js';
 
 function dataset(id: string, lineage?: string[]) {
-  return resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id, checks: [{ id: 'ok', eval: 'equals', input: 'output.text', value: 'OK' }],
+  return resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id, checks: [{ id: 'ok', eval: 'equals', input: 'output.text', value: 'OK' }],
     records: [{ id, group: id, ...(lineage ? { lineage } : {}), input: { prompt: 'Do work.' } }] })));
 }
 it('preserves lineage in executable and cost projections and refuses shared ancestors across every role', () => {

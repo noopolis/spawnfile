@@ -25,7 +25,7 @@ function artifact(name: string, value: unknown): ArtifactSnapshot {
     checkpointId: 'snapshot', provenance: 'synthetic test collector' };
 }
 function atomicGrade(feedback: AtomicFeedback): AtomicGradeResult {
-  return { schema: 'paideia.atomic-grade.v1', status: 'fail', score: 0, coverage: 1,
+  return { schema: 'spawnfile.training.atomic-grade.v1', status: 'fail', score: 0, coverage: 1,
     criticalGate: 0, obligationCoverage: 1, quality: 0.2,
     identity: { definitionDigest: 'a'.repeat(64), templatesDigest: 'a'.repeat(64),
       outputDigest: 'a'.repeat(64), contextDigest: 'a'.repeat(64) },
@@ -33,14 +33,14 @@ function atomicGrade(feedback: AtomicFeedback): AtomicGradeResult {
     receipts: [], feedback, judgeCalls: [] };
 }
 function record(): ResolvedRecord {
-  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  return resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: writing
 checks: [{id: done, eval: equals, input: output.text, value: ""}]
 records: [{id: assigned-story, group: topic, input: {prompt: File the article.}}]
 `)).records[0]!;
 }
 function report(): TrialReport {
-  return { schema: 'paideia.trial.v1', id: 'trial', phase: 'train', candidateId: 'baseline', datasetDigest: 'dataset', planDigest: 'plan',
+  return { schema: 'spawnfile.training.trial.v1', id: 'trial', phase: 'train', candidateId: 'baseline', datasetDigest: 'dataset', planDigest: 'plan',
     recordId: 'assigned-story', paths: { root: '/private', workspace: '/private', control: '/private', runtimeHome: '/private' },
     status: 'pass', execution: 'completed', hostWork: 'settled', turns: [], live: [],
     snapshot: { trialId: 'trial', recordId: 'assigned-story', closed: true, output: 'Original chat answer.\n', events: [], coverage: [],
@@ -150,7 +150,7 @@ it('keeps nested measurements, stage weights and live atomic failures outside ov
 });
 
 it('feeds an actual stored trial’s file output and trusted collected article despite empty final chat', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-file-feedback-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-file-feedback-')); roots.push(root);
   const source = join(root, 'source'); await mkdir(source);
   await writeFile(join(source, 'AGENTS.md'), 'File the assigned article using the prepared workspace.');
   const candidate = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
@@ -189,7 +189,7 @@ it('feeds an actual stored trial’s file output and trusted collected article d
   expect(JSON.stringify(feedback)).not.toContain('EVALUATOR SECRET');
 
   const dataset = (id: string) => {
-    const resolved = resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id,
+    const resolved = resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id,
       checks: [{ id: 'done', eval: 'equals', input: 'output.text', value: '' }],
       records: [{ id, group: id, input: { prompt: 'File the article.' } }] })));
     resolved.records[0] = { ...selected, id, group: id };
@@ -202,7 +202,7 @@ it('feeds an actual stored trial’s file output and trusted collected article d
     expect(`${trained.output}${trained.feedback}`).not.toContain('EVALUATOR SECRET');
     const validation = await request.evaluate({ caseId: 'validation', split: 'validation', components: request.components }, signal);
     expect(validation.output).toBe(''); expect(validation.feedback).toBe('');
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
         evaluations: 2, proposals: 0, selectedCandidateIndex: 0,
         candidates: [{ components: request.components, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],
@@ -312,9 +312,9 @@ it.each([12000, 60000])('retains atomic failures through both compaction layers 
   // Use the actual Python Session and planning/realization generation callbacks.
   const script = `
 import json, sys
-from paideia_dspy.fixtures_test import request
-from paideia_dspy.session import Session
-from paideia_dspy.search.variants import plan, realize
+from spawnfile_training_dspy.fixtures_test import request
+from spawnfile_training_dspy.session import Session
+from spawnfile_training_dspy.search.variants import plan, realize
 source = json.load(sys.stdin)
 payloads = []
 def host(method, params):
@@ -369,7 +369,7 @@ it('passes only compact atomic failures to optimization, preserving protected re
   const feedback = { failed_check_count: 1, omitted_failed_checks: 0,
     failed_checks: [{ template: 'supported', unit: 'An observed claim.', probability: 0.2 }] };
   const atomicGrading: import('../../graders/atomic/index.js').AtomicGradeResult = {
-    schema: 'paideia.atomic-grade.v1', status: 'fail', score: 0, coverage: 1, criticalGate: 0, obligationCoverage: 1, quality: 0.2,
+    schema: 'spawnfile.training.atomic-grade.v1', status: 'fail', score: 0, coverage: 1, criticalGate: 0, obligationCoverage: 1, quality: 0.2,
     identity: { definitionDigest: 'a'.repeat(64), templatesDigest: 'a'.repeat(64), outputDigest: 'a'.repeat(64), contextDigest: 'a'.repeat(64) },
     checks: [], extraction: { receipts: [{ response_text: 'PROTECTED RECEIPT'.repeat(200_000) }], judgeCalls: [] }, receipts: [], feedback, judgeCalls: [],
   };

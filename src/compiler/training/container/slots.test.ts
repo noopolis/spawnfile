@@ -58,7 +58,7 @@ it("mounts four slot roots and the exact read-only descriptor document during la
       return { code: 0, stdout: "", stderr: "" };
     }
     if (args[2] !== "create") return undefined;
-    const mount = args.find(a => a.includes("dst=/run/paideia/slots.json"))!;
+    const mount = args.find(a => a.includes("dst=/run/spawnfile-training/slots.json"))!;
     expect(args).toContain(trainingRunRequestMount(f.output, ["--out", "/run/training/output"]));
     expect(mount).toContain(",readonly");
     const source = /src=([^,]+)/.exec(mount)![1]!;
@@ -74,7 +74,7 @@ it("mounts four slot roots and the exact read-only descriptor document during la
   expect(status).toBe(0); expect(seen).toBe(true);
   const seed = docker.calls.find(args => args[2] === "container" && args[3] === "create" && args.some(value => value.endsWith("-output-seed")))!;
   expect(seed.slice(-2), "brokered output ownership guarantee").toEqual(["2000", "2000"]);
-  expect(docker.calls.find(args => args[2] === "create")).toContain("PAIDEIA_MODEL_REQUEST_CAP=broker");
+  expect(docker.calls.find(args => args[2] === "create")).toContain("SPAWNFILE_TRAINING_MODEL_REQUEST_CAP=broker");
   await writeFile(declaration, JSON.stringify(brokerDeclaration(1)));
   await expect(launchTrainingContainer({ ...f, image, timeoutMs: 5000, process: docker.process,
     streams: { stdout: vi.fn(), stderr: vi.fn() } })).rejects.toThrow(/slots differ/);

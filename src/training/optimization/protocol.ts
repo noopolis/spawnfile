@@ -1,8 +1,9 @@
+import { canonicalWireId, compatibleWireLiteral } from '../contracts/index.js';
 import { parseDocument } from 'yaml';
 import { z } from 'zod';
 import type { InferenceAttempt } from '../contracts/execution.js';
 
-export const DSPY_SCHEMA = 'paideia.dspy.v2';
+export const DSPY_SCHEMA = 'spawnfile.training.dspy.v2';
 export const DSPY_FRAME_BYTES = 4 * 1024 * 1024;
 const id = z.string().min(1).max(4096);
 const count = z.number().int().nonnegative();
@@ -28,7 +29,7 @@ export const searchSchema = z.object({
 }).transform(value => ({ ...value, patience: value.patience ?? value.rounds }));
 export const editScopeSchema = z.record(id, z.union([z.literal('whole-file'), z.array(id).min(1)]));
 export const startSchema = z.object({
-  schema: z.literal(DSPY_SCHEMA), kind: z.literal('optimize'), id, components: componentsSchema,
+  schema: compatibleWireLiteral(DSPY_SCHEMA), kind: z.literal('optimize'), id, components: componentsSchema,
   trainCaseIds: z.array(id).min(1).max(10000), validationCaseIds: z.array(id).min(1).max(10000),
   recovery: z.object({ evaluations: count, proposals: count }).strict().optional(),
   checkpoint: z.object({ directory: id, identity: id, fork: z.object({ directory: id, identity: id, id,
@@ -84,7 +85,7 @@ export const generateParamsSchema = z.object({
   messages: z.array(z.object({ role: z.enum(['system', 'user', 'assistant']), content: z.string() }).strict()).min(1),
   options: z.object({ responseSchema: z.record(z.string(), z.unknown()).optional() }).strict(),
 }).strict();
-const common = { schema: z.literal(DSPY_SCHEMA), id };
+const common = { schema: compatibleWireLiteral(DSPY_SCHEMA), id };
 export const requestSchema = z.discriminatedUnion('method', [
   z.object({ ...common, kind: z.literal('request'), method: z.literal('evaluate'), params: evaluateParamsSchema }).strict(),
   z.object({ ...common, kind: z.literal('request'), method: z.literal('generate'), params: generateParamsSchema }).strict(),
@@ -106,7 +107,7 @@ export const populationRoundSchema = z.object({
 export const resultSchema = z.object({
   ...common, kind: z.literal('result'), components: componentsSchema,
   provenance: z.object({
-    optimizer: z.enum(['dspy.GEPA', 'paideia.population']), dspyVersion: z.literal('3.3.1'), gepaVersion: z.literal('0.1.4'),
+    optimizer: z.preprocess(canonicalWireId, z.enum(['dspy.GEPA', 'training.population'])), dspyVersion: z.literal('3.3.1'), gepaVersion: z.literal('0.1.4'),
     seed: count, evaluations: count, proposals: count, selectedCandidateIndex: count,
     candidates: z.array(z.object({
       components: componentsSchema, parents: z.array(count.nullable()).min(1),

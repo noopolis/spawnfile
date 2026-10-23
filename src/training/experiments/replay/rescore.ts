@@ -40,7 +40,7 @@ export async function rescoreStoredTrial(options: RescoreOptions): Promise<Resco
     gates.push(result('error', 'Original native execution or cleanup remains incomplete'));
   }
   const report: RescoreReport = {
-    schema: 'paideia.rescore.v1', id: options.id, runId: options.runId, scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
+    schema: 'spawnfile.training.rescore.v1', id: options.id, runId: options.runId, scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
     original: { evaluationId: source.id, digest: source.digest, candidateId: original.candidateId, datasetDigest: original.datasetDigest,
       planDigest: original.planDigest, recordId: original.recordId, phase: original.phase, status: original.status },
     criteria: { datasetId: dataset.id, datasetDigest: dataset.sourceDigest, sharedPlanDigest: dataset.sharedPlanDigest,

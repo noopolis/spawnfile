@@ -3,14 +3,14 @@ import { parseGrader, type Labels } from './format/index.js';
 import { createCalibrationIdentity, parseCalibration, parseCalibrationJson, checkCalibration, segmenterIdentity, goldenIdentity,
   type CalibrationFile } from './identity.js';
 
-const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'g', calibration: 'c',
+const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'g', calibration: 'c',
   teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'teacher', teacher: 't' },
   escalate: { to: 't', between: [0, 1] }, score: { method: 'weighted' },
   questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: [], when: 'Applies?' }] });
 const supplied = { promptTemplateVersion: 'v1', backendModel: 'teacher:t:m', golden: 'a'.repeat(64), seed: 'seed', exclusions: [{ dataset: 'test', digest: 'b'.repeat(64) }] };
 const identity = createCalibrationIdentity(grader, supplied);
 function calibration(): CalibrationFile {
-  return parseCalibration({ schema: 'paideia.grader-calibration.v1', identity,
+  return parseCalibration({ schema: 'spawnfile.training.grader-calibration.v1', identity,
     questions: Object.fromEntries(['q', 'q.applies'].map(id => [id, { status: 'calibrated', failures: [],
       teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] },
       params: { a: 1, b: 0 }, band: [0.4, 0.6], metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5,
@@ -28,7 +28,7 @@ describe('calibration identities', () => {
     for (const changed of [{ ...original, questions: [...original.questions].reverse() },
       { ...original, gates: [...original.gates].reverse() }]) {
       expect(checkCalibration(changed, file, pinned, { quality: false })).toMatchObject({ ok: false,
-        refusals: ['calibration identity mismatch: expansion'] });
+        refusals: ['calibration identity mismatch: expansion', 'Re-prepare with Spawnfile and re-run grader calibrate before using this calibration'] });
     }
   });
   it('pins all definition, option, golden and supplied runtime identities', () => {

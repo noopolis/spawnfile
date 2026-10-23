@@ -3,7 +3,7 @@ import { createEvaluationRegistry, evaluatePlan, parseDatasetYaml, resolveDatase
 import { evaluationContext, snapshot } from './testing/index.js';
 
 it('resolves and evaluates authored cases through the training public entry point', async () => {
-  const dataset = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  const dataset = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: public-entry
 checks:
   - {id: answer, eval: equals, input: output.text, value: '4'}

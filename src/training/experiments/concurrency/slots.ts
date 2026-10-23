@@ -21,7 +21,7 @@ export async function loadTrialSlots(options: { concurrency?: number; slotsFile?
   if (options.concurrency !== undefined) trialConcurrency(options.concurrency);
   let slots: readonly TrialSlot[] | undefined = options.slots;
   if (!slots) {
-    const path = options.slotsFile ?? '/run/paideia/slots.json';
+    const path = options.slotsFile ?? '/run/spawnfile-training/slots.json';
     try {
       const info = await stat(path);
       if ((info.mode & 0o222) !== 0) throw new Error('Trial slot descriptor file must be read-only');

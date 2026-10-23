@@ -10,7 +10,7 @@ import {
   TRAINING_BROKER_TMPDIR,
   TRAINING_GRANT_HOME_ROOT,
   TRAINING_INFERENCE_DIRECTORY,
-  TRAINING_PAIDEIA_ROOT,
+  TRAINING_ROOT,
   trainingSlotDescriptors,
   TRAINING_TURN_STORE_ROOT,
   TRAINING_RUN_REQUEST_STORE,
@@ -43,7 +43,7 @@ export const trainingBrokerTmpfsTargets = (slots = 4): readonly { path: string; 
   { path: "/var/tmp", size: "256m", mode: "1777" },
   { path: "/work", size: "4g", mode: "0755" },
   { path: "/home/training", size: "1g", mode: "0755" },
-  { path: TRAINING_PAIDEIA_ROOT, size: "64m", mode: "0755" },
+  { path: TRAINING_ROOT, size: "64m", mode: "0755" },
   ...trainingSlotDescriptors(slots).map(p => ({ path: p.root, size: "4g", mode: "0711" })),
   { path: TRAINING_TURN_STORE_ROOT, size: "256m", mode: "0700" },
   { path: TRAINING_GRANT_HOME_ROOT, size: "64m", mode: "0755" },
@@ -81,5 +81,5 @@ export const trainingBrokerSecurityArgs = async (seccompProfileDirectory: string
 export const trainingBrokerMounts = (broker: { realmVolume: string; bootstrap: string; declaration: string }): string[] => [
   `type=volume,src=${broker.realmVolume},dst=${DAIMON_GROK_ENGINE_BROKER.credentialHomePath}`,
   `type=bind,src=${broker.bootstrap},dst=/var/lib/spawnfile/daimon/grok-bootstrap-auth,readonly`,
-  `type=bind,src=${broker.declaration},dst=${TRAINING_PAIDEIA_ROOT}/training-broker.json,readonly`
+  `type=bind,src=${broker.declaration},dst=${TRAINING_ROOT}/training-broker.json,readonly`
 ];

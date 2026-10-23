@@ -37,7 +37,7 @@ async function persistGrokBrokerProjection(runtime: NativeRuntimeModule, config:
     acceptanceStorePath: options.controlRoot, denyPaths: [...broker.denyPaths],
     seccompProfileSha256: broker.seccompProfileSha256, profileSha256: broker.profileSha256 }));
   const sha = grokProjectionSha256(projection);
-  if (digest(projection) !== sha) throw new Error('Paideia and Daimon disagree on the Grok broker projection digest');
+  if (digest(projection) !== sha) throw new Error('Training and Daimon disagree on the Grok broker projection digest');
   if (projection.version !== broker.projectionVersion || sha !== broker.projectionSha256) throw new Error('Grok broker projection digest differs from the launch receipt');
   // The registration is a ceiling. worker.ts lowers the per-wake override to the trial deadline.
   let slot: unknown;

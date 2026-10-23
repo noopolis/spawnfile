@@ -9,7 +9,7 @@ import { simulatedOptions, scriptBridge } from './testSupport.js';
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-async function directory() { const root = await realpath(await mkdtemp(join(tmpdir(), 'paideia-home-test-'))); roots.push(root); return root; }
+async function directory() { const root = await realpath(await mkdtemp(join(tmpdir(), 'training-home-test-'))); roots.push(root); return root; }
 function observeHomes() {
   const homes: string[] = [], original = processOwner.runProcess;
   vi.spyOn(processOwner, 'runProcess').mockImplementation(options => {

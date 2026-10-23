@@ -50,7 +50,7 @@ checkpoint identity. The bridge owns train-only chronological reflection context
 lexical novelty rejection and bounded repair attempts; all generation attempts use
 the same total budget. Keep full native reports/raw callbacks durable. Compact
 reflection projections must retain criterion score vectors and subject usage before
-bounded reasons or article excerpts. See bridges/dspy/README.md for exact defaults.
+bounded reasons or article excerpts. See ../dspy/README.md for exact defaults.
 
 Measurement forks carry an explicit parent descriptor and byte digest into both
 host and Python checkpoint owners. Each validates the old semantic request, then
@@ -96,4 +96,4 @@ callbacks may lack attribution; do not infer rounds from final candidate aggrega
 
 bridgeExecutionIdentity(root, context) attests the explicitly selected canonical editable DSPy installation, supported console launcher/interpreter and package metadata, hashing bounded source plus lock bytes. It inspects metadata without importing bridge code or invoking inference. It is not dependency-byte attestation or a deployment permission.
 
-Bridge identity preserves the original clank.paideia.python-bridge.v1 namespace and hash domain; fixed-input compatibility tests pin the original private implementation output.
+Bridge identity uses spawnfile.training.python-bridge.v1 and binds the shared wire alias resource. Fixed-input tests pin its hash domain; pre-rename execution checkpoints require re-preparation with the renamed bridge.

@@ -32,7 +32,7 @@ it("lowers every split through real rewind and a fake hook, preserving identity 
   for (const role of ["train", "validation", "test"] as const) {
     const dataset = await json(result.datasets[role]!);
     const entry = result.report.entries.find(value => value.role === role)!;
-    expect(dataset.schema).toBe("paideia.dataset.v1");
+    expect(dataset.schema).toBe("spawnfile.training.dataset.v1");
     expect(dataset.subject).toBe(f.plan.agent.name);
     expect(dataset.setup).toEqual({ profile: "fixture/prepare" });
     const record = dataset.records[0];
@@ -87,7 +87,7 @@ it.each([false, true])("%s: reports an unsupported timestamp before continuing o
   expect(report.entries.map((entry: { id: string }) => entry.id))
     .toEqual(allRefused ? [refused.id, "valid", "held-out"] : [refused.id, example.id, "valid", "held-out"]);
   expect(calls).toEqual(allRefused ? ["valid", "held-out"] : [example.id, "valid", "held-out"]);
-  expect((await json(path.join(f.out, "train.paideia.json"))).records.map((record: { id: string }) => record.id))
+  expect((await json(path.join(f.out, "train.spawnfile-training.json"))).records.map((record: { id: string }) => record.id))
     .toEqual(allRefused ? [] : [example.id]);
   expect(report.entries.slice(1).every((entry: { status: string }) => entry.status === "materialized")).toBe(true);
 });
@@ -111,7 +111,7 @@ it("rewinds independently on each trial and refuses altered historical identity"
   const f = await fixture(), result = await lowerTrainingMoments(f);
   const record = (await json(result.datasets.train)).records[0];
   const moment = record.setup.trainingMoment as TrainingMomentCase;
-  // Paideia parsing reconstructs property order; wake identity is semantic exactness.
+  // Training parsing reconstructs property order; wake identity is semantic exactness.
   moment.wake = { surface: moment.wake.surface, room: moment.wake.room, from: moment.wake.from, text: moment.wake.text };
   const first = path.join(f.root, "trial-one"), second = path.join(f.root, "trial-two");
   const attempt = await materializeTrainingCase({ ...f, moment, out: first }).catch((error: Error) => error);

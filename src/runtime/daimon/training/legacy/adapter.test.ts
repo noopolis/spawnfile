@@ -9,7 +9,7 @@ import type { DaimonModule, NativeHandle, NativeTool } from './public.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 async function fixture(): Promise<{ input: SubjectStart; authHome: string; events: Observation[] }> {
-  const root = await mkdtemp(path.join(tmpdir(), 'paideia-daimon-unit-')); roots.push(root);
+  const root = await mkdtemp(path.join(tmpdir(), 'training-daimon-unit-')); roots.push(root);
   const authHome = path.join(root, 'auth'); await mkdir(authHome); await writeFile(path.join(authHome, 'auth.json'), '{}');
   const events: Observation[] = [];
   return { authHome, events, input: { trialId: 'trial', workspacePath: path.join(root, 'workspace'), runtimeHomePath: path.join(root, 'runtime'),

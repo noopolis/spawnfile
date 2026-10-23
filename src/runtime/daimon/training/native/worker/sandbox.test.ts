@@ -39,7 +39,7 @@ test.each(['unclocked', 'clocked'] as const)('%s Grok projection is resolved by 
     const config = grokConfigFor(configFixture());
     config.agents[0]!.workspacePath = launch.workspace.target; config.agents[0]!.runtimeHomePath = '/native/home';
     const options = { trialId: 'grok-trial', configSha256: launch.configSha256, controlRoot: launch.controlRoot, timeoutMs: 900_000 } as WorkerOptions;
-    // The slot control root is shared between trials, so Paideia's artifacts live in this trial's own directory inside it.
+    // The slot control root is shared between trials, so Training's artifacts live in this trial's own directory inside it.
     const artifacts = nativeTrialArtifactsRoot(launch, options.trialId);
     assert.equal(artifacts.startsWith(`${launch.controlRoot}/`), true);
     await mkdir(artifacts, { recursive: true, mode: 0o700 });
@@ -90,7 +90,7 @@ test.each(['unclocked', 'clocked'] as const)('%s Grok projection is resolved by 
     await persistNativeSandboxProjection(runtime, config, { ...options, timeoutMs: 1000 }, launch);
     assert.deepEqual(calls.at(-1), { expectedNonce: launch.broker.expectedNonce, minGeneration: launch.broker.minGeneration });
     const receipt = JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8'));
-    assert.equal(receipt.schema, 'paideia.daimon-native.grok-broker-projection.v1');
+    assert.equal(receipt.schema, 'spawnfile.training.daimon-native.grok-broker-projection.v1');
     assert.equal(receipt.projectionSha256, launch.broker.projectionSha256);
     assert.equal(receipt.slotPreflight.projection_sha256, launch.broker.projectionSha256);
     assert.equal(receipt.projection.workerConfigVariant, variant);

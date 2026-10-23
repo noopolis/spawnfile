@@ -26,7 +26,7 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
   if (!adjudicator) throw new Error('Adjudicator is not an active teacher');
   const identity = stableDigest({ version: councilPromptVersion, output: options.outputDigest,
     instances, teachers, batchSize, adjudicator: adjudicator.id, window, windowOpen, active: active.map(t => t.id),
-    seed: options.seed ?? 'paideia.council', timeoutMs: options.timeoutMs ?? 120_000 });
+    seed: options.seed ?? 'training.council', timeoutMs: options.timeoutMs ?? 120_000 });
   if (options.previous) {
     const { digest, ...content } = options.previous;
     if (content.identity !== identity || digest !== councilContentDigest(content)) throw new Error('Stale or corrupt council checkpoint');

@@ -15,7 +15,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 
 function trial(id: string, phase: TrialReport['phase'], candidateId: string): TrialReport {
   const coverage = [{ channel: 'usage' as const, completeness: 'complete' as const, ordering: 'source' as const }];
-  return { schema: 'paideia.trial.v1', id, phase, candidateId, recordId: `${id}-case`, datasetDigest: 'dataset', planDigest: 'plan',
+  return { schema: 'spawnfile.training.trial.v1', id, phase, candidateId, recordId: `${id}-case`, datasetDigest: 'dataset', planDigest: 'plan',
     paths: { root: '', workspace: '', control: '', runtimeHome: '' }, status: 'pass', execution: 'completed', hostWork: 'settled',
     snapshot: { trialId: id, recordId: `${id}-case`, closed: true, events: [], coverage,
       artifacts: {}, output: 'PRIVATE output', inputFiles: {}, context: {} },
@@ -30,7 +30,7 @@ async function fixture() {
     destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'locked' }] });
   const trials = [trial('development', 'validation', baseline.id), trial('SEALED-trial', 'test', baseline.id)];
   const store = await openExperimentStore(join(f.root, 'out'));
-  for (const value of trials) await store.createRun({ schema: 'paideia.run.v1', id: value.id, datasetId: 'dataset',
+  for (const value of trials) await store.createRun({ schema: 'spawnfile.training.run.v1', id: value.id, datasetId: 'dataset',
     candidateId: baseline.id, datasetRole: value.phase, planDigest: 'plan', recordId: value.recordId });
   const costs = summarizeCosts(trials, { subjectModel: 'gpt-5.5', optimizerGenerations: [{ model: null, usage: null, outcome: 'generation-error' }] });
   const report = createFailureReport({ id: 'failure', command: 'train', baseline, progressRunId: 'progress', diagnosticId: 'diagnostic', trials, costs });
@@ -111,7 +111,7 @@ describe('protected failure report and development-only replay', () => {
 
 it('retains development rescores while hiding sealed rescore identity and retaining costs', async () => {
   const f = await fixture(), native = f.trials[0]!;
-  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
+  const rescore: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
     notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: native.candidateId,
       datasetDigest: 'old', planDigest: 'old', recordId: native.recordId, phase: native.phase, status: native.status },
     criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},

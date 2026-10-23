@@ -12,7 +12,7 @@ import { repairDigest, type MeasurementRepairReceipt } from './repair/index.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function setup(change?: Parameters<typeof fixture>[0]) {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-import-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-import-')); roots.push(root);
   await writeFile(join(root, 'AGENTS.md'), 'Original prompt');
   const baseline = await snapshotCandidate({ sourceRoot: root, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
     destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' }] });
@@ -27,12 +27,12 @@ async function setup(change?: Parameters<typeof fixture>[0]) {
   await store.putBlob('trial', JSON.stringify(dataset.records[0]), 'evaluator');
   await store.putBlob('trial', JSON.stringify(baseline), 'evaluator');
   await store.putBlob('trial', 'raw non-JSON text', 'evaluator');
-  const command = { schema: 'paideia.command-checkpoint.v1', identity: 'old', id: 'parent' };
+  const command = { schema: 'spawnfile.training.command-checkpoint.v1', identity: 'old', id: 'parent' };
   const state = { identity: 'training', recoveries: 0, entries: { 'call-1': { id: 'trial', report: JSON.parse(JSON.stringify(f.report)) } } };
   const host = { entries: [{ request: { id: 'call-1', method: 'evaluate', params: { split: 'train', caseId: 'story',
     components: Object.fromEntries(candidateComponents(baseline).map(component => [component.id, component.text])) } } }] };
   const sha = repairDigest('fixed');
-  const receipt: MeasurementRepairReceipt = { version: 'paideia.measurement-repair.v1', parent: { root: parent, imageId: sha,
+  const receipt: MeasurementRepairReceipt = { version: 'spawnfile.training.measurement-repair.v1', parent: { root: parent, imageId: sha,
     manifestDigest: sha, experimentId: 'parent', executionIdentity: 'old', trainingIdentity: 'training',
     checkpoints: { command: sha, training: sha, host: sha, optimizer: sha } },
   current: { imageId: sha, adapterId: 'daimon-native', canonicalSourceDigest: sha },

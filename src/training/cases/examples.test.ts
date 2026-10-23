@@ -35,7 +35,7 @@ const registry: DatasetRegistry = {
   } },
 };
 function newsroom(name: string): ResolvedDataset {
-  const sourceName = new URL(`../../../examples/training/newsroom-reporting/evals/${name}.paideia.yaml`, import.meta.url);
+  const sourceName = new URL(`../../../examples/training/newsroom-reporting/evals/${name}.spawnfile-training.yaml`, import.meta.url);
   return resolveDataset(parseDatasetYaml(readFileSync(sourceName, 'utf8'), { sourceName: sourceName.pathname }),
     { registry, subject: 'scribe', requireGroups: true, unlockedSetupPaths: ['clock', 'delivery'] });
 }
@@ -54,12 +54,12 @@ describe('unchanged newsroom example authoring', () => {
     expect(() => validateDatasetSplit(train, test)).not.toThrow();
   });
   it('fails without actual registered project support instead of accepting fake generic execution', () => {
-    const source = readFileSync(new URL('../../../examples/training/newsroom-reporting/evals/train.paideia.yaml', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../../../examples/training/newsroom-reporting/evals/train.spawnfile-training.yaml', import.meta.url), 'utf8');
     expect(() => resolveDataset(parseDatasetYaml(source))).toThrow(/unsupported evaluator/);
   });
 });
 function simple(id: string, group: string, path: string, digit: string): ResolvedDataset {
-  const data: Dataset = { schema: 'paideia.dataset.v1', id, checks: [{ id: 'correct', eval: 'equals', input: 'output.text', value: '4' }],
+  const data: Dataset = { schema: 'spawnfile.training.dataset.v1', id, checks: [{ id: 'correct', eval: 'equals', input: 'output.text', value: '4' }],
     records: [{ id, group, input: { prompt: '4', files: [{ resource: 'evidence', path, sha256: `sha256:${digit.repeat(64)}` }] } }] };
   return resolveDataset(parseDatasetYaml(stringify(data)));
 }
@@ -99,7 +99,7 @@ describe('group and source holdout isolation', () => {
 });
 
 it('rejects input files that expose any selected evaluator-only reference', () => {
-  const source = `schema: paideia.dataset.v1
+  const source = `schema: spawnfile.training.dataset.v1
 id: leak
 checks: [{id: correct, eval: equals, input: output.text, value: answer}]
 records:
@@ -119,7 +119,7 @@ it('resolves the documented quality/efficiency stage with unchanged hard floors'
   const text = readFileSync(new URL('../../../docs/training/token-efficiency.md', import.meta.url), 'utf8');
   const yaml = /```yaml\n([\s\S]*?)```/.exec(text)![1]!;
   const stage = parse(yaml);
-  const source = stringify({ schema: 'paideia.dataset.v1', id: 'quality-efficiency', stages: [stage],
+  const source = stringify({ schema: 'spawnfile.training.dataset.v1', id: 'quality-efficiency', stages: [stage],
     records: [{ id: 'record', input: { prompt: 'Write the article.' }, outputs: { article: 'article.json' } }] });
   const resolved = resolveDataset(parseDatasetYaml(source), { registry });
   expect(resolved.sharedStages[0]!.score!.linear).toEqual({ grounded: 52, prose: 28, efficiency: 20 });

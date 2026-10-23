@@ -18,7 +18,7 @@ const canary = (target: string) => ({ path: target, method: "sandboxed-read" as 
 
 const receipt = (overrides: Partial<Parameters<typeof buildTrainingSlotReceipt>[0]> = {}) => buildTrainingSlotReceipt({
   slot: 0, workerUid: 2200, generation: 7, nonce, projectionSha256: digest("b"), sandboxProfileSha256: digest("c"),
-  seccompProfileSha256: digest("d"), grokExecutableSha256: digest("e"), canaries: [canary("/run/paideia/context.json")],
+  seccompProfileSha256: digest("d"), grokExecutableSha256: digest("e"), canaries: [canary("/run/spawnfile-training/context.json")],
   createdAt: new Date("2026-09-17T12:00:00.000Z"), ...overrides
 });
 
@@ -28,7 +28,7 @@ describe("training slot preflight receipt v2", () => {
       version: "noopolis.daimon.grok-slot-preflight.v2", slot: 0, worker_uid: 2200, generation: 7, nonce,
       projection_sha256: digest("b"), sandbox_profile_sha256: digest("c"), seccomp_profile_sha256: digest("d"),
       sandbox_runtime: "bubblewrap", grok_executable_sha256: digest("e"),
-      canaries: [canary("/run/paideia/context.json")], created_at: "2026-09-17T12:00:00.000Z"
+      canaries: [canary("/run/spawnfile-training/context.json")], created_at: "2026-09-17T12:00:00.000Z"
     });
   });
 
@@ -122,7 +122,7 @@ describe("training slot canaries", () => {
 
   it("requires the sealed inputs root to be unenterable, not merely unreadable", async () => {
     // A directory the worker cannot `open()` but can still `search` hands over every dataset it can
-    // name — `test.paideia.yaml` included — so `read` denial alone must not certify a sealed root.
+    // name — `test.spawnfile-training.yaml` included — so `read` denial alone must not certify a sealed root.
     await expect(resolveTrainingCanaries(canaryOptions({
       probe: async (_target: string, depth: "read" | "enter") => depth === "read"
     }))).rejects.toThrow(new RegExp(`sealed canary ${TRAINING_SEALED_INPUTS_ROOT} is still reachable`, "u"));

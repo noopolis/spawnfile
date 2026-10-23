@@ -7,8 +7,28 @@ import { expect, it } from "vitest";
 import * as ts from "typescript";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const forbidden = /@noopolis\/paideia|\/opt\/(?:training\/)?paideia\b|\bpaideia\s+train\b|\/(?:packages|bin)\/paideia\b/u;
-const isTest = (file: string): boolean => /(?:^|\/)(?:__tests__|fixtures)(?:\/|$)|\.(?:test|test-helper)\.[^/]+$/u.test(file);
+const forbidden = /paideia/iu;
+// Exact paths only: legacy discriminators/readers, their negative fixtures, and
+// the single history note. No directory or blanket test exemptions.
+const legacyPaths = new Set([
+  'src/cli/trainingOwnership.test.ts',
+  'src/shared/trainingLegacyWire.ts',
+  'src/shared/trainingLegacyWireAliases.json',
+  'src/training/dspy/spawnfile_training_dspy/legacy_wire_aliases.json',
+  'src/training/dspy/spawnfile_training_dspy/protocol_test.py',
+  'src/training/dspy/spawnfile_training_dspy/main_test.py',
+  'src/shared/trainingLegacyWire.test.ts',
+  'src/training/experiments/replay/legacy-wire.test.ts',
+  'src/training/experiments/repair/legacy-wire.test.ts',
+  'src/compiler/training/repair/legacy-wire.test.ts',
+  'src/training/graders/format/legacy-wire.test.ts',
+  'src/shared/trainingLegacyEnvironment.ts',
+  'src/shared/trainingLegacyEnvironment.test.ts',
+  'src/training/platform/legacy-environment.test.ts',
+  'src/shared/trainingLegacyFiles.ts',
+  'src/shared/trainingLegacyFiles.test.ts',
+  'specs/TRAINING.md',
+]);
 
 // Also reject forwarding an opaque executable through a supervisor with a separate
 // train argv element: that delegation need not contain the executable's name.
@@ -40,8 +60,8 @@ const usesExternalTraining = (source: string): boolean => {
 };
 
 const scan = (files: readonly string[], read: (file: string) => string): string[] => files
-  .filter(file => file && !file.startsWith("src/training/") && !isTest(file))
-  .filter(file => { const source = read(file); return forbidden.test(source) || usesExternalTraining(source); });
+  .filter(file => file && !legacyPaths.has(file))
+  .filter(file => { const source = read(file); return forbidden.test(file) || forbidden.test(source) || usesExternalTraining(source); });
 
 const git = (cwd: string, args: string[]): string => {
   const { TYPESAFE_API_KEY: _key, ...env } = process.env;
@@ -49,7 +69,7 @@ const git = (cwd: string, args: string[]): string => {
 };
 const workingFiles = (cwd: string): string[] => git(cwd, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
 
-it("keeps external training packages, install paths and binaries out of maintained files", () => {
+it("keeps the retired training name out of tracked and untracked non-ignored files", () => {
   const files = workingFiles(root);
   const violations = scan(files.filter(file => existsSync(path.join(root, file))),
     file => readFileSync(path.join(root, file), "utf8"));
@@ -89,12 +109,22 @@ it.each([
   expect(scan(["src/cli/reintroduced.ts"], () => source)).toEqual(["src/cli/reintroduced.ts"]);
 });
 
-it("allows legacy context paths and versioned wire IDs", () => {
-  expect(forbidden.test('/run/paideia/context.json paideia.training-cost-plan.v1')).toBe(false);
-  expect(scan(["src/legacy.ts"], () => 'join(root, "paideia"); "paideia" in image.build; const permission = \'default_permissions="paideia"\';')).toEqual([]);
+it("allows legacy data only in the exact compatibility allowlist", () => {
+  expect(scan(['src/shared/trainingLegacyWire.ts'], () => 'paideia.dataset.v1')).toEqual([]);
+  expect(scan(['src/training/legacy.ts'], () => '/run/paideia/context.json paideia.dataset.v1'))
+    .toEqual(['src/training/legacy.ts']);
+  expect(scan(['src/legacy.ts'], () => 'join(root, "paideia"); "paideia" in image.build;'))
+    .toEqual(['src/legacy.ts']);
 });
 
-it("scans documentation and image recipes while exempting the core and test fixtures", () => {
-  expect(scan(["README.md", "runtime-images/training/Dockerfile", "src/training/legacy.ts", "src/cli/example.test.ts", "src/compiler/fixtures.test-helper.ts"],
-    () => "@noopolis/paideia")).toEqual(["README.md", "runtime-images/training/Dockerfile"]);
+it("scans documentation, images, core, tests, fixtures, names and mixed case", () => {
+  const files = ["README.md", "runtime-images/training/Dockerfile", "src/training/legacy.ts",
+    "src/cli/example.test.ts", "src/compiler/fixtures.test-helper.ts", "PAIDEIA.md"];
+  expect(scan(files, () => "PaIdEiA")).toEqual(files);
+  expect(scan(['Paideia.txt'], () => 'clean contents')).toEqual(['Paideia.txt']);
+});
+
+it("retains exactly one historical naming note", () => {
+  expect(readFileSync(path.join(root, 'specs/TRAINING.md'), 'utf8').split('\n')
+    .filter(line => forbidden.test(line))).toHaveLength(1);
 });

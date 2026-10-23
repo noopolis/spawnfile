@@ -25,7 +25,7 @@ it('resumes one identity while ignoring presentation flags and rejects execution
   const flags = Object.fromEntries(Object.entries(args.flags).filter(([name]) =>
     !['resume', 'view', 'out', 'spawnfile-context', 'dry-run'].includes(name)).sort(([a], [b]) => a.localeCompare(b)));
   const legacyIdentity = createHash('sha256').update(JSON.stringify({
-    version: 'paideia.command-execution.v1', flags, training: args.training, candidate: inputs.candidate.id,
+    version: 'spawnfile.training.command-execution.v1', flags, training: args.training, candidate: inputs.candidate.id,
     sourceRoot: inputs.sourceRoot, resources: inputs.resources, model: inputs.model, context: null, integration: null,
   })).digest('hex');
   await writeFile(join(first.directory, 'command.json'), JSON.stringify({

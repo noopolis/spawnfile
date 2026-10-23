@@ -59,7 +59,7 @@ def test_host_failure_cannot_become_a_successful_zero_score_candidate():
 
 
 def test_installed_release_mismatch_fails_before_any_callback(monkeypatch):
-    monkeypatch.setattr("paideia_dspy.optimizer.version", lambda _name: "other")
+    monkeypatch.setattr("spawnfile_training_dspy.optimizer.version", lambda _name: "other")
     host = SimulatedHost()
     with pytest.raises(BridgeError, match="pinned"):
         optimize(request(), host)

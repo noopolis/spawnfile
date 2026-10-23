@@ -62,9 +62,9 @@ const sealRow = (agent: string): string => JSON.stringify({
 }) + '\n';
 
 const brokerRequests = (rows: readonly Observation[]): Observation | undefined => rows.find(row => row.type === 'diagnostic' &&
-  (row as { native?: { schema?: string } }).native?.schema === 'paideia.daimon-native.broker-requests.v1');
+  (row as { native?: { schema?: string } }).native?.schema === 'spawnfile.training.daimon-native.broker-requests.v1');
 const brokerSeal = (rows: readonly Observation[]): Observation | undefined => rows.find(row => row.type === 'diagnostic' &&
-  (row as { native?: { schema?: string } }).native?.schema === 'paideia.daimon-native.broker-seal.v1');
+  (row as { native?: { schema?: string } }).native?.schema === 'spawnfile.training.daimon-native.broker-seal.v1');
 
 it('records the spend the broker sealed when a brokered worker dies with its terminal frame unsent', async () => {
   const f = await childFixture('die-mid-turn');
@@ -104,7 +104,7 @@ it('records the spend the broker sealed when a brokered worker dies with its ter
   // The worker's own last words survive the container, redacted, as the only
   // account of why it stopped answering.
   const diagnostic = observations.find(row => row.type === 'diagnostic' &&
-    (row as { native?: { schema?: string } }).native?.schema === 'paideia.daimon-native.startup-diagnostic.v1');
+    (row as { native?: { schema?: string } }).native?.schema === 'spawnfile.training.daimon-native.startup-diagnostic.v1');
   expect(diagnostic).toBeDefined();
   expect(JSON.stringify(diagnostic)).toContain('stream bound crossed');
 
@@ -175,7 +175,7 @@ it.each([true, false].flatMap(accounting => ['none', 'before', 'after', 'always'
       scope: 'native-handle', remoteWork: 'unknown', reason: 'Unit transport stopped', detail: 'Stubbed transport' }),
     request: async <T>(): Promise<T> => {
       if (++deliveries > 1) throw new Error('Continuation transport died');
-      return { schema: 'paideia.daimon-native.trial.v1', trialId: f.input.trialId, wakeId: 'task',
+      return { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: f.input.trialId, wakeId: 'task',
         agentId: launch.agent.id, model: launch.agent.model, configSha256: launch.configSha256,
         status: 'failed', blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
         native: { traces: [], usage: [rows[0]], ...(accounting ? { accounting: { usage: [rows[0]], coverage: 'partial' } } : {}) },

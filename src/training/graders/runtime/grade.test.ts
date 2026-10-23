@@ -6,7 +6,7 @@ import { createCalibrationIdentity, type CalibrationFile } from '../identity.js'
 import { gradeOutput, decisionBackendIdentity, type GradeOptions } from './index.js';
 
 async function fixture(p = 0.9): Promise<GradeOptions> {
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
     context: { evidence: { description: 'Trial evidence' } },
     teachers: [{ id: 'c', provider: 'claude', model: 'opus' }],
     model: { backend: 'jev-http', endpoint: 'http://localhost:8000', name: 'm' },
@@ -21,7 +21,7 @@ async function fixture(p = 0.9): Promise<GradeOptions> {
       (JSON.parse(request.prompt) as { questions: { key: string }[] }).questions.map(q => [q.key, 'yes']))),
     model: 'actual-opus', route: 'subscription', usage: null })) };
   const goldenDigest = stableDigest('golden'), promptTemplateVersion = 'v1';
-  const calibration: CalibrationFile = { schema: 'paideia.grader-calibration.v1', identity: createCalibrationIdentity(grader,
+  const calibration: CalibrationFile = { schema: 'spawnfile.training.grader-calibration.v1', identity: createCalibrationIdentity(grader,
     { backendModel: await decisionBackendIdentity(grader, backend), golden: goldenDigest, promptTemplateVersion, seed: '0', exclusions: [] }),
   questions: { q: { status: 'calibrated', failures: [], teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] }, params: { a: 1, b: 0 }, band: [0.3, 0.7],
     metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } };

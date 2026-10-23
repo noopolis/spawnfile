@@ -29,7 +29,7 @@ class NativePlaceholderLM(dspy.BaseLM):
     forward_contract = "typed_lm"
 
     def __init__(self):
-        super().__init__("paideia/native-host", cache=False, num_retries=0)
+        super().__init__("training/native-host", cache=False, num_retries=0)
 
     def forward(self, request):
         raise BridgeError("unexpected_model_call", "native prediction must use the host trial adapter")

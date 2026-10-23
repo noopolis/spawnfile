@@ -25,7 +25,7 @@ function judge(id: string, overrides: Partial<JudgeCall> = {}): JudgeCall {
     responseModel: 'judge-model', responseRoute: 'subscription', outcome: 'completed', usage, ...overrides };
 }
 function trial(id = 'trial-1'): TrialReport {
-  return { schema: 'paideia.trial.v1', id, phase: 'train', candidateId: 'baseline', datasetDigest: 'dataset',
+  return { schema: 'spawnfile.training.trial.v1', id, phase: 'train', candidateId: 'baseline', datasetDigest: 'dataset',
     planDigest: 'plan', recordId: 'record', paths: { root: '/trial', workspace: '/trial/work', control: '/trial/control', runtimeHome: '/trial/runtime' },
     status: 'pass', execution: 'completed', hostWork: 'settled',
     turns: [{ id: 'task', native: { status: 'completed', text: 'Answer',
@@ -42,7 +42,7 @@ describe('recorded experiment cost report', () => {
       wakeId: 'task', usage }];
     const before = structuredClone(input);
     const report = summarizeCosts([input], options);
-    expect(report).toMatchObject({ schema: 'paideia.cost-report.v1', currency: 'USD', completeness: 'complete', usageCoverage: 'observed-only',
+    expect(report).toMatchObject({ schema: 'spawnfile.training.cost-report.v1', currency: 'USD', completeness: 'complete', usageCoverage: 'observed-only',
       subscriptionChargeUsd: null, apiEquivalentUsd: { low: 0.00102, high: 0.00102 } });
     expect(report.entries).toHaveLength(1);
     expect(report.entries[0]).toMatchObject({ role: 'subject', name: 'subject', model: 'subject-model',
@@ -337,7 +337,7 @@ it('deduplicates restored optimizer receipts and rejects conflicting costs for o
 it('prices distinct rescore calls once, including nested evidence, without inventing another native run', () => {
   const native = trial(), originalCall = judge('original'), newCall = judge('new');
   native.evaluation.judgeCalls = [originalCall];
-  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
+  const rescore: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
     notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: native.candidateId,
       datasetDigest: 'old', planDigest: 'old', recordId: native.recordId, phase: native.phase, status: native.status },
     criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},

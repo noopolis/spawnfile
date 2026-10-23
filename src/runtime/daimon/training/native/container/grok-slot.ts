@@ -11,7 +11,7 @@ import { grokSlotPreflightSchema, readPrivateFile, type GrokNativeLaunch } from 
  * its slot paths and the projection digest binds them — so the equivalent
  * authority is this receipt. The root slot supervisor writes it after running a
  * worker-uid denial canary over every path in the digest-bound projection, and
- * it names the digest it certifies. Paideia is not that authority, so the file
+ * it names the digest it certifies. Training is not that authority, so the file
  * must be root-owned (or, outside a container, owned by this evaluator) and
  * never group- or world-writable.
  *

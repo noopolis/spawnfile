@@ -52,7 +52,7 @@ function populationOptions() {
 it('runs the real population bridge with complete host-verified validation and deterministic rounds', async () => {
   const run = populationOptions();
   const result = await runDspyOptimization(run.options);
-  expect(result.provenance.optimizer).toBe('paideia.population');
+  expect(result.provenance.optimizer).toBe('training.population');
   expect(result.provenance.rounds?.map(round => round.variants.length)).toEqual([0, 2, 2]);
   expect(result.provenance.rounds?.every(round => round.kept.length === 1)).toBe(true);
   expect(result.provenance.candidates).toHaveLength(5);
@@ -132,7 +132,7 @@ it('overlaps four real-process population callbacks and binds scores after rever
 it('reconstructs mid-round population state from settled callbacks without extra spend or Python pickle', async () => {
   const expected = await runDspyOptimization(populationOptions().options);
   const run = populationOptions();
-  const directory = await mkdtemp(join(tmpdir(), 'paideia-population-')); roots.push(directory);
+  const directory = await mkdtemp(join(tmpdir(), 'training-population-')); roots.push(directory);
   run.options.checkpoint = { directory, resume: false, identity: 'population-fixture' };
   const complete = OptimizationCheckpoint.prototype.complete;
   let interrupt = true;
@@ -158,7 +158,7 @@ it('reconstructs mid-round population state from settled callbacks without extra
 
 it('fails closed on an unsettled population callback before any resumed host spend', async () => {
   const run = populationOptions();
-  const directory = await mkdtemp(join(tmpdir(), 'paideia-population-pending-')); roots.push(directory);
+  const directory = await mkdtemp(join(tmpdir(), 'training-population-pending-')); roots.push(directory);
   run.options.checkpoint = { directory, resume: false, identity: 'pending-fixture' };
   const generate = run.options.generate;
   run.options.generate = async () => { throw new Error('uncertain generation'); };

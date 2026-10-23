@@ -13,7 +13,7 @@ import { createEvaluationRegistry } from '../../evaluation/index.js';
 const usage: Usage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, reasoningTokens: 0, source: 'native' };
 function historicalReport(): TrialReport {
   return {
-    schema: 'paideia.trial.v1', id: 'old', phase: 'train', candidateId: 'candidate', datasetDigest: 'dataset',
+    schema: 'spawnfile.training.trial.v1', id: 'old', phase: 'train', candidateId: 'candidate', datasetDigest: 'dataset',
     planDigest: 'plan', recordId: 'record', paths: { root: '', workspace: '', control: '', runtimeHome: '' },
     execution: 'failed', failureKind: 'native-infrastructure', status: 'error', hostWork: 'settled',
     snapshot: snapshot({ events: [], output: '', artifacts: {} }), turns: [], live: [],
@@ -80,9 +80,9 @@ it('retries a proven unadmitted collection failure up to the configured replacem
 });
 
 it('replaces and reruns a validation trial through actual lifecycle collection and closure', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-unadmitted-retry-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-unadmitted-retry-'));
   try {
-    const record = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+    const record = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: retry
 checks: [{id: answer, eval: equals, input: output.text, value: DONE}]
 records: [{id: task, input: {prompt: work}}]

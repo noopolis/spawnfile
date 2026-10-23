@@ -26,7 +26,7 @@ training:
       const result = await request.evaluate({ caseId, split, components: request.components }, new AbortController().signal, split);
       expect(result.score).toBe(1);
     }
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
         evaluations: 2, proposals: 0, selectedCandidateIndex: 0,
         candidates: [{ components: request.components, parents: [null], validationScore: 1, discoveryEvaluations: 0 }], captures: [], generations: [] } };
@@ -81,7 +81,7 @@ training:
         await request.evaluate({ caseId, split, components: request.components }, new AbortController().signal, split);
       }
       const components = Object.fromEntries(Object.entries(request.components).map(([key, value]) => [key, `${value}IMPROVED\n`]));
-      return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components,
+      return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components,
         provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
           evaluations: 2, proposals: 0, selectedCandidateIndex: 0,
           candidates: [{ components, parents: [null], validationScore: 1, discoveryEvaluations: 0 }], captures: [], generations: [] } };

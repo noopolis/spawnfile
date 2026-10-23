@@ -1,3 +1,4 @@
+import { normalizedTrainingEnvironment } from "../../../shared/index.js";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { lstat, readFile } from "node:fs/promises";
@@ -24,8 +25,8 @@ import {
   TRAINING_SUPERVISOR_SOCKET
 } from "./paths.js";
 
-export const TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV = "PAIDEIA_GROK_BROKER_CONTROL_SOCKET";
-export const TRAINING_GROK_GRANT_HOME_ROOT_ENV = "PAIDEIA_GROK_GRANT_HOME_ROOT";
+export const TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV = "SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET";
+export const TRAINING_GROK_GRANT_HOME_ROOT_ENV = "SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT";
 export const TRAINING_ENTRYPOINT_COMMAND = "/opt/training/bin/train";
 
 /**
@@ -43,7 +44,7 @@ export const desktopGrokAuthPaths = (home = os.homedir()): string[] =>
 export const assertNotDesktopGrokAuth = (source: string, home = os.homedir()): string => {
   if (desktopGrokAuthPaths(home).includes(path.resolve(source))) {
     throw new SpawnfileError("validation_error",
-      "Training refuses the desktop ~/.grok/auth.json as its Grok bootstrap; import a dedicated login with `spawnfile auth import grok --profile paideia-training --from <dir>`");
+      "Training refuses the desktop ~/.grok/auth.json as its Grok bootstrap; import a dedicated login with `spawnfile auth import grok --profile spawnfile-training --from <dir>`");
   }
   return source;
 };
@@ -129,10 +130,10 @@ const runTrainingChild = (argv: readonly string[], declaration: TrainingBrokerDe
     const child = spawn(command[0]!, command.slice(1), {
       stdio: ["ignore", "inherit", "inherit"],
       env: {
-        ...process.env,
+        ...normalizedTrainingEnvironment(),
         [TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV]: DAIMON_GROK_ENGINE_BROKER.controlSocketPath,
         [TRAINING_GROK_GRANT_HOME_ROOT_ENV]: TRAINING_GRANT_HOME_ROOT,
-        PAIDEIA_TRAINING_SLOTS_FILE: TRAINING_SLOTS_FILE,
+        SPAWNFILE_TRAINING_SLOTS_FILE: TRAINING_SLOTS_FILE,
         HOME: "/home/training"
       }
     });

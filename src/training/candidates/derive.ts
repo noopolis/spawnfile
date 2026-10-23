@@ -20,6 +20,7 @@ export function candidateComponents(candidate: CandidateManifest): CandidateComp
 export function deriveCandidate(baseline: CandidateManifest, parent: CandidateManifest,
   replacements: Readonly<Record<string, string>>): CandidateManifest {
   assertOriginalPolicy(baseline, parent);
+  if (baseline.schema !== 'spawnfile.training.candidate.v1') throw new Error('Legacy candidate identity requires re-prepare with Spawnfile before deriving candidates');
   const components = candidateComponents(parent);
   for (const [id, text] of Object.entries(replacements)) {
     if (!components.some(component => component.id === id)) throw new Error(`Undeclared or locked candidate component: ${id}`);

@@ -91,12 +91,12 @@ test.each([
     await runDaimonNativeWorker(args);
     expect(createHost).toHaveBeenCalledOnce();
     expect(start).toHaveBeenCalledOnce();
-    expect(stdout.mock.calls.some(([value]) => String(value).includes('paideia.daimon-native.ready.v1'))).toBe(true);
+    expect(stdout.mock.calls.some(([value]) => String(value).includes('spawnfile.training.daimon-native.ready.v1'))).toBe(true);
     const projection = JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8')) as Record<string, unknown>;
     expect(projection.trialId).toBe('limits');
     handlers[0]!();
     await vi.waitFor(() => expect(stop).toHaveBeenCalledOnce());
-    await vi.waitFor(() => expect(stdout.mock.calls.some(([value]) => String(value).includes('paideia.daimon-native.stop.v1'))).toBe(true));
+    await vi.waitFor(() => expect(stdout.mock.calls.some(([value]) => String(value).includes('spawnfile.training.daimon-native.stop.v1'))).toBe(true));
   } finally {
     handlers[0]?.();
     vi.restoreAllMocks();

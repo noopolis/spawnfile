@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { collectOutputs, confinedFile, digest, readSelected, relativePath, stageInput } from './files.js';
 
 const roots: string[] = [];
-async function root() { const value = await mkdtemp(join(tmpdir(), 'paideia-files-')); roots.push(value); return value; }
+async function root() { const value = await mkdtemp(join(tmpdir(), 'training-files-')); roots.push(value); return value; }
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 describe('pinned trial material', () => {
   it('stages only selected current inputs and verifies hashes before delivery', async () => {

@@ -9,7 +9,7 @@ const options: ResolutionOptions = {
   } } } },
   unlockedSetupPaths: ['clock'],
 };
-const base = `schema: paideia.dataset.v1
+const base = `schema: spawnfile.training.dataset.v1
 id: fixtures
 setup: {profile: sample, clock: {mode: emulated}}
 checks: [{id: correct, eval: equals, input: output.text, value: '4'}]
@@ -65,12 +65,12 @@ describe('named fixture resolution', () => {
     expect(() => resolveDataset(parseDatasetYaml(base))).toThrow(/unsupported preparation/);
   });
   it('rejects effective missing inputs and input/turns overlap after expansion', () => {
-    expect(() => resolveDataset(parseDatasetYaml('schema: paideia.dataset.v1\nid: x\nrecords: [{id: x}]'))).toThrow(/exactly one/);
+    expect(() => resolveDataset(parseDatasetYaml('schema: spawnfile.training.dataset.v1\nid: x\nrecords: [{id: x}]'))).toThrow(/exactly one/);
     const conflict = base.replace('  input: {prompt: explicit}', '  turns: [{id: t, input: {prompt: x}}]');
     expect(() => resolveDataset(parseDatasetYaml(conflict), options)).toThrow(/exactly one/);
   });
   it('rejects conflicting collector names and unsupported root recipes', () => {
-    const yaml = `schema: paideia.dataset.v1
+    const yaml = `schema: spawnfile.training.dataset.v1
 id: x
 setup: {profile: sample, clock: {date: today}, artifacts: {answer: {collector: trusted}}}
 records: [{id: x, input: {prompt: x}, outputs: {answer: out.json}, checks: [{id: a, eval: equals, input: output.text, value: x}]}]`;
@@ -86,7 +86,7 @@ it('cannot change a locked scalar into an empty map to evade the override policy
 });
 
 it('treats outputs and context containers as maps, not binding expressions', () => {
-  const source = `schema: paideia.dataset.v1
+  const source = `schema: spawnfile.training.dataset.v1
 id: containers
 records:
 - id: task

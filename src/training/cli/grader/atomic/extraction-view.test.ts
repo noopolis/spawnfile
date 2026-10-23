@@ -117,7 +117,7 @@ it('refuses v7 checkpoints before making new calls', async () => {
   const { file, value } = await checkpoint(f);
   const { digest: _digest, ...content } = value;
   content.identity = stableDigest({ refs: input!.refs, templates, teachers: selectTeachers(templates, f.decompose.extractors),
-    protocol: 'paideia.extraction.v7' });
+    protocol: 'spawnfile.training.extraction.v7' });
   await writeFile(file, JSON.stringify({ ...content, digest: stableDigest(content) }));
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('Stale decomposition checkpoint');
   expect(f.generate).toHaveBeenCalledTimes(2);

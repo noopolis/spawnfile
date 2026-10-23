@@ -19,7 +19,7 @@ function maskedAtomicError(trial: TrialReport) {
   // only hydrated atomicGrading can distinguish this from a behavioral zero.
   const check = { id: 'writing', status: 'fail' as const, finality: 'final' as const,
     reason: 'Logical failure masks an errored measurement', evidence: [],
-    atomicGrading: { schema: 'paideia.atomic-grade.v1' as const, status: 'error' as const, score: null,
+    atomicGrading: { schema: 'spawnfile.training.atomic-grade.v1' as const, status: 'error' as const, score: null,
       coverage: 0, criticalGate: 1, obligationCoverage: 1, quality: 0,
       identity: { definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest },
       checks: [], extraction: { receipts: [{ error: 'request rejected' }], judgeCalls: [] },
@@ -56,7 +56,7 @@ async function persistedFixture() {
     candidate: report.selected, report, trialIds: report.trials.map(value => value.id) });
   const access = { audience: 'operator' as const, phase: 'test' as const, frozenCandidateIds: [report.selected.id] };
   const compact = JSON.parse((await store.readBlob(index.report, access)).toString());
-  expect(compact.trials[0].evaluation.checks.writing.atomicGrading.schema).toBe('paideia.atomic-grading-blob.v1');
+  expect(compact.trials[0].evaluation.checks.writing.atomicGrading.schema).toBe('spawnfile.training.atomic-grading-blob.v1');
   const exportStored = async (target: string) => exportTrainingReport(target,
     await hydrateEvaluationJson<TrainingReport>(store, compact, access));
   return { root, out, store, access, compact, report, trial, receipts, exportStored };
@@ -120,7 +120,7 @@ it('exports identical scores/evidence from large referenced reports and preserve
     const trial = { ...structuredClone(original), id: `large-trial-${index}` };
     const check = { id: 'writing', status: 'fail' as const, finality: 'final' as const, score: 0.25,
       reason: `Evidence for trial ${index}`, evidence: [{ kind: 'output' as const, id: 'article' }],
-      atomicGrading: { schema: 'paideia.atomic-grade.v1' as const, status: 'fail' as const, score: 0.25,
+      atomicGrading: { schema: 'spawnfile.training.atomic-grade.v1' as const, status: 'fail' as const, score: 0.25,
         coverage: 1, criticalGate: 1, obligationCoverage: 1, quality: 0.25,
         identity: { definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest },
         checks: [], extraction: { receipts: [{ trial: index, response: 'x'.repeat(1024 * 1024) }], judgeCalls: [] },

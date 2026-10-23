@@ -8,7 +8,7 @@ it("accepts only an explicit supported integration execution declaration", () =>
   const build = { recipe: "daimon-dspy.v1", nativeImage: config().image.ref, pythonImage: config().image.ref,
     platform: "linux/arm64", claude: "claude", integration: { source: "integration", entry: "entry.ts" } };
   expect(trainingBuildSchema.parse(build).integration).toEqual(build.integration);
-  for (const obsolete of ["paideia", "bridge"]) {
+  for (const obsolete of ["training", "bridge"]) {
     expect(trainingBuildSchema.safeParse({ ...build, [obsolete]: "external-install" }).success).toBe(false);
   }
   const declared = { ...build, integration: { ...build.integration, execution: "spawnfile.training-execution.v1" } };

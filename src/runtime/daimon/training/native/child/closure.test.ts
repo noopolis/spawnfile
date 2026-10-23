@@ -200,7 +200,7 @@ it('names the worker exit rather than blaming its closure evidence', async () =>
  * runtime reclaimed without disposing of it. Every binding the closure proof
  * checks held — the frame was published, its identity matched and
  * `executionClosed` agreed — so `terminal-unbound` was the wrong name for it, and
- * the right one has to be its own, because the fix it calls for is not in Paideia.
+ * the right one has to be its own, because the fix it calls for is not in Training.
  */
 it('names a delivery the runtime reclaimed undisposed, after a single wake with budget left', async () => {
   const { report, turn, deliveries } = await deferredTrial('undisposed', 3, async () => null);

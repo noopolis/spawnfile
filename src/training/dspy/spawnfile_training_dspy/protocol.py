@@ -1,10 +1,13 @@
 """Strict wire types; the host retains resource and experiment policy."""
 
+import json
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SCHEMA = "paideia.dspy.v2"
+SCHEMA = "spawnfile.training.dspy.v2"
+WIRE_ALIASES = json.loads(Path(__file__).with_name("legacy_wire_aliases.json").read_text())
 MAX_LINE_BYTES = 4 * 1024 * 1024
 TextId = Annotated[str, Field(min_length=1, max_length=4096)]
 ComponentText = Annotated[str, Field(max_length=1024 * 1024)]
@@ -18,6 +21,13 @@ class BridgeError(Exception):
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def canonical_wire_schema(cls, value):
+        if isinstance(value, dict) and isinstance(value.get("schema"), str):
+            return {**value, "schema": WIRE_ALIASES.get(value["schema"], value["schema"])}
+        return value
 
 
 class Budget(StrictModel):
@@ -72,7 +82,7 @@ class Search(StrictModel):
 
 
 class OptimizeRequest(StrictModel):
-    schema_version: Literal["paideia.dspy.v2"] = Field(alias="schema")
+    schema_version: Literal["spawnfile.training.dspy.v2"] = Field(alias="schema")
     kind: Literal["optimize"]
     id: TextId
     components: Annotated[dict[TextId, ComponentText], Field(min_length=1, max_length=64)]
@@ -126,7 +136,7 @@ class HostError(StrictModel):
 
 
 class HostResponse(StrictModel):
-    schema_version: Literal["paideia.dspy.v2"] = Field(alias="schema")
+    schema_version: Literal["spawnfile.training.dspy.v2"] = Field(alias="schema")
     kind: Literal["response"]
     id: TextId
     result: dict | None = None

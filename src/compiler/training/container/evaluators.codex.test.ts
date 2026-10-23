@@ -63,20 +63,20 @@ it("refuses mismatched Codex isolation subjects before any Docker process call",
   }
 });
 
-it("binds the Codex evaluator leaf at the final readonly Paideia path with unchanged v1 privileges", async () => {
+it("binds the Codex evaluator leaf at the final readonly Training path with unchanged v1 privileges", async () => {
   const f = await setup(), before = await stat(f.secret), docker = dockerFixture();
   const streams = { stdout: vi.fn(), stderr: vi.fn() };
   expect(await launchTrainingContainer({ ...f, image, timeoutMs: 5000, process: docker.process, streams })).toBe(0);
   const args = docker.calls.find(call => call[2] === "create")!;
-  expect(args, "Codex evaluator secret mount guarantee").toContain(`type=bind,src=${f.secret},dst=/run/paideia/secrets/typesafe,readonly`);
-  expect(args).toContain("PAIDEIA_TYPESAFE_SECRET_FILE=/run/paideia/secrets/typesafe");
-  expect(args).toContain("PAIDEIA_EVALUATOR_ROUTES_FILE=/run/paideia/evaluator-routes.json");
-  expect(args).toContain(`type=bind,src=${f.config.auth[0]!.source},dst=/run/paideia-auth/codex,readonly`);
+  expect(args, "Codex evaluator secret mount guarantee").toContain(`type=bind,src=${f.secret},dst=/run/spawnfile-training/secrets/typesafe,readonly`);
+  expect(args).toContain("SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE=/run/spawnfile-training/secrets/typesafe");
+  expect(args).toContain("SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE=/run/spawnfile-training/evaluator-routes.json");
+  expect(args).toContain(`type=bind,src=${f.config.auth[0]!.source},dst=/run/spawnfile-training-auth/codex,readonly`);
   expect(args.slice(args.indexOf("--user"), args.indexOf("--user") + 2)).toEqual(["--user", `${process.getuid!()}:${process.getgid!()}`]);
   expect(args.slice(args.indexOf("--cap-drop"), args.indexOf("--cap-drop") + 2)).toEqual(["--cap-drop", "ALL"]);
   expect(args).toContain("no-new-privileges"); expect(args).toContain("--read-only");
   expect(args[args.indexOf("--entrypoint") + 1]).toBe("/opt/training/bin/train");
-  expect(args.some(arg => /secret-ingress|grok|realm|PAIDEIA_MODEL_REQUEST_CAP|TYPESAFE_API_KEY=|--cap-add/u.test(arg))).toBe(false);
+  expect(args.some(arg => /secret-ingress|grok|realm|SPAWNFILE_TRAINING_MODEL_REQUEST_CAP|TYPESAFE_API_KEY=|--cap-add/u.test(arg))).toBe(false);
   expect(JSON.stringify([docker.calls, streams.stdout.mock.calls, streams.stderr.mock.calls])).not.toContain(marker);
   const after = await stat(f.secret);
   expect([after.ino, after.mode, after.uid, after.gid, after.nlink, after.ctimeMs]).toEqual([

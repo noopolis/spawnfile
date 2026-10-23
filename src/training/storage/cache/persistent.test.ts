@@ -12,7 +12,7 @@ import { contentDigest } from '../content.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {recursive:true,force:true}))); });
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-cache-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-cache-')); roots.push(root);
   return {root, namespace:'calibration-v1', maxEntries:2, maxBytes:4096};
 }
 const value = {

@@ -9,11 +9,11 @@ import { trialScore } from './scoring.js';
 
 function fixture(missing: 'fail' | 'unknown', httpStatus?: number, body = 'Alice joined.') {
   const model = 'jev-1.0.0';
-  const grader = parseAtomicGrader({ schema: 'paideia.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
+  const grader = parseAtomicGrader({ schema: 'spawnfile.training.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
     extractor: { provider: 'codex', model: 'test' }, decision: { backend: 'typesafe', model, max_spend_usd: 1 }, missing,
     aggregation: { method: 'gates-times-coverage-times-quality', critical_pass_at: 0.8, pass_at: 0.5, obligation_kinds: ['obligation'],
       dimensions: { coverage: { weight: 1, budget: 2 } }, penalties: { critical: 1, major: 0.5, minor: 0.1 } } });
-  const templates = parseCheckTemplates({ schema: 'paideia.check-templates.v1', context: { assignment: { role: 'assignment' } },
+  const templates = parseCheckTemplates({ schema: 'spawnfile.training.check-templates.v1', context: { assignment: { role: 'assignment' } },
     templates: [{ id: 'covered', applies_to: 'obligation', type: 'noul', instructions: 'Covered?', criteria: { true: 'Good', false: 'Bad' },
       expected: [true], state: ['unit', 'output.body'], dimension: 'coverage', severity: 'major' }] });
   const budget = createDecisionSpendBudget();
@@ -25,7 +25,7 @@ function fixture(missing: 'fail' | 'unknown', httpStatus?: number, body = 'Alice
   const receipt = { provider: 'codex', model: 'test', prompt_digest: 'c'.repeat(64), at: '2026-10-14T00:00:00Z' };
   const runtime: AtomicRuntime = { kind: 'atomic', grader, templates, definitionDigest: 'a'.repeat(64), templatesDigest: 'b'.repeat(64), resource: {},
     backend: createTypeSafeDecision({ model, env: { TYPESAFE_API_KEY: 'offline-key' }, fetch, budget, conservativeSpend: true }),
-    extract: vi.fn(async () => ({ decomposition: parseDecomposition({ schema: 'paideia.decomposition.v1', output: { from: 'trial', sha256: 'c'.repeat(64) },
+    extract: vi.fn(async () => ({ decomposition: parseDecomposition({ schema: 'spawnfile.training.decomposition.v1', output: { from: 'trial', sha256: 'c'.repeat(64) },
       units: [{ id: 'one', kind: 'obligation', text: 'Cover Alice.' }], extractors: [receipt], audit: { extractor: receipt, missed: [], at: receipt.at } }),
     receipts: [], judgeCalls: [] })) };
   const check = { id: 'quality', eval: 'grader', grader: '/grader.yaml', input: 'artifact:article', context: { assignment: 'artifact:assignment' },

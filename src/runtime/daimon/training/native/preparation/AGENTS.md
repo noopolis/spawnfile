@@ -4,7 +4,7 @@ Owns the engine-neutral execution half of preparing one native trial on a leased
 slot: freshness nonce/generation sequencing, provisioner result validation against
 launch.v2 and the lease, trial path binding, per-engine input and scratch layout,
 and compiled engine config checks. Integrations supply a `SubjectProvisioner`
-(Spawnfile's training lease satisfies it structurally); Paideia never imports
+(Spawnfile's training lease satisfies it structurally); Training never imports
 Spawnfile, recomputes digest-bound broker inputs or chooses slot paths.
 
 - A broker slot mints its nonce from the experiment freshness store BEFORE the

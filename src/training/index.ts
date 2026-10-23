@@ -7,3 +7,4 @@ export * from './optimization/index.js';
 export * from './subjects/index.js';
 export * from './inference/index.js';
 export type * from './contracts/index.js';
+export { trainingEnvironment, normalizedTrainingEnvironment, checkTrainingFilename } from './platform/index.js';

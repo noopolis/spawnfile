@@ -139,7 +139,7 @@ it('delegates real DSPy trials to the registered preparation and persists frozen
   const store = await openExperimentStore(join(f.cli.root, 'out'));
   const report = JSON.parse((await store.readBlob(index.report, { audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId] })).toString());
   expect(report.heldOut.map((row: { meanScore: number }) => row.meanScore)).toEqual([0, 1]);
-  expect(report.costPlan.schema).toBe('paideia.training-cost-plan.v1');
+  expect(report.costPlan.schema).toBe('spawnfile.training.training-cost-plan.v1');
   expect(report.costs.usageCoverage).toBe('incomplete');
   expect(report.selected.resources.find((row: { sourcePath: string }) => row.sourcePath === 'SOUL.md').edit).toBe('locked');
 });
@@ -202,7 +202,7 @@ it('executes resolved population settings through the CLI and real bridge with f
   const report = JSON.parse((await store.readBlob(index.report, {
     audience: 'operator', phase: 'test', frozenCandidateIds: [index.candidateId],
   })).toString());
-  expect(report.optimizer.provenance.optimizer).toBe('paideia.population');
+  expect(report.optimizer.provenance.optimizer).toBe('training.population');
   expect(report.optimizer.provenance.rounds.map((round: { kept: number[] }) => round.kept)).toEqual([[0], [1, 2], [1, 2]]);
   expect(report.optimizer.provenance.candidates).toHaveLength(5);
   expect(strategies.sort()).toEqual(['refine', 'refine', 'rewrite', 'rewrite']);
@@ -232,7 +232,7 @@ it('requires the immutable native integration identity and rejects source drift'
 
 it('binds canonical selection and validate plans to the trusted inference image before any execution', async () => {
   const f = await fixture();
-  await writeFile(join(f.cli.root, 'train.yaml'), JSON.stringify({ schema: 'paideia.dataset.v1', id: 'execution-plan',
+  await writeFile(join(f.cli.root, 'train.yaml'), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'execution-plan',
     training: { models: { judge: { provider: 'ollama', model: 'small' } }, judges: { prose: { model: 'judge' } } },
     checks: [{ id: 'prose', eval: 'llm-rubric', judge: 'prose', input: 'output.text', minimum: 0.8, rubric: { prompt: 'Clear.' } }],
     records: [{ id: 'one', input: { prompt: 'Write.' } }] }));

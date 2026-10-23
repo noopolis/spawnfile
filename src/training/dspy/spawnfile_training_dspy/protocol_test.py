@@ -62,3 +62,26 @@ def test_rejects_unsupported_model_attribution(basis):
 def test_host_response_needs_exactly_one_outcome(outcome):
     with pytest.raises(ValidationError):
         HostResponse.model_validate({"schema": SCHEMA, "kind": "response", "id": "call-1", **outcome})
+
+
+def test_legacy_wire_schema_is_read_without_changing_canonical_writer():
+    values = request().model_dump(by_alias=True)
+    values["schema"] = "paideia.dspy.v2"
+    parsed = OptimizeRequest.model_validate(values)
+    assert parsed.schema_version == SCHEMA
+    assert parsed.model_dump(by_alias=True)["schema"] == SCHEMA
+    response = HostResponse.model_validate({"schema": "paideia.dspy.v2", "kind": "response",
+                                            "id": "call", "result": {}})
+    assert response.model_dump(by_alias=True)["schema"] == SCHEMA
+    assert "schema" not in EvaluationResult.model_validate({
+        "score": 0, "feedback": "", "output": "", "captureId": "capture"
+    }).model_dump()
+
+
+def test_wire_schema_aliases_do_not_rewrite_component_content_or_unrecognized_ids():
+    values = request().model_dump(by_alias=True)
+    values["components"]["AGENTS.md"] = "paideia.dspy.v2"
+    assert OptimizeRequest.model_validate(values).components["AGENTS.md"] == "paideia.dspy.v2"
+    values["schema"] = "paideia.dspy.v999"
+    with pytest.raises(ValidationError):
+        OptimizeRequest.model_validate(values)

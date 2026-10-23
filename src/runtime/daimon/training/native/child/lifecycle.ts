@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../../../../training/contracts/index.js';
 import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
@@ -80,7 +81,7 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
       const line = buffer.slice(0, end); buffer = buffer.slice(end + 1);
       try {
         const row = JSON.parse(line) as Record<string, unknown>;
-        if (row.schema === 'paideia.daimon-native.ready.v1' && row.trialId === trialId && row.configSha256 === launch.configSha256 &&
+        if (canonicalWireId(row.schema) === 'spawnfile.training.daimon-native.ready.v1' && row.trialId === trialId && row.configSha256 === launch.configSha256 &&
           row.agentId === launch.agent.id && row.model === launch.agent.model && row.port === launch.host.port &&
           (!isGrokLaunch(launch) || row.engine === 'grok' && row.reasoningEffort === launch.agent.reasoningEffort)) ready = true;
       } catch { /* Bootstrap may emit non-protocol logging; never treat it as readiness. */ }
@@ -281,7 +282,7 @@ function named(wakeId: unknown): WakeEvidence {
  */
 export function bindTerminalEvidence(wake: WakeEvidence, value: TerminalEvidence, launch: VerifiedNativeLaunch, trialId: string,
   seal: (fault: TerminalEvidenceMissing) => void, wakeTimeoutMs?: number): void {
-  const own = value.schema === 'paideia.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
+  const own = canonicalWireId(value.schema) === 'spawnfile.training.daimon-native.trial.v1' && value.trialId === trialId && value.agentId === launch.agent.id &&
     value.model === launch.agent.model && value.configSha256 === launch.configSha256 &&
     value.wakeId === wake.wakeId;
   const binding = launch.delivery === 'transport' ? transportTerminalBinding(value, wake.source)

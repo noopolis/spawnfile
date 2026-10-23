@@ -8,19 +8,24 @@ paid API route. See [the protocol](protocol.md) for messages and ownership.
 From the repository root of a clean checkout, with `uv` installed:
 
 ```sh
-cd bridges/dspy
-uv venv --python 3.14 .venv
-uv pip install --python .venv/bin/python -r requirements.lock
-uv pip install --python .venv/bin/python --no-deps -e .
-.venv/bin/python -m pytest
-.venv/bin/python -c 'import json; data=json.load(open("coverage.json")); summaries=[data["totals"],*[file["summary"] for file in data["files"].values()]]; assert all(s["covered_lines"] >= .9*s["num_statements"] and s["covered_branches"] >= .9*s["num_branches"] for s in summaries), "Every module and the total must reach 90% lines and branches"; print("COVERAGE: every module and total passed 90% lines and branches")'
+cd src/training/dspy
+env -u TYPESAFE_API_KEY uv venv --python 3.14 .venv
+env -u TYPESAFE_API_KEY uv pip install --python .venv/bin/python -r requirements.lock
+env -u TYPESAFE_API_KEY uv pip install --python .venv/bin/python --no-deps -e .
+env -u TYPESAFE_API_KEY .venv/bin/python -m pytest
+env -u TYPESAFE_API_KEY .venv/bin/python -c 'import json; data=json.load(open("coverage.json")); summaries=[data["totals"],*[file["summary"] for file in data["files"].values()]]; assert all(s["covered_lines"] >= .9*s["num_statements"] and s["covered_branches"] >= .9*s["num_branches"] for s in summaries), "Every module and the total must reach 90% lines and branches"; print("COVERAGE: every module and total passed 90% lines and branches")'
 ```
 
-The installed executable is `.venv/bin/paideia-dspy`. It waits for the initial
+The installed executable is `.venv/bin/spawnfile-training-dspy`. It waits for the initial
 optimization message on stdin, issues host callbacks on stdout, then emits an
 explicit terminal result/error and exits. The TypeScript supervisor must answer
 callbacks, enforce native isolation/candidate policy, and own cancellation of both
 the process and its outstanding host work.
+
+Readers accept historical DSPy schema IDs through the shared legacy-wire alias
+table; all outgoing envelopes use the current schema. Pre-rename optimizer
+checkpoints bind different bridge and request identities and fail with an explicit
+re-prepare instruction before any callback.
 
 The released integration uses normal named `dspy.Predict` components and the public
 custom-adapter/proposer seams. One native trial consumes the entire candidate; each
@@ -135,7 +140,7 @@ exact resume restores rejected proposals and does not repeat completed work.
 
 ## Authored population search
 
-With `optimizer.variants` present, Paideia runs the explicit population algorithm
+With `optimizer.variants` present, Training runs the explicit population algorithm
 beside GEPA. Declare `keep` and `budget.rounds` too (`1 <= keep <= variants`):
 
 ```yaml

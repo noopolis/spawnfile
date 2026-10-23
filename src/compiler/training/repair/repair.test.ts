@@ -13,15 +13,15 @@ async function fixture() {
   const f = await preparationFixture(); roots.push(f.root);
   await f.put("own/dist/runtime/daimon/training/adapter.js", "native");
   await f.put("own/dist/training/experiments/trials/trial.js", "subject");
-  await f.put("own/dist/training/dspy/paideia_dspy/checkpoint.py", "checkpoint-v1");
-  await f.put("own/dist/training/dspy/paideia_dspy/protocol.py", "wire-v1");
-  await f.put("own/dist/training/dspy/paideia_dspy/optimizer.py", "gepa");
+  await f.put("own/dist/training/dspy/spawnfile_training_dspy/checkpoint.py", "checkpoint-v1");
+  await f.put("own/dist/training/dspy/spawnfile_training_dspy/protocol.py", "wire-v1");
+  await f.put("own/dist/training/dspy/spawnfile_training_dspy/optimizer.py", "gepa");
   const docker = imageDocker();
   const options = { configPath: f.configPath, context: f.context, args: f.args, dryRun: false,
     process: docker.process, timeoutMs: 30000, packageRoot: path.join(f.root, "own"), streams: { stdout() {}, stderr() {} } };
   const previous = await prepareTraining(options); if ("dryRun" in previous) throw Error("actual");
   const parent = path.join(f.root, "output"), staging = path.dirname(previous.preparationPath);
-  await f.put("output/checkpoint/command.json", JSON.stringify({ schema: "paideia.command-checkpoint.v1", id: "00000000-0000-4000-8000-000000000001", identity: "a".repeat(64) }));
+  await f.put("output/checkpoint/command.json", JSON.stringify({ schema: "spawnfile.training.command-checkpoint.v1", id: "00000000-0000-4000-8000-000000000001", identity: "a".repeat(64) }));
   await f.put("output/checkpoint/training.json", JSON.stringify({ state: { identity: "b".repeat(64) } }));
   await f.put("output/checkpoint/host.json", "{}"); await f.put("output/checkpoint/optimizer.json", "{}");
   await f.put("output/runs/record/events.jsonl", "event\n"); await f.put("output/blobs/digest", "article");
@@ -39,8 +39,8 @@ it("seals future witness automatically and projects repair captures with exact i
   const f = await fixture();
   // Only evaluator and checkpoint transport changes are compatible.
   await f.put("own/dist/runtime/trainingCli.js", "fixed evaluator");
-  await f.put("own/dist/training/dspy/paideia_dspy/checkpoint.py", "fork-support");
-  await f.put("own/dist/training/dspy/paideia_dspy/protocol.py", "fork-wire");
+  await f.put("own/dist/training/dspy/spawnfile_training_dspy/checkpoint.py", "fork-support");
+  await f.put("own/dist/training/dspy/spawnfile_training_dspy/protocol.py", "fork-wire");
   const parentBytes = await readFile(path.join(f.parent, "checkpoint/host.json"));
   const prepared = await prepareTraining(f.options); if ("dryRun" in prepared) throw Error("actual");
   const envelope = repairEnvelopeSchema.parse(JSON.parse(await readFile(prepared.repairPath!, "utf8")));
@@ -55,7 +55,7 @@ it("seals future witness automatically and projects repair captures with exact i
   const manifest = JSON.parse(await readFile(path.join(mounted.source, "projection-manifest.json"), "utf8"));
   expect(hashJson(manifest)).toBe(envelope.receipt.parent.manifestDigest);
   expect(manifest.files).toHaveLength(6);
-  expect(prepared.args.slice(-4)).toEqual(["--repair-measurements", "/run/training/inputs/repair-parent", "--repair-context", "/run/paideia/repair.json"]);
+  expect(prepared.args.slice(-4)).toEqual(["--repair-measurements", "/run/training/inputs/repair-parent", "--repair-context", "/run/spawnfile-training/repair.json"]);
   expect(await readFile(path.join(f.parent, "checkpoint/host.json"))).toEqual(parentBytes);
   expect(await prepareTraining({ ...f.options, args: [...f.options.args, "--resume"] })).toMatchObject({ repairPath: prepared.repairPath });
   await writeFile(path.join(mounted.source, "blobs/digest"), "tamper");
@@ -65,7 +65,7 @@ it("seals future witness automatically and projects repair captures with exact i
 it.each(["native", "trials", "compiler", "integration", "optimizer", "input", "source", "image", "settings"])("rejects changed %s before Docker or output writes", async kind => {
   const f = await fixture();
   const changes: Record<string, string> = { native: "own/dist/runtime/daimon/training/adapter.js", trials: "own/dist/training/experiments/trials/trial.js",
-    compiler: "own/dist/cli/index.js", integration: "integration/entry.ts", optimizer: "own/dist/training/dspy/paideia_dspy/optimizer.py", input: "project/train.yaml" };
+    compiler: "own/dist/cli/index.js", integration: "integration/entry.ts", optimizer: "own/dist/training/dspy/spawnfile_training_dspy/optimizer.py", input: "project/train.yaml" };
   if (changes[kind]) await f.put(changes[kind], "changed");
   if (kind === "source") f.options.context = { ...f.context, project: { ...f.context.project, sourceDigest: `sha256:${"f".repeat(64)}` } };
   if (kind === "image" && "build" in f.config.image) { f.config.image.build.nativeImage = `sha256:${"f".repeat(64)}`; await f.save(); }
@@ -108,7 +108,7 @@ it.each([true, false])("checks repair output before auth, evaluator secrets, inp
   f.config.evaluatorRoutes = [{ purpose: "decisions", provider: "typesafe", model: "judge-model", maxRequests: 20, maxSpendUsd: 1 }];
   f.config.evaluatorSecrets = [{ provider: "typesafe", source: "missing-evaluator-key" }];
   f.config.auth[0]!.source = "missing-auth"; await f.save();
-  await Promise.all(["project", "paideia", f.witnessPath].map(source => rm(path.resolve(f.root, source), { recursive: true, force: true })));
+  await Promise.all(["project", "training", f.witnessPath].map(source => rm(path.resolve(f.root, source), { recursive: true, force: true })));
   await mkdir(path.join(f.root, "child"));
   const options = { ...f.options, dryRun };
   await expect(prepareTraining(options)).rejects.toThrow("fresh output");
@@ -164,7 +164,7 @@ it("chains a repair from its automatic witness while preserving completed captur
   const firstReceipt = JSON.parse(await readFile(first.repairPath!, "utf8"));
   const lineage = { parentId: firstReceipt.receipt.parent.experimentId,
     parentIdentity: firstReceipt.receipt.parent.executionIdentity, receiptDigest: firstReceipt.digest };
-  await f.put("child/checkpoint/command.json", JSON.stringify({ schema: "paideia.command-checkpoint.v1", id: childId, identity: "c".repeat(64), lineage }));
+  await f.put("child/checkpoint/command.json", JSON.stringify({ schema: "spawnfile.training.command-checkpoint.v1", id: childId, identity: "c".repeat(64), lineage }));
   await f.put("child/checkpoint/training.json", JSON.stringify({ state: { identity: "d".repeat(64), recoveries: 1 } }));
   for (const name of ["host", "optimizer"]) await f.put(`child/checkpoint/${name}.json`, "{}");
   await cp(path.join(f.parent, "runs"), path.join(parent, "runs"), { recursive: true });
@@ -198,7 +198,7 @@ it.each([{}, { parentId: "not-uuid", parentIdentity: "a".repeat(64), receiptDige
 it("refuses old external training witnesses with re-prepare guidance before schema parsing", async () => {
   const f = await fixture();
   const envelope = JSON.parse(await readFile(f.witnessPath, "utf8"));
-  envelope.manifest.image.build.paideia = "old-install";
+  envelope.manifest.image.build["former-training-distribution"] = "old-install";
   envelope.manifest.image.build.bridge = "old-bridge";
   envelope.digest = hashJson(envelope.manifest);
   await chmod(f.witnessPath, 0o600);

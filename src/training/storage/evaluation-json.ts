@@ -1,7 +1,8 @@
+import { canonicalWireId } from '../contracts/index.js';
 import type { ExperimentStore, ReadAccess, Visibility } from './types.js';
 import { jsonBytes } from './content.js';
 
-const marker = 'paideia.atomic-grading-blob.v1';
+const marker = 'spawnfile.training.atomic-grading-blob.v1';
 type WriteBlob = Pick<ExperimentStore, 'putBlob'>;
 type ReadBlob = Pick<ExperimentStore, 'readBlob'>;
 
@@ -39,7 +40,7 @@ export async function externalizeEvaluationJson(store: WriteBlob, runId: string,
 export async function hydrateEvaluationJson<T>(store: ReadBlob, value: T, access: ReadAccess): Promise<T> {
   jsonBytes(value);
   return await visit(value, async detail => {
-    if (typeof detail !== 'object' || detail === null || !('schema' in detail) || detail.schema !== marker) return detail;
+    if (typeof detail !== 'object' || detail === null || !('schema' in detail) || canonicalWireId(detail.schema) !== marker) return detail;
     if (Object.keys(detail).sort().join(',') !== 'blob,schema' || !('blob' in detail)) throw new Error('Invalid grading blob reference');
     const reference = detail.blob as Parameters<ExperimentStore['readBlob']>[0];
     if (!reference || typeof reference !== 'object') throw new Error('Invalid grading blob reference');

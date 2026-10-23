@@ -109,7 +109,7 @@ it('rejects actual v8 allowlisted checkpoints before making new calls', async ()
   })), context: Object.fromEntries(Object.entries(templates.context).map(([name, declaration]) =>
     [name, { rows: declaration.rows, role: declaration.role }])) };
   content.identity = stableDigest({ refs: input!.refs, templates: extraction,
-    teachers: selectTeachers(templates, f.decompose.extractors), protocol: 'paideia.extraction.v8' });
+    teachers: selectTeachers(templates, f.decompose.extractors), protocol: 'spawnfile.training.extraction.v8' });
   await writeFile(file, JSON.stringify({ ...content, digest: stableDigest(content) }));
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('Stale decomposition checkpoint');
   expect(f.generate).toHaveBeenCalledTimes(2);

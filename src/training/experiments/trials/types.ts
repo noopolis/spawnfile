@@ -43,7 +43,7 @@ export interface TrialOptions {
 }
 export interface TurnReport { id: string; native: SubjectTurnResult; checks: EvaluationResult[] }
 export interface TrialReport {
-  schema: 'paideia.trial.v1';
+  schema: 'spawnfile.training.trial.v1';
   id: string;
   phase: TrialOptions['phase'];
   candidateId: string;

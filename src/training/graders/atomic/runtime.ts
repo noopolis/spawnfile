@@ -76,7 +76,7 @@ export async function gradeAtomic(runtime: AtomicRuntime, inputs: DecompositionI
   const aggregate = aggregateAtomic(runtime.grader, scores);
   const missing = scores.some(score => score.probability === null);
   const status = failed || failure ? 'error' : missing ? runtime.grader.missing : aggregate.criticalGate === 1 && aggregate.score >= runtime.grader.aggregation.pass_at ? 'pass' : 'fail';
-  return { schema: 'paideia.atomic-grade.v1', status, ...aggregate,
+  return { schema: 'spawnfile.training.atomic-grade.v1', status, ...aggregate,
     ...(failed || failure ? { score: null } : {}),
     ...(failure ? { failure } : {}),
     identity: { definitionDigest: runtime.definitionDigest, templatesDigest: runtime.templatesDigest,

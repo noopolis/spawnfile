@@ -3,7 +3,7 @@ import { parseGrader } from './format/index.js';
 import { expandInstances, segmenterIdentity } from './instances.js';
 
 function grader(questions: unknown[], gates: unknown[] = []) {
-  return parseGrader({ schema: 'paideia.grader.v1', id: 'test', golden: 'golden.yaml', calibration: 'cal.json',
+  return parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'test', golden: 'golden.yaml', calibration: 'cal.json',
     context: { evidence: { description: 'Evidence' } }, teachers: [{ id: 't', provider: 'claude', model: 'model' }],
     model: { backend: 'teacher', teacher: 't' }, escalate: { to: 't', between: [0.3, 0.7] },
     gates, questions: questions.map(question => ({ id: 'q', type: 'yes-no', expected: 'yes', reads: [], ...question as object })),

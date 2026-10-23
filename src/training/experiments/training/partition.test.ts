@@ -3,7 +3,7 @@ import { partitionTraining, resolveTrainingPartitions } from './partition.js';
 import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 
 it('freezes a group-disjoint validation partition without a third required YAML', () => {
-  const dataset = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  const dataset = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: training
 checks: [{id: done, eval: equals, input: output.text, value: ok}]
 records:

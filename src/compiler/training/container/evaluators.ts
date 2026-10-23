@@ -2,9 +2,9 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
-export const TRAINING_EVALUATOR_ROUTES_FILE = "/run/paideia/evaluator-routes.json";
-export const TRAINING_TYPESAFE_SECRET_FILE = "/run/paideia/secrets/typesafe";
-export const TRAINING_TYPESAFE_SECRET_INGRESS = "/run/paideia/secret-ingress/typesafe";
+export const TRAINING_EVALUATOR_ROUTES_FILE = "/run/spawnfile-training/evaluator-routes.json";
+export const TRAINING_TYPESAFE_SECRET_FILE = "/run/spawnfile-training/secrets/typesafe";
+export const TRAINING_TYPESAFE_SECRET_INGRESS = "/run/spawnfile-training/secret-ingress/typesafe";
 export const trainingEvaluatorRouteSchema = z.object({
   purpose: z.enum(["extraction", "proposals", "decisions"]),
   provider: z.enum(["codex-subscription", "typesafe"]),
@@ -39,17 +39,17 @@ export const prepareTrainingEvaluators = async (root: string, config: {
       throw Error("Evaluator receipts require one mapped training --out directory");
     }
     const source = path.join(root, "evaluator-routes.json");
-    await writeFile(source, JSON.stringify({ version: "paideia.evaluator-routes.v1", routes: config.evaluatorRoutes,
+    await writeFile(source, JSON.stringify({ version: "spawnfile.training.evaluator-routes.v1", routes: config.evaluatorRoutes,
       receiptPath: path.posix.join(output, "evaluator-requests.jsonl") }), { mode: 0o444, flag: "wx" });
     mounts.push(`type=bind,src=${source},dst=${TRAINING_EVALUATOR_ROUTES_FILE},readonly`);
-    env.push(`PAIDEIA_EVALUATOR_ROUTES_FILE=${TRAINING_EVALUATOR_ROUTES_FILE}`);
+    env.push(`SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE=${TRAINING_EVALUATOR_ROUTES_FILE}`);
   }
   for (const secret of config.evaluatorSecrets ?? []) {
     // The host-uid v1 launcher cannot stage a root-owned copy; bind the canonical leaf at the consumer path.
     if (config.subjectIsolation === "codex-native-sandbox") {
       mounts.push(`type=bind,src=${secret.source},dst=${TRAINING_TYPESAFE_SECRET_FILE},readonly`);
     } else mounts.push(`type=bind,src=${secret.source},dst=${TRAINING_TYPESAFE_SECRET_INGRESS},readonly`);
-    env.push(`PAIDEIA_TYPESAFE_SECRET_FILE=${TRAINING_TYPESAFE_SECRET_FILE}`);
+    env.push(`SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE=${TRAINING_TYPESAFE_SECRET_FILE}`);
   }
   return { mounts, env };
 };

@@ -29,7 +29,7 @@ export interface AtomicFeedback {
   failed_checks: { template: string; unit: string; probability: number | null }[];
 }
 export interface AtomicGradeResult {
-  schema: 'paideia.atomic-grade.v1'; status: 'pass' | 'fail' | 'unknown' | 'error';
+  schema: 'spawnfile.training.atomic-grade.v1'; status: 'pass' | 'fail' | 'unknown' | 'error';
   /** Null when infrastructure prevented a measurement; aggregate components remain diagnostic. */
   score: number | null; coverage: number; criticalGate: number; obligationCoverage: number; quality: number;
   failure?: { cause: NonNullable<DecisionResult['failureCause']>; reason: string };

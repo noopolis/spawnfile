@@ -3,7 +3,7 @@ import type { ViewerData } from './types.js';
 /** Public synthetic display fixture; no native observations or private text. */
 export function viewerFixture(): ViewerData {
   return {
-    schema: 'paideia.viewer.v1',
+    schema: 'spawnfile.training.viewer.v1',
     experiment: { id: 'experiment', title: 'Local experiment', status: 'running', phase: 'train', updatedAt: '2026-09-13T00:00:00Z' },
     cases: [{ id: 'train', split: 'train', label: 'Training case' }, { id: 'selection', split: 'validation' }],
     trials: [{ id: 'trial-1', caseId: 'train', candidateId: 'baseline', status: 'completed', score: 0.5,

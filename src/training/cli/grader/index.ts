@@ -22,7 +22,7 @@ export async function runGraderCommand(args: CliArguments, io: CliIO, dependenci
   try { return await executeGraderCommand(args, io, dependencies, signal); }
   catch (error) {
     if (error instanceof DecisionAccountingError) io.stdout(`${JSON.stringify({
-      schema: 'paideia.grader-failure.v1', status: 'failed', command: args.graderCommand,
+      schema: 'spawnfile.training.grader-failure.v1', status: 'failed', command: args.graderCommand,
       decisionAccounting: error.decisionAccounting,
     })}\n`);
     throw error;

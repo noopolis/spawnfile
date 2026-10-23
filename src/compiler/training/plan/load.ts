@@ -1,3 +1,4 @@
+import { checkTrainingFilename } from "../../../shared/index.js";
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
@@ -73,6 +74,7 @@ const readYaml = async <T>(file: string, schema: z.ZodType<T>, declaredBy: strin
 const loadDataFileSource = async (root: string, file: string, declaredBy: string): Promise<TrainingFileSource> => {
   const context = `Invalid training file ${file} declared by ${declaredBy}:`;
   if (!inside(root, file)) invalidTraining(`${context} must be inside project root ${root}`);
+  checkTrainingFilename(file);
   const realPath = await realpath(file).catch((error: unknown) =>
     invalidTraining(`${context} must be an existing regular file: ${reason(error)}`));
   if (!inside(root, realPath)) invalidTraining(`${context} must be inside project root ${root} (no symlink escape)`);

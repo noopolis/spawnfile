@@ -5,7 +5,7 @@ import { checkCalibration } from './identity.js';
 import { createIdentityCalibration } from './identity-calibration.js';
 import { decisionBackendIdentity, gradeOutput } from './runtime/index.js';
 
-const authored = { schema: 'paideia.grader.v1', id: 'fixed', calibration: 'identity',
+const authored = { schema: 'spawnfile.training.grader.v1', id: 'fixed', calibration: 'identity',
   model: { backend: 'typesafe', name: 'jev-1.13.0' }, max_spend_usd: 0.5,
   context: { grounding: { description: 'Frozen human facts' } },
   questions: [
@@ -67,7 +67,7 @@ it('requires explicit mode and pins it against calibrated reuse', async () => {
   expect(checkCalibration({ ...f.grader, calibration: 'calibration.json', teachers: [{ id: 'none', provider: 'codex', model: 'm' }] }, f.calibration, f.calibration.identity).refusals).toContain('calibration mode mismatch');
 });
 it.each([
-  { golden: 'labels.yaml' }, { golden: { schema: 'paideia.labels.v1', labelers: {}, labels: [{ id: 'invalid' }] } },
+  { golden: 'labels.yaml' }, { golden: { schema: 'spawnfile.training.labels.v1', labelers: {}, labels: [{ id: 'invalid' }] } },
   { max_spend_usd: undefined }, { teachers: [{ id: 't', provider: 'codex', model: 'm' }] },
   { model: { backend: 'teacher', teacher: 't' } }, { escalate: { to: 't', between: [0.4, 0.6] } },
   { uncalibrated: 'teacher' }, { model: undefined, models: [{ id: 'a', backend: 'typesafe', name: 'jev-1.13.0' }] },

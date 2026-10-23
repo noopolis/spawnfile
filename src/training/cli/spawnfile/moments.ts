@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
@@ -19,7 +20,7 @@ const momentSchema = z.object({
 /** Frozen authored metadata; the lowered bundle is never reused as writable trial state. */
 export type TrainingMomentCase = z.infer<typeof momentSchema>;
 export interface TrainingMomentReceipt {
-  version: 'paideia.training-moment-prepared.v1';
+  version: 'spawnfile.training.training-moment-prepared.v1';
   trialId: string;
   example: string;
   momentRoot: string;
@@ -64,7 +65,7 @@ export function spawnfileEnvironment(integration: SpawnfileCliIntegration, conte
     const prepared = await hooks[moment.hook]!(paths, signal, trial, context, moment, services);
     signal.throwIfAborted();
     const receipt = prepared.momentReceipt;
-    if (!receipt || receipt.version !== 'paideia.training-moment-prepared.v1' || receipt.trialId !== trial.id ||
+    if (!receipt || canonicalWireId(receipt.version) !== 'spawnfile.training.training-moment-prepared.v1' || receipt.trialId !== trial.id ||
         receipt.example !== moment.example || receipt.at !== moment.effectiveAt || receipt.momentRoot !== destination) {
       throw new Error('Training moment preparation receipt mismatch');
     }

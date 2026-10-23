@@ -12,7 +12,7 @@ const backend: DecisionBackend = { identity: async () => ({ backend: 'fake', mod
 const provider: InferenceProvider = { id: 'test', capabilities: { billing: 'subscription', tools: 'disabled', temperature: false, seed: false },
   generate: async () => ({ model: 'm', text: 'yes', usage: null, route: 'fake' }) };
 function grader(model: unknown) {
-  return parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'calibration.json',
+  return parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'calibration.json',
     teachers: [{ id: 'c', provider: 'claude', model: 'opus' }], model, escalate: { to: 'c', between: [0.3, 0.7] },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }], score: { method: 'weighted' } });
 }

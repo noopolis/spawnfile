@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, resolve, sep } from 'node:path';
@@ -6,7 +7,7 @@ import { z } from 'zod';
 const sha = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const id = z.string().min(1).max(512);
 const receiptSchema = z.object({
-  version: z.literal('paideia.measurement-repair.v1'),
+  version: compatibleWireLiteral('spawnfile.training.measurement-repair.v1'),
   parent: z.object({ root: id, imageId: sha, experimentId: id, executionIdentity: id, manifestDigest: sha,
     checkpoints: z.object({ command: sha, training: sha, host: sha, optimizer: sha }).strict(), trainingIdentity: id }).strict(),
   current: z.object({ imageId: sha, canonicalSourceDigest: sha, adapterId: id }).strict(),
@@ -25,11 +26,12 @@ export async function readMeasurementRepair(path: string, expected: {
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 1_048_576) throw new Error('Repair receipt must be a bounded regular file');
   const bytes = await readFile(path);
   if (bytes.length > 1_048_576) throw new Error('Repair receipt exceeds its bound');
-  const envelope = z.object({ receipt: receiptSchema, digest: sha }).strict().parse(JSON.parse(bytes.toString('utf8')));
-  if (repairDigest(JSON.stringify(envelope.receipt)) !== envelope.digest) throw new Error('Repair receipt integrity mismatch');
+  const raw = z.object({ receipt: z.unknown(), digest: sha }).strict().parse(JSON.parse(bytes.toString('utf8')));
+  if (repairDigest(JSON.stringify(raw.receipt)) !== raw.digest) throw new Error('Repair receipt integrity mismatch');
+  const envelope = { receipt: receiptSchema.parse(raw.receipt), digest: raw.digest };
   const { receipt } = envelope;
   if (['native', 'trials', 'optimizer'].some(name => Object.hasOwn(receipt.compatibility.components, name))) {
-    throw new Error('Repair references external Paideia components; re-prepare with Spawnfile before repairing measurements');
+    throw new Error('Repair references external Training components; re-prepare with Spawnfile before repairing measurements');
   }
   const parent = resolve(expected.parentRoot), out = resolve(expected.out);
   if (receipt.parent.root !== parent || await realpath(parent) !== parent ||

@@ -74,7 +74,7 @@ class Checkpoint:
             base64.b64decode(saved["gepa"], validate=True)
             return saved
         except (OSError, ValueError, TypeError, KeyError, BridgeError) as error:
-            raise BridgeError("checkpoint_mismatch", "optimizer checkpoint integrity or identity mismatch") from error
+            raise BridgeError("checkpoint_mismatch", "optimizer checkpoint integrity or identity mismatch; re-prepare the training run with the installed bridge") from error
 
     def _import(self, fork):
         saved = self._read(Path(fork.directory) / "optimizer.json",

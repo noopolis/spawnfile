@@ -11,6 +11,6 @@ export interface Trap {
   context_digest: string; validation: { valid: boolean; reasons: string[] };
 }
 export interface TrapSet {
-  schema: 'paideia.traps.v1'; seed: string; traps: Trap[]; discarded: number;
+  schema: 'spawnfile.training.traps.v1'; seed: string; traps: Trap[]; discarded: number;
   rejections: { kind: TrapKind; unit: string; reason: string }[];
 }

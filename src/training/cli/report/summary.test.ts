@@ -80,7 +80,7 @@ it('uses the latest rescore once, preserving original live/turn failures and det
     children: [{ id: 'receipt', status: 'unknown' as const, finality: 'final' as const, reason: 'Not observed', evidence: [] }] };
   trial.turns = [{ id: 'wake', checks: [check], native: { status: 'completed', text: '', usage: null, coverage: [] } }];
   trial.live = [{ checkId: 'receipt', boundary: 'close', result: check }]; trial.decisiveFailure = check;
-  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescored', runId: trial.id,
+  const rescore: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'rescored', runId: trial.id,
     scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
     original: { evaluationId: 'original', digest: 'digest', candidateId: trial.candidateId, datasetDigest: 'dataset',
       planDigest: 'plan', recordId: trial.recordId, phase: trial.phase, status: trial.status },

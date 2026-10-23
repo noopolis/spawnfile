@@ -9,7 +9,7 @@ import type { NativeActivity, NativeAvailability, NativeConfig, NativeEvidence, 
   NativeReceipt, TerminalEvidence, WorkerOptions } from './types.js';
 
 export interface NativeStopEvidence {
-  schema: 'paideia.daimon-native.stop.v1';
+  schema: 'spawnfile.training.daimon-native.stop.v1';
   state: 'acknowledged' | 'unknown';
   quiescence: 'unknown';
   containmentVerification: 'parent-container-owner';
@@ -58,10 +58,10 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
         const native = await Promise.race([host.stop(), new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error('Native shutdown deadline exceeded')), 5000);
         })]);
-        return { schema: 'paideia.daimon-native.stop.v1', state: 'acknowledged', quiescence: 'unknown',
+        return { schema: 'spawnfile.training.daimon-native.stop.v1', state: 'acknowledged', quiescence: 'unknown',
           containmentVerification: 'parent-container-owner', native } as const;
       } catch (error) {
-        return { schema: 'paideia.daimon-native.stop.v1', state: 'unknown', quiescence: 'unknown',
+        return { schema: 'spawnfile.training.daimon-native.stop.v1', state: 'unknown', quiescence: 'unknown',
           containmentVerification: 'parent-container-owner', error: String(error) } as const;
       } finally { clearTimeout(timer); }
     })();
@@ -211,7 +211,7 @@ export function createWorkerController(host: NativeHost, config: NativeConfig, o
       } finally { clearTimeout(timer); incoming?.finish(); }
       const continuing = gate.finish(executionId, blocked === 'awaiting-external-input');
       if (blocked && !continuing) await stop();
-      const result: TerminalEvidence = { schema: 'paideia.daimon-native.trial.v1', trialId: options.trialId, wakeId,
+      const result: TerminalEvidence = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: options.trialId, wakeId,
         agentId: agent.id, model: agent.engine.model!, ...(grok ? { engine: 'grok' as const, reasoningEffort: grok.agent.reasoningEffort } : {}), configSha256: options.configSha256, scheduleOverride: 'disabled',
         ...(launch ? { preparation: { sourceConfigSha256: launch.sourceConfigSha256, instructions: launch.instructions, overrides: launch.overrides } } : {}),
         ...(incoming ? { transport: incoming.evidence } : {}), ...(taskClock ? { taskClock } : {}),

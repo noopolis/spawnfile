@@ -69,7 +69,7 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
     }
     await persistNativeSandboxProjection(runtime, config, options, launch);
     await listenWorker(server, config.host.bindHost, config.host.port);
-    process.stdout.write(`${JSON.stringify({ schema: 'paideia.daimon-native.ready.v1', trialId: options.trialId,
+    process.stdout.write(`${JSON.stringify({ schema: 'spawnfile.training.daimon-native.ready.v1', trialId: options.trialId,
       agentId: config.agents[0]!.id, model: config.agents[0]!.engine.model,
       ...(grok ? { engine: 'grok', reasoningEffort: config.agents[0]!.engine.reasoningEffort } : {}), configSha256: options.configSha256,
       ...(taskClock ? { taskClock } : {}), ...(launch.delivery === 'transport' ? { delivery: 'transport' } : {}),

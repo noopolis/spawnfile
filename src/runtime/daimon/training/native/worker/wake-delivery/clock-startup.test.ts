@@ -11,7 +11,7 @@ import type { NativeConfig, NativeHost } from '../types.js';
 const clock = { origin: '2001-01-01T12:30:00+02:00', libfaketimePath: '/usr/lib/faketime/libfaketime.so.1' };
 
 // Daimon's realTimeProcessEnvironment is private: its public package exports no
-// stripping helper. This verifies Paideia startup, not downstream engine launches.
+// stripping helper. This verifies Training startup, not downstream engine launches.
 test.each(['enabled', 'disabled', 'future', 'expired'] as const)(
   'worker validates the caller anchor before host creation and emits it unchanged (%s)', async mode => {
   const f = await launchFixture();
@@ -74,7 +74,7 @@ test.each(['enabled', 'disabled', 'future', 'expired'] as const)(
     }
     await starting;
     expect(created).toBeDefined();
-    const readyLine = stdout.mock.calls.map(([value]) => String(value)).find(value => value.includes('paideia.daimon-native.ready.v1'));
+    const readyLine = stdout.mock.calls.map(([value]) => String(value)).find(value => value.includes('spawnfile.training.daimon-native.ready.v1'));
     expect(readyLine).toBeDefined();
     const ready = JSON.parse(readyLine!) as { taskClock?: NativeTaskClockEvidence; delivery?: string };
     if (mode === 'enabled') {
@@ -92,7 +92,7 @@ test.each(['enabled', 'disabled', 'future', 'expired'] as const)(
     expect(process.env.DAIMON_ENGINE_WAKE_TIMEOUT_MS).toBe('5000');
     expect(listen).toHaveBeenCalledWith(expect.anything(), '127.0.0.1', config.host.port);
     handlers[0]!(); handlers[0]!();
-    await vi.waitFor(() => expect(stdout.mock.calls.some(([value]) => String(value).includes('paideia.daimon-native.stop.v1'))).toBe(true));
+    await vi.waitFor(() => expect(stdout.mock.calls.some(([value]) => String(value).includes('spawnfile.training.daimon-native.stop.v1'))).toBe(true));
     expect(stopped).toBe(true);
     expect(stopCalls).toBe(1);
   } finally {

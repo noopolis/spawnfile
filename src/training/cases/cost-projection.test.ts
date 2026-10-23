@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { parseDatasetYaml, resolveDataset, resolveDatasetForCost, validateCostDatasetSplit } from './index.js';
 import type { ResolvedDataset, ResolvedRecord } from '../contracts/dataset.js';
 
-const source = `schema: paideia.dataset.v1
+const source = `schema: spawnfile.training.dataset.v1
 id: cost
 setup: {profile: custom/preparation, artifacts: {article: {kind: captured}}}
 checks: [{id: prose, eval: llm-rubric, judge: prose, input: 'artifact:article', minimum: 0.8, rubric: {file: rubric.md}}]
@@ -51,7 +51,7 @@ describe('non-executable cost dataset projection', () => {
     expect(() => resolveDatasetForCost(parseDatasetYaml(text), options)).toThrow(message);
   });
   it('projects multi-turn inputs only into their cost checks and source identities', () => {
-    const document = parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id: 'turns',
+    const document = parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'turns',
       checks: [{ id: 'done', eval: 'equals', input: 'output.text', value: 'OK' }],
       records: [{ id: 'one', group: 'g', turns: [{ id: 'first', input: { prompt: 'Never expose this input' } },
         { id: 'second', input: { prompt: 'Continue' }, checks: [{ id: 'turn-done', eval: 'equals', input: 'output.text', value: 'OK' }] }] }] }));

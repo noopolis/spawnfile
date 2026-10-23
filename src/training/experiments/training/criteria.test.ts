@@ -5,7 +5,7 @@ import { freezeCriteria } from './criteria.js';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 
 it('authenticates and freezes sidecars and evaluator versions before inference', async () => {
-  const source = `schema: paideia.dataset.v1
+  const source = `schema: spawnfile.training.dataset.v1
 id: checks
 checks: [{id: format, eval: json-schema, input: output.text, schema: shape.json}]
 records: [{id: one, group: a, input: {prompt: do it}}]
@@ -29,7 +29,7 @@ it.each([0, 1] as const)('freezes judge model and repair policy (%i) before side
   const route = { model: 'original', citationRepairs, provider: { id: 'test',
     capabilities: { tools: 'disabled' as const, billing: 'subscription' as const, temperature: false as const, seed: false as const },
     async generate(request: { model: string }) { models.push(request.model); return { text: replies.shift()!, model: 'actual', usage: null, route: 'test' }; } } };
-  const source = `schema: paideia.dataset.v1
+  const source = `schema: spawnfile.training.dataset.v1
 id: checks
 checks: [{id: prose, eval: llm-rubric, input: output.text, judge: editor, rubric: {file: rubric.md}, minimum: 0.8}]
 records: [{id: one, input: {prompt: do it}}]
@@ -60,7 +60,7 @@ it('freezes evidence-ID protocol before sidecar awaits and preserves it through 
       return { text: JSON.stringify({ score: 0.9, verdict: 'pass', reasons: ['Supported.'], evidenceIds: [packet.units[0]!.id] }),
         model: request.model, route: 'fixture', usage: null };
     } } };
-  const dataset = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  const dataset = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: protocol
 checks: [{id: quality, eval: llm-rubric, input: output.text, judge: editor, rubric: {file: rubric.md}, minimum: 0.8}]
 records: [{id: train, input: {prompt: Reply}}]

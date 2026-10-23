@@ -106,7 +106,7 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     if (execution) {
       const capability = await call(["image", "inspect", expectedImage, "--format", `{{json (index .Config.Labels "${TRAINING_EXECUTION_CAPABILITY_LABEL}")}}`]);
       if (capability.code !== 0 || capability.stdout.trim() !== JSON.stringify(TRAINING_EXECUTION_VERSION)) {
-        throw Error(`Authored training requires an image implementing --spawnfile-execution ${TRAINING_EXECUTION_FILE} and labelled ${TRAINING_EXECUTION_CAPABILITY_LABEL}=${TRAINING_EXECUTION_VERSION}; legacy Paideia datasets are incompatible`);
+        throw Error(`Authored training requires an image implementing --spawnfile-execution ${TRAINING_EXECUTION_FILE} and labelled ${TRAINING_EXECUTION_CAPABILITY_LABEL}=${TRAINING_EXECUTION_VERSION}; legacy Training datasets are incompatible`);
       }
     }
     privateRoot = await realpath(await mkdtemp(path.join(path.dirname(prepared.config.output.source), ".spawnfile-training-container-")));
@@ -124,11 +124,11 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     }
     const mounts = [...evaluators.mounts, ...prepared.config.inputs.map((entry) => `type=bind,src=${entry.source},dst=${entry.destination},readonly`),
       outputVolume?.mount ?? `type=bind,src=${prepared.config.output.source},dst=/run/training/output`,
-      `type=bind,src=${contextFile},dst=/run/paideia/context.json,readonly`,
+      `type=bind,src=${contextFile},dst=/run/spawnfile-training/context.json,readonly`,
       ...execution ? [`type=bind,src=${executionFile},dst=${TRAINING_EXECUTION_FILE},readonly`] : [],
-      ...options.preparationPath ? [`type=bind,src=${options.preparationPath},dst=/run/paideia/preparation.json,readonly`] : [],
-      ...options.repairPath ? [`type=bind,src=${options.repairPath},dst=/run/paideia/repair.json,readonly`] : [],
-      ...prepared.config.auth.map((entry) => `type=bind,src=${entry.source},dst=/run/paideia-auth/${entry.provider},readonly`)];
+      ...options.preparationPath ? [`type=bind,src=${options.preparationPath},dst=/run/spawnfile-training/preparation.json,readonly`] : [],
+      ...options.repairPath ? [`type=bind,src=${options.repairPath},dst=/run/spawnfile-training/repair.json,readonly`] : [],
+      ...prepared.config.auth.map((entry) => `type=bind,src=${entry.source},dst=/run/spawnfile-training-auth/${entry.provider},readonly`)];
     const broker = prepared.config.broker;
     if (broker) {
       mounts.push(trainingRunRequestMount(prepared.config.output.source, prepared.args));
@@ -152,11 +152,11 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const args = ["create", "--name", name, "--label", `com.spawnfile.training.owner=${name}`,
       "--init", "--read-only", ...privilege,
       "--env", "HOME=/home/training", "--workdir", "/work", "--entrypoint", broker ? TRAINING_BROKER_ENTRYPOINT : "/opt/training/bin/train",
-      ...(broker ? ["--env", "PAIDEIA_MODEL_REQUEST_CAP=broker"] : []),
+      ...(broker ? ["--env", "SPAWNFILE_TRAINING_MODEL_REQUEST_CAP=broker"] : []),
       ...evaluators.env.flatMap(value => ["--env", value]),
       ...[...mounts, ...(broker ? trainingBrokerMounts(broker) : [])].flatMap((mount) => ["--mount", mount]),
       ...(prepared.viewerPort === undefined ? [] : ["--publish", `127.0.0.1:${prepared.viewerPort}:${prepared.viewerPort}`]), expectedImage,
-      "train", "--spawnfile-context", "/run/paideia/context.json",
+      "train", "--spawnfile-context", "/run/spawnfile-training/context.json",
       ...(execution ? ["--spawnfile-execution", TRAINING_EXECUTION_FILE] : []), ...prepared.args];
     creationAttempted = true;
     const created = await call(args);

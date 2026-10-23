@@ -25,7 +25,7 @@ function graded(id = 'writing'): EvaluationResult {
 }
 function trial(): TrialReport {
   const check = graded();
-  return { schema: 'paideia.trial.v1', id: 'trial', phase: 'train', candidateId: 'baseline', datasetDigest: 'dataset',
+  return { schema: 'spawnfile.training.trial.v1', id: 'trial', phase: 'train', candidateId: 'baseline', datasetDigest: 'dataset',
     planDigest: 'plan', recordId: 'record', paths: { root: '/trial', workspace: '/trial/work', control: '/trial/control', runtimeHome: '/trial/runtime' },
     status: 'pass', execution: 'completed', hostWork: 'settled', turns: [], live: [],
     snapshot: { trialId: 'trial', recordId: 'record', closed: true, events: [], coverage: [], artifacts: {}, output: '', inputFiles: {}, context: {} },
@@ -36,7 +36,7 @@ function trial(): TrialReport {
 const options = { subjectModel: 'unknown' };
 
 function persistedTrial(input: TrialReport): TrialReport {
-  return capturedTrial({ manifest: { schema: 'paideia.run.v1', id: input.id, datasetId: 'dataset',
+  return capturedTrial({ manifest: { schema: 'spawnfile.training.run.v1', id: input.id, datasetId: 'dataset',
     datasetRole: input.phase, candidateId: input.candidateId, planDigest: input.planDigest, recordId: input.recordId },
     events: [], evaluations: [{ id: 'original', visibility: 'evaluator', digest: 'digest', report: JSON.parse(JSON.stringify(input)) }],
     completeness: 'complete', ignoredTailBytes: 0, redactedEvents: 0, redactedMetadata: false }).report;
@@ -77,7 +77,7 @@ it('counts separate checks, nested anonymous leaves, native trials and rescoring
   const anonymous = graded(); delete anonymous.id;
   input.evaluation.checks.nested = { ...anonymous, grading: undefined, children: [anonymous, structuredClone(anonymous)] };
   const second = { ...structuredClone(input), id: 'second' };
-  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: input.id, scope: 'final-stages',
+  const rescore: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'rescore', runId: input.id, scope: 'final-stages',
     notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'original', digest: 'digest', candidateId: input.candidateId,
       datasetDigest: 'dataset', planDigest: 'plan', recordId: input.recordId, phase: input.phase, status: input.status },
     criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
@@ -133,7 +133,7 @@ async function engineFixture() {
   });
   const backend = createTypeSafeDecision({ model: receipt.model, env: { TYPESAFE_API_KEY: 'synthetic-test-key' },
     fetch, pricePerMtokUsd: 42, retryBaseMs: 0, maxAttempts: 2 });
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
     model: { backend: 'typesafe', name: receipt.model }, teachers: [{ id: 't', provider: 'claude', model: 'm' }],
     escalate: { to: 't', between: [0.4, 0.6] },
     questions: [{ id: 'q', type: 'yes-no', level: 'paragraph', expected: 'yes', reads: ['paragraph'] }],
@@ -141,7 +141,7 @@ async function engineFixture() {
   const digest = 'a'.repeat(64), goldenDigest = digest;
   const runtime: GradingRuntime = { grader, backend, goldenDigest, promptTemplateVersion: 'v1', resource: {},
     definitionDigest: digest, calibrationDigest: digest,
-    calibration: { schema: 'paideia.grader-calibration.v1',
+    calibration: { schema: 'spawnfile.training.grader-calibration.v1',
       identity: createCalibrationIdentity(grader, { backendModel: await decisionBackendIdentity(grader, backend),
         golden: goldenDigest, promptTemplateVersion: 'v1', seed: 's', exclusions: [] }),
       questions: { q: { status: 'calibrated', failures: [], params: { a: 1, b: 0 }, band: [0.4, 0.6],
@@ -189,7 +189,7 @@ it('retains receipt origin across selective repair while charging fresh rescorin
   expect(semantic).toHaveBeenCalledTimes(1);
   expect(f.fetch).toHaveBeenCalledTimes(2);
   expect(repaired.checks.writing).toEqual(original.evaluation.checks.writing);
-  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'repair', runId: input.id, scope: 'final-stages',
+  const rescore: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'repair', runId: input.id, scope: 'final-stages',
     notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'original', digest: 'digest', candidateId: input.candidateId,
       datasetDigest: input.datasetDigest, planDigest: input.planDigest, recordId: input.recordId, phase: input.phase, status: input.status },
     criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
@@ -232,7 +232,7 @@ it.each(['model-drift', 'exhausted-retries'] as const)('retains failed paid atte
   expect(costs.knownSubtotalUsd.low).toBe(mode === 'model-drift' ? 0.021 : 0);
   expect(costs.entries.every(entry => entry.decisionReceipt!.usd === null)).toBe(mode === 'exhausted-retries');
   // A later repaired measurement does not remove earlier failed attempts.
-  const repaired: RescoreReport = { schema: 'paideia.rescore.v1', id: 'repair', runId: input.id, scope: 'final-stages',
+  const repaired: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'repair', runId: input.id, scope: 'final-stages',
     notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'original', digest: 'digest', candidateId: input.candidateId,
       datasetDigest: input.datasetDigest, planDigest: input.planDigest, recordId: input.recordId, phase: input.phase, status: input.status },
     criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},

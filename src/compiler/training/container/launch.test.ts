@@ -12,7 +12,7 @@ it("launches one immutable container, streams a verified persisted completion an
   const f = await setup(); let observedContext: unknown;
   const docker = dockerFixture(async (args) => {
     if (args[2] === "create") {
-      const mount = args.find((entry) => entry.includes("dst=/run/paideia/context.json"))!;
+      const mount = args.find((entry) => entry.includes("dst=/run/spawnfile-training/context.json"))!;
       observedContext = JSON.parse(await readFile(mount.split("src=")[1]!.split(",")[0]!, "utf8"));
     }
     return undefined;
@@ -27,7 +27,7 @@ it("launches one immutable container, streams a verified persisted completion an
   expect(create.some((value) => value.startsWith("/work:") && value.includes(`uid=${process.getuid!()}`))).toBe(true);
   expect(create).toContain(image); expect(create).not.toContain("--privileged");
   expect(create.join(" ")).not.toContain("docker.sock");
-  expect(create.join(" ")).toContain("dst=/run/paideia-auth/codex,readonly");
+  expect(create.join(" ")).toContain("dst=/run/spawnfile-training-auth/codex,readonly");
   expect(output.stdout).toHaveBeenLastCalledWith('{"status":"completed","index":"/run/training/output/index.json"}');
   expect(docker.calls.some((args) => args[2] === "rm" && args.at(-1) === id)).toBe(true);
 });
@@ -127,7 +127,7 @@ it("stages private readonly context beside the shared output, never in host temp
   const tmp = vi.spyOn(os, "tmpdir").mockImplementation(() => { throw Error("Host temp cannot be staged for Docker"); });
   const docker = dockerFixture(async (args) => {
     if (args[2] === "create") {
-      const mount = args.find((entry) => entry.includes("dst=/run/paideia/context.json"))!;
+      const mount = args.find((entry) => entry.includes("dst=/run/spawnfile-training/context.json"))!;
       expect(mount.endsWith(",readonly")).toBe(true);
       const file = mount.split("src=")[1]!.split(",")[0]!; scratch = path.dirname(file);
       expect(path.dirname(scratch)).toBe(path.dirname(f.output));

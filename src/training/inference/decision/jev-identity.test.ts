@@ -98,7 +98,7 @@ it('throws a long-canary timeout and refuses invalid successful probability resp
     return new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(Error('timeout')), { once: true }));
   };
   await expect(createJevDecision({ endpoint, timeoutMs: 5, fetch: slow }).identity()).rejects.toThrow('timed out');
-  for (const answers of [undefined, { paideia_identity: { probabilities: { true: 1 } } }]) {
+  for (const answers of [undefined, { training_identity: { probabilities: { true: 1 } } }]) {
     await expect(createJevDecision({ endpoint, fetch: async () => new Response(JSON.stringify({ model: 'm', answers })) }).identity())
       .rejects.toThrow('identity canary');
   }

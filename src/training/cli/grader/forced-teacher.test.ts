@@ -15,7 +15,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 it.each(['jev-http', 'teacher'] as const)('persists independent teacher accuracy and refuses weak forced routing (%s)', async backend => {
   const root = await mkdtemp(join(tmpdir(), 'forced-teacher-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml');
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'calibration.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'calibration.json',
     teachers: [{ id: 't', provider: 'claude', model: 'opus' }],
     model: backend === 'teacher' ? { backend, teacher: 't' } : { backend, endpoint: 'http://localhost:8000', name: 'model' },
     uncalibrated: 'teacher', escalate: { to: 't', between: [0.4, 0.6] },
@@ -34,7 +34,7 @@ it.each(['jev-http', 'teacher'] as const)('persists independent teacher accuracy
       } } } } };
   });
   await writeFile(graderFile, stringify(grader));
-  await writeFile(join(root, 'labels.yaml'), stringify({ schema: 'paideia.labels.v1', grader: 'g', labels,
+  await writeFile(join(root, 'labels.yaml'), stringify({ schema: 'spawnfile.training.labels.v1', grader: 'g', labels,
     labelers: { human: { kind: 'human', name: 'H' }, t: { kind: 'model', provider: 'claude', model: 'opus' } } }));
   const score = vi.fn<DecisionBackend['score']>(async requests => requests.map(request => {
     const output = request.projection['output.data'] as { id: number; good: boolean };
@@ -59,7 +59,7 @@ it.each(['jev-http', 'teacher'] as const)('persists independent teacher accuracy
 it.each(['editor', 'human', 'provider', 'model', 'policy'] as const)('refuses forged teacher %s evidence before calibration inference', async forgery => {
   const root = await mkdtemp(join(tmpdir(), 'teacher-identity-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml');
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'c.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'c.json',
     teachers: [{ id: 't', provider: 'claude', model: 'opus' }],
     model: { backend: 'jev-http', endpoint: 'http://localhost:8000', name: 'model' },
     uncalibrated: 'teacher', escalate: { to: 't', between: [0.4, 0.6] },
@@ -74,7 +74,7 @@ it.each(['editor', 'human', 'provider', 'model', 'policy'] as const)('refuses fo
         ...(forgery === 'policy' ? {} : { teacher_policy_digest: teacherPolicyDigest(grader.teachers[0]!) }) } } } } };
   });
   await writeFile(graderFile, stringify(grader));
-  await writeFile(join(root, 'labels.yaml'), stringify({ schema: 'paideia.labels.v1', grader: 'g', labels,
+  await writeFile(join(root, 'labels.yaml'), stringify({ schema: 'spawnfile.training.labels.v1', grader: 'g', labels,
     labelers: { h: { kind: 'human', name: 'Independent' }, t: labeler } }));
   const backend = vi.fn((): DecisionBackend => ({ identity: async () => ({ backend: 'jev-http', model: 'model' }),
     score: async requests => requests.map(request => ({ key: request.key, status: 'ok', probabilities: { yes: 0.5, no: 0.5 } })) }));

@@ -28,7 +28,7 @@ export async function persistResult(options: {
   replaceIndex?: boolean;
 }): Promise<InvocationIndex> {
   const phase = options.command === 'train' && options.outcome !== 'failed' ? 'test' : 'train';
-  await options.store.createRun({ schema: 'paideia.run.v1', id: options.id, datasetId: options.datasetId,
+  await options.store.createRun({ schema: 'spawnfile.training.run.v1', id: options.id, datasetId: options.datasetId,
     datasetRole: phase, candidateId: options.candidate.id, planDigest: options.planDigest,
     ...(options.optimizerBudget ? { metadata: { optimizerBudget: options.optimizerBudget } } : {}) });
   const persistedReport = await externalizeEvaluationJson(options.store, options.id, options.report);
@@ -39,7 +39,7 @@ export async function persistResult(options: {
   }
   const trainingExport = options.command === 'train' && options.outcome !== 'failed' && isTrainingReport(options.report)
     ? await exportTrainingReport(options.root, options.report) : undefined;
-  const index: InvocationIndex = { schema: 'paideia.invocation.v1', command: options.command,
+  const index: InvocationIndex = { schema: 'spawnfile.training.invocation.v1', command: options.command,
     ...(options.outcome === undefined ? {} : { outcome: options.outcome }),
     summaryRunId: options.id, phase, candidateId: options.candidate.id, trialIds: options.trialIds, report, candidate,
     ...(trainingExport ? { trainingExport } : {}) };

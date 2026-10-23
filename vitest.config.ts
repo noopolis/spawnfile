@@ -29,7 +29,7 @@ const sourceGateTests = [
 ];
 
 // Vitest supports perFile only globally. Exact-file glob thresholds preserve
-// Paideia's floor without applying per-file thresholds to existing Spawnfile code.
+// Training's floor without applying per-file thresholds to existing Spawnfile code.
 const trainingThresholds = Object.fromEntries(globSync(
   ["src/training/**/*.ts", "src/runtime/daimon/training/**/*.ts", "src/runtime/codex-exec/**/*.ts", "tooling/training/**/*.ts"],
   { cwd: fileURLToPath(new URL(".", import.meta.url)),

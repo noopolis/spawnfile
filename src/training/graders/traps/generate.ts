@@ -21,7 +21,7 @@ function variantDocument(document: Decomposition, kind: TrapKind, source: string
 export function generateTraps(templates: CheckTemplates, document: Decomposition, inputs: DecompositionInputs,
   options: { seed?: string | number; baseFinals?: Record<string, string | null> } = {}): TrapSet {
   const seed = String(options.seed ?? '0');
-  const result: TrapSet = { schema: 'paideia.traps.v1', seed, traps: [], discarded: 0, rejections: [] };
+  const result: TrapSet = { schema: 'spawnfile.training.traps.v1', seed, traps: [], discarded: 0, rejections: [] };
   const base = validateDecomposition(document, inputs, templates);
   if (base.rejected.length) throw new Error(`invalid base decomposition: ${base.rejected.map(item => item.id).join(', ')}`);
   document = base.decomposition;

@@ -8,7 +8,7 @@ import type { GrokInferenceGrantAuthority, InferenceProvider, TrainingModel } fr
 import { createTrainingInference } from './inference.js';
 
 const yaml = `
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: broker
 checks:
   - { id: check, eval: contains-any, input: output.text, values: [done] }
@@ -37,21 +37,21 @@ function fakeGrantAuthority() {
 }
 
 let root: string, bin: string;
-const saved = { PATH: process.env['PATH'], socket: process.env['PAIDEIA_GROK_BROKER_CONTROL_SOCKET'], home: process.env['PAIDEIA_GROK_GRANT_HOME_ROOT'] };
+const saved = { PATH: process.env['PATH'], socket: process.env['SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET'], home: process.env['SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT'] };
 beforeEach(async () => {
-  root = await mkdtemp(path.join(tmpdir(), 'paideia-cli-broker-'));
+  root = await mkdtemp(path.join(tmpdir(), 'training-cli-broker-'));
   bin = path.join(root, 'bin');
   await mkdir(bin);
   // TMPDIR may live inside this ESM repository; the generated CLI uses CommonJS.
   await writeFile(path.join(bin, 'package.json'), JSON.stringify({ type: 'commonjs' }));
   await mkdir(path.join(root, 'homes'), { mode: 0o700 });
   process.env['PATH'] = `${bin}${path.delimiter}${saved.PATH ?? ''}`;
-  process.env['PAIDEIA_GROK_BROKER_CONTROL_SOCKET'] = '/run/daimon-engine-broker/control.sock';
-  process.env['PAIDEIA_GROK_GRANT_HOME_ROOT'] = path.join(root, 'homes');
+  process.env['SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET'] = '/run/daimon-engine-broker/control.sock';
+  process.env['SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT'] = path.join(root, 'homes');
 });
 afterEach(async () => {
   process.env['PATH'] = saved.PATH;
-  for (const [key, value] of [['PAIDEIA_GROK_BROKER_CONTROL_SOCKET', saved.socket], ['PAIDEIA_GROK_GRANT_HOME_ROOT', saved.home]] as const) {
+  for (const [key, value] of [['SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET', saved.socket], ['SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT', saved.home]] as const) {
     if (value === undefined) delete process.env[key]; else process.env[key] = value;
   }
   await rm(root, { recursive: true, force: true });
@@ -115,14 +115,14 @@ it('fails a stale realm fast to the authored Claude fallback and fails closed wi
   expect(await calls()).toHaveLength(1);
   expect(stale.fake.releases).toHaveLength(1);
 
-  delete process.env['PAIDEIA_GROK_BROKER_CONTROL_SOCKET'];
+  delete process.env['SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET'];
   const noSocket = build(fakeGrantAuthority(), true);
   await expect(noSocket.configured.inference.generate({ prompt: 'reflect', model: 'grok-4.6' })).rejects.toMatchObject({ kind: 'unsupported' });
-  process.env['PAIDEIA_GROK_BROKER_CONTROL_SOCKET'] = path.join(root, 'absent.sock');
+  process.env['SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET'] = path.join(root, 'absent.sock');
   const noDaimonSocket = build(fakeGrantAuthority(), true);
   await expect(noDaimonSocket.configured.judges['prose']!.provider.generate({ prompt: 'judge', model: 'grok-4.6' })).rejects.toMatchObject({ kind: 'unsupported' });
   expect(noDaimonSocket.claude()).toBe(0);
-  process.env['PAIDEIA_GROK_GRANT_HOME_ROOT'] = '';
+  process.env['SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT'] = '';
   const noHome = build();
   await expect(noHome.configured.inference.generate({ prompt: 'reflect', model: 'grok-4.6' })).rejects.toMatchObject({ kind: 'unsupported' });
   expect(noHome.fake.requests).toHaveLength(0);
@@ -140,7 +140,7 @@ it('uses the injected subject hostInference capability for broker judges and rel
   }, 60_000, { prose: 'grok-4.6' }, { prose: 0 });
   try {
     expect((await configured.judges.prose!.provider.generate({ prompt: 'judge', model: 'grok-4.6' })).text).toBe('done');
-    expect(sockets).toEqual([process.env.PAIDEIA_GROK_BROKER_CONTROL_SOCKET]);
+    expect(sockets).toEqual([process.env.SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET]);
     expect(fake.requests).toEqual([{ model: 'grok-4.6', reasoningEffort: 'low', purpose: 'judge' }]);
   } finally { await configured.close(); }
   expect(fake.releases).toHaveLength(1);

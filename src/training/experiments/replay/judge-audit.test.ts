@@ -15,7 +15,7 @@ async function auditFixture() {
     usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 2, reasoningTokens: null, source: 'test' } }));
   f.options.evaluation.judges = { editor: { model: 'requested', citationRepairs: 1, provider: { id: 'test',
     capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false }, generate } } };
-  f.options.dataset = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  f.options.dataset = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: audited
 checks: [{id: prose, eval: llm-rubric, input: output.text, judge: editor, rubric: {prompt: Fixed rubric}, minimum: 0.8}]
 records: [{id: story, input: {prompt: Never execute}}]

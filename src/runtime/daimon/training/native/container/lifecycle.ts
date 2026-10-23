@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../../../../training/contracts/index.js';
 import { randomUUID } from 'node:crypto';
 import { verifyNativeSandbox } from './preflight.js';
 import type { StopReceipt } from '../../../../../training/contracts/execution.js';
@@ -8,7 +9,7 @@ import type { NativeStopEvidence } from '../worker/index.js';
 export async function startOwnedContainer(run: DockerCommand, launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number,
   signal?: AbortSignal, startupMs = 60_000) {
   const owner = randomUUID();
-  const name = `paideia-${owner}`;
+  const name = `training-${owner}`;
   let created = false;
   let stopping: Promise<StopReceipt> | undefined;
   const stop = (reason: string): Promise<StopReceipt> => {
@@ -65,7 +66,7 @@ export async function startOwnedContainer(run: DockerCommand, launch: VerifiedNa
         const health = await workerRequest<{ version: string; state: string; agents: { agentId: string }[] }>(run, name, '/trial/health', undefined, 1000, signal, launch.host.port);
         const logs = await run(['logs', '--tail', '100', name], { signal });
         const ready = logs.stdout.split('\n').filter(Boolean).flatMap(line => { try { return [JSON.parse(line) as Record<string, unknown>]; } catch { return []; } })
-          .find(row => row.schema === 'paideia.daimon-native.ready.v1' && row.trialId === trialId && row.configSha256 === launch.configSha256);
+          .find(row => canonicalWireId(row.schema) === 'spawnfile.training.daimon-native.ready.v1' && row.trialId === trialId && row.configSha256 === launch.configSha256);
         healthy = !!ready && health.version === 'noopolis.daimon.organization-runtime-health.v1' && health.state === 'running' &&
             health.agents.length === 1 && health.agents[0]?.agentId === launch.agent.id;
       } catch (error) { lastError = String(error); }

@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import type { JudgeCall } from '../../contracts/evaluation.js';
 import { decompositionSchema } from '../decomposition/index.js';
@@ -10,7 +11,7 @@ export function createAtomicGradeResultSchema(judgeCall: z.ZodType<JudgeCall>): 
   const check = z.strictObject({ id: z.string(), template_id: z.string(), unit_id: z.string(), type: z.enum(['choice', 'noul', 'score']),
     instructions: z.string(), criteria: z.record(z.string(), z.string()), options: z.array(z.string()), expected: z.array(z.string()),
     projection: z.record(z.string(), z.unknown()), digest, status: z.enum(['ready', 'missing']), reasons: z.array(z.string()) });
-  return z.strictObject({ schema: z.literal('paideia.atomic-grade.v1'), status: z.enum(['pass', 'fail', 'unknown', 'error']),
+  return z.strictObject({ schema: compatibleWireLiteral('spawnfile.training.atomic-grade.v1'), status: z.enum(['pass', 'fail', 'unknown', 'error']),
     score: probability.nullable(), coverage: probability, criticalGate: probability, obligationCoverage: probability, quality: probability,
     failure: z.strictObject({ cause: z.enum(['spend-cap', 'request-rejected']), reason: z.string() }).optional(),
     identity: z.strictObject({ definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest }),

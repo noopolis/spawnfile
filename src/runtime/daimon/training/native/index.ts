@@ -16,7 +16,7 @@ export { grokBrokerLaunchSchema, nativeTrialArtifactsRoot } from './receipt/inde
 export type { GrokBrokerLaunch } from './receipt/index.js';
 
 /**
- * Engine-neutral subject preparation on a leased slot: Paideia sequences slot
+ * Engine-neutral subject preparation on a leased slot: Training sequences slot
  * freshness and validates the provisioner's launch fields against the lease.
  */
 export { assertNativeEngineConfig, bindTrialPathsToSlot, createExperimentSlotFreshness, experimentSlotFreshnessFile,

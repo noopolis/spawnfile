@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../../contracts/index.js';
 import { readFile, mkdir, rename, writeFile, readdir } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +9,7 @@ import { parseCheckTemplatesYaml, parseDecomposition, validateDecomposition } fr
 import type { CheckTemplates, Decomposition } from '../../../graders/decomposition/index.js';
 
 const reference = z.strictObject({ from: z.string().min(1) });
-const manifestSchema = z.strictObject({ schema: z.literal('paideia.grader-inputs.v1'), items: z.array(z.strictObject({
+const manifestSchema = z.strictObject({ schema: compatibleWireLiteral('spawnfile.training.grader-inputs.v1'), items: z.array(z.strictObject({
   id: identifier, lineage: identifier, example: z.strictObject({ dataset: identifier, id: identifier }).optional(),
   output: reference, context: z.record(identifier, reference).default({}),
 })) });

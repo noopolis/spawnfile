@@ -25,7 +25,7 @@ const targets: Record<TrainingAuthProvider, readonly [string, string]> = {
 /** Stages opaque credential bytes once. Never imports configuration, logs bytes, or overwrites renewed auth. */
 export const stageTrainingAuth = async (options: TrainingAuthStageOptions): Promise<{ version: "spawnfile.training-auth-stage.v1"; provider: TrainingAuthProvider; destination: string }> => {
   if (!Object.hasOwn(targets, options.provider)) throw Error("Unsupported training auth provider");
-  const home = path.resolve(options.home), source = options.source ?? `/run/paideia-auth/${options.provider}`;
+  const home = path.resolve(options.home), source = options.source ?? `/run/spawnfile-training-auth/${options.provider}`;
   if (!path.isAbsolute(options.home) || await realpath(home) !== home || !(await lstat(home)).isDirectory()) throw Error("Training home must be a canonical existing directory");
   if (!path.isAbsolute(source) || await realpath(source) !== path.resolve(source)) throw Error("Training auth source must be a canonical regular leaf");
   const input = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);

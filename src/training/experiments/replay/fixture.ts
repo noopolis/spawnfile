@@ -13,7 +13,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 export function criteria() {
-  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  return resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: revised-criteria
 checks: [{id: article, eval: contains-any, input: output.text, values: [ARTICLE]}]
 records: [{id: story, input: {prompt: This new stimulus must not run}, context: {origin: new}}]
@@ -21,14 +21,14 @@ records: [{id: story, input: {prompt: This new stimulus must not run}, context: 
 }
 
 export async function fixture(change?: (report: TrialReport) => void) {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-rescore-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-rescore-')); roots.push(root);
   const store = await openExperimentStore(root);
   const coverage: TrialReport['snapshot']['coverage'] = [
     { channel: 'output', completeness: 'complete', ordering: 'source' },
     { channel: 'tools', completeness: 'partial', ordering: 'source' },
   ];
   const bytes = '{"headline":"ARTICLE"}';
-  const report: TrialReport = { schema: 'paideia.trial.v1', id: 'trial', phase: 'train', candidateId: 'candidate',
+  const report: TrialReport = { schema: 'spawnfile.training.trial.v1', id: 'trial', phase: 'train', candidateId: 'candidate',
     datasetDigest: 'original-dataset-digest', planDigest: 'original-plan', recordId: 'story',
     paths: { root: '/absent', workspace: '/absent/workspace', control: '/absent/control', runtimeHome: '/absent/runtime' },
     status: 'fail', execution: 'completed', hostWork: 'settled',
@@ -43,7 +43,7 @@ export async function fixture(change?: (report: TrialReport) => void) {
       stages: [{ id: 'old', checks: [], gate: result('fail', 'Old rubric') }] }, live: [],
   };
   change?.(report);
-  await store.createRun({ schema: 'paideia.run.v1', id: 'trial', datasetId: 'original-dataset', datasetRole: report.phase,
+  await store.createRun({ schema: 'spawnfile.training.run.v1', id: 'trial', datasetId: 'original-dataset', datasetRole: report.phase,
     candidateId: 'candidate', planDigest: 'original-plan', recordId: 'story' });
   await store.appendEvent('trial', { id: 'closed', payload: { type: 'trial.completed', payload: report } });
   await store.appendEvaluation('trial', { id: 'original', report });

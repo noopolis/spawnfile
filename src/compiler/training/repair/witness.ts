@@ -1,3 +1,4 @@
+import { hasLegacyTrainingDistribution } from '../../../shared/index.js';
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -23,8 +24,7 @@ export async function readTrainingWitness(file: string) {
   if (Buffer.byteLength(bytes) > 8 * 1024 * 1024) throw Error("Training witness exceeds 8 MiB");
   const raw = witnessHeaderSchema.parse(JSON.parse(bytes));
   const legacy = legacyImageSchema.safeParse(raw.manifest);
-  if (legacy.success && (("paideia" in legacy.data.image.build || "bridge" in legacy.data.image.build) ||
-    legacy.data.image.files.some(file => file.destination.startsWith("paideia/")))) {
+  if (legacy.success && hasLegacyTrainingDistribution(legacy.data.image)) {
     throw Error("Repair witness references an external training distribution; re-prepare with Spawnfile before repairing measurements");
   }
   if (hashJson(raw.manifest) !== raw.digest) throw Error("Training witness digest mismatch");

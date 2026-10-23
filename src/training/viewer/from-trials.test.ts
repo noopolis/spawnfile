@@ -16,7 +16,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 
 export function reportFixture(id = 'trial'): TrialReport {
   const check = { status: 'pass' as const, finality: 'final' as const, reason: 'SECRET judge reason', score: 0.7, evidence: [{ kind: 'event' as const, id: 'event' }] };
-  return { schema: 'paideia.trial.v1', id, phase: 'validation', candidateId: 'native-candidate', datasetDigest: 'dataset', planDigest: 'plan',
+  return { schema: 'spawnfile.training.trial.v1', id, phase: 'validation', candidateId: 'native-candidate', datasetDigest: 'dataset', planDigest: 'plan',
     recordId: 'case', paths: { root: '/private', workspace: '/private', control: '/private', runtimeHome: '/private' },
     status: 'pass', execution: 'completed', hostWork: 'settled', live: [],
     stop: { state: 'acknowledged', scope: 'process-group', quiescence: 'confirmed', remoteWork: 'unknown',
@@ -33,7 +33,7 @@ export function reportFixture(id = 'trial'): TrialReport {
 }
 
 async function baseline() {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-projection-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-projection-')); roots.push(root);
   await writeFile(join(root, 'AGENTS.md'), 'SECRET source instructions');
   return snapshotCandidate({ sourceRoot: root, resources: [
     { id: 'instructions', sourcePath: 'AGENTS.md', destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' },
@@ -72,14 +72,14 @@ describe('stored native report projection', () => {
   it('links GEPA lineage to recorded validation captures and keeps instance IDs unique for repeated native candidates', async () => {
     const candidate = await baseline();
     const trials = [reportFixture('baseline-trial'), reportFixture('proposal-trial')];
-    const optimizer: DspyResult = { schema: 'paideia.dspy.v2', kind: 'result', id: 'opt', components: { editable: 'SECRET' },
+    const optimizer: DspyResult = { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: 'opt', components: { editable: 'SECRET' },
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 2, proposals: 1,
         selectedCandidateIndex: 1, candidates: [
           { components: { editable: 'SECRET' }, parents: [null], validationScore: 0.7, discoveryEvaluations: 0 },
           { components: { editable: 'SECRET' }, parents: [0], validationScore: 0.8, discoveryEvaluations: 1 },
         ], captures: trials.map((trial) => ({ caseId: 'case', split: 'validation', captureId: trial.id })),
         generations: [{ model: 'observed-model', modelBasis: 'requested-assumption', usage: null }] } };
-    const report = { schema: 'paideia.training.v1' as const, id: 'opt', baseline: candidate, selected: candidate,
+    const report = { schema: 'spawnfile.training.training.v1' as const, id: 'opt', baseline: candidate, selected: candidate,
       optimizer, partitions: { train: ['train'], validation: ['case'], test: ['sealed'] }, trials, heldOut: [{ candidateId: candidate.id, meanScore: 0.5, trialIds: ['a', 'b'],
         evaluationIds: ['a', 'b'], trialScores: [0, 1], standardError: 0.5 }],
       costs: summarizeCosts(trials, { subjectModel: 'gpt-5.5' }) };
@@ -100,7 +100,7 @@ describe('stored native report projection', () => {
 it('shows the latest rescore and weighted criteria on the original native capture', async () => {
   const candidate = await baseline(), trial = reportFixture(); trial.status = 'error';
   const gate = { status: 'pass' as const, finality: 'final' as const, evidence: [], reason: 'SECRET' };
-  const score: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: trial.id, scope: 'final-stages',
+  const score: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'rescore', runId: trial.id, scope: 'final-stages',
     notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: trial.candidateId,
       datasetDigest: 'old', planDigest: 'old', recordId: trial.recordId, phase: trial.phase, status: trial.status },
     criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},

@@ -22,7 +22,7 @@ export async function runTraps(options: TrapsOptions) {
     if (reference && (!base?.complete || base.outputDigest !== input.digest)) throw new Error('Stale or incomplete base references');
     const baseFinals = base ? Object.fromEntries(Object.entries(base.checks).map(([id, check]) => [id, check.final])) : {};
     missingChecks += input.doc.rejected?.length ?? 0;
-    const identity = stableDigest({ baseFinals, input: input.digest, seed: options.seed ?? '0', protocol: 'paideia.traps.v1' });
+    const identity = stableDigest({ baseFinals, input: input.digest, seed: options.seed ?? '0', protocol: 'spawnfile.training.traps.v1' });
     const file = join(options.out, `${stableDigest(input.file)}.traps.json`);
     const previous = await readOptional<{ identity: string }>(file);
     if (previous && previous.identity !== identity) throw new Error(`Stale trap checkpoint: ${input.file}`);

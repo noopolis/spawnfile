@@ -62,10 +62,10 @@ describe('native trial lifecycle', () => {
   });
   it('persists an adapter-published startup diagnostic durably and names its reason in the report', async () => {
     const task = await setup();
-    const diagnostic = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial',
+    const diagnostic = { schema: 'spawnfile.training.daimon-native.startup-diagnostic.v1', trialId: 'trial',
       reason: 'unit missing native library', exitCode: 1, exitSignal: null, redaction: 'applied' as const,
       streams: { stdout: '', stderr: 'boom', truncated: { stdout: false, stderr: false } },
-      protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json' };
+      protectedArtifact: '/run/training/slot/state/training-trials/trial-x/child-diagnostics.json' };
     task.options.adapter = { ...task.options.adapter,
       start: async () => { throw Object.assign(new Error('Native worker failed before readiness: unit missing native library'), { diagnostic }); } };
     const report = await runTrial(task.options);
@@ -77,12 +77,12 @@ describe('native trial lifecycle', () => {
   });
   it('writes the adapter capture as an operator-only trial file and publishes only its path', async () => {
     const task = await setup();
-    const diagnostic = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial',
-      reason: 'example.paideia.bootstrap-failed.v1: launch.v2 receipt rejected', exitCode: 1, exitSignal: null,
+    const diagnostic = { schema: 'spawnfile.training.daimon-native.startup-diagnostic.v1', trialId: 'trial',
+      reason: 'example.spawnfile.training.bootstrap-failed.v1: launch.v2 receipt rejected', exitCode: 1, exitSignal: null,
       redaction: 'withheld' as const,
-      frames: [{ stream: 'stderr' as const, schema: 'example.paideia.bootstrap-failed.v1', withheldBy: ['bearer'] }],
-      withheld: [{ stream: 'stderr' as const, bytes: 120, lines: 3, frame: 'example.paideia.bootstrap-failed.v1', detectors: ['bearer'] }],
-      protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json' };
+      frames: [{ stream: 'stderr' as const, schema: 'example.spawnfile.training.bootstrap-failed.v1', withheldBy: ['bearer'] }],
+      withheld: [{ stream: 'stderr' as const, bytes: 120, lines: 3, frame: 'example.spawnfile.training.bootstrap-failed.v1', detectors: ['bearer'] }],
+      protectedArtifact: '/run/training/slot/state/training-trials/trial-x/child-diagnostics.json' };
     const capture = { basename: 'OPERATOR-ONLY.native-startup-capture.json', content: '{"stderr":"Bearer sk-live-secret"}\n' };
     task.options.adapter = { ...task.options.adapter,
       start: async () => { throw Object.assign(new Error('Native worker failed before readiness'), { diagnostic, capture }); } };
@@ -252,11 +252,11 @@ describe('deferred stage rewards', () => {
   async function fixture(deferred = true, missing = false) {
     const task = await setup(async () => deferred ? { ...complete, status: 'failed', blocked: 'awaiting-external-input' } : complete);
     task.options.retainDeferredStatus = true;
-    const grader = parseAtomicGrader({ schema: 'paideia.atomic-grader.v1', id: 'writing', templates: 'templates.yaml',
+    const grader = parseAtomicGrader({ schema: 'spawnfile.training.atomic-grader.v1', id: 'writing', templates: 'templates.yaml',
       extractor: { provider: 'codex', model: 'test' }, decision: { backend: 'typesafe', model: 'jev-1.0.0', max_spend_usd: 1 }, missing: 'fail',
       aggregation: { method: 'coverage-times-quality', critical_pass_at: 0.8, pass_at: 0.99, obligation_kinds: ['obligation'],
         dimensions: { coverage: { weight: 1, budget: 2 } }, penalties: { critical: 1, major: 0.5, minor: 0.1 } } });
-    const templates = parseCheckTemplates({ schema: 'paideia.check-templates.v1', context: { assignment: { role: 'assignment' } },
+    const templates = parseCheckTemplates({ schema: 'spawnfile.training.check-templates.v1', context: { assignment: { role: 'assignment' } },
       templates: [{ id: 'covered', applies_to: 'obligation', type: 'noul', instructions: 'Covered?', criteria: { true: 'Good', false: 'Bad' },
         expected: [true], state: ['unit', 'output.body'], dimension: 'coverage', severity: 'major' }] });
     const receipt = { provider: 'codex', model: 'test', prompt_digest: 'c'.repeat(64), at: '2026-10-14T00:00:00Z' };
@@ -265,7 +265,7 @@ describe('deferred stage rewards', () => {
         score: vi.fn<AtomicRuntime['backend']['score']>(async requests => requests.map((request, index) => missing && index === 0
           ? { key: request.key, status: 'missing', probabilities: null, reason: 'Missing answer' }
           : { key: request.key, status: 'ok', probabilities: { true: missing ? 1 : 0.2, false: missing ? 0 : 0.8 } })) },
-      extract: async () => ({ decomposition: parseDecomposition({ schema: 'paideia.decomposition.v1', output: { from: 'trial', sha256: 'c'.repeat(64) },
+      extract: async () => ({ decomposition: parseDecomposition({ schema: 'spawnfile.training.decomposition.v1', output: { from: 'trial', sha256: 'c'.repeat(64) },
         units: Array.from({ length: missing ? 208 : 1 }, (_, index) => ({ id: `unit-${index}`, kind: 'obligation', text: `Cover fact ${index}.` })),
         extractors: [receipt], audit: { extractor: receipt, missed: [], at: receipt.at } }), receipts: [], judgeCalls: [] }) };
     task.options.prepare = async () => ({ instructions: 'Write', collect: async () => ({

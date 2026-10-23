@@ -12,7 +12,7 @@ async function fixture() {
   const root = await realpath(await mkdtemp(join(tmpdir(),'repair-receipt-'))); roots.push(root);
   const parent = join(root,'parent'); await mkdir(parent);
   const sha = repairDigest('bytes');
-  const receipt = {version:'paideia.measurement-repair.v1',
+  const receipt = {version:'spawnfile.training.measurement-repair.v1',
     parent:{root:parent,imageId:sha,experimentId:'original',executionIdentity:'original-execution',manifestDigest:sha,
       checkpoints:{command:sha,training:sha,host:sha,optimizer:sha},trainingIdentity:'original-training'},
     current:{imageId:sha,canonicalSourceDigest:sha,adapterId:'daimon-native'},
@@ -64,7 +64,7 @@ it('rejects a FIFO receipt without blocking on its writer',async()=>{
   const f=await fixture(), fifo=join(f.root,'fifo');await promisify(execFile)('mkfifo',[fifo]);
   const module = new URL('./receipt.ts',import.meta.url).pathname;
   const program=`const {readMeasurementRepair}=await import(${JSON.stringify(module)});try{await readMeasurementRepair(${JSON.stringify(fifo)},${JSON.stringify(f.expected)});process.exitCode=1;}catch(e){if(!/regular|file|Unsafe/i.test(e.message))throw e;console.log('REJECTED_FIFO');}`;
-  const result=await promisify(execFile)(process.execPath,['--experimental-strip-types','--input-type=module','-e',program],{timeout:3000});
+  const result=await promisify(execFile)(process.execPath,['--import','tsx','--input-type=module','-e',program],{timeout:3000});
   expect(result.stdout).toContain('REJECTED_FIFO');
 });
 
@@ -81,7 +81,7 @@ it('binds a repair receipt to the injected subject identity without a runtime al
 
 it.each(['native', 'trials', 'optimizer'])('rejects legacy %s component authority with a re-prepare message', async name => {
   const f = await fixture();
-  Object.assign(f.receipt.compatibility.components, { [name]: repairDigest('legacy Paideia component') });
+  Object.assign(f.receipt.compatibility.components, { [name]: repairDigest('legacy Training component') });
   await f.save();
   await expect(readMeasurementRepair(f.path, f.expected)).rejects.toThrow('re-prepare with Spawnfile');
 });

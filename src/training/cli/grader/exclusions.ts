@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseDocument } from 'yaml';
@@ -21,7 +22,7 @@ export async function readExclusions(files: readonly string[]): Promise<DatasetE
     const value: unknown = document.toJS({ maxAliasCount: 0 });
     if (!value || typeof value !== 'object') throw new Error(`Invalid exclusion dataset: ${file}`);
     const data = value as Record<string, unknown>;
-    if (!['paideia.dataset.v1', 'spawnfile.dataset.v1'].includes(String(data.schema))) throw new Error(`Unsupported exclusion dataset schema: ${file}`);
+    if (!['spawnfile.training.dataset.v1', 'spawnfile.dataset.v1'].includes(String(canonicalWireId(data.schema)))) throw new Error(`Unsupported exclusion dataset schema: ${file}`);
     const records = data.records ?? data.examples;
     if (!Array.isArray(records)) throw new Error(`Exclusion dataset requires records/examples: ${file}`);
     for (const record of records as unknown[]) {

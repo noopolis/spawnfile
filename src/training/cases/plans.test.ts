@@ -9,7 +9,7 @@ const exact: CheckNode = { id: 'exact', eval: 'equals', input: 'output.text', va
 const semantic: CheckNode = { id: 'semantic', eval: 'llm-rubric', input: 'output.text', judge: 'judge', rubric: { prompt: 'Grade' }, minimum: 0.8 };
 const registry: DatasetRegistry = { judges: { judge: { version: 'judge-v1' } } };
 function dataset(extra: Partial<Dataset> = {}): Dataset {
-  return { schema: 'paideia.dataset.v1', id: 'sample', checks: [exact], records: [{ id: 'r', input: { prompt: '4' } }], ...extra };
+  return { schema: 'spawnfile.training.dataset.v1', id: 'sample', checks: [exact], records: [{ id: 'r', input: { prompt: '4' } }], ...extra };
 }
 function resolve(value: Dataset, configured = registry) {
   return resolveDataset(parseDatasetYaml(stringify(value, { aliasDuplicateObjects: false })), { registry: configured });

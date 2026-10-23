@@ -29,7 +29,7 @@ export async function runLabelImport(options: ImportLabelOptions): Promise<Impor
     if (labels.grader !== grader.id) throw new Error('Labels grader mismatch');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    labels = { schema: 'paideia.labels.v1', grader: grader.id, labelers: {}, labels: [] };
+    labels = { schema: 'spawnfile.training.labels.v1', grader: grader.id, labelers: {}, labels: [] };
   }
   for (const [id, labeler] of Object.entries(manifest.labelers)) {
     const previous = labels.labelers[id];

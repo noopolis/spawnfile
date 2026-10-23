@@ -13,16 +13,16 @@ function fixture(missing: 'fail' | 'unknown', outcome: 'error' | 'pass' | 'fail'
     rubric: { prompt: 'Grade the accepted artifact.' }, minimum: 0.8 };
   const acceptance = composition ? { [composition]: [judgeCheck,
     { eval: 'equals', input: 'artifact:article#/body/0', value: composition === 'all' ? 'different' : 'Alice joined.' }] } : judgeCheck;
-  const grader = parseAtomicGrader({ schema: 'paideia.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
+  const grader = parseAtomicGrader({ schema: 'spawnfile.training.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
     extractor: { provider: 'codex', model: 'test' }, decision: { backend: 'typesafe', model: 'jev-1.0.0', max_spend_usd: 1 }, missing,
     gates: [{ id: 'accepted', check: acceptance }],
     aggregation: { method: 'gates-times-coverage-times-quality', critical_pass_at: 0.8, pass_at: 0.5, obligation_kinds: ['obligation'],
       dimensions: { coverage: { weight: 1, budget: 2 } }, penalties: { critical: 1, major: 0.5, minor: 0.1 } } });
-  const templates = parseCheckTemplates({ schema: 'paideia.check-templates.v1', context: { assignment: { role: 'assignment' } },
+  const templates = parseCheckTemplates({ schema: 'spawnfile.training.check-templates.v1', context: { assignment: { role: 'assignment' } },
     templates: [{ id: 'covered', applies_to: 'obligation', type: 'noul', instructions: 'Covered?', criteria: { true: 'Good', false: 'Bad' },
       expected: [true], state: ['unit', 'output.body'], dimension: 'coverage', severity: 'major' }] });
   const resources: Record<string, string> = { 'grader.yaml': stringify(grader), 'templates.yaml': stringify(templates) };
-  const dataset = resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id: 'gated',
+  const dataset = resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id: 'gated',
     checks: [{ id: 'quality', eval: 'grader', grader: 'grader.yaml', input: 'artifact:article', context: { assignment: 'artifact:assignment' } }],
     records: [{ id: 'one', input: { prompt: 'Write' }, outputs: { article: 'out.json' } }] }), { sourceName: '/dataset.yaml' }),
   { readCriterionFile: name => resources[name]!, registry: { judges: { editor: { version: 'offline-v1' } } } });
@@ -34,7 +34,7 @@ function fixture(missing: 'fail' | 'unknown', outcome: 'error' | 'pass' | 'fail'
     backend: { identity: vi.fn(async () => ({ backend: 'typesafe', model: grader.decision.model })),
       score: vi.fn<AtomicRuntime['backend']['score']>(async requests => requests.map(request =>
         ({ key: request.key, status: 'ok', probabilities: { true: 1, false: 0 } }))) },
-    extract: vi.fn(async () => ({ decomposition: parseDecomposition({ schema: 'paideia.decomposition.v1', output: { from: 'trial', sha256: 'c'.repeat(64) },
+    extract: vi.fn(async () => ({ decomposition: parseDecomposition({ schema: 'spawnfile.training.decomposition.v1', output: { from: 'trial', sha256: 'c'.repeat(64) },
       units: [{ id: 'one', kind: 'obligation', text: 'Cover Alice.' }], extractors: [receipt], audit: { extractor: receipt, missed: [], at: receipt.at } }),
     receipts: [], judgeCalls: [] })) };
   const provider: InferenceProvider = { id: 'offline-subscription',

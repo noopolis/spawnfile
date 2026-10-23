@@ -12,9 +12,9 @@ const access = { audience: 'evaluator' as const, phase: 'training' as const };
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'grading-storage-')); roots.push(root);
   const store = await openExperimentStore(root);
-  await store.createRun({ schema: 'paideia.run.v1', id: 'trial', datasetId: 'data', datasetRole: 'train',
+  await store.createRun({ schema: 'spawnfile.training.run.v1', id: 'trial', datasetId: 'data', datasetRole: 'train',
     candidateId: 'candidate', planDigest: 'plan' });
-  const detail = { schema: 'paideia.atomic-grade.v1', checks: [{ probability: 0.25, unit: 'é'.repeat(32768) }] };
+  const detail = { schema: 'spawnfile.training.atomic-grade.v1', checks: [{ probability: 0.25, unit: 'é'.repeat(32768) }] };
   const check = { status: 'fail', score: 0.25, atomicGrading: detail };
   const inline = { checks: { writing: check }, stages: [{ checks: [check] }], atomicGrading: null, absent: undefined };
   return { root, store, inline };
@@ -54,9 +54,9 @@ it('preserves access control and verifies references on hydration', async () => 
   await expect(hydrateEvaluationJson(store, encoded, { audience: 'viewer', phase: 'replay' })).rejects.toThrow('Protected');
   encoded.checks.writing.atomicGrading.blob.size++;
   await expect(hydrateEvaluationJson(store, encoded, access)).rejects.toThrow('integrity');
-  for (const detail of [{ schema: 'paideia.atomic-grading-blob.v1' },
-    { schema: 'paideia.atomic-grading-blob.v1', blob: null },
-    { schema: 'paideia.atomic-grading-blob.v1', blob: {}, extra: 1 }]) {
+  for (const detail of [{ schema: 'spawnfile.training.atomic-grading-blob.v1' },
+    { schema: 'spawnfile.training.atomic-grading-blob.v1', blob: null },
+    { schema: 'spawnfile.training.atomic-grading-blob.v1', blob: {}, extra: 1 }]) {
     await expect(hydrateEvaluationJson(store, { atomicGrading: detail }, access)).rejects.toThrow('Invalid grading');
   }
 });

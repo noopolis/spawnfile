@@ -9,7 +9,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 export async function fixture(trapKind: 'format-paraphrase' | 'injected-redundancy' = 'format-paraphrase') {
   const root = await mkdtemp(join(tmpdir(), 'atomic-cli-')); roots.push(root);
-  const templates = { schema: 'paideia.check-templates.v1', templates: [{ id: 'support', applies_to: 'claim', type: 'choice',
+  const templates = { schema: 'spawnfile.training.check-templates.v1', templates: [{ id: 'support', applies_to: 'claim', type: 'choice',
     instructions: 'Is {unit.text} supported?', criteria: { supported: 'Supported', unsupported: 'Unsupported' },
     expected: ['supported'], state: ['unit', 'unit.cited_rows'], dimension: 'facts', severity: 'major',
     traps: { [trapKind]: trapKind === 'format-paraphrase' ? 'unchanged' : 'unsupported', 'option-permutation': 'unchanged' } as Record<string, string> }],
@@ -21,7 +21,7 @@ export async function fixture(trapKind: 'format-paraphrase' | 'injected-redundan
   await writeFile(join(root, 'output.json'), JSON.stringify({ body: ['Alice reported 12 items. [A1]'] }));
   await writeFile(join(root, 'evidence.md'), '## A1\nAlice reported 12 items.\n## B2\nBob reported 5 items.\n');
   const items = [{ id: 'one', lineage: 'one', output: { from: 'output.json' }, context: { evidence: { from: 'evidence.md' } } }];
-  await writeFile(inputsFile, stringify({ schema: 'paideia.grader-inputs.v1', items }));
+  await writeFile(inputsFile, stringify({ schema: 'spawnfile.training.grader-inputs.v1', items }));
   const unit = { id: 'claim', kind: 'claim', text: 'Alice reported 12 items.', paragraph: 0, sentence: 0,
     cites: ['A1'], fields: { actor: 'Alice', quantity: '12' } };
   const generate = vi.fn<InferenceProvider['generate']>(async request => {

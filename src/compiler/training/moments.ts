@@ -89,8 +89,8 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
   }
   const datasets: Partial<Record<TrainingDatasetRole, string>> = {};
   for (const role of roles) if (declared.has(role)) {
-    datasets[role] = path.join(out, `${role}.paideia.json`);
-    await save(datasets[role], { schema: "paideia.dataset.v1", id: `${plan.agent.id}:${role}`, subject: plan.agent.name,
+    datasets[role] = path.join(out, `${role}.spawnfile-training.json`);
+    await save(datasets[role], { schema: "spawnfile.training.dataset.v1", id: `${plan.agent.id}:${role}`, subject: plan.agent.name,
       setup: { profile: plan.preparation?.hook ?? "spawnfile/rewind" }, records: records[role] });
   }
   const report = { version: "spawnfile.training-moment-lowering.v1" as const, agent: plan.agent.id, entries };

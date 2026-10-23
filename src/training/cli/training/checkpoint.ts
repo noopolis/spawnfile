@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import type { MeasurementRepairReceipt } from '../../experiments/repair/index.js';
 import { trainingInferencePolicies } from '../../contracts/inference-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -9,7 +10,7 @@ import type { CliDependencies, CliExecutionIdentityContext } from '../types.js';
 import type { prepareCliInputs } from '../native.js';
 import { readCliText } from '../datasets.js';
 
-const stateSchema = z.object({schema:z.literal('paideia.command-checkpoint.v1'),id:z.string().uuid(),
+const stateSchema = z.object({schema:compatibleWireLiteral('spawnfile.training.command-checkpoint.v1'),id:z.string().uuid(),
   identity:z.string().regex(/^[a-f0-9]{64}$/),
   lineage:z.object({parentId:z.string(),parentIdentity:z.string(),receiptDigest:z.string()}).strict().optional()}).strict();
 
@@ -23,7 +24,7 @@ export async function commandCheckpoint(args: CliArguments, inputs: Awaited<Retu
     !['resume','view','out','spawnfile-context','dry-run'].includes(name)).sort(([a],[b]) => a.localeCompare(b)));
   const identity = createHash('sha256').update(JSON.stringify({
     ...(repair ? {measurementRepair:repair.digest} : {}),
-    version:'paideia.command-execution.v1',comparisonCandidateId:context.comparisonCandidateId,providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity),flags,training:args.training,candidate:inputs.candidate.id,
+    version:'spawnfile.training.command-execution.v1',comparisonCandidateId:context.comparisonCandidateId,providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity),flags,training:args.training,candidate:inputs.candidate.id,
     sourceRoot:inputs.sourceRoot,resources:inputs.resources,model:inputs.model,
     context:inputs.context !== undefined ? inputs.context : null,
     integration:integration ? {id:integration.id,version:integration.version,environment:environment ?? null,
@@ -35,10 +36,10 @@ export async function commandCheckpoint(args: CliArguments, inputs: Awaited<Retu
   const path = join(directory,'command.json');
   if (args.flags.resume) {
     const state = stateSchema.parse(JSON.parse(readCliText(path,16384)));
-    if (state.identity !== identity) throw new Error('Command checkpoint inputs changed; resume rejected');
+    if (state.identity !== identity) throw new Error('Command checkpoint inputs changed; re-prepare with Spawnfile before resuming');
     return {...state,directory,resume:true};
   }
-  const state = {schema:'paideia.command-checkpoint.v1' as const,id:randomUUID(),identity,
+  const state = {schema:'spawnfile.training.command-checkpoint.v1' as const,id:randomUUID(),identity,
     ...(repair ? {lineage:{parentId:repair.receipt.parent.experimentId,parentIdentity:repair.receipt.parent.executionIdentity,receiptDigest:repair.digest}} : {})};
   const temporary = `${path}.${randomUUID()}.tmp`;
   const file = await open(temporary,'wx',0o600);

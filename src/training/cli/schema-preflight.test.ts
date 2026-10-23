@@ -12,7 +12,7 @@ it.each(['validate', 'evaluate', 'train', 'dry-run'] as const)(
     for (const schema of [{ type: 'wrong' }, { type: 'object', requried: ['title'] }, { $ref: '#/$defs/missing' }, 'schema.json', 'bom.json']) {
       const f = await cliFixture(); roots.push(f.root);
       for (const [name, groups] of [['train', ['a', 'b']], ['test', ['x']]] as const) {
-        await writeFile(join(f.root, `${name}.yaml`), JSON.stringify({ schema: 'paideia.dataset.v1', id: name,
+        await writeFile(join(f.root, `${name}.yaml`), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: name,
           checks: [{ id: 'shape', eval: 'json-schema', input: 'output.text', schema }],
           records: groups.map(id => ({ id, group: id, input: { prompt: 'Reply' } })) }));
       }

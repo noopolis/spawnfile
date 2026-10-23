@@ -53,7 +53,7 @@ export class TrainingCheckpoint {
   static async openComparison(options: Pick<TrainingOptions, 'id' | 'baseline' | 'native' | 'checkpoint'> & { candidate: CandidateManifest; name: string; maxTrials: number }, datasets: ResolvedDataset[]) {
     if (options.checkpoint?.fork) throw new Error('Comparison does not support measurement-repair forks');
     if (!options.checkpoint) return undefined;
-    return this.load(options, trainingDigest({ version: 'paideia.comparison-checkpoint.v1',
+    return this.load(options, trainingDigest({ version: 'spawnfile.training.comparison-checkpoint.v1',
       execution: options.checkpoint.identity, id: options.id, baseline: options.baseline, candidate: options.candidate,
       name: options.name, datasets, adapter: options.native.adapter.id, model: options.native.model,
       resources: options.native.resources, maxTrials: options.maxTrials, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2 }));
@@ -82,7 +82,7 @@ export class TrainingCheckpoint {
       }
       const saved = JSON.parse(bytes.toString('utf8')) as { state: State; digest: string };
       if (saved.state.identity !== (importing ? importing.trainingIdentity : identity) || trainingDigest(saved.state) !== saved.digest) {
-        throw new Error('Training checkpoint identity or integrity mismatch');
+        throw new Error('Training checkpoint identity or integrity mismatch; re-prepare with Spawnfile before resuming');
       }
       state = await hydrateEvaluationJson(options.native.store, saved.state, { audience: 'evaluator', phase: 'test',
         frozenCandidateIds: Object.values(saved.state.entries).flatMap(entry => entry.report ? [entry.report.candidateId] : []) });

@@ -52,7 +52,7 @@ export interface CostGroup {
   completeness: 'complete' | 'incomplete';
 }
 export interface CostReport {
-  schema: 'paideia.cost-report.v1';
+  schema: 'spawnfile.training.cost-report.v1';
   currency: 'USD';
   /** Only observed entries; usageCoverage and warnings describe capture limitations. */
   apiEquivalentUsd: Range | null;
@@ -283,7 +283,7 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
   }
   const total = totals(entries);
   if (usageCoverage === 'incomplete') { total.apiEquivalentUsd = null; total.completeness = 'incomplete'; }
-  return { schema: 'paideia.cost-report.v1', currency: 'USD', ...total, usageCoverage,
+  return { schema: 'spawnfile.training.cost-report.v1', currency: 'USD', ...total, usageCoverage,
     entries, groups, subscriptionChargeUsd: null, warnings: [...warnings] };
 }
 
@@ -300,7 +300,7 @@ export function includeDecisionCosts(costs: CostReport | null, trials: readonly 
   }
   const total = totals(entries);
   if (!costs || costs.completeness === 'incomplete') { total.apiEquivalentUsd = null; total.completeness = 'incomplete'; }
-  return { schema: 'paideia.cost-report.v1', currency: 'USD', ...total,
+  return { schema: 'spawnfile.training.cost-report.v1', currency: 'USD', ...total,
     usageCoverage: costs?.usageCoverage ?? 'incomplete', entries,
     groups: [...grouped.values()].map(group => ({ role: group[0]!.role, name: group[0]!.name,
       entryCount: group.length, models: [...new Set(group.map(entry => entry.model))], ...totals(group) })),

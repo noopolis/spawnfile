@@ -286,7 +286,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       // Running out of a declared budget is the subject's failure, graded on what it left.
       if (preDeferralStatus !== 'error') gates.push(result('fail', `Subject exhausted its declared ${limit} limit`));
     } else if (execution !== 'completed' && !live.decisive) gates.push(result('error', error ?? control.reason ?? 'Incomplete native execution'));
-    const report: TrialReport = { schema: 'paideia.trial.v1', id: options.id, phase: options.phase,
+    const report: TrialReport = { schema: 'spawnfile.training.trial.v1', id: options.id, phase: options.phase,
       candidateId: options.candidateId, datasetDigest: options.datasetDigest, planDigest: options.planDigest,
       recordId: record.id, durationMs: performance.now() - started,
       subject: { adapterId: adapter.id, requestedModel: options.model, isolation: adapter.capabilities.isolation },

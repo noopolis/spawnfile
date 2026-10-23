@@ -6,17 +6,17 @@ import path from "node:path";
 import { SpawnfileError } from "../../shared/index.js";
 import { DAIMON_ENGINE_CREDENTIALS, DAIMON_GROK_ENGINE_BROKER, type DaimonGrokBrokerModel, type DaimonGrokBrokerReasoningEffort } from "../../runtime/daimon/contractManifest.js";
 import { parseTrainingBrokerDeclaration } from "./broker/declaration.js";
-import { TRAINING_BROKER_DECLARATION_FILE, TRAINING_PAIDEIA_ROOT, TRAINING_SLOTS_FILE, trainingSlotDescriptors } from "./broker/paths.js";
+import { TRAINING_BROKER_DECLARATION_FILE, TRAINING_ROOT, TRAINING_SLOTS_FILE, trainingSlotDescriptors } from "./broker/paths.js";
 import { loadDaimonProjectionModule, resolveTrainingSlotProjection } from "./broker/projection.js";
 import { recycleTrainingSlot } from "./broker/recycleClient.js";
 
-/** Paideia's slot freshness floor for this trial: the receipt must echo the nonce at no lower generation. */
+/** The training core's slot freshness floor for this trial: the receipt must echo the nonce at no lower generation. */
 export interface TrainingSubjectFreshness { expectedNonce: string; minGeneration: number }
-/** The evaluator-created per-trial directories (Paideia `TrialPaths`); only Codex subjects live in them. */
+/** The evaluator-created per-trial directories (`TrialPaths`); only Codex subjects live in them. */
 export interface TrainingSubjectTrialRoots { workspace: string; runtimeHome: string }
 export type TrainingSubjectEvaluatorRole = "run-root" | "context" | "sealed-inputs" | "judge-home" | "slot-ledger";
 
-/** `paideia.daimon-native.launch.v2` `broker`, structurally `grokBrokerLaunchSchema` of Paideia 0.1.1. */
+/** `spawnfile.training.daimon-native.launch.v2` `broker`, structurally `grokBrokerLaunchSchema` in the bundled native adapter. */
 export interface TrainingSubjectBrokerSection {
   projectionVersion: typeof DAIMON_GROK_ENGINE_BROKER.projectionVersion;
   workerConfigVariant: "unclocked" | "clocked";
@@ -76,7 +76,7 @@ export interface LeaseTrainingSubjectOptions {
 }
 
 /** The fixed read-only container leaf the training launch binds the Codex login to. */
-export const TRAINING_CODEX_CREDENTIAL_INGRESS = "/run/paideia-auth/codex";
+export const TRAINING_CODEX_CREDENTIAL_INGRESS = "/run/spawnfile-training-auth/codex";
 const NONCE = /^[a-f0-9]{64}$/u;
 const invalid = (message: string): never => { throw new SpawnfileError("validation_error", message); };
 const refused = (message: string): never => { throw new SpawnfileError("runtime_error", message); };
@@ -89,7 +89,7 @@ const canonical = (label: string, value: unknown): string => {
 
 /**
  * Lease one training slot for an engine-neutral subject and return everything
- * `paideia.daimon-native.launch.v2` must carry about it.
+ * `spawnfile.training.daimon-native.launch.v2` must carry about it.
  *
  * Spawnfile owns the container, its slots, the broker declaration and
  * registration, the projection inputs, the recycle verb and the credential
@@ -127,7 +127,7 @@ const leaseGrokSubject = async (options: LeaseTrainingSubjectOptions): Promise<T
   options.signal.throwIfAborted();
   const roots = {
     workspace: descriptor.workspace, home: descriptor.runtimeHome, control: descriptor.state, workerHome: descriptor.workerHome,
-    usageLedger: descriptor.usageLedger, preflightReceipt: descriptor.preflightReceipt, context: TRAINING_PAIDEIA_ROOT
+    usageLedger: descriptor.usageLedger, preflightReceipt: descriptor.preflightReceipt, context: TRAINING_ROOT
   };
   return {
     agent: { id: declaration.agentId, engine: "grok", model: declaration.model, reasoningEffort: declaration.reasoningEffort },

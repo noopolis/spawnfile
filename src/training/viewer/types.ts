@@ -2,7 +2,7 @@ import type { InferenceModelBasis, JudgeFailure, ObservationCoverage, Usage } fr
 
 /** A caller-filtered presentation projection. Never pass raw captures or prompts. */
 export interface ViewerData {
-  schema: 'paideia.viewer.v1';
+  schema: 'spawnfile.training.viewer.v1';
   experiment: {
     id: string;
     title: string;

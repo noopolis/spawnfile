@@ -18,7 +18,7 @@ function recorded(source = price.source) {
   ] });
 }
 function plan(): TrainingCostPlan {
-  return { schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0,
+  return { schema: 'spawnfile.training.training-cost-plan.v1', modelCallsMade: 0,
     billing: 'API-equivalent valuation; subscription fees are not apportioned', coverage: 'estimated',
     budget: { maxTrials: 6, maxProposals: 1, metricCalls: 4, reservedTestTrials: 2 },
     datasetDigests: { train: 'PRIVATE train', test: 'SEALED digest' }, assumptions: resolveCostAssumptions(), warnings: ['PRIVATE warning'],

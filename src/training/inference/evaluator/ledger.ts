@@ -1,9 +1,10 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { appendFileSync, constants, closeSync, fstatSync, fsyncSync, openSync, readFileSync } from 'node:fs';
 import { randomUUID, createHash } from 'node:crypto';
 import { z } from 'zod';
 import { evaluatorRoute, routeKey, type EvaluatorPurpose } from './policy.js';
 
-const receipt = z.object({ version: z.literal('paideia.evaluator-request.v1'), id: z.string().uuid(),
+const receipt = z.object({ version: compatibleWireLiteral('spawnfile.training.evaluator-request.v1'), id: z.string().uuid(),
   policy: z.string().regex(/^[a-f0-9]{64}$/u), route: z.string(),
   event: z.enum(['admitted', 'completed', 'failed']), at: z.string().datetime(),
   reservedUsd: z.number().finite().nonnegative(), chargedUsd: z.number().finite().nonnegative(),
@@ -35,7 +36,7 @@ export function reserveEvaluatorRequest(provider: string, purpose: EvaluatorPurp
     if (selected.route.maxSpendUsd === 0 || (selected.route.maxSpendUsd !== undefined && spent + estimatedUsd > selected.route.maxSpendUsd)) {
       throw Error('Evaluator spend cap exhausted');
     }
-    const admitted: EvaluatorReceipt = { version: 'paideia.evaluator-request.v1', id: randomUUID(), policy, route,
+    const admitted: EvaluatorReceipt = { version: 'spawnfile.training.evaluator-request.v1', id: randomUUID(), policy, route,
       event: 'admitted', at: new Date().toISOString(), reservedUsd: estimatedUsd, chargedUsd: 0, inputTokens: null, outputTokens: null };
     appendFileSync(fd, `${JSON.stringify(admitted)}\n`); fsyncSync(fd);
     return { id: admitted.id,

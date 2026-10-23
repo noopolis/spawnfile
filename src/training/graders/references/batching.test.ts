@@ -125,11 +125,11 @@ it('drains in-flight teachers after a checkpoint failure and starts no more batc
 
 it('pins batch size and the v7 protocol and refuses v6 checkpoint reuse', async () => {
   const options = setup(1), result = await runCouncil(options);
-  expect(councilPromptVersion).toBe('paideia.council.v7');
+  expect(councilPromptVersion).toBe('spawnfile.training.council.v7');
   await expect(runCouncil({ ...options, previous: result, batchSize: 1 })).rejects.toThrow('Stale');
-  const identity = stableDigest({ version: 'paideia.council.v6', output: options.outputDigest,
+  const identity = stableDigest({ version: 'spawnfile.training.council.v6', output: options.outputDigest,
     instances: options.instances, teachers: options.teachers, batchSize: 40, adjudicator: 'c', window: defaultGrokWindow,
-    windowOpen: false, active: ['c', 'a'], seed: 'paideia.council', timeoutMs: 120_000 });
+    windowOpen: false, active: ['c', 'a'], seed: 'training.council', timeoutMs: 120_000 });
   const { digest: _digest, ...old } = { ...result, identity };
   await expect(runCouncil({ ...options, previous: { ...old, digest: councilContentDigest(old) } })).rejects.toThrow('Stale');
 });

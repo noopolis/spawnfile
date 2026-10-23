@@ -13,7 +13,7 @@ const fake = { id: 'fake', capabilities: { tools: 'disabled' as const, billing: 
 
 it.each(['claude-subscription', 'codex-subscription', 'grok-subscription', 'ollama'] as const)(
   'rejects capped %s primary and fallback routes before any provider construction', provider => {
-    vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
+    vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker');
     for (const purpose of ['judge', 'optimizer'] as const) for (const fallback of [false, true]) {
       // Avoid the existing direct-Grok/broker mixing guard masking this admission test.
       const primary = provider === 'grok-subscription' ? { provider: 'claude-subscription' as const, model: 'claude' } : broker;
@@ -29,19 +29,19 @@ it.each(['claude-subscription', 'codex-subscription', 'grok-subscription', 'olla
   });
 
 it('rejects legacy optimizer and judge defaults and unknown cap policies', () => {
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker');
   const inference = vi.fn(() => fake);
   for (const judges of [{}, { prose: 'model' }] as Record<string, string>[]) {
     expect(() => createTrainingInference({ command: 'train', flags: {} }, { inference },
       1000, judges, { prose: 0 })).toThrow(/legacy default/);
   }
   expect(inference).not.toHaveBeenCalled();
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', '');
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', '');
   expect(() => assertModelRequestAdmission('grok-broker', 'optimizer')).toThrow(/Unsupported/);
 });
 
 it('allows broker-only routes, mechanical comparisons, and uncapped legacy routes', async () => {
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker');
   const modelInference = vi.fn(() => fake);
   const training: TrainingConfiguration = { models: { primary: broker, backup: broker },
     judges: { prose: { model: 'primary', fallbacks: ['backup'] } }, optimizer: { model: 'primary' } };
@@ -52,7 +52,7 @@ it('allows broker-only routes, mechanical comparisons, and uncapped legacy route
   const comparison = { candidate: { name: 'fixed', replacements: [{ resource: 'AGENTS.md', source: 'variant.md' }] } };
   expect(() => createTrainingInference({ command: 'train', flags: {}, training: { models: { primary: broker }, comparison } },
     { inference: () => { throw Error('Unexpected optimizer'); } }, 1000, {}, {})).not.toThrow();
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', undefined);
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', undefined);
   expect(createTrainingInference({ command: 'train', flags: {} }, { inference: () => fake }, 1000, {}, {}).inference).toBe(fake);
 });
 
@@ -61,9 +61,9 @@ it('budgets explicitly declared Codex proposals and refuses judge reuse before c
   const root = await mkdtemp(join(tmpdir(), 'proposal-budget-'));
   try {
     const policy = join(root, 'routes.json'), receiptPath = join(root, 'requests.jsonl');
-    await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', receiptPath,
+    await writeFile(policy, JSON.stringify({ version: 'spawnfile.training.evaluator-routes.v1', receiptPath,
       routes: [{ provider: 'codex-subscription', purpose: 'proposals', model: 'codex-test', maxRequests: 1 }] }));
-    vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', policy);
+    vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', policy);
     const generate = vi.fn(async () => ({ text: 'proposal', model: 'codex-test', route: 'subscription', usage: null }));
     const modelInference = vi.fn(() => ({ ...fake, generate }));
     const training: TrainingConfiguration = { models: { optimizer: { provider: 'codex-subscription', model: 'codex-test' } }, optimizer: { model: 'optimizer' } };
@@ -82,9 +82,9 @@ it('budgets proposals with a shared judge model and explicit grants without the 
   const root = await mkdtemp(join(tmpdir(), 'shared-proposal-budget-'));
   try {
     const policy = join(root, 'routes.json'), receiptPath = join(root, 'requests.jsonl');
-    await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', receiptPath,
+    await writeFile(policy, JSON.stringify({ version: 'spawnfile.training.evaluator-routes.v1', receiptPath,
       routes: [{ provider: 'codex-subscription', purpose: 'proposals', model: 'codex-test', maxRequests: 1 }] }));
-    vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', undefined); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', policy);
+    vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', undefined); vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', policy);
     const generate = vi.fn(async () => ({ text: 'answer', model: 'codex-test', route: 'subscription', usage: null }));
     const modelInference = vi.fn(() => ({ ...fake, generate }));
     const training: TrainingConfiguration = { models: { shared: { provider: 'codex-subscription', model: 'codex-test' } },

@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../../../training/contracts/index.js';
 import { join } from 'node:path';
 import { nativeTrialArtifactsRoot } from './receipt/index.js';
 import { admittedNativeEvidence, type NativeTurnEvidence } from './outcome.js';
@@ -52,7 +53,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
             workerRequest<T>(docker, owned.name, path, body, ms, signal, launch.host.port),
         }));
       const observer = createNativeObserver(input, launch.projections.find(row => row.role === 'home')!.source, launch.agent.id, launch.agent.engine);
-      const evidence: NativeTurnEvidence = { schema: 'paideia.daimon-native.evidence.v1', wakes: [] };
+      const evidence: NativeTurnEvidence = { schema: 'spawnfile.training.daimon-native.evidence.v1', wakes: [] };
       const admittedDeliveries = new Set<string>();
       let attributionInvalid = false;
       let ordinal = 0;
@@ -83,7 +84,7 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
               await Promise.race([response, new Promise(resolve => setTimeout(resolve, 200))]);
             }
             if (failure) throw failure;
-            if (!terminal || terminal.schema !== 'paideia.daimon-native.trial.v1' || terminal.trialId !== input.trialId ||
+            if (!terminal || canonicalWireId(terminal.schema) !== 'spawnfile.training.daimon-native.trial.v1' || terminal.trialId !== input.trialId ||
                 terminal.wakeId !== turn.id || terminal.agentId !== launch.agent.id || terminal.model !== launch.agent.model ||
                 terminal.configSha256 !== launch.configSha256) {
               if (terminal) attributionInvalid = true;

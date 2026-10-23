@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../../../../training/contracts/index.js';
 import { isAbsolute, posix } from 'node:path';
 import { z } from 'zod';
 import { nativeTaskClockSchema } from './task-clock.js';
@@ -73,15 +74,15 @@ export const grokBrokerLaunchSchema = z.strictObject({
   evaluatorPaths: z.array(z.strictObject({ role: z.enum(grokEvaluatorRoles), path: nativePath })).min(grokEvaluatorRoles.length).max(64),
   /** Root slot supervisor output (`noopolis.daimon.grok-slot-preflight.v2`), written after provisioning or recycle. */
   slotPreflightReceipt: nativePath,
-  /** The 32-byte hex nonce Paideia sent with this trial's recycle request; the receipt must echo it. */
+  /** The 32-byte hex nonce Training sent with this trial's recycle request; the receipt must echo it. */
   expectedNonce: digest,
-  /** One above the last generation Paideia accepted for this slot (1 for an unseen slot). */
+  /** One above the last generation Training accepted for this slot (1 for an unseen slot). */
   minGeneration: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
 });
 
-const launchV1 = z.strictObject({ schema: z.literal('paideia.daimon-native.launch.v1'), ...common, agent: codexAgent, credentials: z.array(credential).max(1) });
-const codexLaunchV2 = z.strictObject({ schema: z.literal('paideia.daimon-native.launch.v2'), ...common, agent: codexAgent, credentials: z.array(credential).max(1) });
-const grokLaunchV2 = z.strictObject({ schema: z.literal('paideia.daimon-native.launch.v2'), ...common, agent: grokAgent,
+const launchV1 = z.strictObject({ schema: compatibleWireLiteral('spawnfile.training.daimon-native.launch.v1'), ...common, agent: codexAgent, credentials: z.array(credential).max(1) });
+const codexLaunchV2 = z.strictObject({ schema: compatibleWireLiteral('spawnfile.training.daimon-native.launch.v2'), ...common, agent: codexAgent, credentials: z.array(credential).max(1) });
+const grokLaunchV2 = z.strictObject({ schema: compatibleWireLiteral('spawnfile.training.daimon-native.launch.v2'), ...common, agent: grokAgent,
   credentials: z.array(credential).max(0), broker: grokBrokerLaunchSchema });
 
 export const nativeLaunchSchema = z.union([launchV1, codexLaunchV2, grokLaunchV2]);
@@ -91,8 +92,8 @@ export type GrokNativeLaunch = z.infer<typeof grokLaunchV2>;
 export type GrokBrokerLaunch = z.infer<typeof grokBrokerLaunchSchema>;
 export type VerifiedNativeLaunch = NativeLaunch & { receiptFile: string };
 export interface NativeMount { source: string; target: string; readonly: boolean }
-export const containerPaths = { config: '/run/paideia/config.json', control: '/run/paideia/control',
-  token: '/run/paideia/token', receipt: '/run/paideia/launch.json', worker: '/opt/training/native',
+export const containerPaths = { config: '/run/spawnfile-training/config.json', control: '/run/spawnfile-training/control',
+  token: '/run/spawnfile-training/token', receipt: '/run/spawnfile-training/launch.json', worker: '/opt/training/native',
   bootstrap: '/opt/training/bootstrap' } as const;
 
 export function isGrokLaunch<T extends NativeLaunch>(launch: T): launch is T & GrokNativeLaunch {

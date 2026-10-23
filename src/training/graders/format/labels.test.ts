@@ -7,7 +7,7 @@ import { loadLabels, parseLabels, parseLabelsYaml } from './labels.js';
 import { sha256 } from './common.js';
 
 const grader = parseGrader({
-  schema: 'paideia.grader.v1', id: 'g', golden: 'l', calibration: 'c',
+  schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'l', calibration: 'c',
   teachers: [{ id: 'c', provider: 'claude', model: 'm' }], model: { backend: 'teacher', teacher: 'c' },
   escalate: { to: 'c', between: [0, 1] }, score: { method: 'weighted' },
   context: { evidence: { description: '' } },
@@ -18,7 +18,7 @@ const grader = parseGrader({
   ],
 });
 const base = {
-  schema: 'paideia.labels.v1', grader: 'g',
+  schema: 'spawnfile.training.labels.v1', grader: 'g',
   labelers: { c: { kind: 'model', provider: 'claude', model: 'm' }, h: { kind: 'human', name: 'Human' } },
   labels: [{ id: 'l', lineage: 'family', output: { body: ['Hello.'] }, context: { evidence: 'truth' },
     votes: { a: { c: 'yes', h: 'abstain' }, 'p@p0': { c: 'x' }, 'p.applies@p0': { c: 'yes' }, 's@p0.s0': { c: 4 } },
@@ -66,7 +66,7 @@ describe('labels', () => {
       const loadedGrader = await loadGrader(filename);
       const loaded = await loadLabels(loadedGrader.golden, loadedGrader);
       expect(loaded.labels.labels[0]!.output).toEqual({ body: ['Hello.'] });
-      const explicit = await loadLabels({ ...base, schema: 'paideia.labels.v1' } as typeof loaded.labels, grader);
+      const explicit = await loadLabels({ ...base, schema: 'spawnfile.training.labels.v1' } as typeof loaded.labels, grader);
       expect(explicit.labels.grader).toBe('g');
       const sidecar = path.join(directory, 'labels.yaml');
       await writeFile(sidecar, JSON.stringify({ ...golden, grader: 'g' }));

@@ -37,7 +37,7 @@ export async function verifyChildGrokSlot(launch: VerifiedNativeLaunch & GrokNat
     const receipt = parseGrokBrokerReceipt(JSON.parse(await readPrivateFile(join(artifacts, 'sandbox-projection.json'), 1_048_576)),
       launch, trialId, required);
     await slots.accept(receipt.projection.slot, receipt.slotPreflight);
-    await writeFile(join(artifacts, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'paideia.daimon-native.child-grok-slot-preflight.v1',
+    await writeFile(join(artifacts, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'spawnfile.training.daimon-native.child-grok-slot-preflight.v1',
       trialId, configSha256: launch.configSha256, projectionSha256: receipt.projectionSha256, slot: receipt.projection.slot,
       workerUid: receipt.projection.workerUid, slotPreflightCreatedAt: receipt.slotPreflight.created_at, slotGeneration: receipt.slotPreflight.generation, modelCallsMade: 0, localSandboxProbe: false,
       evaluatorPathsDenied: [...new Set([...requiredGrokEvaluatorPaths(launch), ...required])].sort() }), { flag: 'wx', mode: 0o600 });

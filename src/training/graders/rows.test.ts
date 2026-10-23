@@ -8,7 +8,7 @@ import { moveLeadingCitations } from './rows.js';
 
 const rows = { heading: '^### \\[(E\\d+)\\]', cite: '\\[(E\\d+)\\]' };
 function rubric(level = 'paragraph', structure: typeof rows & { leading_citations?: string } = rows) {
-  return parseGrader({ schema: 'paideia.grader.v1', id: 'rows', golden: 'labels.yaml', calibration: 'cal.json',
+  return parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'rows', golden: 'labels.yaml', calibration: 'cal.json',
     context: { evidence: { description: 'Sources', rows: structure } },
     teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'teacher', teacher: 't' },
     escalate: { to: 't', between: [0.3, 0.7] }, score: { method: 'weighted' },
@@ -214,7 +214,7 @@ it.each(['heading', 'cite'] as const)('pins %s regex in definition, calibration 
   const entry = groupLabelInstances(original, output, { evidence })[0]!.instances[0]!;
   expect(entry.instance.definitionDigest).toBe(questionDefinitionDigest(original, entry.question));
   expect(expandInstances(changed, output, { evidence })[0]!.projectionDigest).toBe(entry.instance.projectionDigest);
-  const labels = { schema: 'paideia.labels.v1' as const, grader: 'rows', labelers: { human: { kind: 'human' as const, name: 'Reader' } },
+  const labels = { schema: 'spawnfile.training.labels.v1' as const, grader: 'rows', labelers: { human: { kind: 'human' as const, name: 'Reader' } },
     labels: [{ id: 'one', lineage: 'one', output, context: { evidence }, votes: { 'q@p0': { human: 'yes' } },
       provenance: { human: { votes: { 'q@p0': { question_digest: entry.instance.definitionDigest, projection_digest: entry.instance.projectionDigest } } } } }] };
   expect(() => validateStoredVotes(original, labels, { resolved: true })).not.toThrow();

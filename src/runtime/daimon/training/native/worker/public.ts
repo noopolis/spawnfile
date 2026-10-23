@@ -11,7 +11,7 @@ export interface GrokBrokerProjectionOptions {
   profileSha256: string;
 }
 
-/** Structural public seam keeps the optional runtime out of Paideia core installs. */
+/** Structural public seam keeps the optional runtime out of Training core installs. */
 export interface NativeRuntimeModule {
   parseWakeAcceptanceRequest?(value: unknown): NativeWakeRequest;
   parseOrganizationRuntimeConfig(value: unknown): NativeConfig;

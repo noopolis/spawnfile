@@ -35,13 +35,13 @@ it("runs and resumes the no-flag authoring path through preparation and the actu
   let output = "", receipt: TrainingExecution | undefined, receiptMounted = false, consumerHandoff = false;
   const docker = dockerFixture(async (args, options) => {
     if (args[2] === "create") {
-      const mount = args.find(arg => arg.endsWith("dst=/run/paideia/execution.json,readonly"))!;
+      const mount = args.find(arg => arg.endsWith("dst=/run/spawnfile-training/execution.json,readonly"))!;
       receiptMounted = mount !== undefined;
       if (mount) receipt = JSON.parse(await readFile(mount.split(",").find(part => part.startsWith("src="))!.slice(4), "utf8"));
       output = docker.output().host;
       expect(args).toContain("/run/training/inputs/project/training/train.yaml");
       expect(args).toContain("--editable");
-      consumerHandoff = args[args.indexOf("--spawnfile-execution") + 1] === "/run/paideia/execution.json";
+      consumerHandoff = args[args.indexOf("--spawnfile-execution") + 1] === "/run/spawnfile-training/execution.json";
     }
     if (args[2] === "start") await writeFile(path.join(docker.output().live, "index.json"), "{}");
     return undefined;

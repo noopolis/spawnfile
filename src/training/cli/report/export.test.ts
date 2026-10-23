@@ -119,7 +119,7 @@ it('renders missing costs/rounds, escaped failure prose and arbitrary diff fence
 it('recognizes only the declared completed training envelope', async () => {
   const { report } = await fixture();
   expect(isTrainingReport(report)).toBe(true);
-  for (const value of [null, 2, {}, { schema: 'paideia.failure.v1' }]) expect(isTrainingReport(value)).toBe(false);
+  for (const value of [null, 2, {}, { schema: 'spawnfile.training.failure.v1' }]) expect(isTrainingReport(value)).toBe(false);
 });
 
 it('rejects an export bound to a different frozen summary candidate', async () => {

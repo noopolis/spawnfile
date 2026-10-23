@@ -166,7 +166,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
     signal.throwIfAborted();
     const index = await persistResult({ root: native.out, store, id, command: 'evaluate', datasetId: dataset.id,
       planDigest: dataset.sharedPlanDigest, candidate: native.candidate,
-      report: { schema: 'paideia.cli-evaluation.v1', datasetId: dataset.id, candidateId: native.candidate.id, trials, costs: journal.costs() },
+      report: { schema: 'spawnfile.training.cli-evaluation.v1', datasetId: dataset.id, candidateId: native.candidate.id, trials, costs: journal.costs() },
       trialIds: trials.map((trial) => trial.id) });
     await journal.observe({ type: 'evaluation.completed', payload: {} });
     io.stdout(`${JSON.stringify({ status: 'completed', index: join(native.out, 'invocation.json'), ...index, costs: journal.summary() })}\n`);

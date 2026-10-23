@@ -11,17 +11,17 @@ import type { DecisionResult } from '../../contracts/grading.js';
 import type { JudgeCall } from '../../contracts/evaluation.js';
 
 function fixture() {
-  const grader = parseAtomicGrader({ schema: 'paideia.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
+  const grader = parseAtomicGrader({ schema: 'spawnfile.training.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
     extractor: { provider: 'codex', model: 'test' }, decision: { backend: 'typesafe', model: 'jev-1.0.0', max_spend_usd: 1 }, missing: 'unknown',
     aggregation: { method: 'gates-times-coverage-times-quality', critical_pass_at: 0.8, pass_at: 0.5, obligation_kinds: ['obligation'],
       dimensions: { facts: { weight: 1, budget: 2 }, coverage: { weight: 1, budget: 1 } }, penalties: { critical: 1, major: 0.5, minor: 0.1 } } });
   const template = { id: 'support', applies_to: 'claim', type: 'noul', instructions: 'Check {unit.text}', criteria: { true: 'Good', false: 'Bad' },
     expected: [true], state: ['unit'], dimension: 'facts', severity: 'critical' };
-  const templates = parseCheckTemplates({ schema: 'paideia.check-templates.v1', templates: [template,
+  const templates = parseCheckTemplates({ schema: 'spawnfile.training.check-templates.v1', templates: [template,
     { ...template, id: 'covered', applies_to: 'obligation', severity: 'major', dimension: 'coverage' }], context: { assignment: { role: 'assignment' } } });
   const inputs = { output: { body: ['Alice was promoted.', 'Bob joined.'] }, context: { assignment: 'Cover Alice.' } };
   const extractor = { provider: 'codex', model: 'test', prompt_digest: 'a'.repeat(64), at: '2026-10-14T00:00:00Z' };
-  const doc = parseDecomposition({ schema: 'paideia.decomposition.v1', output: { from: 'trial', sha256: 'b'.repeat(64) },
+  const doc = parseDecomposition({ schema: 'spawnfile.training.decomposition.v1', output: { from: 'trial', sha256: 'b'.repeat(64) },
     units: [{ id: 'c', kind: 'claim', text: 'Alice was promoted.' }, { id: 'o', kind: 'obligation', text: 'Cover Alice.' }],
     extractors: [extractor], audit: { extractor, missed: [], at: extractor.at } });
   const backend = { identity: vi.fn(async () => ({ backend: 'typesafe', model: 'jev-1.0.0' })),

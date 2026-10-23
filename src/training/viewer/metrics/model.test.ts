@@ -16,7 +16,7 @@ function trial(candidateId: string, caseId: string, score: number | null = null,
 }
 
 function fixture(): ViewerData {
-  return { schema: 'paideia.viewer.v1', experiment: { id: 'synthetic', title: 'Synthetic', phase: 'train', status: 'running', updatedAt: 'now' },
+  return { schema: 'spawnfile.training.viewer.v1', experiment: { id: 'synthetic', title: 'Synthetic', phase: 'train', status: 'running', updatedAt: 'now' },
     cases: [{ id: 'a', split: 'train' }, { id: 'b', split: 'train' }, { id: 'c', split: 'train' },
       { id: 'v', split: 'validation' }, { id: 'v2', split: 'validation' }],
     candidates: [candidate('base'), candidate('next')], trials: [], usage: [] };

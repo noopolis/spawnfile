@@ -28,7 +28,7 @@ it('generates deterministic traps and scores council references with checkpoint 
   const reference = await runReference(f.reference, f.dependencies);
   expect(reference).toMatchObject({ gate: 'STOP', outputs: 2, knownAnswer: { total: 0, correct: 0, accuracy: null }, diagnostic: { total: 0, correct: 0, accuracy: null }, consistency: { total: 1, correct: 1 } });
   const artifact = JSON.parse(await readFile(f.reference.out, 'utf8'));
-  expect(artifact).toMatchObject({ schema: 'paideia.references.v1', digest: expect.any(String) });
+  expect(artifact).toMatchObject({ schema: 'spawnfile.training.references.v1', digest: expect.any(String) });
   expect(Object.values(artifact.outputs)).toHaveLength(2);
   expect(await readFile(reference.reportFile, 'utf8')).toContain('Council references: STOP');
   expect(await readFile(reference.reportFile, 'utf8')).toContain('codex: 100.00% agreement');
@@ -105,7 +105,7 @@ it('writes empty trap artifacts and counts discarded mutations', async () => {
   const result = await runTraps(f.traps);
   expect(result).toMatchObject({ generated: 0, discarded: 1 });
   const file = join(f.traps.out, (await readdir(f.traps.out))[0]!);
-  expect(JSON.parse(await readFile(file, 'utf8')).schema).toBe('paideia.traps.v1');
+  expect(JSON.parse(await readFile(file, 'utf8')).schema).toBe('spawnfile.training.traps.v1');
 });
 
 it('counts invalid council answers as wrong trap answers rather than dropping their denominator', async () => {

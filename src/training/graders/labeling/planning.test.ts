@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseGrader, stableDigest, type Labels } from '../index.js';
 import { groupLabelInstances, buildLabelPrompt, decodeLabelVotes, teacherPolicyDigest, adjudicationRows, validateStoredVotes, voteProvenance } from './index.js';
 
-function grader() { return parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'l.yaml', calibration: 'c.json',
+function grader() { return parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'l.yaml', calibration: 'c.json',
   teachers: [{ id: 't', provider: 'grok', model: 'm' }], model: { backend: 'teacher', teacher: 't' },
   escalate: { to: 't', between: [0.2, 0.8] }, questions: [
     { id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] },
@@ -19,7 +19,7 @@ describe('label planning', () => {
     expect(groups[0]!.instances.map(i => i.instance.key)).toEqual(['q', 's']);
     const prompt = buildLabelPrompt(groups[0]!);
     expect(prompt.prompt).not.toContain('private');
-    expect(prompt.system).toContain('paideia.grader-label-prompt.v1');
+    expect(prompt.system).toContain('spawnfile.training.grader-label-prompt.v1');
     expect(prompt.schema).toMatchObject({ additionalProperties: false, required: ['q', 's'] });
     expect(prompt.digest).toHaveLength(64);
     expect(decodeLabelVotes('{"q":"yes","s":"2"}', groups[0]!)).toEqual({ q: 'yes', s: 2 });
@@ -29,7 +29,7 @@ describe('label planning', () => {
     }
   });
   it('samples consensus deterministically and retains every dispute', () => {
-    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { t: { kind: 'model', provider: 'grok', model: 'm' } },
+    const labels: Labels = { schema: 'spawnfile.training.labels.v1', grader: 'g', labelers: { t: { kind: 'model', provider: 'grok', model: 'm' } },
       labels: [{ id: 'a', lineage: 'a', output: {}, context: {}, votes: { q: { t: 'yes' }, s: { t: 2 }, missing: {} }, asked: ['t'], provenance: {} }] };
     const rows = adjudicationRows(labels, 1);
     expect(rows).toHaveLength(2);
@@ -41,7 +41,7 @@ describe('label planning', () => {
     const g = grader(); const output = { body: ['Hello'] };
     const receipt = { teacher_policy_digest: teacherPolicyDigest(g.teachers[0]!),
       projection_digest: groupLabelInstances(g, output, {})[0]!.projectionDigest, instance_keys: ['q'] };
-    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g',
+    const labels: Labels = { schema: 'spawnfile.training.labels.v1', grader: 'g',
       labelers: { t: { kind: 'model', provider: 'grok', model: 'm' } },
       labels: [{ id: 'l', lineage: 'l', output, context: {}, votes: { q: { t: 'yes' } },
         provenance: { t: { calls: { call: receipt }, votes: { q: { call: 'call', question_digest: stableDigest(g.questions[0]) } } } } }] };
@@ -60,7 +60,7 @@ describe('label planning', () => {
   });
   it('refuses legacy and stale per-vote identities and exempts humans only from teacher policy', () => {
     const g = grader();
-    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { t: { kind: 'model', provider: 'grok', model: 'm' }, h: { kind: 'human', name: 'H' } },
+    const labels: Labels = { schema: 'spawnfile.training.labels.v1', grader: 'g', labelers: { t: { kind: 'model', provider: 'grok', model: 'm' }, h: { kind: 'human', name: 'H' } },
       labels: [{ id: 'a', lineage: 'a', output: {}, context: {}, votes: { q: { t: 'yes', h: 'yes' } }, provenance: {} }] };
     expect(() => validateStoredVotes(g, labels)).toThrow('Stale vote');
     const metadata = { question_digest: stableDigest(g.questions[0]), teacher_policy_digest: teacherPolicyDigest(g.teachers[0]!) };
@@ -90,7 +90,7 @@ describe('label planning', () => {
     const output = { body: ['original'] };
     const vote = { question_digest: stableDigest(g.questions[0]),
       projection_digest: groupLabelInstances(g, output, {})[0]!.projectionDigest };
-    const labels: Labels = { schema: 'paideia.labels.v1', grader: 'g', labelers: { human: { kind, name: 'Reader' } },
+    const labels: Labels = { schema: 'spawnfile.training.labels.v1', grader: 'g', labelers: { human: { kind, name: 'Reader' } },
       labels: [{ id: 'human-truth', lineage: 'story', output, context: {}, votes: { q: { human: 'yes' } },
         provenance: { human: { votes: { q: vote } } } }] };
     expect(() => validateStoredVotes(g, labels, { resolved: true })).not.toThrow();
@@ -112,8 +112,8 @@ describe('label planning', () => {
 
 it('pins the Codex containment policy separately from empty-tool teachers', () => {
   const teacher = { id: 'codex', provider: 'codex' as const, model: 'gpt-5' };
-  expect(teacherPolicyDigest(teacher)).toBe(stableDigest({ teacher, prompt: 'paideia.grader-label-prompt.v1',
+  expect(teacherPolicyDigest(teacher)).toBe(stableDigest({ teacher, prompt: 'spawnfile.training.grader-label-prompt.v1',
     policy: 'subscription-codex-containment-one-schema-repair.v1' }));
-  expect(teacherPolicyDigest(teacher)).not.toBe(stableDigest({ teacher, prompt: 'paideia.grader-label-prompt.v1',
+  expect(teacherPolicyDigest(teacher)).not.toBe(stableDigest({ teacher, prompt: 'spawnfile.training.grader-label-prompt.v1',
     policy: 'subscription-empty-tools-one-schema-repair.v1' }));
 });

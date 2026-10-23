@@ -39,7 +39,7 @@ protocol; changing how evidence is referenced never lowers those floors.
 
 ## Evidence and output
 
-Paideia presents `paideia.evidence-units.v1`, containing ordered `units` with an
+Training presents `spawnfile.training.evidence-units.v1`, containing ordered `units` with an
 `id`, `source`, JSON `pointer`, `chunk`, content `digest`, and `value`. Object keys
 are sorted, array positions remain indexed, and strings split into at most 2048
 Unicode code points per chunk. Concatenating ordered string chunks reconstructs
@@ -72,7 +72,7 @@ is 3 and the cache format is v3.
 ## Local inference controls
 
 Ollama receives `think`, `keep_alive` and `options.num_predict` directly. Keeping a
-model loaded avoids cold loading between calls; Paideia performs no model download,
+model loaded avoids cold loading between calls; Training performs no model download,
 background prewarm generation or unbudgeted inference. These YAML controls reject
 subscription providers rather than being silently dropped.
 

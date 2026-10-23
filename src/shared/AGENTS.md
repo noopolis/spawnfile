@@ -12,6 +12,10 @@ src/shared/
 ├── daimonCodexDocker.ts # Shared Daimon Docker posture and strict Codex policy parser
 ├── errors.ts        # Typed error helpers and guards
 ├── types.ts         # Cross-cutting shared types
+├── trainingLegacyWire.ts # Shared discriminator readers and external-distribution detection
+├── trainingLegacyWireAliases.json # Exact historical-to-current discriminator table
+├── trainingLegacyEnvironment.ts # Legacy deployment env normalization and one process warning
+├── trainingLegacyFiles.ts # Legacy filename conflicts and bounded source bytes
 └── errors.test.ts   # Shared error tests
 ```
 

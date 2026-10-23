@@ -8,7 +8,7 @@ import { dockerFixture, launchFixture, unadmittedFixture } from './test-fixtures
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-const record = () => resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+const record = () => resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: admission
 checks: [{id: done, eval: equals, input: output.text, value: DONE}]
 records: [{id: task, input: {prompt: work}}]

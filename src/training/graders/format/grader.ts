@@ -1,3 +1,5 @@
+import { checkTrainingFilename } from '../../platform/index.js';
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
@@ -24,7 +26,7 @@ const namedModelSchema = z.union([localModel.extend({ id: identifier }), ollamaM
 export type DecisionModel = z.infer<typeof modelSchema>;
 export type NamedDecisionModel = z.infer<typeof namedModelSchema>;
 export const graderSchema = z.strictObject({
-  schema: z.literal('paideia.grader.v1'), id: identifier,
+  schema: compatibleWireLiteral('spawnfile.training.grader.v1'), id: identifier,
   golden: z.union([z.string().min(1), labelsSchema.extend({ grader: identifier.optional() })]), calibration: z.string().min(1),
   context: z.record(identifier, z.strictObject({ description: z.string(), rows: rowsSchema.optional() })).default({}),
   teachers: z.array(z.strictObject({ id: identifier, provider, model: z.string().min(1), effort: z.string().min(1).optional() })),
@@ -118,7 +120,7 @@ function validateStructure(grader: Grader): void {
 export function parseGrader(value: unknown): Grader {
   // Only explicit identity mode supplies the unused legacy authoring fields.
   if (value && typeof value === 'object' && 'calibration' in value && value.calibration === 'identity') {
-    value = { golden: { schema: 'paideia.labels.v1', labelers: {}, labels: [] },
+    value = { golden: { schema: 'spawnfile.training.labels.v1', labelers: {}, labels: [] },
       teachers: [], escalate: { to: 'none', between: [0, 1] }, ...value };
   }
   const grader = parseSchema(graderSchema, value);
@@ -133,6 +135,7 @@ export function validateGrader(value: unknown): Grader {
   return grader;
 }
 export async function loadGrader(filename: string): Promise<Grader> {
+  checkTrainingFilename(filename);
   const grader = validateGrader(parseGraderYaml(await readFile(filename, 'utf8')));
   const directory = path.dirname(path.resolve(filename));
   const loaded = { ...grader, golden: typeof grader.golden === 'string' ? path.resolve(directory, grader.golden) : grader.golden,

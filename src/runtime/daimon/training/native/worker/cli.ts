@@ -4,7 +4,7 @@ import { runDaimonNativeWorker } from './worker.js';
 export async function nativeWorkerMain(args: string[]): Promise<number> {
   try { await runDaimonNativeWorker(args); return 0; }
   catch (error) {
-    process.stderr.write(`${JSON.stringify({ schema: 'paideia.daimon-native.start-failed.v1',
+    process.stderr.write(`${JSON.stringify({ schema: 'spawnfile.training.daimon-native.start-failed.v1',
       error: error instanceof Error ? error.message : 'Native startup failed' })}\n`);
     return 1;
   }

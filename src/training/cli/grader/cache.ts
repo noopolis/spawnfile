@@ -8,7 +8,7 @@ export async function cachedScores(directory: string, backend: DecisionBackend, 
   requests: readonly DecisionRequest[], concurrency: number, signal?: AbortSignal, receipts?: DecisionRequestReceipt[]): Promise<DecisionResult[]> {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error('concurrency must be a positive integer');
   signal?.throwIfAborted();
-  const root = join(directory, '.paideia', 'grader-cache');
+  const root = join(directory, '.spawnfile-training', 'grader-cache');
   await mkdir(root, { recursive: true });
   const file = join(root, `${identity}.jsonl`);
   const cache = new Map<string, DecisionResult>();

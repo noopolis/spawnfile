@@ -41,7 +41,7 @@ describe('training dry-run command', () => {
     expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
     expect(f.stderr).toEqual([]);
     const plan = JSON.parse(f.stdout.join(''));
-    expect(plan).toMatchObject({ schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0, coverage: 'estimated' });
+    expect(plan).toMatchObject({ schema: 'spawnfile.training.training-cost-plan.v1', modelCallsMade: 0, coverage: 'estimated' });
     expect(plan.candidateId).toBeTruthy();
     expect(plan.apiEquivalentUsd.high).toBeGreaterThan(0);
     expect(await readdir(f.root)).toEqual(before);
@@ -49,7 +49,7 @@ describe('training dry-run command', () => {
   });
   it('uses local price/assumption configuration and rejects missing/invalid inputs', async () => {
     const f = await fixture();
-    await writeFile(join(f.root, 'cost.yaml'), 'schema: paideia.cost-config.v1\nassumptions:\n  subject:\n    inputTokens: {low: 1000, high: 2000}\n    outputTokens: {low: 100, high: 200}\n    cacheReadFraction: {low: 0, high: 0}\n');
+    await writeFile(join(f.root, 'cost.yaml'), 'schema: spawnfile.training.cost-config.v1\nassumptions:\n  subject:\n    inputTokens: {low: 1000, high: 2000}\n    outputTokens: {low: 100, high: 200}\n    cacheReadFraction: {low: 0, high: 0}\n');
     expect(await main([...f.args, '--cost-config', 'cost.yaml'], f.io, f.dependencies)).toBe(0);
     expect(JSON.parse(f.stdout[0]!).assumptions.subject.inputTokens.high).toBe(2000);
     expect(await main([...f.args, '--cost-config', 'absent.yaml'], f.io, f.dependencies)).toBe(2);
@@ -62,7 +62,7 @@ describe('training dry-run command', () => {
     const checks = ['prose', 'grounding'].map(judge => ({ id: judge, eval: 'llm-rubric', judge,
       input: 'output.text', minimum: 0.8, rubric: { prompt: 'Check the declared output.' } }));
     for (const [name, groups] of [['train', ['a', 'b']], ['test', ['x']]] as const) {
-      await writeFile(join(f.root, `${name}.yaml`), JSON.stringify({ schema: 'paideia.dataset.v1', id: name, checks,
+      await writeFile(join(f.root, `${name}.yaml`), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: name, checks,
         records: groups.map(group => ({ id: group, group, input: { prompt: 'Reply OK.' } })) }));
     }
     const inference = vi.fn(() => { throw new Error('No judge construction'); });

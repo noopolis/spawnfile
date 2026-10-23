@@ -73,7 +73,7 @@ export async function compareCandidates(options: ComparisonOptions): Promise<Com
         baselineScore, candidateScore, delta: candidateScore - baselineScore });
     }
   }
-  const report: ComparisonReport = { schema: 'paideia.comparison.v1', id: options.id, baseline: options.baseline,
+  const report: ComparisonReport = { schema: 'spawnfile.training.comparison.v1', id: options.id, baseline: options.baseline,
     candidate: options.candidate, name: options.name, partitions, trials, pairs,
     ...(rescores.length ? { rescores } : {}), provenance: { mode: 'authored-comparison', optimizerCalls: 0 } };
   await options.onProgress?.({ type: 'comparison.completed', payload: report });

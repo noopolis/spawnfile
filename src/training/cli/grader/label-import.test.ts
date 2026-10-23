@@ -21,7 +21,7 @@ async function fixture() {
   await fs.mkdir(path.join(dir, 'data')); await fs.mkdir(path.join(dir, 'golden'));
   const graderFile = path.join(dir, 'grader.yaml'), importFile = path.join(dir, 'data', 'import.yaml');
   const labelsFile = path.join(dir, 'golden', 'labels.yaml');
-  const grader = { schema: 'paideia.grader.v1', id: 'writing', golden: 'golden/labels.yaml', calibration: 'c.json',
+  const grader = { schema: 'spawnfile.training.grader.v1', id: 'writing', golden: 'golden/labels.yaml', calibration: 'c.json',
     context: { evidence: { description: 'Sources' } }, teachers: [{ id: 't', provider: 'grok', model: 'm' }],
     model: { backend: 'teacher', teacher: 't' }, escalate: { to: 't', between: [0.2, 0.8] },
     questions: [
@@ -33,7 +33,7 @@ async function fixture() {
   const item = { id: 'a', lineage: 'story', example: { dataset: 'test', id: 'x' },
     output: { from: 'out.json' }, context: { evidence: { from: 'evidence.md' } }, labeler: 'editor',
     votes: { q: 'no', 'p@p0': 'good' } as Record<string, string | number>, note: 'Mapped verdict' };
-  const manifest = { schema: 'paideia.label-import.v1', grader: 'writing',
+  const manifest = { schema: 'spawnfile.training.label-import.v1', grader: 'writing',
     labelers: { editor: { kind: 'editor', name: 'Editor', source: 'Verdicts' }, reviewer: { kind: 'human', name: 'Reviewer' } }, items: [item] };
   await Promise.all([fs.writeFile(graderFile, stringify(grader)), fs.writeFile(importFile, stringify(manifest)),
     fs.writeFile(path.join(dir, 'data/out.json'), '{"body":["Hello."],"kind":"draft"}'), fs.writeFile(path.join(dir, 'data/evidence.md'), 'Evidence')]);
@@ -65,7 +65,7 @@ it('imports YAML with byte addresses, per-vote freshness and provenance, without
 
 it('merges editor then human votes into a teacher checkpoint and preserves teacher receipts', async () => {
   const f = await fixture(), inputsFile = path.join(f.dir, 'data/inputs.yaml');
-  await fs.writeFile(inputsFile, stringify({ schema: 'paideia.grader-inputs.v1', items: [{
+  await fs.writeFile(inputsFile, stringify({ schema: 'spawnfile.training.grader-inputs.v1', items: [{
     id: f.item.id, lineage: f.item.lineage, example: f.item.example, output: f.item.output, context: f.item.context,
   }] }));
   await runLabel({ graderFile: f.graderFile, inputsFile, teachers: ['t'] }, { provider: () => ({ id: 'fake',
@@ -162,7 +162,7 @@ it('compares content addresses independent of path and preserves existing exampl
 it('refuses inline golden writes and malformed golden files', async () => {
   const f = await fixture();
   await fs.writeFile(f.labelsFile, 'bad'); await expect(runLabelImport(f)).rejects.toThrow();
-  await fs.writeFile(f.graderFile, stringify({ ...f.grader, golden: { schema: 'paideia.labels.v1', labelers: {}, labels: [] } }));
+  await fs.writeFile(f.graderFile, stringify({ ...f.grader, golden: { schema: 'spawnfile.training.labels.v1', labelers: {}, labels: [] } }));
   await expect(runLabelImport(f)).rejects.toThrow('inline golden labels are read-only');
 });
 

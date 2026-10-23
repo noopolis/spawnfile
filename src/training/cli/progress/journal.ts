@@ -22,7 +22,7 @@ export interface ProgressOptions {
 /** Status only: held-out content and optimizer text never enter this projection. */
 export async function createProgressJournal(options: ProgressOptions) {
   const runId = `progress-${options.id}`;
-  await options.store.createRun({ schema: 'paideia.run.v1', id: runId, datasetId: options.datasetId,
+  await options.store.createRun({ schema: 'spawnfile.training.run.v1', id: runId, datasetId: options.datasetId,
     datasetRole: 'train', candidateId: options.candidateId, planDigest: options.planDigest,
     metadata: { costPlan: options.costPlan } });
   const trials = new Map<string, TrialReport>();
@@ -94,7 +94,7 @@ export async function createProgressJournal(options: ProgressOptions) {
         .filter((row): row is NonNullable<TrialReport['diagnostic']> => row !== undefined);
       const reason = startup.at(0)?.reason ?? startup.at(-1)?.reason;
       const published = startup.length
-        ? await options.store.putBlob(runId, JSON.stringify({ schema: 'paideia.startup-diagnostics.v1', runId, diagnostics: startup }), 'evaluator')
+        ? await options.store.putBlob(runId, JSON.stringify({ schema: 'spawnfile.training.startup-diagnostics.v1', runId, diagnostics: startup }), 'evaluator')
         : undefined;
       await write('experiment.failed', { status: 'failed',
         error: reason ? `Experiment failed: ${reason}` : 'Experiment failed; protected diagnostic is available to the operator.',

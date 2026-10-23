@@ -102,7 +102,7 @@ it.each(['missing', 'failed'] as const)('seals the trial before returning for a 
   let sealed: TerminalEvidenceMissing | undefined;
   const seal = (fault: TerminalEvidenceMissing): void => { sealed ??= fault; };
   const trace = traceFixture();
-  const frame = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId,
+  const frame = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId,
     agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
     wakeId: 'task', executionId: trace.turn_id, native: { traces: [trace] },
     receipt: { agent_id: fixture.launch.agent.id, delivery_id: `${fixture.input.trialId}:task`, execution_id: trace.turn_id },
@@ -125,7 +125,7 @@ it.each(['failed-first', 'completed-first', 'missing-named', 'duplicate-history'
     let sealed: TerminalEvidenceMissing | undefined;
     const seal = (fault: TerminalEvidenceMissing): void => { sealed ??= fault; };
     const trace = traceFixture();
-    const frame = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId,
+    const frame = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId,
       agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
       wakeId: 'task', executionId: trace.turn_id, native: { traces: [trace] },
       receipt: { agent_id: fixture.launch.agent.id, delivery_id: `${fixture.input.trialId}:task` },

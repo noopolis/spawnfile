@@ -119,11 +119,11 @@ function declaredRevisions(response: JevEnvelope): Record<string, string> {
 /** Keep both payloads deterministic; the long state exposes input-size preparation. */
 function identityCanaries(): DecisionRequest[] {
   return [
-    { key: 'paideia_identity', type: 'yes-no', optionLabels: ['yes', 'no'],
+    { key: 'training_identity', type: 'yes-no', optionLabels: ['yes', 'no'],
       instructions: 'Is the supplied JSON object empty?', projection: {} },
-    { key: 'paideia_identity_long', type: 'yes-no', optionLabels: ['yes', 'no'],
-      instructions: 'Does the supplied text end with PAIDEIA_CANARY_END?',
-      projection: { text: `${'0123456789 abcdefghijklmnopqrstuvwxyz. '.repeat(1100).slice(0, 39_982)}PAIDEIA_CANARY_END` } },
+    { key: 'training_identity_long', type: 'yes-no', optionLabels: ['yes', 'no'],
+      instructions: 'Does the supplied text end with SPAWNFILE_TRAINING_CANARY_END?',
+      projection: { text: `${'0123456789 abcdefghijklmnopqrstuvwxyz. '.repeat(1100).slice(0, 39_982)}SPAWNFILE_TRAINING_CANARY_END` } },
   ];
 }
 

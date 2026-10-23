@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import { randomUUID } from 'node:crypto';
 import type { CandidateManifest } from '../../candidates/index.js';
 import { materializeCandidate, validateCandidate } from '../../candidates/index.js';
@@ -27,7 +28,7 @@ export interface StoredTrialOptions extends Omit<TrialOptions, 'candidateId' | '
     context: NativePreparationContext) => Promise<Omit<Awaited<ReturnType<TrialOptions['prepare']>>, 'instructions'>>;
 }
 export async function runStoredTrial(options: StoredTrialOptions): Promise<TrialReport> {
-  if ('schema' in options.record && options.record.schema === 'paideia.cost-record.v1') throw new Error('Cost-only records cannot execute trials');
+  if ('schema' in options.record && canonicalWireId(options.record.schema) === 'spawnfile.training.cost-record.v1') throw new Error('Cost-only records cannot execute trials');
   validateCandidate(options.candidate);
   const instructions = options.candidate.resources.filter(resource => resource.destinations.some(destination => destination.kind === 'instructions'));
   if (!instructions.length) throw new Error('Candidate has no native instruction resource');
@@ -37,7 +38,7 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
     }
   }
   if (options.record.setup && !options.prepareEnvironment) throw new Error('Record requires a registered native environment preparation');
-  await options.store.createRun({ schema: 'paideia.run.v1', id: options.id, datasetId: options.datasetId,
+  await options.store.createRun({ schema: 'spawnfile.training.run.v1', id: options.id, datasetId: options.datasetId,
     datasetRole: options.phase, candidateId: options.candidate.id, planDigest: options.planDigest, recordId: options.record.id,
     metadata: { adapter: options.adapter.id, model: options.model, timeoutMs: options.timeoutMs } });
   await options.store.putBlob(options.id, JSON.stringify(options.candidate), 'evaluator');

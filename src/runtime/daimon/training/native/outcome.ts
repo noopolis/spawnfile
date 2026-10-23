@@ -5,7 +5,7 @@ import type { VerifiedNativeLaunch } from './receipt/index.js';
 
 /** Runtime-local protected files, one per admitted wake; no filesystem discovery by consumers. */
 export interface NativeTurnEvidence {
-  schema: 'paideia.daimon-native.evidence.v1';
+  schema: 'spawnfile.training.daimon-native.evidence.v1';
   wakes: { wakeId: string; executionId: string; executionIds: string[]; evidenceFile: string }[];
 }
 

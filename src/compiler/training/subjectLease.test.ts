@@ -77,11 +77,11 @@ const grok = async (overrides: Partial<LeaseTrainingSubjectOptions> = {}, slots 
   return { lease: () => leaseTrainingSubject(options), peer, declaration: parseTrainingBrokerDeclaration(declarationInput(slots, extra)) };
 };
 
-// Paideia 0.1.1 `grokBrokerLaunchSchema` and its `assertGrokBroker` checks, restated structurally (not a dependency).
+// Training 0.1.1 `grokBrokerLaunchSchema` and its `assertGrokBroker` checks, restated structurally (not a dependency).
 const nativePath = z.string().refine((value) => path.posix.isAbsolute(value) && path.posix.normalize(value) === value && !value.includes(","));
 const digest = z.string().regex(/^[a-f0-9]{64}$/u), positive = z.number().int().positive();
 const roles = ["run-root", "context", "sealed-inputs", "judge-home", "slot-ledger"] as const;
-const paideiaBroker = z.strictObject({
+const trainingBroker = z.strictObject({
   projectionVersion: z.literal("noopolis.daimon.grok-broker-projection.v3"), workerConfigVariant: z.enum(["unclocked", "clocked"]),
   projectionSha256: digest, slot: z.number().int().min(0), workerUid: z.number().int().min(2200).max(4_294_967_294), workerHomePath: nativePath,
   architecture: z.enum(["arm64", "x64"]), usageLedgerPath: nativePath, seccompProfileSha256: digest, profileSha256: digest,
@@ -92,11 +92,11 @@ const paideiaBroker = z.strictObject({
 const nested = (parent: string, child: string): boolean => child === parent || child.startsWith(`${parent}/`);
 
 describe("leaseTrainingSubject for a brokered Grok slot", () => {
-  it("recycles the leased slot with the evaluator's nonce and returns a Paideia-valid broker section", async () => {
+  it("recycles the leased slot with the evaluator's nonce and returns a Training-valid broker section", async () => {
     const { lease, peer } = await grok();
     const result = await lease();
     expect(peer.requests).toEqual([{ v: TRAINING_SUPERVISOR_PROTOCOL, verb: "recycle", slot: 2, nonce }]);
-    const section = paideiaBroker.parse(result.broker);
+    const section = trainingBroker.parse(result.broker);
     const subject = [result.workspace.target, ...result.projections.map((row) => row.target)];
     const denied = new Set(section.denyPaths);
     expect(section.evaluatorPaths.filter((row) => !denied.has(row.path))).toEqual([]);
@@ -110,14 +110,14 @@ describe("leaseTrainingSubject for a brokered Grok slot", () => {
       workspace: { source: p.workspace, target: p.workspace },
       projections: [{ role: "home", source: p.runtimeHome, target: p.runtimeHome }], credentials: [], generation: 5,
       roots: { workspace: p.workspace, home: p.runtimeHome, control: p.state, workerHome: p.workerHome, usageLedger: p.usageLedger,
-        preflightReceipt: p.preflightReceipt, context: "/run/paideia" },
+        preflightReceipt: p.preflightReceipt, context: "/run/spawnfile-training" },
       ports: { moltnet: 20_200, control: 20_201, bridge: 20_202 }, env: { DAIMON_ENGINE_BROKER_SLOT: "2" }
     });
     expect(section).toMatchObject({ slot: 2, workerUid: 2202, workerConfigVariant: "clocked", expectedNonce: nonce, minGeneration: 5,
       limits: { maxRequests: 48, maxTokens: 2_500_000, timeoutMs: 1_800_000 }, slotPreflightReceipt: p.preflightReceipt });
   });
 
-  it("hands Paideia the projection digest the supervisor bound into this slot's receipt", async () => {
+  it("hands Training the projection digest the supervisor bound into this slot's receipt", async () => {
     for (const [slots, slot] of [[1, 0], [4, 2], [8, 7]] as const) {
       const { lease, declaration } = await grok({ slot }, slots);
       const result = await lease();
@@ -129,7 +129,7 @@ describe("leaseTrainingSubject for a brokered Grok slot", () => {
       expect(result.broker!.profileSha256).toBe(registration.profileSha256);
       const receipt = buildTrainingSlotReceipt({ slot, workerUid: registration.uid, generation: 5, nonce, projectionSha256: bound.projectionSha256,
         sandboxProfileSha256: registration.profileSha256, seccompProfileSha256: declaration.seccompProfileSha256,
-        grokExecutableSha256: broker.grokCliArtifacts.arm64.sha256, canaries: [{ path: "/run/paideia", method: "sandboxed-read", result: "denied" }],
+        grokExecutableSha256: broker.grokCliArtifacts.arm64.sha256, canaries: [{ path: "/run/spawnfile-training", method: "sandboxed-read", result: "denied" }],
         createdAt: new Date(0) });
       expect(receipt.projection_sha256).toBe(result.broker!.projectionSha256);
       // Each slot denies its siblings, so registrations differ across a multi-slot pool.
@@ -209,7 +209,7 @@ describe("leaseTrainingSubject for a Codex subject", () => {
         inputs: "/work/trial-1/runtime/native/root-control/inputs" },
       ports: { moltnet: 20_100, control: 20_101, bridge: 20_102 }, env: {}
     });
-    expect(TRAINING_CODEX_CREDENTIAL_INGRESS).toBe("/run/paideia-auth/codex");
+    expect(TRAINING_CODEX_CREDENTIAL_INGRESS).toBe("/run/spawnfile-training-auth/codex");
   });
 
   it("takes Codex ports from the leased slot's own block and refuses ports outside it", async () => {

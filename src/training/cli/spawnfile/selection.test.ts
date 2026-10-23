@@ -84,7 +84,7 @@ describe('Spawnfile dry-run selection', () => {
     const adapter = vi.fn(() => { throw new Error('Must not construct a runtime'); });
     expect(await main([...args, '--dry-run'], f.io, { adapter })).toBe(0);
     const plan = JSON.parse(f.stdout.join(''));
-    expect(plan).toMatchObject({ schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0,
+    expect(plan).toMatchObject({ schema: 'spawnfile.training.training-cost-plan.v1', modelCallsMade: 0,
       readiness: { runnable: false }, spawnfile: { agent: { id: 'agent:writer' } } });
     expect(await main(args, f.io, { adapter })).toBe(2);
     expect(adapter).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 # DSPy host protocol v2
 
-Run `paideia-dspy` from the bridge virtual environment. One process handles one
+Run `spawnfile-training-dspy` from the bridge virtual environment. One process handles one
 optimization. Send one finite UTF-8 JSON object per line, terminated by LF, maximum
 4 MiB per frame. Duplicate keys, unknown fields and invalid IDs fail closed.
 Stdout contains protocol messages only; DSPy diagnostics use stderr.
@@ -15,7 +15,7 @@ with the host. The host must check every callback candidate before running it.
 ## Start: host → bridge
 
 ```json
-{"schema":"paideia.dspy.v2","kind":"optimize","id":"experiment-1","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"},"trainCaseIds":["train-1"],"validationCaseIds":["validation-1"],"budget":{"maxMetricCalls":10,"maxProposals":2},"seed":7}
+{"schema":"spawnfile.training.dspy.v2","kind":"optimize","id":"experiment-1","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"},"trainCaseIds":["train-1"],"validationCaseIds":["validation-1"],"budget":{"maxMetricCalls":10,"maxProposals":2},"seed":7}
 ```
 
 `concurrency` is an optional integer from 1 through 8 (wire default 1). Training
@@ -50,11 +50,11 @@ proposals means baseline-only selection, not demonstrated optimization.
 ## Trial: bridge → host
 
 ```json
-{"schema":"paideia.dspy.v2","kind":"request","id":"call-1","method":"evaluate","params":{"caseId":"train-1","split":"train","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"}}}
+{"schema":"spawnfile.training.dspy.v2","kind":"request","id":"call-1","method":"evaluate","params":{"caseId":"train-1","split":"train","components":{"AGENTS.md":"Agent instructions\n","skills/report/SKILL.md":"# Report\n"}}}
 ```
 
 ```json
-{"schema":"paideia.dspy.v2","kind":"response","id":"call-1","result":{"score":0.5,"feedback":"The filing lacked evidence.","output":"Observed native output","captureId":"capture-1"}}
+{"schema":"spawnfile.training.dspy.v2","kind":"response","id":"call-1","result":{"score":0.5,"feedback":"The filing lacked evidence.","output":"Observed native output","captureId":"capture-1"}}
 ```
 
 Evaluation params may include `round`, a nonnegative integer. The current bridge
@@ -87,11 +87,11 @@ small budgets oldest rows may be omitted with explicit `omittedEntries`.
 ## Reflection: bridge → host
 
 ```json
-{"schema":"paideia.dspy.v2","kind":"request","id":"call-2","method":"generate","params":{"purpose":"reflection","messages":[{"role":"system","content":"..."},{"role":"user","content":"..."}],"options":{}}}
+{"schema":"spawnfile.training.dspy.v2","kind":"request","id":"call-2","method":"generate","params":{"purpose":"reflection","messages":[{"role":"system","content":"..."},{"role":"user","content":"..."}],"options":{}}}
 ```
 
 ```json
-{"schema":"paideia.dspy.v2","kind":"response","id":"call-2","result":{"text":"{\"AGENTS.md\":\"Revised instructions\\n\",\"skills/report/SKILL.md\":\"# Revised skill\\n\"}","model":"observed-subscription-model","usage":null}}
+{"schema":"spawnfile.training.dspy.v2","kind":"response","id":"call-2","result":{"text":"{\"AGENTS.md\":\"Revised instructions\\n\",\"skills/report/SKILL.md\":\"# Revised skill\\n\"}","model":"observed-subscription-model","usage":null}}
 ```
 
 The host uses its explicitly selected subscription inference adapter and the exact
@@ -117,7 +117,7 @@ selected resource IDs. A malformed response aborts; it is not silently retried.
 ## Errors and process completion
 
 ```json
-{"schema":"paideia.dspy.v2","kind":"response","id":"call-2","error":{"code":"quota_exhausted","message":"Subscription quota exhausted"}}
+{"schema":"spawnfile.training.dspy.v2","kind":"response","id":"call-2","error":{"code":"quota_exhausted","message":"Subscription quota exhausted"}}
 ```
 
 Exactly one `result` or `error` is allowed, with the pending callback ID. One
@@ -270,7 +270,7 @@ Pareto retention uses complete per-case score vectors. Rank the nondominated fro
 by mean, breaking ties by stable candidate index; fill remaining capacity from the
 rest by the same ordering. `top-k` ranks the whole pool by mean. Retain at most K;
 the seed may drop. The result selects the best mean among all measured candidates,
-with stable index ties. It reports `optimizer:"paideia.population"`, the existing
+with stable index ties. It reports `optimizer:"training.population"`, the existing
 counters/captures/generations, candidate `perCaseScores`, and `rounds` including
 round 0. Each round records parents, all variant slots and kept indexes; every slot
 records strategy, hypothesis, targeted criteria, behavioral/lexical change, status,

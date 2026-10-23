@@ -35,7 +35,7 @@ test('failed observation persistence cancels the owned container instead of clai
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    docker.setTerminal({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed',
       completedAt: new Date().toISOString(), native: { usage: [] }, coverage: [] });
     fixture.input.onObservation = () => { throw new Error('Evidence persistence unavailable'); };

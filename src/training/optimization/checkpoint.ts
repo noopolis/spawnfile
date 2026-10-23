@@ -56,7 +56,7 @@ export class OptimizationCheckpoint {
       const payload = { identity: raw.identity, entries: raw.entries, ...(raw.lineage === undefined ? {} : { lineage: raw.lineage }) };
       if (raw.identity !== expected || digest(payload) !== raw.digest ||
           (!importing && canonical(raw.lineage) !== canonical(lineage))) {
-        throw new Error('Optimizer checkpoint identity or integrity mismatch');
+        throw new Error('Optimizer checkpoint identity or integrity mismatch; re-prepare with Spawnfile before resuming');
       }
       const ids = new Set<string>();
       for (const entry of raw.entries) {

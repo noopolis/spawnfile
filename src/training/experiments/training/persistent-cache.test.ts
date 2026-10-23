@@ -14,7 +14,7 @@ const check = { id:'clarity',eval:'llm-rubric',judge:'judge',input:'output.text'
 const stages = [{id:'writing',checks:[check],score:{linear:{clarity:1}},gate:{passed:'clarity'}}];
 const response = JSON.stringify({score:0.9,verdict:'pass',reasons:['Precise'],citations:[{source:'input',quote:'Article'}]});
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(),'paideia-plan-cache-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(),'training-plan-cache-')); roots.push(root);
   const options = {root,namespace:'calibration-v1',maxEntries:20,maxBytes:100_000};
   const generate = vi.fn<InferenceProvider['generate']>(async()=>({text:response,model:'actual',usage,route:'local'}));
   const provider: InferenceProvider = {id:'local',capabilities:{tools:'disabled',billing:'local',temperature:false,seed:false},generate};

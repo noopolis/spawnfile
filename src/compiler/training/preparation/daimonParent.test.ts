@@ -23,7 +23,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const digest = (value: string): string => `sha256:${createHash("sha256").update(value).digest("hex")}`;
 const manifestDigest = digest("native-parent-manifest");
 const registry = "127.0.0.1:5000";
-const NATIVE_IMAGE = `${registry}/paideia/native-training@${digest("native-training-image")}`;
+const NATIVE_IMAGE = `${registry}/training/native-training@${digest("native-training-image")}`;
 const DECLARATION = "/declared/training-declaration/launch.json";
 /** The real recipe's native stage header; the guard must land immediately after it. */
 const RECIPE = "ARG NATIVE_IMAGE\nARG PYTHON_IMAGE\nFROM ${PYTHON_IMAGE} AS python\nFROM ${NATIVE_IMAGE} AS training\nCOPY --from=python /usr/local /opt/python\n";

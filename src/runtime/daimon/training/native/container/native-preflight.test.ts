@@ -37,7 +37,7 @@ test('failed exact native policy or unbound success never admits a wake and reap
       const run: DockerCommand = async (args, options) => {
         const result = await docker.run(args, options);
         if (!options?.stdin?.includes('native-policy-preflight')) return result;
-        if (failure === 'bwrap') return { code: 1, stdout: '', stderr: "bwrap: Can't mkdir parents for /run/paideia/control: Read-only file system" };
+        if (failure === 'bwrap') return { code: 1, stdout: '', stderr: "bwrap: Can't mkdir parents for /run/spawnfile-training/control: Read-only file system" };
         if (failure === 'empty') return { code: 0, stdout: '', stderr: '' };
         const value = JSON.parse(result.stdout);
         if (failure === 'schema') value.schema = 'other';

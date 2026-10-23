@@ -19,8 +19,8 @@ explicit YAML optimizer declarations and incompatible optimizer/repair flags. Dr
 non-executable projections.
 
 `grok-broker` models build one provider per purpose (judge or optimizer) over a single
-grant pool. The training container supplies `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` and a
-private `PAIDEIA_GROK_GRANT_HOME_ROOT`; missing values, a missing Daimon or a pin drift
+grant pool. The training container supplies `SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET` and a
+private `SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT`; missing values, a missing Daimon or a pin drift
 fail every call closed. The home root must be owned by the training uid with mode
 0700. Routes may not mix `grok-broker` with `grok-subscription`. The command awaits
 `close()` on the grant pool on every exit path (completion, failure, SIGINT/SIGTERM),
@@ -30,7 +30,7 @@ Provider caches include purpose whenever evaluator grants are supplied, even wit
 the broker cap, so a shared judge model cannot bypass optimizer proposal budgets.
 
 
-Capped containers set `PAIDEIA_MODEL_REQUEST_CAP=broker`. Reject all reachable
+Capped containers set `SPAWNFILE_TRAINING_MODEL_REQUEST_CAP=broker`. Reject all reachable
 non-broker routes, fallbacks and legacy defaults before constructing providers,
 except exact declared Codex proposal grants wrapped in durable evaluator budgets.
 Atomic grading separately admits declared extraction/decision routes; other native

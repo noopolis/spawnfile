@@ -22,7 +22,7 @@ import type { NativeTrace } from './worker/index.js';
  * captured tool call, or any judge's input. Nothing here changes what a trial
  * evaluates.
  */
-export const NATIVE_TRANSCRIPT_SCHEMA = 'paideia.daimon-native.transcript.v1';
+export const NATIVE_TRANSCRIPT_SCHEMA = 'spawnfile.training.daimon-native.transcript.v1';
 
 /** Sessions scanned under one engine home; an isolated trial closes exactly one execution. */
 const maximumSessions = 8;

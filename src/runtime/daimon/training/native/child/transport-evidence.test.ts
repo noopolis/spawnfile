@@ -12,7 +12,7 @@ const source = { kind: 'transport', deliveryId: 'moltnet:answer' } as const;
 it('binds child evidence to the real delivery and the source requested for this wake', async () => {
   const fixture = await launchFixture(); roots.push(fixture.root); fixture.launch.delivery = 'transport';
   const trace = traceFixture();
-  const frame = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId,
+  const frame = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId,
     status: 'completed',
     agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
     wakeId: 'answer', executionId: trace.turn_id, native: { traces: [trace] },
@@ -35,7 +35,7 @@ it('binds child evidence to the real delivery and the source requested for this 
 it.each(['absent', 'missed-batch', 'foreign-history', 'duplicate-history'] as const)('records %s without erasing admissible earlier wakes unless attribution conflicts', async kind => {
   const fixture = await launchFixture(); roots.push(fixture.root); fixture.launch.delivery = 'transport';
   const trace = traceFixture();
-  const frame = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, status: 'failed',
+  const frame = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, status: 'failed',
     agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
     wakeId: 'answer', native: { traces: [trace] }, activity: { executions: [] }, transport: { source } } as unknown as TerminalEvidence;
   if (kind === 'missed-batch') {

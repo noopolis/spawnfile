@@ -3,11 +3,11 @@ import { createCalibrationIdentity, parseGrader, type CalibrationFile } from '..
 import { calibrationReport, type QuestionDiagnostics } from './report.js';
 
 it('renders legacy default selection and absent evidence without inventing candidate metrics', () => {
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
     teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'teacher', teacher: 't' },
     escalate: { to: 't', between: [0.4, 0.6] },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }], score: { method: 'weighted' } });
-  const file: CalibrationFile = { schema: 'paideia.grader-calibration.v1',
+  const file: CalibrationFile = { schema: 'spawnfile.training.grader-calibration.v1',
     identity: createCalibrationIdentity(grader, { backendModel: 'm', golden: 'a'.repeat(64), promptTemplateVersion: 'v', seed: 's', exclusions: [] }),
     questions: { q: { status: 'insufficient-evidence', failures: ['no observations'],
       metrics: { groups: 0, instances: 0, good: 0, bad: 0, baseRate: 0 } } } };

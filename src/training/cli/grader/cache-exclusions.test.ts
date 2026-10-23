@@ -27,10 +27,10 @@ describe('raw decision cache', () => {
   it.each(['v1', 'v2', 'v3'])('rescores legacy %s probabilities instead of reusing unsafe cached values', async version => {
     const dir = await temporary(), input = request('one');
     const { key: _key, ...content } = input;
-    const root = join(dir, '.paideia/grader-cache');
+    const root = join(dir, '.spawnfile-training/grader-cache');
     await mkdir(root, { recursive: true });
     const optimistic = { ...result(input.key), probabilities: { yes: 0.99, no: 0.01 } };
-    const legacyDigest = stableDigest({ content, identity: 'm', prompt: `paideia.grader-prompt.${version}` });
+    const legacyDigest = stableDigest({ content, identity: 'm', prompt: `training.grader-prompt.${version}` });
     await writeFile(join(root, 'm.jsonl'), `${JSON.stringify({ digest: legacyDigest, result: optimistic })}\n`);
     let calls = 0;
     const provider = backend(async requests => { calls++; return requests.map(r => result(r.key)); });
@@ -43,7 +43,7 @@ describe('raw decision cache', () => {
     const dir = await temporary(), calls: DecisionRequest[][] = [];
     const provider = backend(async requests => { calls.push(requests); return requests.map(r => result(r.key)); });
     expect(await cachedScores(dir, provider, 'model-a', [request('one')], 2)).toEqual([result('one')]);
-    expect((await readFile(join(dir, '.paideia/grader-cache/model-a.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(1);
+    expect((await readFile(join(dir, '.spawnfile-training/grader-cache/model-a.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(1);
     expect(await cachedScores(dir, provider, 'model-a', [{ ...request('one'), key: 'renamed' }], 2)).toEqual([result('renamed')]);
     expect(calls).toHaveLength(1);
     await cachedScores(dir, provider, 'model-a', [{ ...request('one'), instructions: 'Changed?' }], 2);
@@ -82,7 +82,7 @@ describe('raw decision cache', () => {
     }
     const aborted = new AbortController(); aborted.abort(new Error('cancelled'));
     await expect(cachedScores(dir, provider, 'm', [], 1, aborted.signal)).rejects.toThrow('cancelled');
-    const root = join(dir, '.paideia/grader-cache'); await mkdir(root, { recursive: true });
+    const root = join(dir, '.spawnfile-training/grader-cache'); await mkdir(root, { recursive: true });
     for (const entry of ['not-json', '{"digest":1,"result":{"status":"ok"}}', '{"digest":"x"}', '{"digest":"x","result":{"status":"bad"}}']) {
       await writeFile(join(root, 'm.jsonl'), entry);
       await expect(cachedScores(dir, provider, 'm', [], 1)).rejects.toThrow();
@@ -98,7 +98,7 @@ describe('raw decision cache', () => {
 describe('dataset exclusions', () => {
   it('reads both formats, deduplicates paths, and pins exact dataset bytes', async () => {
     const dir = await temporary(), a = join(dir, 'a.yaml'), b = join(dir, 'b.yaml');
-    const content = 'schema: paideia.dataset.v1\nrecords:\n  - id: example-a\n';
+    const content = 'schema: spawnfile.training.dataset.v1\nrecords:\n  - id: example-a\n';
     await writeFile(a, content);
     await writeFile(b, 'schema: spawnfile.dataset.v1\nexamples:\n  - id: example-b\n');
     const excluded = await readExclusions([b, a, join(dir, '.', 'a.yaml')]);
@@ -109,7 +109,7 @@ describe('dataset exclusions', () => {
   });
   it('excludes dataset groups across revision IDs and namespaces example matches', async () => {
     const dir = await temporary(), file = join(dir, 'sealed.yaml');
-    await writeFile(file, 'schema: paideia.dataset.v1\nid: sealed\nrecords:\n  - {id: story-7-r2, group: story-7}\n');
+    await writeFile(file, 'schema: spawnfile.training.dataset.v1\nid: sealed\nrecords:\n  - {id: story-7-r2, group: story-7}\n');
     const exclusions = await readExclusions([file]);
     const label = (id: string, lineage: string, dataset?: string): Label => ({ id, lineage,
       ...(dataset ? { example: { dataset, id: 'story-7-r2' } } : {}), output: null, context: {}, votes: {}, provenance: {} });
@@ -121,8 +121,8 @@ describe('dataset exclusions', () => {
   it('rejects malformed YAML, schema and record IDs' , async () => {
     const dir = await temporary(), file = join(dir, 'bad.yaml');
     for (const content of ['schema: x\nschema: y', '!unknown {}', 'null', '[]', '42', 'schema: other',
-      'schema: paideia.dataset.v1', 'schema: paideia.dataset.v1\nrecords: {}',
-      ...['null', '42', '{}', '{ id: 1 }', '{ id: " " }', '{ id: good, group: 1 }', '{ id: good, group: " " }'].map(record => `schema: paideia.dataset.v1\nrecords: [${record}]`)]) {
+      'schema: spawnfile.training.dataset.v1', 'schema: spawnfile.training.dataset.v1\nrecords: {}',
+      ...['null', '42', '{}', '{ id: 1 }', '{ id: " " }', '{ id: good, group: 1 }', '{ id: good, group: " " }'].map(record => `schema: spawnfile.training.dataset.v1\nrecords: [${record}]`)]) {
       await writeFile(file, content);
       await expect(readExclusions([file])).rejects.toThrow();
     }
@@ -161,7 +161,7 @@ it('separates raw cached scores by effective Ollama context even without authore
 
 it('separates Jev caches and calibration identity when server preparation or declared revision changes', async () => {
   const directory = await temporary();
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'cal.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'cal.json',
     teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'jev-http', endpoint: 'http://localhost/jev', name: 'm' },
     escalate: { to: 't', between: [0.3, 0.7] }, score: { method: 'weighted' },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }] });

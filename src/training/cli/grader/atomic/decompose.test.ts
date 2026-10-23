@@ -89,7 +89,7 @@ it('rejects changed policy, corrupted checkpoints and invalid checksummed stored
 
 it('validates manifest identities, declared contexts, file hashes and source JSON', async () => {
   const f = await fixture(); const templates = await readTemplates(f.templatesFile);
-  const writeManifest = (items: unknown[]) => writeFile(f.inputsFile, stringify(JSON.parse(JSON.stringify({ schema: 'paideia.grader-inputs.v1', items }))));
+  const writeManifest = (items: unknown[]) => writeFile(f.inputsFile, stringify(JSON.parse(JSON.stringify({ schema: 'spawnfile.training.grader-inputs.v1', items }))));
   await writeManifest([f.items[0], f.items[0]]);
   await expect(readInputs(f.inputsFile, templates)).rejects.toThrow('Duplicate');
   await writeManifest([{ ...f.items[0], context: { unknown: { from: 'evidence.md' } } }]);
@@ -164,7 +164,7 @@ it('refuses v6 extraction checkpoints before making calls', async () => {
   const file = join(f.decompose.out, (await readdir(f.decompose.out)).find(file => file.endsWith('.checkpoint.json'))!);
   const { digest: _digest, ...content } = JSON.parse(await readFile(file, 'utf8'));
   content.identity = stableDigest({ refs: input!.refs, templates, teachers: selectTeachers(templates, f.decompose.extractors),
-    protocol: 'paideia.extraction.v6' });
+    protocol: 'spawnfile.training.extraction.v6' });
   await writeFile(file, JSON.stringify({ ...content, digest: stableDigest(content) }));
   await expect(runDecompose(f.decompose, f.dependencies)).rejects.toThrow('Stale decomposition checkpoint');
   expect(f.generate).toHaveBeenCalledTimes(2);

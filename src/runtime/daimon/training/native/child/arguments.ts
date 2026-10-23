@@ -1,3 +1,4 @@
+import { normalizedTrainingEnvironment } from '../../../../../training/index.js';
 import { dirname, join } from 'node:path';
 import { chmod, lstat, mkdir, realpath } from 'node:fs/promises';
 import { nativeTrialArtifactsRoot, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
@@ -17,8 +18,8 @@ export function nativeChildArguments(launch: VerifiedNativeLaunch, trialId: stri
  * slot control root is fixed by the container and shared across trials: the
  * non-recursive `mkdir` below is what separates them, and it fails with EEXIST
  * rather than colliding with, or silently overwriting, the previous trial's
- * exclusive artifacts. Nothing outside this directory is Paideia's to clear, so
- * the slot supervisor's recycle never has to wipe on Paideia's behalf.
+ * exclusive artifacts. Nothing outside this directory is Training's to clear, so
+ * the slot supervisor's recycle never has to wipe on Training's behalf.
  */
 export async function ensureNativeTrialArtifacts(launch: VerifiedNativeLaunch, trialId: string): Promise<string> {
   const root = nativeTrialArtifactsRoot(launch, trialId);
@@ -56,5 +57,5 @@ export async function nativeChildEnvironment(launch: VerifiedNativeLaunch): Prom
     if (!match || keys.has(match[1]!)) throw new Error('Invalid explicit native child environment');
     keys.add(match[1]!); env[match[1]!] = match[2]!;
   }
-  return env;
+  return normalizedTrainingEnvironment(env);
 }

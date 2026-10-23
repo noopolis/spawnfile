@@ -38,7 +38,7 @@ export const trainingBrokerDeclarationSchema = z.strictObject({
   }),
   /** The read-only bootstrap credential leaf, already refused if it is the desktop `~/.grok/auth.json`. */
   bootstrap: canonical,
-  /** The uid the trained evaluator (Paideia, DSPy, judges) runs as; the only uid the slot supervisor serves. */
+  /** The uid the trained evaluator (Training, DSPy, judges) runs as; the only uid the slot supervisor serves. */
   organizationUid: z.literal(DAIMON_GROK_ENGINE_BROKER.identities.organizationUid),
   seccompProfileSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   /**

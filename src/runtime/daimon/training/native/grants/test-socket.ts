@@ -5,7 +5,7 @@ import path from 'node:path';
 
 /** Test-only broker control socket speaking Daimon's length-prefixed JSON frames with scripted answers. */
 export async function scriptedBrokerSocket(answer: (request: Record<string, unknown>) => Record<string, unknown> | undefined) {
-  const dir = await mkdtemp(path.join(tmpdir(), 'paideia-broker-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'training-broker-'));
   const socketPath = path.join(dir, 'control.sock');
   const received: Record<string, unknown>[] = [];
   const server: Server = createServer(connection => {

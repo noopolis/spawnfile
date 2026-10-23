@@ -5,6 +5,7 @@ import { assertOriginalPolicy, validateCandidate } from './validation.js';
 /** Replace authored resource bytes exactly, retaining the baseline's declared edit policy. */
 export function deriveAuthoredCandidate(baseline: CandidateManifest, replacements: Readonly<Record<string, string>>): CandidateManifest {
   validateCandidate(baseline);
+  if (baseline.schema !== 'spawnfile.training.candidate.v1') throw new Error('Legacy candidate identity requires re-prepare with Spawnfile before deriving candidates');
   if (!Object.keys(replacements).length) throw new Error('Authored comparison requires resource replacements');
   for (const [path, text] of Object.entries(replacements)) {
     const resource = baseline.resources.find(item => item.sourcePath === path);

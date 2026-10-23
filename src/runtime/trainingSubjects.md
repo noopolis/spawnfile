@@ -27,7 +27,7 @@ same controls through its public strict CLI integration.
 
 Codex cancellation confirms only the owned process group. Remote effects and
 escaped descendants remain unknown. Daimon returns its public stop acknowledgement;
-Paideia cannot independently assert quiescence of that handle's remote work.
+Training cannot independently assert quiescence of that handle's remote work.
 Neither cancellation mechanism rolls back a dispatched action. Coverage remains
 partial even after a successful terminal frame, so missing tool events cannot
 prove absence of a tool call.
@@ -37,7 +37,7 @@ explicit caller cancellation. Retry using a fresh session. A model can still
 repair an ordinary failed tool call within a healthy wake. Codex resumes only
 completed wakes, retaining a measured native cumulative baseline. Unknown or
 regressed counters remain unknown rather than assigning earlier costs to a later wake.
-After a native leader has been reaped, Paideia sends no signals to its retained
+After a native leader has been reaped, Training sends no signals to its retained
 numeric process-group ID. A remaining group then yields an incomplete stop because
 its ownership cannot safely be re-established. Daimon wake and stop acknowledgement
 deadlines remain bounded even when its public handle ignores cancellation.

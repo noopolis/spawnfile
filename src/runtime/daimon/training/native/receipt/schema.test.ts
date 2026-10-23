@@ -28,10 +28,10 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
   try {
     const { receiptFile: _, ...v1 } = structuredClone(f.launch);
     const parsedV1 = parseNativeLaunch(v1);
-    expect(parsedV1.schema).toBe('paideia.daimon-native.launch.v1');
+    expect(parsedV1.schema).toBe('spawnfile.training.daimon-native.launch.v1');
     expect(parsedV1.agent.engine).toBe('codex');
     expect(isGrokLaunch(parsedV1)).toBe(false);
-    expect(parseNativeLaunch({ ...v1, schema: 'paideia.daimon-native.launch.v2' }).agent.engine).toBe('codex');
+    expect(parseNativeLaunch({ ...v1, schema: 'spawnfile.training.daimon-native.launch.v2' }).agent.engine).toBe('codex');
     expect(() => parseNativeLaunch({ ...v1, agent: { ...v1.agent, reasoningEffort: 'low' } })).toThrow();
     const grok = await grokLaunchFrom(f.launch, f.root);
     const { receiptFile: __, ...valid } = grok;
@@ -44,7 +44,7 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
     const moved = (role: string, path: string) => ({ ...valid, broker: { ...broker, denyPaths: [...broker.denyPaths, path],
       evaluatorPaths: broker.evaluatorPaths.map(row => row.role === role ? { ...row, path } : row) } });
     for (const mutation of [
-      { ...valid, schema: 'paideia.daimon-native.launch.v1' },
+      { ...valid, schema: 'spawnfile.training.daimon-native.launch.v1' },
       { ...valid, credentials: [credential] },
       { ...valid, broker: undefined },
       { ...valid, agent: { ...valid.agent, model: 'gpt-5.5' } },

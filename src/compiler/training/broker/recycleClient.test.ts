@@ -44,7 +44,7 @@ const runtime = (slot: number, overrides: Partial<Runtime> = {}): Runtime => {
   let generation = 0;
   return {
     reset: async () => undefined, wipe: async () => undefined, provision: async () => undefined,
-    canaries: async () => [{ path: "/run/paideia", method: "sandboxed-read" as const, result: "denied" as const }],
+    canaries: async () => [{ path: "/run/spawnfile-training", method: "sandboxed-read" as const, result: "denied" as const }],
     nextGeneration: async () => ++generation,
     publishReceipt: async () => trainingSlotPaths(slot).preflightReceipt,
     log: () => undefined, ...overrides

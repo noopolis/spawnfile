@@ -82,9 +82,9 @@ describe('nativeTrialInputsRoot', () => {
     const a = nativeTrialInputsRoot(subject, 'trial-a');
     expect(a).toMatch(new RegExp(`^${grokContextRoot}/trials/trial-[a-f0-9]{32}$`, 'u'));
     expect(nativeTrialInputsRoot(subject, 'trial-b')).not.toBe(a);
-    expect(nativeTrialInputsRoot(subject, '../../escape')).toMatch(/^\/run\/paideia\/trials\/trial-[a-f0-9]{32}$/u);
+    expect(nativeTrialInputsRoot(subject, '../../escape')).toMatch(/^\/run\/training\/trials\/trial-[a-f0-9]{32}$/u);
     const launchLike = { agent: subject.agent, controlRoot: subject.roots.control } as Parameters<typeof nativeTrialArtifactsRoot>[0];
-    expect(nativeTrialArtifactsRoot(launchLike, 'trial-a').startsWith(`${grokSlotRoot}/state/paideia-trials/`)).toBe(true);
+    expect(nativeTrialArtifactsRoot(launchLike, 'trial-a').startsWith(`${grokSlotRoot}/state/training-trials/`)).toBe(true);
   });
 
   it('refuses a Grok context root the broker does not deny', () => {
@@ -101,8 +101,8 @@ describe('nativeTrialInputsRoot', () => {
 describe('nativeSubjectScratch', () => {
   it('keeps Grok scratch inside the single home projection', () => {
     const subject = grokSubject(minted);
-    expect(nativeSubjectScratch(subject, 'memory')).toBe(`${grokSlotRoot}/runtime-home/paideia/memory`);
-    expect(nativeSubjectScratch(subject, 'transport')).toBe(`${grokSlotRoot}/runtime-home/paideia/transport`);
+    expect(nativeSubjectScratch(subject, 'memory')).toBe(`${grokSlotRoot}/runtime-home/training/memory`);
+    expect(nativeSubjectScratch(subject, 'transport')).toBe(`${grokSlotRoot}/runtime-home/training/transport`);
     expect(() => nativeSubjectScratch({ ...subject, projections: [...subject.projections, { role: 'memory', source: '/m' }] }, 'memory'))
       .toThrow('exactly its slot runtime home');
     expect(() => nativeSubjectScratch({ ...subject, projections: [] }, 'memory')).toThrow('exactly its slot runtime home');

@@ -10,7 +10,7 @@ import { createEvaluationRegistry, evaluateNode, evaluatePlan } from './index.js
 import { evaluateGrader } from './grader.js';
 
 async function fixture(gates: { id: string; check: CheckNode }[] = []) {
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'writing', golden: 'golden.yaml', calibration: 'calibration.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'writing', golden: 'golden.yaml', calibration: 'calibration.json',
     context: { evidence: { description: 'Evidence the author had' } },
     teachers: [{ id: 't', provider: 'claude', model: 'm' }],
     model: { backend: 'ollama-logprobs', endpoint: 'http://localhost:11434', name: 'm' },
@@ -23,11 +23,11 @@ async function fixture(gates: { id: string; check: CheckNode }[] = []) {
   const goldenDigest = 'a'.repeat(64);
   const identity = createCalibrationIdentity(grader, { backendModel: await decisionBackendIdentity(grader, backend),
     golden: goldenDigest, promptTemplateVersion: 'v1', seed: '', exclusions: [] });
-  const calibration: GradingRuntime['calibration'] = { schema: 'paideia.grader-calibration.v1', identity,
+  const calibration: GradingRuntime['calibration'] = { schema: 'spawnfile.training.grader-calibration.v1', identity,
     questions: { q: { status: 'calibrated', failures: [], params: { a: 1, b: 0 }, band: [0.4, 0.6],
       metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } };
   const files: Record<string, string> = { 'grader.yaml': stringify(grader), 'calibration.json': JSON.stringify(calibration) };
-  const dataset = resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id: 'd',
+  const dataset = resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id: 'd',
     checks: [{ id: 'quality', eval: 'grader', grader: 'grader.yaml', input: 'artifact:article', context: { evidence: 'input:files' } }],
     records: [{ id: 'r', input: { prompt: 'Write' }, outputs: { article: 'article.json' } }],
   }), { sourceName: '/project/dataset.yaml' }), { readCriterionFile: name => files[name]!,

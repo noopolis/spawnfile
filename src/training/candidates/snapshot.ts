@@ -14,7 +14,7 @@ export async function snapshotCandidate(options: { sourceRoot: string; resources
     const digest = digestBytes(source.text);
     resources.push({ ...structuredClone(mapping), content: source.text, sourceContent: source.text, sourceDigest: digest, digest });
   }
-  const body = { schema: 'paideia.candidate.v1' as const, parentId: null, policyDigest: policyIdentity(resources), resources };
+  const body = { schema: 'spawnfile.training.candidate.v1' as const, parentId: null, policyDigest: policyIdentity(resources), resources };
   const id = candidateIdentity(body);
   const manifest = { ...body, id, baselineId: id };
   validateCandidate(manifest);

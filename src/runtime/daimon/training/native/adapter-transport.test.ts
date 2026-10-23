@@ -38,7 +38,7 @@ async function transportFixture(deferred = false) {
     const current = requests[requests.length - 1]!;
     const deliveryId = current.source.deliveryId ?? 'moltnet:assignment';
     const executionId = `execution-${requests.length}`;
-    resolve({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: current.wakeId,
+    resolve({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: current.wakeId,
       agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
       status: deferred && requests.length === 1 ? 'failed' : 'completed',
       ...(deferred && requests.length === 1 ? { blocked: 'awaiting-external-input' } : {}),
@@ -97,7 +97,7 @@ it('refuses terminal evidence whose transport receipt belongs to a different del
   const fixture = await transportFixture();
   const session = await createDaimonNativeAdapter({ docker: fixture.run, timeoutMs: 5000,
     transportDelivery: { prepare: async () => ({ source: first, publish: async () => {
-      fixture.finish({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+      fixture.finish({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
         agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
         transport: { source: first, deliveryId: 'moltnet:real', acceptanceId: 'accepted' },
         receipt: { delivery_id: 'trial:task', acceptance_id: 'accepted' } });
@@ -123,7 +123,7 @@ it.each(['absent-delivery', 'missed-batch'] as const)('preserves %s failure evid
   const next = vi.fn(async () => null);
   const session = await createDaimonNativeAdapter({ docker: fixture.run, timeoutMs: 5000, externalInputs: { maxDeliveries: 1, next },
     transportDelivery: { prepare: async () => ({ source: first, publish: async () => {
-      fixture.finish({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+      fixture.finish({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
         agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
         status: 'failed', error, completedAt: new Date().toISOString(), native: { usage: [], traces: [], modelContexts: [], toolReceipts: [] }, coverage: [],
         transport: { source: first, ...(kind === 'missed-batch' ? { deliveryId: 'moltnet:real', acceptanceId: 'accepted' } : {}) },

@@ -14,7 +14,7 @@ afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).
 
 it('resumes interrupted real DSPy training from YAML without repeating settled native work', async () => {
   const f = await cliFixture(); roots.push(f.root);
-  await writeFile(join(f.root, 'train.paideia.yaml'), `${datasetText([{ id: 'train', group: 'a' }, { id: 'selection', group: 'b' }])}
+  await writeFile(join(f.root, 'train.spawnfile-training.yaml'), `${datasetText([{ id: 'train', group: 'a' }, { id: 'selection', group: 'b' }])}
 training:
   models:
     reflection: { provider: grok-subscription, model: reflection }
@@ -22,15 +22,15 @@ training:
   budget: { max_trials: 8, max_proposals: 1, timeout_ms: 20000 }
   recovery: { max_attempts: 2 }
   validation_groups: [b]
-  test: test.paideia.yaml
+  test: test.spawnfile-training.yaml
 `);
-  await writeFile(join(f.root, 'test.paideia.yaml'), datasetText([{ id: 'sealed', group: 'sealed' }]));
+  await writeFile(join(f.root, 'test.spawnfile-training.yaml'), datasetText([{ id: 'sealed', group: 'sealed' }]));
   const bridgeContexts: unknown[] = [];
   f.dependencies.spawnfile = { id: 'identity-test', version: '1', executionIdentity(context) {
     bridgeContexts.push(context); return 'fixed-test-environment';
   }, createAdapter() { throw new Error('Unused native project adapter'); },
   async prepareEnvironment() { throw new Error('Unused native project preparation'); } };
-  const argv = ['train', '--train', 'train.paideia.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md',
+  const argv = ['train', '--train', 'train.spawnfile-training.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md',
     '--bridge-command', relative(f.root, f.bridge), '--view', '0'];
   let optimizerCalls = 0;
   const reflection = f.dependencies.inference!(20000);

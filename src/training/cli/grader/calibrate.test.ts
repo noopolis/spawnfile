@@ -15,13 +15,13 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 async function fixture(backend = 'jev-http', count = 80) {
   const root = await mkdtemp(join(tmpdir(), 'grader-calibration-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml');
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'quality', golden: 'labels.yaml', calibration: 'calibration.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'quality', golden: 'labels.yaml', calibration: 'calibration.json',
     teachers: [{ id: 'teacher', provider: 'claude', model: 'opus' }],
     model: backend === 'teacher' ? { backend, teacher: 'teacher' } : { backend, endpoint: 'http://localhost:11434', name: 'model' },
     escalate: { to: 'teacher', between: [0.4, 0.6], max_calls_per_trial: 1 },
     gates: [{ id: 'gate', type: 'yes-no', expected: 'yes', reads: ['output.good'] }],
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.good'], ask: 'Is it good?' }], score: { method: 'weighted' } });
-  const labels = parseLabels({ schema: 'paideia.labels.v1', grader: 'quality', labelers: { human: { kind: 'human', name: 'Reader' } },
+  const labels = parseLabels({ schema: 'spawnfile.training.labels.v1', grader: 'quality', labelers: { human: { kind: 'human', name: 'Reader' } },
     labels: Array.from({ length: count }, (_, i) => ({ id: `o${i}`, lineage: `g${i}`, example: { dataset: 'train', id: `e${i}` },
       output: { good: i % 2 === 0 }, context: {}, votes: { q: { human: i % 2 === 0 ? 'yes' : 'no' }, gate: { human: i % 2 === 0 ? 'yes' : 'no' } }, provenance: { human: { votes: Object.fromEntries(allQuestions(grader).map(question => [question.id, {
         question_digest: stableDigest(question), projection_digest: stableDigest({ 'output.good': i % 2 === 0 }),
@@ -60,11 +60,11 @@ describe('grader calibration commands', () => {
     expect(await runValidate(f.graderFile, { backend: factory })).toEqual({ status: 'valid', calibration: false });
     expect(factory).not.toHaveBeenCalled();
     const excluded = join(f.root, 'test.yaml');
-    await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', id: 'train', records: [{ id: 'e0' }] }));
+    await writeFile(excluded, stringify({ schema: 'spawnfile.training.dataset.v1', id: 'train', records: [{ id: 'e0' }] }));
     const first = await runCalibrate({ graderFile: f.graderFile, excludeDatasets: [excluded] }, f.dependencies);
     expect(first.calibration.identity.exclusions).toHaveLength(1);
     expect(f.score.mock.calls.flatMap(call => call[0]).every(request => JSON.parse(request.key)[0] !== 'o0')).toBe(true);
-    await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', records: [{ id: 'e1' }] }));
+    await writeFile(excluded, stringify({ schema: 'spawnfile.training.dataset.v1', records: [{ id: 'e1' }] }));
     await expect(runValidate(f.graderFile, f.dependencies)).rejects.toThrow('exclusions');
     await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
     f.runtime.identity = async () => ({ backend: 'jev-http', model: 'different' });
@@ -83,7 +83,7 @@ describe('grader calibration commands', () => {
     delete f.labels.labels[1]!.example;
     await writeFile(join(f.root, 'labels.yaml'), stringify(f.labels));
     const excluded = join(f.root, 'sealed.yaml');
-    await writeFile(excluded, stringify({ schema: 'paideia.dataset.v1', id: 'sealed', records: [{ id: 'story-7-r2', group: 'story-7' }] }));
+    await writeFile(excluded, stringify({ schema: 'spawnfile.training.dataset.v1', id: 'sealed', records: [{ id: 'story-7-r2', group: 'story-7' }] }));
     const result = await runCalibrate({ graderFile: f.graderFile, excludeDatasets: [excluded] }, f.dependencies);
     const requests = f.score.mock.calls.flatMap(call => call[0]);
     expect(requests.length).toBeGreaterThan(0);
@@ -134,7 +134,7 @@ describe('grader calibration commands', () => {
     expect(result.code).toBe(0); expect(result.calibration.questions.q!.metrics.agreement).toBe(1);
     expect(result.calibration.questions.q!.metrics).toMatchObject({ cascadeAccuracy: 1, coverage: 0 });
     expect(result.calibration.questions.q!.metrics.ece).toBeUndefined();
-    await rm(join(f.root, '.paideia'), { recursive: true });
+    await rm(join(f.root, '.spawnfile-training'), { recursive: true });
     f.runtime.score = async requests => requests.map(request => ({ key: request.key, status: 'missing', probabilities: null }));
     result = await runCalibrate({ graderFile: f.graderFile }, f.dependencies);
     expect(result.code).toBe(1); expect(result.calibration.questions.q!.metrics.instances).toBe(40);
@@ -210,7 +210,7 @@ describe('grader calibration commands', () => {
     const output: string[] = [], errors: string[] = [];
     const io = { cwd: f.root, stdout: (text: string) => output.push(text), stderr: (text: string) => errors.push(text) };
     expect(await main(['grader', 'validate', '--grader', 'grader.yaml'], io, { grader: f.dependencies })).toBe(0);
-    await writeFile(join(f.root, 'excluded.yaml'), stringify({ schema: 'paideia.dataset.v1', records: [] }));
+    await writeFile(join(f.root, 'excluded.yaml'), stringify({ schema: 'spawnfile.training.dataset.v1', records: [] }));
     expect(await main(['grader', 'calibrate', '--grader', 'grader.yaml', '--seed', 'custom', '--report', 'report.md', '--concurrency', '1', '--exclude-dataset', 'excluded.yaml'], io,
       { grader: f.dependencies })).toBe(1);
     expect(output.join('')).toContain('report.md');
@@ -220,7 +220,7 @@ describe('grader calibration commands', () => {
     expect(errors.join('')).toContain('concurrency');
     // Exercise actual label entry point with a fake subscription provider.
     await writeFile(join(f.root, 'output.json'), JSON.stringify({ good: true }));
-    await writeFile(join(f.root, 'inputs.yaml'), stringify({ schema: 'paideia.grader-inputs.v1', items: [{ id: 'new', lineage: 'new', output: { from: 'output.json' }, context: {} }] }));
+    await writeFile(join(f.root, 'inputs.yaml'), stringify({ schema: 'spawnfile.training.grader-inputs.v1', items: [{ id: 'new', lineage: 'new', output: { from: 'output.json' }, context: {} }] }));
     const provider = { id: 'claude', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const, temperature: false, seed: false },
       generate: async () => ({ text: '{"q":"yes","gate":"yes"}', model: 'opus', route: 'claude', usage: null }) };
     expect(await main(['grader', 'label', '--grader', 'grader.yaml', '--inputs', 'inputs.yaml', '--teachers', 'teacher', '--relabel', '--limit', '1'], io,

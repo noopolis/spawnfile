@@ -11,3 +11,5 @@ export type * from './grading.js';
 export type { AtomicFeedback } from './atomic-feedback.js';
 
 export type { TrialSlot } from "./trial-slot.js";
+
+export { legacyWireAliases, canonicalWireId, compatibleWireLiteral, wireIdMatches, hasLegacyTrainingDistribution } from '../../shared/index.js';

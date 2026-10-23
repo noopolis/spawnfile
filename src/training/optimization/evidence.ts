@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../contracts/index.js';
 import { isDeepStrictEqual } from 'node:util';
 import { sameComponents, type DspyResult } from './protocol.js';
 import { verifyPopulationEvidence } from './population-evidence.js';
@@ -20,7 +21,7 @@ export async function verifyDspyResult(result: DspyResult, host: DspyHost, signa
         ...(modelBasis === undefined ? {} : { modelBasis }), ...(start.search ? { text } : {}) })), provenance.generations)) {
     throw new Error('DSPy terminal capture or inference provenance does not match host evidence');
   }
-  if ((provenance.optimizer === 'paideia.population') !== Boolean(start.search)) {
+  if ((canonicalWireId(provenance.optimizer) === 'training.population') !== Boolean(start.search)) {
     throw new Error('DSPy optimizer mode contradicts requested search');
   }
   const validation = completed.filter((entry) => entry.split === 'validation');

@@ -13,7 +13,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const text = 'The factory added 20 jobs.';
 const dataset = (qualityWeight: number, efficiencyWeight: number) => resolveDataset(parseDatasetYaml(`
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: dual-pressure
 stages:
   - id: objective
@@ -38,7 +38,7 @@ records:
 
 async function measure(options: { quality: number; tokens: number; qualityWeight?: number; efficiencyWeight?: number;
   judgeTokens?: number; complete?: boolean; failed?: boolean }) {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-dual-pressure-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-dual-pressure-')); roots.push(root);
   const record = dataset(options.qualityWeight ?? 80, options.efficiencyWeight ?? 20);
   const provider: InferenceProvider = { id: 'deterministic-judge',
     capabilities: { tools: 'disabled', billing: 'local', temperature: false, seed: false },

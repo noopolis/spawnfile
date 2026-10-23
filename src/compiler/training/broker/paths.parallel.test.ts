@@ -125,7 +125,7 @@ describe("four independent training slots", () => {
   });
 });
 
-it("publishes Paideia's strict runtime-neutral descriptor shape with every detailed path preserved", () => {
+it("publishes Training's strict runtime-neutral descriptor shape with every detailed path preserved", () => {
   const consumerContract = z.strictObject({ schema: z.literal("spawnfile.training-slots.v1"), slots: z.array(z.strictObject({
     index: z.number().int().min(0).max(7), workerUid: z.number().int().positive(),
     roots: z.record(z.string().min(1), z.string().refine(path.isAbsolute)),

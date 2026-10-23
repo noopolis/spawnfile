@@ -10,7 +10,7 @@ vi.mock('node:fs/promises', async importOriginal => {
   return { ...actual, open: vi.fn(actual.open) };
 });
 it('detects actual installed-file corruption before returning a receipt', async () => {
-  const root = await filesystem.mkdtemp(join(tmpdir(), 'paideia-install-'));
+  const root = await filesystem.mkdtemp(join(tmpdir(), 'training-install-'));
   const original = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
   try {
     await filesystem.writeFile(join(root, 'prompt.md'), 'Original prompt');
@@ -23,7 +23,7 @@ it('detects actual installed-file corruption before returning a receipt', async 
   } finally { vi.mocked(filesystem.open).mockImplementation(original.open); await filesystem.rm(root, { recursive: true, force: true }); }
 });
 it('rejects aggregate candidate growth beyond the declared bound', async () => {
-  const root = await filesystem.mkdtemp(join(tmpdir(), 'paideia-bound-'));
+  const root = await filesystem.mkdtemp(join(tmpdir(), 'training-bound-'));
   try {
     await filesystem.writeFile(join(root, 'prompt.md'), 'Original prompt');
     const baseline = await snapshotCandidate({ sourceRoot: root, resources: [{ id: 'prompt', sourcePath: 'prompt.md', destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' }] });

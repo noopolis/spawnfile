@@ -61,7 +61,7 @@ it('fails closed without a socket, without Daimon, or when the installed contrac
   for (const [patch, grants] of [[{ GROK_INFERENCE_CLIENT_MODEL_ID: 'grok-4.6' }, {}], [{ GROK_INFERENCE_GRANT_ENV: 'XAI_API_KEY' }, {}], [{ GROK_INFERENCE_PROXY_BASE_URL: 'http://127.0.0.1:1/v1' }, {}],
     [{}, { maxLiveGrants: 16 }], [{}, { failureCodes: ['auth_stale'] }], [{}, { client: { modelId: PIN.modelId, envKey: PIN.envKey, configSha256: drifted } }],
     [{}, { client: { modelId: 'x', envKey: PIN.envKey, configSha256: PIN.configSha256 } }], [{}, { client: { modelId: PIN.modelId, envKey: 'X_KEY', configSha256: PIN.configSha256 } }]] as const) {
-    await expect(loadDaimonGrokGrantAuthority(socket, async () => fakeDaimon(patch, grants).module)).rejects.toThrow('differs from the Paideia pin');
+    await expect(loadDaimonGrokGrantAuthority(socket, async () => fakeDaimon(patch, grants).module)).rejects.toThrow('differs from the Training pin');
   }
 });
 

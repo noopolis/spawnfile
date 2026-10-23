@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import { testRepeatCount } from '../../contracts/training-config.js';
 import type { CheckNode, ResolvedDataset } from '../../contracts/dataset.js';
 import { builtinEvaluatorDefinitions, validateCostDatasetSplit, projectDatasetCost, type CostDataset, type CostRecord } from '../../cases/index.js';
@@ -41,7 +42,7 @@ export interface PlannedCostLine {
   price: ModelPrice | null;
 }
 export interface TrainingCostPlan {
-  schema: 'paideia.training-cost-plan.v1';
+  schema: 'spawnfile.training.training-cost-plan.v1';
   modelCallsMade: 0;
   billing: 'API-equivalent valuation; subscription fees are not apportioned';
   coverage: 'estimated' | 'partial';
@@ -62,7 +63,10 @@ export interface TrainingCostPlan {
 export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | CostDataset>): TrainingCostPlan {
   const testRepeats = testRepeatCount(options.testRepeats);
   if (options.mode === 'comparison' && testRepeats !== 1) throw new Error('Comparison does not support test repeats');
-  const project = (dataset: ResolvedDataset | CostDataset) => dataset.schema === 'paideia.cost-dataset.v1' ? dataset : projectDatasetCost(dataset);
+  const project = (dataset: ResolvedDataset | CostDataset) => {
+    const normalized = { ...dataset, schema: canonicalWireId(dataset.schema) } as ResolvedDataset | CostDataset;
+    return normalized.schema === 'spawnfile.training.cost-dataset.v1' ? normalized : projectDatasetCost(normalized);
+  };
   const train = project(options.train), test = project(options.test);
   const validation = options.validation ? project(options.validation) : undefined;
   const judgeRoutes = Object.fromEntries(Object.entries(options.judges).map(([name, route]) => {
@@ -144,7 +148,7 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
   if (options.mode !== 'comparison') addRoute('optimizer', 'reflection', 'optimization', options.optimizerRoute ?? {model: options.optimizerModel!, provider: 'claude-subscription'}, options.maxProposals, assumptions.optimizer);
   const pricedSubtotalUsd = lines.reduce((sum, line) => ({ low: sum.low + (line.apiEquivalentUsd?.low ?? 0),
     high: sum.high + (line.apiEquivalentUsd?.high ?? 0) }), { low: 0, high: 0 });
-  return { schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0,
+  return { schema: 'spawnfile.training.training-cost-plan.v1', modelCallsMade: 0,
     billing: 'API-equivalent valuation; subscription fees are not apportioned', coverage: incomplete ? 'partial' : 'estimated',
     budget: { maxTrials: options.maxTrials, maxProposals: options.maxProposals, metricCalls, reservedTestTrials },
     datasetDigests: { train: options.train.sourceDigest, test: options.test.sourceDigest,

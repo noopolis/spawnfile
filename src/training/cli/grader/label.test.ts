@@ -16,12 +16,12 @@ const directories: string[] = [];
 afterEach(async () => { vi.useRealTimers(); await Promise.all(directories.splice(0).map(d => rm(d, { recursive: true, force: true }))); });
 async function fixture() {
   const dir = await mkdtemp(path.join(tmpdir(), 'grader-label-')); directories.push(dir);
-  const grader = { schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'c.json',
+  const grader = { schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'c.json',
     context: { evidence: { description: 'Evidence' } }, teachers: [{ id: 't', provider: 'grok', model: 'm' }],
     model: { backend: 'teacher', teacher: 't' }, escalate: { to: 't', between: [0.2, 0.8] },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body', 'context.evidence'] },
       { id: 'q2', type: 'yes-no', expected: 'no', reads: ['output.body', 'context.evidence'] }], score: { method: 'weighted' } };
-  const manifest = { schema: 'paideia.grader-inputs.v1', items: [
+  const manifest = { schema: 'spawnfile.training.grader-inputs.v1', items: [
     { id: 'a', lineage: 'a', example: { dataset: 'train', id: 'example' }, output: { from: 'out.json' }, context: { evidence: { from: 'evidence.md' } } },
     { id: 'b', lineage: 'b', output: { from: 'out.json' }, context: { evidence: { from: 'evidence.md' } } },
   ] };
@@ -99,7 +99,7 @@ describe('teacher labeling runner', () => {
   });
   it('refuses writes to inline golden labels before opening inputs or providers', async () => {
     const f = await fixture();
-    await writeFile(f.graderFile, stringify({ ...f.grader, golden: { schema: 'paideia.labels.v1', labelers: {}, labels: [] } }));
+    await writeFile(f.graderFile, stringify({ ...f.grader, golden: { schema: 'spawnfile.training.labels.v1', labelers: {}, labels: [] } }));
     const g = await loadGrader(f.graderFile);
     await expect(runLabel(f)).rejects.toThrow('separate golden labels file');
     await expect(loadLabelInputs(f.inputsFile, g)).rejects.toThrow('inline golden labels are read-only');

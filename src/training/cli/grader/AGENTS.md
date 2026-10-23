@@ -46,7 +46,7 @@ new usage. Reports preserve API receipts and spend-cap missing reasons.
 Success and failure accounting use only caller-owned collectors passed through
 identity probes, cache misses and scoring; never slice backend receipt history.
 
-Grade/calibrate failures emit paideia.grader-failure.v1 JSON accounting before
+Grade/calibrate failures emit spawnfile.training.grader-failure.v1 JSON accounting before
 nonzero exit. Include completed earlier candidates and failed attempts, exclude
 prior invocations, and keep diagnostics outside the sanitized accounting result.
 
