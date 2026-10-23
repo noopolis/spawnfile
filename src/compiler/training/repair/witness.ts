@@ -1,20 +1,30 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import type { TrainingContext } from "../contract.js";
 import { trainingExecutionIdentity, type TrainingExecution } from "../execution.js";
 import type { TrainingPreparationConfig } from "../preparation/contract.js";
 import type { TrainingImagePlan } from "../preparation/image.js";
 import { copySealed, exactPath, fileIdentity, hashJson, sealTree } from "../preparation/files.js";
 import type { PlannedInput } from "../preparation/inputs.js";
-import { witnessEnvelopeSchema, type TrainingWitness } from "./contract.js";
+import { sha, witnessEnvelopeSchema, type TrainingWitness } from "./contract.js";
+
+// Validate every property inspected before the full current-schema parse. Legacy
+// builds cannot use that current schema, but malformed JSON must never bypass it
+// through unchecked property/method access in the migration diagnostic.
+const witnessHeaderSchema = z.object({ manifest: z.unknown(), digest: sha }).strict();
+const legacyImageSchema = z.object({ image: z.object({
+  build: z.record(z.string(), z.unknown()),
+  files: z.array(z.object({ destination: z.string() }).passthrough())
+}).passthrough() }).passthrough();
 
 export async function readTrainingWitness(file: string) {
   const canonical = await exactPath(file), bytes = await readFile(canonical, "utf8");
   if (Buffer.byteLength(bytes) > 8 * 1024 * 1024) throw Error("Training witness exceeds 8 MiB");
-  const raw = JSON.parse(bytes) as { manifest: unknown; digest: string };
-  const legacy = raw.manifest as { image?: { build?: Record<string, unknown>; files?: { destination?: string }[] } } | null;
-  if ((legacy?.image?.build && ("paideia" in legacy.image.build || "bridge" in legacy.image.build)) ||
-    legacy?.image?.files?.some(file => file.destination?.startsWith("paideia/"))) {
+  const raw = witnessHeaderSchema.parse(JSON.parse(bytes));
+  const legacy = legacyImageSchema.safeParse(raw.manifest);
+  if (legacy.success && (("paideia" in legacy.data.image.build || "bridge" in legacy.data.image.build) ||
+    legacy.data.image.files.some(file => file.destination.startsWith("paideia/")))) {
     throw Error("Repair witness references an external training distribution; re-prepare with Spawnfile before repairing measurements");
   }
   if (hashJson(raw.manifest) !== raw.digest) throw Error("Training witness digest mismatch");
