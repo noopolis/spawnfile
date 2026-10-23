@@ -1,6 +1,6 @@
 import { lstat, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { GrokSlotFreshnessStore } from '../../../../../training/subjects/index.js';
+import type { GrokSlotFreshnessStore } from '../../services/index.js';
 import { grokSubjectRoots, nativeTrialArtifactsRoot, parseGrokBrokerReceipt, readPrivateFile, requiredGrokEvaluatorPaths,
   type GrokNativeLaunch, type VerifiedNativeLaunch } from '../receipt/index.js';
 

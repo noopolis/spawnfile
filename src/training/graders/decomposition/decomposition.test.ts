@@ -1,8 +1,9 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { parseCheckTemplates, parseCheckTemplatesYaml, parseDecomposition, validateDecomposition,
   instantiateChecks, evidenceRows, normalizeWhitespace, readPath, textLeaves } from './index.js';
 
-import { fixture, receipt } from './fixtures.js';
+import { fixture, receipt } from '../../../../fixtures/support/training/graderDecompositionFixtures.js';
 
 describe('decomposition formats', () => {
   it('strictly parses typed criteria and YAML; rejects invented schemas/keys', () => {

@@ -16,3 +16,7 @@ providers, storage, CLI orchestration, the viewer, and the DSPy Python bridge.
 - No generic helpers dump, speculative vendor stubs or empty source placeholders.
 - Verify the touched module, direct dependents and ownership boundaries when
   executable code exists. Root coverage and negative-test requirements apply.
+
+`providers/` supplies neutral built-ins; `contracts/inference-registry.ts` defines injected validation, identity, admission and factory descriptors. CLI dependencies carry the same registry through parsing, defaults, cache identities and execution. Factories own command-local resources with awaited cleanup. Non-test files must contain no engine names, including fixtures and documentation; the sole exception is the Python packaging symlink resolving to the frozen shared wire-alias authority. Historical provider fixtures live outside this core.
+
+Runtime integrations may consume contracts and the public root barrel only. Its process, schema, diagnostic, capture and path-protection helpers are deliberate public services. Grader registration is immutable process composition: install once before authored schema parsing; reject replacement, create fresh providers per operation.

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'node:http';
-import { viewerFixture } from './fixture.js';
+import { viewerFixture } from '../../../fixtures/support/training/viewer-fixture.js';
 import { startViewer, type ViewerData, type ViewerServer } from './index.js';
 
 const servers: ViewerServer[] = [];

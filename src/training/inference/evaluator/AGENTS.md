@@ -1,7 +1,7 @@
 # Evaluator route admission
 
 Owns explicit trusted evaluator grants, durable request/spend admission and
-allowlisted receipts. Codex extraction/proposals and TypeSafe decisions are
+allowlisted receipts. Registered extraction/proposals and TypeSafe decisions are
 separate purposes and model identities. A supplied routes file always activates
 evaluator budgets, independently of the subject cap. No generic native exemption.
 Admission is synchronous in the single evaluator process and fsynced before any

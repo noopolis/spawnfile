@@ -7,7 +7,7 @@ import { createServer } from 'node:net';
 import { nativeChildProbe } from './probe.js';
 import { isGrokLaunch, nativeTrialArtifactsRoot, parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import { verifyChildGrokSlot } from './grok.js';
-import type { GrokSlotFreshnessStore } from '../../../../../training/subjects/index.js';
+import type { GrokSlotFreshnessStore } from '../../services/index.js';
 
 /** Runs the actual owner-produced permission projection, not an approximate test profile. */
 export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: string, protectedPaths: readonly string[], signal: AbortSignal,

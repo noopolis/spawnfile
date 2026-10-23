@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { childFixture } from './fixture.js';
 import { verifyChildSandbox } from './sandbox.js';
-import { createGrokSlotFreshnessStore } from '../../../../../training/subjects/index.js';
+import { createGrokSlotFreshnessStore } from '../../services/index.js';
 import { bindGrokBrokerProjection, grokProjectionSha256, nativeTrialArtifactsRoot } from '../receipt/index.js';
 import { grokLaunchFrom, grokProjectionFor, grokProtectedPaths, slotPreflightFor } from '../grok-fixtures.js';
 vi.mock('node:child_process', () => ({ execFile: vi.fn(() => { throw new Error('Grok slot checks never run a local sandbox command'); }) }));

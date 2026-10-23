@@ -1,6 +1,7 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { instantiateChecks, validateDecomposition } from './index.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../fixtures/support/training/graderDecompositionFixtures.js';
 
 it('derives citations despite redirected or omitted extractor citations', () => {
   const { templates, document, inputs } = fixture();

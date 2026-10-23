@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it, vi } from 'vitest';
 import { readFile, stat, writeFile, symlink } from 'node:fs/promises';
 import { join } from 'node:path';

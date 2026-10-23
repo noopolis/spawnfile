@@ -1,6 +1,7 @@
+import { COUNCIL_WINDOW_CONFIG_KEY } from '../../../shared/trainingLegacy/index.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
-import { identifier, parseSchema, parseYaml, rowsSchema } from '../format/index.js';
+import { identifier, parseSchema, parseYaml, rowsSchema, provider } from '../format/index.js';
 
 export const trapKinds = ['injected-redundancy', 'format-paraphrase', 'option-permutation'] as const;
 export type TrapKind = typeof trapKinds[number];
@@ -55,9 +56,9 @@ export const checkTemplatesSchema = z.strictObject({
   kinds: z.record(identifier, z.string().min(1)).optional(),
   context: z.record(identifier, z.strictObject({ rows: rowsSchema.optional(),
     role: z.literal('assignment').optional(), description: z.string().optional() })).default({}),
-  teachers: z.array(z.strictObject({ id: identifier, provider: z.enum(['codex', 'claude', 'grok']),
+  teachers: z.array(z.strictObject({ id: identifier, provider: provider,
     model: z.string().min(1), effort: z.string().min(1).optional() })).optional(),
-  grok_window: z.strictObject({ start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  [COUNCIL_WINDOW_CONFIG_KEY]: z.strictObject({ start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
     end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), timeZone: z.literal('Europe/Berlin').optional() }).optional(),
 });
 export type CheckTemplates = z.infer<typeof checkTemplatesSchema>;

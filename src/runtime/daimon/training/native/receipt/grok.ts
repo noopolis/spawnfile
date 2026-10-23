@@ -1,4 +1,4 @@
-import { compatibleWireLiteral } from '../../../../../training/contracts/index.js';
+import { compatibleWireLiteral } from '../../../../../training/index.js';
 import { grokClockedWorkerConfigPins } from './grok-clocked-pins.js';
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';

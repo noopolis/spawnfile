@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../../contracts/index.js';
 import { judgeVersions } from '../training/index.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -7,7 +8,7 @@ import { CliDatasets } from '../datasets.js';
 import type { CliIO, SpawnfileCliIntegration } from '../types.js';
 import { resolveSpawnfileContext, type SpawnfileTrainingContext } from './context.js';
 
-export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, integration?: SpawnfileCliIntegration, providedContext?: SpawnfileTrainingContext) {
+export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, integration?: SpawnfileCliIntegration, providedContext?: SpawnfileTrainingContext, inferenceProviders?: InferenceProviderRegistry) {
   const context = resolveSpawnfileContext(args.flags['spawnfile-context']
     ? resolve(io.cwd, one(args, 'spawnfile-context')) : undefined, providedContext);
   for (const flag of ['runtime', 'instructions', 'supporting', 'locked', 'source-root']) {
@@ -42,8 +43,8 @@ export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, inte
     sourceRoot: context.project.root,
     out: resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/training' : undefined)),
     resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),
-    datasets: new CliDatasets(judges, io.cwd, { subject: context.agent.name, inferenceExecutionIdentity: integration?.inferenceExecutionIdentity,
-      registry: { preparations: integration?.preparations }, unlockedSetupPaths: integration?.unlockedSetupPaths }, judgeVersions(args.training, integration?.inferenceExecutionIdentity, Object.keys(judges)), args.frozenDataset),
+    datasets: new CliDatasets(judges, io.cwd, { subject: context.agent.name, inferenceProviders, inferenceExecutionIdentity: integration?.inferenceExecutionIdentity,
+      registry: { preparations: integration?.preparations }, unlockedSetupPaths: integration?.unlockedSetupPaths }, judgeVersions(args.training, integration?.inferenceExecutionIdentity, Object.keys(judges), inferenceProviders), args.frozenDataset),
     maxTrials: count(args, 'max-trials', 20, 10000), context,
     readiness: { runnable: false, integration: integration ? { id: integration.id, version: integration.version } : null,
       reason: 'Native compilation, authentication and isolated startup are checked during execution. Dry-run probes none of them.' },

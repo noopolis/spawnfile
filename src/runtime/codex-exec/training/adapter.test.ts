@@ -2,8 +2,8 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import type { SubjectStart } from '../../../training/contracts/execution.js';
-import type { ProcessOptions, RunningProcess } from '../../../training/platform/process/index.js';
+import type { SubjectStart } from '../../../training/index.js';
+import type { ProcessOptions, RunningProcess } from '../../../training/index.js';
 import { codexArguments, combineSignals, createCodexAdapter } from './adapter.js';
 
 const roots: string[] = [];

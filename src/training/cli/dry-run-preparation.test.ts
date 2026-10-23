@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { contextFixture } from './spawnfile/fixture.js';
+import { contextFixture } from '../../../fixtures/support/training/spawnfile-fixture.js';
 import { main } from './commands.js';
 import { CliDatasets } from './datasets.js';
 

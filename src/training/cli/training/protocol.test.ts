@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main } from '../index.js';
-import { cliFixture } from '../fixture.js';
+import { cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
 import type { CliDependencies } from '../types.js';
 import { openExperimentStore } from '../../storage/index.js';
 

@@ -2,7 +2,7 @@ import type { NativeActivity, NativeConfig, NativeReceipt, NativeTrace, Terminal
 import { chmod, mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SubjectStart } from '../../../../training/contracts/execution.js';
+import type { SubjectStart } from '../../../../training/index.js';
 import { bindNativeSandboxProjection, sha256, type NativeSandboxProjection, type VerifiedNativeLaunch } from './receipt/index.js';
 import { ownerLabel, type DockerCommand } from './container/index.js';
 

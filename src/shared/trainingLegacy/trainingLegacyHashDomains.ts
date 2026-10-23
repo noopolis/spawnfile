@@ -10,6 +10,7 @@ export const DECOMPOSITION_DIGEST_SCHEMA = 'paideia.decomposition.v1';
 export const CHECK_TEMPLATES_DIGEST_SCHEMA = 'paideia.check-templates.v1';
 export const EVIDENCE_UNITS_DIGEST_SCHEMA = 'paideia.evidence-units.v1';
 
+export const LEGACY_DEFAULT_JUDGE_VERSION = 'cli.claude-subscription.v1';
 export const LEGACY_INFERENCE_VERSION_PREFIX = 'paideia.legacy-inference:';
 export const AUTHORED_JUDGE_VERSION_PREFIX = 'paideia.authored-judge.v1:sha256:';
 export const OPTIMIZER_ROUTE_PREFIX = 'paideia.optimizer:';
@@ -36,3 +37,6 @@ export const JEV_IDENTITY_KEY = 'paideia_identity';
 export const JEV_IDENTITY_LONG_KEY = 'paideia_identity_long';
 export const JEV_CANARY_MARKER = 'PAIDEIA_CANARY_END';
 export const JEV_CANARY_QUESTION = 'Does the supplied text end with PAIDEIA_CANARY_END?';
+
+/** Frozen repair compatibility discriminator; retained for existing signed receipts. */
+export const LEGACY_MEASUREMENT_COMPATIBILITY_VERSION = 'spawnfile.daimon-dspy-compatibility.v1';

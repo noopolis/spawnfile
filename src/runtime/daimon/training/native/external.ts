@@ -1,4 +1,4 @@
-import type { ObservationCoverage, Usage } from '../../../../training/contracts/execution.js';
+import type { ObservationCoverage, Usage } from '../../../../training/index.js';
 import type { NativeLaunch } from './receipt/index.js';
 import { verifyExternalSource, type ExternalInputSource, type TerminalEvidence } from './worker/index.js';
 import { verifyPreparedTransport, type PreparedTransportDelivery } from './transport/index.js';

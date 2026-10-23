@@ -1,8 +1,9 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { writeFile } from 'node:fs/promises';
 import { expect, it } from 'vitest';
 import { parseArguments } from '../../arguments.js';
 import { runGraderCommand } from '../index.js';
-import { fixture, redundancyFixture } from './fixtures.js';
+import { fixture, redundancyFixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 
 it('routes atomic commands without a grader argument and returns gate exit codes', async () => {
   const f = await redundancyFixture(); const lines: string[] = [];

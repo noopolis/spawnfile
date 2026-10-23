@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { snapshotCandidate } from '../../candidates/index.js';
 import { summarizeCosts, type TrialReport } from '../../experiments/index.js';
 import { openExperimentStore } from '../../storage/index.js';
-import { cliFixture } from '../fixture.js';
+import { cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
 import { persistResult } from '../output.js';
 import { loadInvocationViewer } from '../viewer.js';
 import { createFailureReport, loadFailureView } from './failure.js';

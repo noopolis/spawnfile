@@ -1,4 +1,4 @@
-import { compatibleWireLiteral } from '../../contracts/index.js';
+import { compatibleWireLiteral, LEGACY_MEASUREMENT_COMPATIBILITY_VERSION } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, resolve, sep } from 'node:path';
@@ -11,7 +11,7 @@ const receiptSchema = z.object({
   parent: z.object({ root: id, imageId: sha, experimentId: id, executionIdentity: id, manifestDigest: sha,
     checkpoints: z.object({ command: sha, training: sha, host: sha, optimizer: sha }).strict(), trainingIdentity: id }).strict(),
   current: z.object({ imageId: sha, canonicalSourceDigest: sha, adapterId: id }).strict(),
-  compatibility: z.object({ version: z.literal('spawnfile.daimon-dspy-compatibility.v1'), digest: sha,
+  compatibility: z.object({ version: z.literal(LEGACY_MEASUREMENT_COMPATIBILITY_VERSION), digest: sha,
     components: z.record(id, sha), inputs: z.record(id, sha) }).strict(),
 }).strict();
 export type MeasurementRepairReceipt = z.infer<typeof receiptSchema>;

@@ -1,7 +1,8 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { redundancyFixture } from './fixtures.js';
+import { redundancyFixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 import { runDecompose, runReference, runTraps } from './index.js';
 
 it.each(['unsupported', null])('does not score saved defect traps when the current base final is %s', async answer => {

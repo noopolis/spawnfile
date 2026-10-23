@@ -7,3 +7,5 @@ external saved subscription selection and bounded process-group stopping.
 - Native JSONL is partial observation; a successful terminal frame does not prove tool-trace completeness.
 - Resume only the exact thread returned by this trial. Never select a recent ambient session.
 - Tests cover decoding, invocation controls and failure paths. Live conformance is separate from toy-process tests.
+
+`environment.ts` owns saved authentication selection and isolated subject environments. `providers/codex-subscription/` owns standalone subscription inference; both enter the core through public contracts and externally registered factories.

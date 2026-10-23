@@ -1,3 +1,4 @@
+import { graderProvider, graderProviderRegistry } from '../../../contracts/index.js';
 import { EXTRACTION_CHECKPOINT_DOMAIN } from '../../../contracts/index.js';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -115,8 +116,8 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
   options.signal?.throwIfAborted();
   const templates = await readTemplates(options.templatesFile);
   const teachers = selectTeachers(templates, options.extractors);
-  if (teachers.length > 2 || teachers.some(teacher => !['codex', 'claude'].includes(teacher.provider))) {
-    throw new Error('Select one or two Codex/Claude extractors');
+  if (teachers.length > 2 || teachers.some(teacher => !graderProvider(teacher.provider).decompositionExtractor)) {
+    throw new Error(graderProviderRegistry().council.extractorMessage);
   }
   const extraction = extractionView(templates, options.obligationKinds ?? ['obligation']);
   const inputs = (await readInputs(options.inputsFile, templates)).map(input => ({ ...input, obligationKinds: extraction.obligation_kinds }));

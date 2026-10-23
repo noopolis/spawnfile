@@ -1,3 +1,5 @@
+import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
+import { defaultInferenceProviders } from '../../providers/index.js';
 import { trainingEnvironment } from '../../platform/index.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import { constants, closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
@@ -6,16 +8,10 @@ import { z } from 'zod';
 
 const route = z.object({
   purpose: z.enum(['extraction', 'proposals', 'decisions']),
-  provider: z.enum(['codex-subscription', 'typesafe']), model: z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/u),
+  provider: z.string().min(1).max(128), model: z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/u),
   maxRequests: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   maxSpendUsd: z.number().finite().nonnegative().optional(),
-}).strict().superRefine((value, ctx) => {
-  if ((value.purpose === 'decisions') !== (value.provider === 'typesafe') ||
-    (value.provider === 'typesafe' && value.maxSpendUsd === undefined) ||
-    (value.provider === 'codex-subscription' && value.maxSpendUsd !== undefined)) {
-    ctx.addIssue({ code: 'custom', message: 'Evaluator purpose requires an explicit supported budgeted provider' });
-  }
-});
+}).strict();
 const schema = z.object({ version: compatibleWireLiteral('spawnfile.training.evaluator-routes.v1'), routes: z.array(route).min(1).max(64),
   receiptPath: z.string().min(1).refine(isAbsolute),
 }).strict().superRefine((value, ctx) => {
@@ -37,15 +33,27 @@ export function readProtectedFile(file: string, maximum: number): string {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } finally { closeSync(fd); }
 }
-export function evaluatorPolicy() {
+export function evaluatorPolicy(registry: InferenceProviderRegistry = defaultInferenceProviders) {
   const file = trainingEnvironment('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE');
   if (!file) return undefined;
-  try { return schema.parse(JSON.parse(readProtectedFile(file, 64 * 1024))); }
+  try {
+    const policy = schema.parse(JSON.parse(readProtectedFile(file, 64 * 1024)));
+    for (const route of policy.routes) {
+      const descriptor = Object.hasOwn(registry.providers, route.provider) ? registry.providers[route.provider] : undefined;
+      const dedicated = registry.evaluatorProviders && Object.hasOwn(registry.evaluatorProviders, route.provider)
+        ? registry.evaluatorProviders[route.provider] : undefined;
+      const purposes = dedicated?.purposes ?? descriptor?.capabilities.evaluatorPurposes;
+      const budget = dedicated?.budget ?? descriptor?.capabilities.evaluatorBudget;
+      if (!purposes?.includes(route.purpose) || !budget ||
+          (budget === 'usd') !== (route.maxSpendUsd !== undefined)) throw Error('Unsupported budgeted provider');
+    }
+    return policy;
+  }
   catch { throw Error('Invalid evaluator route policy'); }
 }
-export function evaluatorRoute(provider: string, purpose: EvaluatorPurpose, model: string) {
-  const policy = evaluatorPolicy();
+export function evaluatorRoute(provider: string, purpose: EvaluatorPurpose, model: string, registry: InferenceProviderRegistry = defaultInferenceProviders) {
+  const policy = evaluatorPolicy(registry);
   const selected = policy?.routes.find(value => value.provider === provider && value.purpose === purpose && value.model === model);
-  if (!selected) throw Error(`Capped training requires grok-broker admission; undeclared evaluator ${purpose} uses unsupported ${provider}`);
+  if (!selected) throw Error(`Capped training requires ${registry.brokerAdmissionLabel ?? 'broker'} admission; undeclared evaluator ${purpose} uses unsupported ${provider}`);
   return { route: selected, receiptPath: policy!.receiptPath };
 }

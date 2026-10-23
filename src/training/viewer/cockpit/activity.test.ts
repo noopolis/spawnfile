@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { liveActivity } from './activity.js';
-import { viewerFixture } from '../fixture.js';
+import { viewerFixture } from '../../../../fixtures/support/training/viewer-fixture.js';
 
 it('renders observed tool/judge counts, criterion weights, gate verdicts and missing scores honestly',()=>{
   const data=viewerFixture();expect(liveActivity(data)).toBe('');

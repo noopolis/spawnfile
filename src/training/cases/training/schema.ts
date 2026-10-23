@@ -1,4 +1,5 @@
-import { grokGrantModels, grokGrantReasoningEfforts } from '../../contracts/inference-grants.js';
+import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
+import { defaultInferenceProviders } from '../../providers/index.js';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { fail, fields, number, object, oneOf, safePath, string, uniqueStrings } from '../validation.js';
 
@@ -7,7 +8,7 @@ function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_IN
 }
 
 /** Validate controls without executing templates or contacting declared providers. */
-export function validateTrainingConfiguration(value: unknown, path = '$.training'): TrainingConfiguration {
+export function validateTrainingConfiguration(value: unknown, path = '$.training', registry: InferenceProviderRegistry = defaultInferenceProviders): TrainingConfiguration {
   const config = object(value, path);
   fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'scoring', 'test', 'validation', 'validation_groups', 'seed'], path);
   const models = object(config.models, `${path}.models`);
@@ -17,33 +18,8 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     string(name, location);
     const model = object(value, location);
     fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort', 'think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'], location);
-    oneOf(model.provider, ['claude-subscription', 'codex-subscription', 'grok-subscription', 'grok-broker', 'ollama'], `${location}.provider`);
-    string(model.model, `${location}.model`);
-    if (model.provider === 'grok-broker') {
-      // Broker grants carry the declared model and effort to the broker; nothing is defaulted or inherited.
-      oneOf(model.model, [...grokGrantModels], `${location}.model`);
-      if (model.reasoning_effort === undefined) fail(`${location}.reasoning_effort`, 'required for grok-broker');
-      oneOf(model.reasoning_effort, [...grokGrantReasoningEfforts], `${location}.reasoning_effort`);
-    } else if (model.reasoning_effort !== undefined) {
-      if (model.provider !== 'grok-subscription') fail(`${location}.reasoning_effort`, 'only supported for grok-subscription or grok-broker');
-      oneOf(model.reasoning_effort, ['low', 'medium', 'high', 'xhigh'], `${location}.reasoning_effort`);
-    }
-    for (const field of ['think', 'keep_alive_seconds', 'max_output_tokens', 'context_window']) {
-      if (model[field] !== undefined && model.provider !== 'ollama') fail(`${location}.${field}`, 'only supported for ollama');
-    }
-    if (model.think !== undefined && typeof model.think !== 'boolean') fail(`${location}.think`, 'expected a boolean');
-    if (model.keep_alive_seconds !== undefined) integer(model.keep_alive_seconds, `${location}.keep_alive_seconds`, 0, 86400);
-    if (model.context_window !== undefined) integer(model.context_window, `${location}.context_window`, 512, 1048576);
-    if (model.max_output_tokens !== undefined) integer(model.max_output_tokens, `${location}.max_output_tokens`, 1, 131072);
-    if (model.endpoint !== undefined) {
-      if (model.provider !== 'ollama') fail(`${location}.endpoint`, 'only supported for ollama');
-      let url: URL;
-      try { url = new URL(string(model.endpoint, `${location}.endpoint`)); }
-      catch { return fail(`${location}.endpoint`, 'expected an HTTP endpoint'); }
-      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
-        fail(`${location}.endpoint`, 'expected HTTP endpoint without credentials, query or fragment');
-      }
-    }
+    oneOf(model.provider, Object.keys(registry.providers), `${location}.provider`);
+    registry.providers[model.provider as string]!.validate(model, location);
   }
   function route(value: unknown, location: string, judge = false): void {
     const policy = object(value, location);
@@ -53,7 +29,10 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     if (fallbacks.includes(primary)) fail(`${location}.fallbacks`, 'primary model cannot be its own fallback');
     for (const name of [primary, ...fallbacks]) if (!Object.hasOwn(models, name)) fail(location, `unknown model ${name}`);
     const providers = new Set([primary, ...fallbacks].map(name => (models[name] as { provider?: unknown }).provider));
-    if (providers.has('grok-broker') && providers.has('grok-subscription')) fail(location, 'grok-broker routes cannot fall back to a desktop grok-subscription login');
+    for (const id of providers) {
+      const descriptor = registry.providers[id as string]!;
+      if (descriptor.incompatibleWith?.some(other => providers.has(other))) fail(location, descriptor.incompatibilityReason ?? 'provider routes cannot fall back to an incompatible provider');
+    }
     if (policy.attempts !== undefined) integer(policy.attempts, `${location}.attempts`, 1, Math.min(10, 1 + fallbacks.length));
     if (policy.timeout_ms !== undefined) integer(policy.timeout_ms, `${location}.timeout_ms`, 1, 3_600_000);
     if (policy.citation_repairs !== undefined) oneOf(policy.citation_repairs, [0, 1], `${location}.citation_repairs`);

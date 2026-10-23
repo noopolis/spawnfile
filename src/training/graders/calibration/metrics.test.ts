@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { calibrationBars, calibrationMetrics, expectedCalibrationError, groupBootstrap, teacherAgreement, wilson90 } from './index.js';
 import type { CalibrationMetrics, ScoredRecord, TeacherAgreementRecord } from './index.js';

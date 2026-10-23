@@ -3,7 +3,7 @@ import { rm } from 'node:fs/promises';
 import { bindTerminalEvidence } from './lifecycle.js';
 import { launchFixture, traceFixture } from '../test-fixtures.js';
 import type { TerminalEvidence, TransportDeliverySource } from '../worker/index.js';
-import type { TerminalEvidenceMissing } from '../../../../../training/contracts/execution.js';
+import type { TerminalEvidenceMissing } from '../../../../../training/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

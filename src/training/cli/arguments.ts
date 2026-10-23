@@ -27,9 +27,9 @@ const flags: Record<string, readonly string[]> = {
 
 export const helpText = `Training — explicit local native-agent experiments
 
-grader decompose --templates FILE --inputs FILE --extractors codex[,claude] --out DIR [--timeout-ms N]
+grader decompose --templates FILE --inputs FILE --extractors PROVIDER[,PROVIDER] --out DIR [--timeout-ms N]
 grader traps --templates FILE --decompositions DIR --out DIR [--references FILE] [--allow-rejections] [--seed S] [--timeout-ms N]
-grader reference --templates FILE --decompositions DIR [--traps DIR] [--allow-rejections] --teachers codex,claude[,grok] --out FILE [--concurrency N] [--timeout-ms N]
+grader reference --templates FILE --decompositions DIR [--traps DIR] [--allow-rejections] --teachers PROVIDER,PROVIDER --out FILE [--concurrency N] [--timeout-ms N]
 grader validate --grader FILE [--timeout-ms N]
 grader label --grader FILE --inputs FILE --teachers a,b [--relabel] [--adjudication N] [--concurrency N] [--limit N] [--timeout-ms N]
 grader label --grader FILE --import FILE [--relabel] [--timeout-ms N]
@@ -38,8 +38,8 @@ grader grade --grader FILE [--max-spend-usd N] --output FILE.json [--context NAM
 grader expand --grader FILE --output FILE.json [--context NAME=FILE]... [--timeout-ms N]
 validate DATASET [--judge NAME=MODEL]
 view OUT_DIRECTORY [--port PORT] [--timeout-ms N]
-evaluate DATASET --runtime codex|daimon --model MODEL --instructions FILE --out DIRECTORY
-train --train DATASET [--validation DATASET] [--test DATASET] --runtime codex|daimon --model MODEL
+evaluate DATASET --runtime RUNTIME --model MODEL --instructions FILE --out DIRECTORY
+train --train DATASET [--validation DATASET] [--test DATASET] --runtime RUNTIME --model MODEL
       --instructions FILE --editable FILE --optimizer-model MODEL --bridge-command EXECUTABLE --out DIRECTORY
 
 Repeat --instructions FILE, --supporting FILE or --locked FILE to select Markdown resources.

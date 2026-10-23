@@ -9,7 +9,7 @@ The receipt is evaluator metadata, never a substitute native instruction file.
 
 Dry-run may resolve candidates, cases and costs, but never compiles, authenticates
 or executes an agent. Native runs require their supported isolated preparation;
-do not route a compiled Daimon project through the generic Pi adapter.
+do not route a compiled project through a generic standalone subject adapter.
 Test mutations, ambiguous mappings, unsupported execution and canonical identity.
 Population trial sizing belongs to the shared training budget resolver after
 datasets are loaded. Integration optimizer settings must reach the same resolver

@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { adjudicationInstability, leaveOneTeacherOut, referenceQuality } from './metrics.js';
 import type { CheckReference, CouncilOutput, TrapAssessment } from './types.js';

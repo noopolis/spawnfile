@@ -1,3 +1,4 @@
+import { graderProvider } from '../../../contracts/index.js';
 import { checkTrainingFilename } from '../../../platform/index.js';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -29,12 +30,12 @@ export async function buildAtomicRuntime(file: string, dependencies: GraderDepen
   const templateSource = await readFile(templateFile, 'utf8');
   const templates = parseCheckTemplatesYaml(templateSource);
   validateAtomicTemplates(grader, templates);
-  assertModelRequestAdmission(grader.extractor.provider === 'codex' ? 'codex-subscription' : grader.extractor.provider, 'atomic extraction',
-    { purpose: 'extraction', model: grader.extractor.model });
-  assertModelRequestAdmission('typesafe', 'atomic decisions', { purpose: 'decisions', model: grader.decision.model });
+  assertModelRequestAdmission(graderProvider(grader.extractor.provider).inferenceProviderId, 'atomic extraction',
+    { purpose: 'extraction', model: grader.extractor.model }, dependencies.inferenceProviders);
+  assertModelRequestAdmission('typesafe', 'atomic decisions', { purpose: 'decisions', model: grader.decision.model }, dependencies.inferenceProviders);
   const maxSpendUsd = Math.min(grader.decision.max_spend_usd, dependencies.maxSpendUsd ?? Infinity);
   // Construct before extraction: a missing key must never consume a subscription call.
-  const backend = createTypeSafeDecision({ model: grader.decision.model, maxSpendUsd,
+  const backend = createTypeSafeDecision({ ...(dependencies.inferenceProviders ? { inferenceProviders: dependencies.inferenceProviders } : {}), model: grader.decision.model, maxSpendUsd,
     pricePerMtokUsd: grader.decision.price_per_mtok_usd, maxAttempts: 1, concurrency: 1,
     conservativeSpend: true, fetch: dependencies.atomicFetch });
   // Snapshot all authoring bytes into memory; subjects cannot change this runtime's policy.
@@ -62,7 +63,7 @@ export async function buildAtomicRuntime(file: string, dependencies: GraderDepen
           out, extractors: [grader.extractor.id], signal: signal ? AbortSignal.any([signal, deadline]) : deadline },
         { provider: teacher => budgetEvaluatorInference(
           (dependencies.provider ?? (definition => createGraderTeacher(definition, grader.extractor.deadline_ms)))(teacher),
-          teacher.provider === 'codex' ? 'codex-subscription' : teacher.provider, 'extraction', teacher.model) });
+          graderProvider(teacher.provider).inferenceProviderId, 'extraction', teacher.model, dependencies.inferenceProviders) });
       } catch { error = 'Atomic extraction or omission audit failed'; }
       try {
         const checkpoint = await readOptional<{ receipts: ExtractionReceipt[]; decomposition?: AtomicExtraction['decomposition'];

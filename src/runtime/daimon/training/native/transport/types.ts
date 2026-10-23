@@ -1,4 +1,4 @@
-import type { StopReceipt, SubjectStartupDiagnostic } from '../../../../../training/contracts/execution.js';
+import type { StopReceipt, SubjectStartupDiagnostic } from '../../../../../training/index.js';
 
 export type NativeWorkerPath = '/trial/health' | '/trial/run' | '/trial/stop' | '/v2/activity';
 export type NativeWorkerRequest = <T>(path: NativeWorkerPath, body?: unknown, timeoutMs?: number, signal?: AbortSignal) => Promise<T>;

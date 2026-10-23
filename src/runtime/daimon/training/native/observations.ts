@@ -1,5 +1,5 @@
 import type { NativeExternalInput } from './external.js';
-import type { Observation, SubjectStart, SubjectStartupDiagnostic, Usage } from '../../../../training/contracts/execution.js';
+import type { Observation, SubjectStart, SubjectStartupDiagnostic, Usage } from '../../../../training/index.js';
 import type { BrokerRequestLedger, BrokerSealLedger } from './sealed-usage.js';
 import { readNativeTranscript } from './transcript.js';
 import { plausibleNotionalUsd, readToolReceipts } from './worker/index.js';

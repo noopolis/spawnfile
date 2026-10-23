@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rm, symlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { runProcess } from '../training/platform/process/index.js';
-import { cliFixture } from '../training/cli/fixture.js';
+import { cliFixture } from '../../fixtures/support/training/cli-fixture.js';
 
 vi.mock('../training/cli/index.js', () => ({ launch: vi.fn(async () => undefined) }));
 const roots: string[] = [];

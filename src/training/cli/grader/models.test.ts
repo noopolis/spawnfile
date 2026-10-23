@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { appendFile, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

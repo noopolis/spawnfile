@@ -1,8 +1,8 @@
 import { afterEach, expect, it } from 'vitest';
 import { rm } from 'node:fs/promises';
-import { parseDatasetYaml, resolveDataset } from '../../../../training/cases/index.js';
-import { createEvaluationRegistry } from '../../../../training/evaluation/index.js';
-import { runTrial, type TrialReport } from '../../../../training/experiments/index.js';
+import { parseDatasetYaml, resolveDataset } from '../../../../training/index.js';
+import { createEvaluationRegistry } from '../../../../training/index.js';
+import { runTrial, type TrialReport } from '../../../../training/index.js';
 import { createDaimonNativeAdapter } from './index.js';
 import { dockerFixture, launchFixture, unadmittedFixture } from './test-fixtures.js';
 

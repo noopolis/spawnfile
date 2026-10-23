@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import type { Label, Labels } from '../../graders/index.js';
 import { estimateEscalationCost, type EscalationCostCall } from './cost.js';

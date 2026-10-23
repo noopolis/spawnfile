@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { LABEL_PROMPT_VERSION } from '../../contracts/index.js';
 import { describe, it, expect } from 'vitest';
 import { parseGrader, stableDigest, type Labels } from '../index.js';

@@ -4,8 +4,8 @@ import { nativeDeferredTrial, unregisteredSidecar } from './deferred-trial.js';
 import { bindTerminalEvidence } from './lifecycle.js';
 import { launchFixture, traceFixture } from '../test-fixtures.js';
 import type { TerminalEvidence } from '../worker/index.js';
-import type { TerminalEvidenceMissing } from '../../../../../training/contracts/execution.js';
-import { trialScore } from '../../../../../training/experiments/index.js';
+import type { TerminalEvidenceMissing } from '../../../../../training/index.js';
+import { trialScore } from '../../../../../training/index.js';
 
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];

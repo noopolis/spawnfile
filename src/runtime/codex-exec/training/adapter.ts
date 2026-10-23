@@ -1,6 +1,7 @@
-import type { StopReceipt, SubjectAdapter, SubjectStart, Usage } from '../../../training/contracts/execution.js';
-import { canonicalProtectedPaths, prepareCodexEnvironment, savedCodexHome } from '../../../training/subjects/index.js';
-import { runProcess, type RunningProcess } from '../../../training/platform/process/index.js';
+import type { StopReceipt, SubjectAdapter, SubjectStart, Usage } from '../../../training/index.js';
+import { prepareCodexEnvironment, savedCodexHome } from './environment.js';
+import { canonicalProtectedPaths } from '../../../training/index.js';
+import { runProcess, type RunningProcess } from '../../../training/index.js';
 import { decodeCodex } from './protocol.js';
 
 export interface CodexOptions {

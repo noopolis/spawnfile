@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../contracts/inference-registry.js';
 import { canonicalWireId } from '../contracts/index.js';
 import type { Dataset, DatasetRecord, RecordFields } from '../contracts/dataset.js';
 import { bindingShape } from './turn-bindings.js';
@@ -85,14 +86,14 @@ export function validateRecord(value: unknown, path: string, expanded = false): 
   }
   return record as unknown as DatasetRecord;
 }
-export function validateDataset(value: unknown): Dataset {
+export function validateDataset(value: unknown, inferenceProviders?: InferenceProviderRegistry): Dataset {
   const dataset = object(json(value, '$'), '$');
   fields(dataset, ['schema', 'id', 'subject', 'training', 'setup', 'fixtures', 'checks', 'stages', 'live', 'records'], '$');
   dataset.schema = canonicalWireId(dataset.schema);
   oneOf(dataset.schema, ['spawnfile.training.dataset.v1'], '$.schema');
   string(dataset.id, '$.id');
   if (dataset.subject !== undefined) string(dataset.subject, '$.subject');
-  if (dataset.training !== undefined) validateTrainingConfiguration(dataset.training);
+  if (dataset.training !== undefined) validateTrainingConfiguration(dataset.training, '$.training', inferenceProviders);
   if (dataset.setup !== undefined) object(dataset.setup, '$.setup');
   planShape(dataset, '$');
   if (dataset.fixtures !== undefined) {

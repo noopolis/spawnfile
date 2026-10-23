@@ -30,10 +30,11 @@ it("mounts receipt and projected parent readonly while retaining verified contai
   expect(create).toContain("--repair-context");
   expect(f.docker.calls.some(args => args[2] === "rm")).toBe(true);
 });
-it.each(["digest", "image", "mount", "symlink"])("rejects wrong repair %s before container operation", async kind => {
+it.each(["digest", "image", "mount", "symlink", "adapter"])("rejects wrong repair %s before container operation", async kind => {
   const f = await setup();
   if (kind === "digest") f.envelope.digest = `sha256:${"f".repeat(64)}`;
   if (kind === "image") { f.envelope.receipt.current.imageId = `sha256:${"f".repeat(64)}`; f.envelope.digest = hashJson(f.envelope.receipt); }
+  if (kind === "adapter") { f.envelope.receipt.current.adapterId = "unregistered"; f.envelope.digest = hashJson(f.envelope.receipt); }
   if (kind === "mount") { f.config.inputs.pop(); await writeFile(f.configPath, JSON.stringify(f.config)); }
   await writeFile(f.repairPath, JSON.stringify(f.envelope));
   if (kind === "symlink") { const link = path.join(f.root, "alias"); await symlink(f.repairPath, link); f.options.repairPath = link; }
@@ -48,5 +49,15 @@ it.each(["native", "trials", "optimizer"])("refuses old external repair componen
   f.envelope.digest = hashJson(f.envelope.receipt);
   await writeFile(f.repairPath, JSON.stringify(f.envelope));
   await expect(launchTrainingContainer(f.options)).rejects.toThrow("re-prepare with Spawnfile");
+  expect(f.docker.calls).toEqual([]);
+});
+
+
+it('rejects padded adapter IDs without normalizing signed receipt bytes', async () => {
+  const f = await setup();
+  f.envelope.receipt.current.adapterId = ' daimon-native ';
+  f.envelope.digest = hashJson(f.envelope.receipt);
+  await writeFile(f.repairPath, JSON.stringify(f.envelope));
+  await expect(launchTrainingContainer(f.options)).rejects.toThrow('adapter is not registered');
   expect(f.docker.calls).toEqual([]);
 });

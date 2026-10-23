@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { parseGrader } from './format/index.js';
 import { expandInstances } from './instances.js';

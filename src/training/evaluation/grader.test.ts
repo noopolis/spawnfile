@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
 import type { CheckNode } from '../contracts/dataset.js';

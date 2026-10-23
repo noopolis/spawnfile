@@ -1,9 +1,11 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it, vi } from 'vitest';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
 import { stableDigest } from '../format/index.js';
 import { runCouncil } from './council.js';
-import { councilContentDigest, defaultGrokWindow } from './policy.js';
+import { councilContentDigest } from './policy.js';
+import { defaultGrokWindow } from '../../../../fixtures/support/training/graderProviders.js';
 import { councilPromptVersion } from './protocol.js';
 import type { CouncilOptions, CouncilOutput } from './types.js';
 

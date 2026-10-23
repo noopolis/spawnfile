@@ -1,4 +1,4 @@
-import type { Observation, Usage } from '../../../training/contracts/execution.js';
+import type { Observation, Usage } from '../../../training/index.js';
 
 export interface CodexProtocol {
   text: string;

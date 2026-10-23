@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { parseGrader, type Labels } from './format/index.js';
 import { createCalibrationIdentity, parseCalibration, parseCalibrationJson, checkCalibration, segmenterIdentity, goldenIdentity,

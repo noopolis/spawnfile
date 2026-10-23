@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import { rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { cliFixture } from '../fixture.js';
+import { cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
 import { parseArguments } from '../arguments.js';
 import { prepareCliInputs } from '../native.js';
 import { commandCheckpoint } from './checkpoint.js';

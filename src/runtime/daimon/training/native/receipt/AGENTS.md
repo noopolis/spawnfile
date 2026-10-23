@@ -29,3 +29,5 @@ real time or older than the worker's trial timeout window. Never mint another
 anchor, add preload to worker launch arguments or
 derive FAKETIME here: Daimon owns child clock gating and engine clock removal.
 Keep the origin/anchor evidence; the library path is installation input only.
+
+The launch engine vocabulary consumes the same pinned declaration published by the runtime registry. Engine-specific launch variants retain their own required fields and refuse unimplemented execution paths.

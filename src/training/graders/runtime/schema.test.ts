@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, test } from 'vitest';
 import { z } from 'zod';
 import { createGradeResultSchema } from './schema.js';

@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { createDaimonNativeAdapter } from './adapter.js';
 import { dockerFixture, launchFixture } from './test-fixtures.js';
 import { join } from 'node:path';
-import type { Observation } from '../../../../training/contracts/execution.js';
+import type { Observation } from '../../../../training/index.js';
 import { getGlobalDispatcher, MockAgent, setGlobalDispatcher } from 'undici';
 import { parseWorkerArguments, type TerminalEvidence } from './worker/index.js';
 import { createNativeHttpClient } from './transport/index.js';

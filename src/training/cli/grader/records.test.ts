@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { parseGrader, type Label, type Labels } from '../../graders/index.js';
 import type { DecisionResult } from '../../contracts/grading.js';

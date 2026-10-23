@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it, vi } from 'vitest';
 import type { CheckNode, Stage } from '../../contracts/dataset.js';
 import type { EvaluationResult } from '../../contracts/evaluation.js';

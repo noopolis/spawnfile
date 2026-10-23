@@ -62,6 +62,46 @@ preparation; merely reading unchanged historical files preserves their identitie
 New report/blob/envelope digests describe the bytes actually written and are not
 lookup keys for historical paid work.
 
+## Core and provider registration
+
+The training core MUST NOT name CLI engines or import runtime/compiler implementations.
+Runtime composition supplies an `InferenceProviderRegistry`: provider ID strings map
+to descriptors with config validation, capabilities, versioned identity policy,
+optional identity normalization and a factory. Validation, default selection,
+request admission and dispatch MUST use that same registry. Factories receive a
+command-local resource map and awaited cleanup hooks; dry-run does not call them.
+Provider IDs in existing YAML and receipt/cache/checkpoint identities remain unchanged.
+
+The core's neutral built-ins are saved Claude subscription inference and native
+Ollama inference. Standalone CLI subscription inference lives in
+`src/runtime/codex-exec/training/providers/codex-subscription/`. Daimon owns
+`src/runtime/daimon/training/providers/grok-subscription/` and `grok-broker/`,
+including shared CLI transport, broker grants, the model catalog and client pins.
+Daimon's durable slot freshness services live under its `training/services/`;
+subject authentication helpers live with the standalone subject adapter. The core
+passes adapter-owned services through unchanged.
+
+`src/runtime/trainingSubjects.ts` composes subjects and provider registrations;
+`trainingProviders.ts` supplies engine descriptors. Grader provider policy is an
+immutable process-composition registration installed before parsing authored grader
+files. Replacing that registration in a running process MUST fail; factories still
+return independent provider instances. Council requirements and availability policy
+are supplied by that registration, while historical authored keys and hash domains
+remain frozen in the shared compatibility module.
+
+Runtime training implementations MAY import neutral contracts and the core's public
+`src/training/index.ts` entry point. The public entry point additionally supplies
+process execution, schema validation, diagnostics, capture, path-protection and
+synthetic evidence helpers. Private implementation imports are forbidden. Non-test
+core files MUST contain no engine-name text; the only boundary exception is the Python packaging symlink to the shared frozen wire-alias table, verified by canonical target.
+
+Runtime registry entries declare their training adapter ID and engine vocabulary.
+Launch schemas consume that vocabulary; adapter-specific execution constraints
+still refuse engines without an implemented training path. Repair receipts carry
+a string `adapterId`; launch validates it against the selected runtime's registered
+adapter before container operations. Existing string-valued receipts and launch
+versions remain readable without changing their wire shape.
+
 ## Authoring
 
 Teams (including the root organization) MAY declare `shared.training`; agents and

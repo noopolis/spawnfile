@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../../../contracts/inference-registry.js';
 import { trainingEnvironment } from '../../../platform/index.js';
 import { assertModelRequestAdmission } from '../../request-cap.js';
 import { reserveEvaluatorRequest, typeSafeEvaluatorEnvironment } from '../../evaluator/index.js';
@@ -6,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import type { DecisionRequestReceipt, DecisionSpendBudget, DecisionResult } from '../../../contracts/grading.js';
 
 export interface TypeSafeTransportOptions {
+  inferenceProviders?: InferenceProviderRegistry;
   model: string;
   /** Admission ledger charges at least the estimate per attempt when usage is unknown. */
   conservativeSpend?: boolean;
@@ -27,7 +29,7 @@ export function createDecisionSpendBudget(maxUsd?: number): DecisionSpendBudget 
 }
 
 export function typeSafeTransport(options: TypeSafeTransportOptions) {
-  assertModelRequestAdmission('typesafe', 'decisions', { purpose: 'decisions', model: options.model });
+  assertModelRequestAdmission('typesafe', 'decisions', { purpose: 'decisions', model: options.model }, options.inferenceProviders);
   const key = (typeSafeEvaluatorEnvironment() ?? options.env ?? process.env).TYPESAFE_API_KEY;
   if (!key?.trim()) throw new Error('TypeSafe requires TYPESAFE_API_KEY');
   let endpoint: URL;
@@ -70,7 +72,7 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
           check(signal);
           if (options.conservativeSpend && budget.maxUsd !== undefined && budget.spentUsd + budget.reservedUsd > budget.maxUsd) return { reason: 'spend cap', failureCause: 'spend-cap' };
           const admission = evaluatorCapped
-            ? reserveEvaluatorRequest('typesafe', 'decisions', options.model, estimate) : undefined;
+            ? reserveEvaluatorRequest('typesafe', 'decisions', options.model, estimate, options.inferenceProviders) : undefined;
           const receipt: DecisionRequestReceipt = { requestId: admission?.id ?? randomUUID(), billing: 'api', model: options.model, endpoint: endpoint.href,
             inputTokens: null, outputTokens: null, usd: null, estimatedInputTokens: tokens, estimatedUsd: estimate,
             latencyMs: 0, status: null };

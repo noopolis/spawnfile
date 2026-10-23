@@ -31,8 +31,7 @@ Scoring HTTP 4xx responses mark exactly that request's instances missing, with a
 sanitized status/detail reason capped at 200 characters. Canary 4xx enters identity (at least one canary must succeed);
 5xx, connection failures, timeouts and cancellation remain thrown failures.
 Noul responses accept complete true/false or yes/no key pairs; mixed pairs refuse.
-Teacher fallback accepts Claude/Grok subscriptions with disabled tools or Codex
-subscriptions with containment and trace-based tool refusal.
+Teacher fallback accepts subscriptions with disabled tools or containment and trace-based tool refusal.
 Each teacher fallback attempt returns judge-call provenance, including measured
 usage, response-model basis, billing and wall time, even for invalid responses.
 

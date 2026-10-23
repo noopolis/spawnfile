@@ -4,7 +4,7 @@ import { rm } from 'node:fs/promises';
 import { createDaimonNativeAdapter } from './adapter.js';
 import { dockerFixture, launchFixture } from './test-fixtures.js';
 import type { DockerCommand } from './container/index.js';
-import type { Observation } from '../../../../training/contracts/execution.js';
+import type { Observation } from '../../../../training/index.js';
 import type { TerminalEvidence, TransportDeliverySource } from './worker/index.js';
 
 const roots: string[] = [];

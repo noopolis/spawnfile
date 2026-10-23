@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../contracts/inference-registry.js';
 import { createHash } from 'node:crypto';
 import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from 'yaml';
 import type { Node } from 'yaml';
@@ -5,7 +6,7 @@ import type { DatasetDocument } from '../contracts/dataset.js';
 import { validateDataset } from './schema.js';
 import { fail } from './validation.js';
 
-export function parseDatasetYaml(source: string, options: { sourceName?: string } = {}): DatasetDocument {
+export function parseDatasetYaml(source: string, options: { sourceName?: string; inferenceProviders?: InferenceProviderRegistry } = {}): DatasetDocument {
   const sourceName = options.sourceName ?? '<dataset>';
   if (Buffer.byteLength(source) > 2_000_000) fail(sourceName, 'dataset exceeds 2 MB');
   const lineCounter = new LineCounter();
@@ -32,7 +33,7 @@ export function parseDatasetYaml(source: string, options: { sourceName?: string 
   }
   visit(document.contents, '$', 0);
   return {
-    dataset: validateDataset(document.toJS({ maxAliasCount: 0 })),
+    dataset: validateDataset(document.toJS({ maxAliasCount: 0 }), options.inferenceProviders),
     sourceName,
     sourceDigest: `sha256:${createHash('sha256').update(source).digest('hex')}`,
     locations,

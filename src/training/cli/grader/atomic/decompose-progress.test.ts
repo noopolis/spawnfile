@@ -1,8 +1,9 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { runDecompose } from './decompose.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 
 async function checkpoint(directory: string) {
   const name = (await readdir(directory)).find(file => file.endsWith('.checkpoint.json'))!;

@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { extractionResponseSchema, parseExtractionResponse } from './index.js';
 

@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { expect, it, vi } from 'vitest';
 import { stringify } from 'yaml';
 import { parseAtomicGrader, type AtomicRuntime } from '../graders/atomic/index.js';

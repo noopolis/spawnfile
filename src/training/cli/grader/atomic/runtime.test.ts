@@ -1,3 +1,4 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,9 +9,9 @@ import type { AtomicRuntime } from '../../../graders/atomic/index.js';
 import { gradeAtomic } from '../../../graders/atomic/index.js';
 import { evaluatePlan, createEvaluationRegistry } from '../../../evaluation/index.js';
 import { evaluationContext, artifact, snapshot } from '../../../testing/index.js';
-import { CliDatasets } from '../../datasets.js';
+import { CliDatasets } from '../../../../../fixtures/support/training/graderProviders.js';
 import * as teacherFactory from '../label-call.js';
-import { buildAtomicRuntime } from './runtime.js';
+import { buildAtomicRuntime } from '../../../../../fixtures/support/training/graderProviders.js';
 import { buildExecutableGradingRuntime } from '../runtime.js';
 
 const stringify = (value: unknown) => yamlStringify(value, { aliasDuplicateObjects: false });

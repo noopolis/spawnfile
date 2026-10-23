@@ -1,7 +1,7 @@
 import * as inferenceFactory from './inference.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
-import { cliFixture, fixtureAdapter } from '../fixture.js';
+import { cliFixture, fixtureAdapter } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 
 const roots: string[] = [];

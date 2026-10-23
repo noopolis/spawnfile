@@ -1,4 +1,5 @@
-import { expect, it } from 'vitest';
+import '../../../../fixtures/support/training/graderProviders.js';
+import { expect, it, vi } from 'vitest';
 import { parseAtomicGrader, parseAtomicGraderYaml, validateAtomicTemplates } from './format.js';
 import { parseCheckTemplates } from '../decomposition/index.js';
 
@@ -53,4 +54,16 @@ it.each([['score', 10], ['choice', 255]] as const)('checks the TypeSafe %s optio
   }] });
   expect(() => validateAtomicTemplates(grader, templates(limit))).not.toThrow();
   expect(() => validateAtomicTemplates(grader, templates(limit + 1))).toThrow('TypeSafe');
+});
+
+it.each(['claude', 'unknown'])('preserves unsupported atomic extractor diagnostics for %s after composition', provider => {
+  expect(() => parseAtomicGrader({ ...declaration, extractor: { ...declaration.extractor, provider } }))
+    .toThrow(new Error('$.extractor.provider: Unsupported atomic extractor'));
+});
+
+it('surfaces missing provider composition from public atomic grader parsing', async () => {
+  vi.resetModules();
+  const uncomposed = await import('./format.js');
+  expect(() => uncomposed.parseAtomicGrader(declaration))
+    .toThrow(new Error('Grader provider registry is not configured'));
 });

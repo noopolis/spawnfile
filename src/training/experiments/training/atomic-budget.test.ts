@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it, vi } from 'vitest';
 import { parseAtomicGrader, type AtomicRuntime } from '../../graders/atomic/index.js';
 import { parseCheckTemplates, parseDecomposition } from '../../graders/decomposition/index.js';

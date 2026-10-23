@@ -54,7 +54,8 @@ export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
 const DAIMON_MAX_CONFIG_BYTES = 1_048_576;
 const DAIMON_MAX_INSTRUCTION_BYTES = 16_384;
 const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 16_384;
-export const DAIMON_ENGINES = ["agy", "codex", "grok"] as const;
+import { DAIMON_ENGINES } from "./engines.js";
+export { DAIMON_ENGINES } from "./engines.js";
 type DaimonEngine = typeof DAIMON_ENGINES[number];
 
 const normalizeSchedule = (node: ResolvedAgentNode): Record<string, unknown> | undefined => {

@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest';
-import type { GrokInferenceGrantAuthority, SubjectAdapter } from '../contracts/index.js';
+import type { InferenceGrantAuthority as GrokInferenceGrantAuthority, SubjectAdapter } from '../contracts/index.js';
 import { resolveSubjectAdapter, subjectHostInference, type SubjectAdapterRegistry } from './registry.js';
 const fixtureAdapter = (): SubjectAdapter => ({ id: 'fixture' } as SubjectAdapter);
 

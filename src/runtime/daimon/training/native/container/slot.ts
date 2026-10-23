@@ -1,4 +1,4 @@
-import type { TrialSlot } from '../../../../../training/contracts/trial-slot.js';
+import type { TrialSlot } from '../../../../../training/index.js';
 import { isGrokLaunch, type NativeLaunch } from '../receipt/index.js';
 
 /** Verify the project-written receipt before copying it to the owned child. */

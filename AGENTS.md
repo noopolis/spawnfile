@@ -72,3 +72,7 @@ gate was green — CI found them the first time it ran over the code.
   the work progressed.
 - Merge with a merge commit rather than a squash when the individual commits
   carry meaning; squashing collapses that history irreversibly.
+
+## Training ownership
+
+The training core accepts provider descriptors and subject services from runtime composition. Keep engine implementations, authentication and broker state under their runtime owners. Runtime training imports use contracts or the core public barrel; non-test core files cannot name CLI engines. Preserve historical YAML provider IDs and frozen measurement identities.

@@ -253,8 +253,8 @@ export interface SubjectTurnResult {
   blocked?: 'awaiting-external-input';
   /**
    * The subject's execution closed because it exhausted a budget it declared
-   * itself, sealed by the runtime's declared-limit stop contract (Daimon's
-   * `limit_reason`) on the failed execution's own usage row. The turn is still
+   * itself, sealed by the runtime's declared-limit stop contract on the failed
+   * execution's own usage row. The turn is still
    * `failed`; an adapter sets it only for a closed, bound execution, so an
    * unconfirmed closure, crash, credential fault, refusal or unknown stop never
    * carries it.
@@ -283,7 +283,7 @@ export interface InferenceRequest {
   system?: string;
   /** Optional JSON Schema; supported providers constrain and validate the completed text. */
   responseSchema?: Readonly<Record<string, unknown>>;
-  /** Codex/Claude extraction compatibility: permit one surrounding json fence before schema validation. */
+  /** Subscription extraction compatibility: permit one surrounding json fence before schema validation. */
   responseJsonFence?: boolean;
   /** Trusted evaluator-only sink; never serialize into prompts, results or checkpoints. */
   observeFailure?: (observation: { attempt: Readonly<InferenceAttempt>; fallbackOf?: string; diagnostic: InferenceDiagnostic }) => void | Promise<void>;

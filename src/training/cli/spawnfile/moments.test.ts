@@ -3,14 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { main } from '../commands.js';
-import { fixtureAdapter } from '../fixture.js';
+import { fixtureAdapter } from '../../../../fixtures/support/training/cli-fixture.js';
 import { openExperimentStore } from '../../storage/index.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import { snapshotCandidate } from '../../candidates/index.js';
 import type { NativePreparationContext } from '../../experiments/index.js';
 import type { SpawnfileCliIntegration } from '../types.js';
-import { contextFixture } from './fixture.js';
+import { contextFixture } from '../../../../fixtures/support/training/spawnfile-fixture.js';
 import { spawnfileEnvironment, type TrainingMomentCase, type TrainingMomentPreparation } from './moments.js';
 
 const roots: string[] = [];

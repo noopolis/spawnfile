@@ -1,16 +1,16 @@
 import * as inferenceFactory from './inference.js';
-import * as providerPolicies from '../../contracts/inference-policy.js';
+import * as providerPolicies from '../../providers/index.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { chmod, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
-import { parseDatasetYaml } from '../../cases/index.js';
+import { parseDatasetYaml } from '../../../../fixtures/support/training/providers.js';
 import { openExperimentStore } from '../../storage/index.js';
-import { cliFixture } from '../fixture.js';
+import { cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import { parseArguments, type CliArguments } from '../arguments.js';
-import { authoredArguments } from './configuration.js';
+import { authoredArguments } from '../../../../fixtures/support/training/providers.js';
 import { prepareJudgeCaches } from './cache.js';
 
 const roots: string[] = [];
@@ -145,8 +145,8 @@ it.each(['grok-subscription', 'claude-subscription'] as const)('misses persisten
   await evaluate(); await evaluate(); expect(generations).toBe(2);
   const original = providerPolicies.trainingRoutePolicies;
   let changed: 'grok-subscription' | 'claude-subscription' = 'grok-subscription';
-  vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((configuration, route) =>
-    original(configuration, route).map(value => value.provider === changed ? { ...value, policy: `${value.policy}:changed` } : value));
+  vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((...args) =>
+    original(...args).map(value => value.provider === changed ? { ...value, policy: `${value.policy}:changed` } : value));
   await evaluate(); await evaluate(); expect(generations).toBe(3);
   changed = 'claude-subscription';
   await evaluate(); await evaluate(); expect(generations).toBe(4);

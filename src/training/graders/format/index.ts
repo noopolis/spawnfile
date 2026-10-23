@@ -4,7 +4,7 @@ export { optionsFor, expectedOptions, questionDefinitionDigest, applicabilityQue
 export type { Question, GateQuestion, DecisionQuestion, Option } from './questions.js';
 export { labelsSchema, parseLabels, parseLabelsYaml, loadLabels } from './labels.js';
 export type { Labels, Label, Labeler } from './labels.js';
-export { stableDigest, sha256, parseYaml, parseSchema, identifier, probability } from './common.js';
+export { stableDigest, sha256, parseYaml, parseSchema, identifier, probability, provider } from './common.js';
 export { parseLabelImport } from './label-import.js';
 export type { LabelImport } from './label-import.js';
 export { rowsSchema, sentenceCitationPolicy } from './rows.js';

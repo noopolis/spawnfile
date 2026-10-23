@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { councilPrompt, decodeCouncilAnswers } from './protocol.js';
 import type { CheckInstance } from '../decomposition/index.js';

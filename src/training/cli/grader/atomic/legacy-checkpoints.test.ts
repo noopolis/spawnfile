@@ -1,3 +1,4 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -6,7 +7,7 @@ import { runDecompose } from './decompose.js';
 import { runTraps } from './traps.js';
 import { runReference } from './reference.js';
 import { readInputs, readTemplates, readDecompositions } from './files.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 
 // Independent pre-rename formulas copied from origin/main (624a972).
 // Do not import the frozen domains: these fixtures must catch a domain mutation.

@@ -25,11 +25,18 @@ function generationResult(inference: InferenceResult) {
 
 /** Protected host journal. Completed callbacks replay; incomplete callbacks consume a new attempt. */
 export class OptimizationCheckpoint {
+  private readonly path: string;
+  private readonly identity: string;
+  private readonly lineage?: { fork: NonNullable<DspyOptimizationOptions['checkpoint']>['fork']; childId: string };
   private readonly mutations = new MutationQueue();
   private history: CallbackEntry[] = [];
   get entries(): readonly CallbackEntry[] { return structuredClone(this.history); }
-  private constructor(private readonly path: string, private readonly identity: string,
-    private readonly lineage?: { fork: NonNullable<DspyOptimizationOptions['checkpoint']>['fork']; childId: string }) {}
+  private constructor(path: string, identity: string,
+    lineage?: { fork: NonNullable<DspyOptimizationOptions['checkpoint']>['fork']; childId: string }) {
+    this.path = path;
+    this.identity = identity;
+    this.lineage = lineage;
+  }
 
   static async open(start: DspyStart, options: NonNullable<DspyOptimizationOptions['checkpoint']>) {
     await mkdir(options.directory, { recursive: true, mode: 0o700 });

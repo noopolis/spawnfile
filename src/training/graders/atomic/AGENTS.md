@@ -12,7 +12,7 @@ Keep full receipts protected and feedback bounded by count, unit characters and 
 Run adjacent fake-backend tests and mutation checks; no live JEV in tests.
 Validated condition/location exclusions are inapplicable, not missing families.
 Bind authored obligation kinds into extraction and every evidence lookup.
-Preflight the selected backends: Codex effort is low/medium/high/xhigh; TypeSafe
+Preflight the selected backends: Extractor effort is low/medium/high/xhigh; TypeSafe
 allows at most 10 Score, 255 Choice and 2 Noul options. Reject before extraction.
 
 Spend-cap admission and typed request rejection override either missing policy: error, null score and typed failure. All thrown extraction/backend failures also return error with null score. Retain each transport outcome/reason and partial receipts. Replay rejects admission failures presented as behavioral scores.

@@ -1,5 +1,5 @@
 export { prepareNativeSubject } from './subject.js';
-export { createExperimentSlotFreshness, experimentSlotFreshnessFile } from '../../../../../training/subjects/index.js';
+export { createExperimentSlotFreshness, experimentSlotFreshnessFile } from '../../services/index.js';
 export { bindTrialPathsToSlot, nativeSubjectScratch, nativeTrialInputsRoot } from './layout.js';
 export type { NativeScratchName, NativeSubjectLayout } from './layout.js';
 export { assertNativeEngineConfig } from './engine-config.js';

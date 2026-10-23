@@ -1,7 +1,7 @@
 import { readTrainingBytes } from '../platform/index.js';
 import { realpathSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { parseDatasetYaml, resolveDataset, resolveDatasetForCost } from '../cases/index.js';
+import { parseDatasetYaml, resolveDataset, resolveDatasetForCost, trainingJudgeVersions } from '../cases/index.js';
 import type { CostDataset } from '../cases/index.js';
 import type { CheckNode, ResolvedDataset, ResolutionOptions } from '../contracts/index.js';
 import { buildExecutableGradingRuntime, type GraderDependencies } from './grader/index.js';
@@ -39,10 +39,20 @@ export class CliDatasets {
   private readonly loaded = new Map<string, ResolvedDataset>();
   readonly protectedDirectories = new Set<string>();
 
-  constructor(private readonly judges: Readonly<Record<string, string>>, private readonly cwd: string,
-    private readonly preparation: Pick<ResolutionOptions, 'registry' | 'unlockedSetupPaths' | 'subject' | 'inferenceExecutionIdentity'> = {},
-    private readonly versions: Record<string, { version: string }> = {},
-    private readonly frozen?: { path: string; sourceDigest: string }) {}
+  private readonly judges: Readonly<Record<string, string>>;
+  private readonly cwd: string;
+  private readonly preparation: Pick<ResolutionOptions, 'registry' | 'unlockedSetupPaths' | 'subject' | 'inferenceExecutionIdentity' | 'inferenceProviders'>;
+  private readonly versions: Record<string, { version: string }>;
+  private readonly frozen?: { path: string; sourceDigest: string };
+  constructor(judges: Readonly<Record<string, string>>, cwd: string,
+    preparation: Pick<ResolutionOptions, 'registry' | 'unlockedSetupPaths' | 'subject' | 'inferenceExecutionIdentity' | 'inferenceProviders'> = {},
+    versions: Record<string, { version: string }> = {}, frozen?: { path: string; sourceDigest: string }) {
+    this.judges = judges;
+    this.cwd = cwd;
+    this.preparation = preparation;
+    this.versions = versions;
+    this.frozen = frozen;
+  }
 
   load(file: string, groups: boolean): ResolvedDataset {
     const dataset = this.resolve(file, groups, resolveDataset);
@@ -60,8 +70,8 @@ export class CliDatasets {
         const grader = await loadGrader(filename);
         // Parsing requires an explicit spend cap for identity TypeSafe graders.
         if (grader.calibration === 'identity' && grader.model?.backend === 'typesafe') {
-          assertModelRequestAdmission('typesafe', 'grader decisions', { purpose: 'decisions', model: grader.model.name });
-        } else assertModelRequestAdmission('native-grader', 'grader');
+          assertModelRequestAdmission('typesafe', 'grader decisions', { purpose: 'decisions', model: grader.model.name }, this.preparation.inferenceProviders);
+        } else assertModelRequestAdmission('native-grader', 'grader', undefined, this.preparation.inferenceProviders);
       }
       const runtime = graders[filename] ?? await buildExecutableGradingRuntime(filename, dependencies);
       if (runtime.definitionDigest !== binding.definitionDigest || ('kind' in runtime ? runtime.templatesDigest !== binding.templatesDigest || binding.kind !== 'atomic' : runtime.calibrationDigest !== binding.calibrationDigest)) {
@@ -85,14 +95,14 @@ export class CliDatasets {
     const path = resolve(this.cwd, file);
     const root = realpathSync(dirname(path));
     this.protectedDirectories.add(root);
-    const document = parseDatasetYaml(readCliText(path, 2_000_000), { sourceName: path });
+    const document = parseDatasetYaml(readCliText(path, 2_000_000), { sourceName: path, inferenceProviders: this.preparation.inferenceProviders });
     if (this.frozen?.path === path && this.frozen.sourceDigest !== document.sourceDigest) {
       throw new Error('Dataset changed after authored configuration was selected');
     }
     return resolver(document, {
       requireGroups: groups,
       ...this.preparation,
-      registry: { ...this.preparation.registry, judges: Object.fromEntries(Object.keys(this.judges).map((name) => [name, this.versions[name] ?? { version: 'cli.claude-subscription.v1' }])) },
+      registry: { ...this.preparation.registry, judges: Object.fromEntries(Object.keys(this.judges).map((name) => [name, this.versions[name] ?? trainingJudgeVersions(undefined, this.preparation.inferenceExecutionIdentity, [name], this.preparation.inferenceProviders)[name]!])) },
       readCriterionFile: (selected) => {
         // Dataset resolution has already validated a contained relative selector.
         const canonical = realpathSync(resolve(root, selected));

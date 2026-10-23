@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -6,7 +7,7 @@ import { prepareCliInputs, prepareNative } from './native.js';
 import { parseArguments } from './arguments.js';
 import { authoredArguments } from './training/index.js';
 import { CliDatasets } from './datasets.js';
-import { cliFixture } from './fixture.js';
+import { cliFixture } from '../../../fixtures/support/training/cli-fixture.js';
 import { createCalibrationIdentity, gradeOutput, loadGrader, loadLabels, sha256, stableDigest } from '../graders/index.js';
 import { DECISION_PROMPT_VERSION } from '../inference/decision/index.js';
 import type { CheckNode, InferenceProvider } from '../contracts/index.js';

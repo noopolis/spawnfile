@@ -1,27 +1,29 @@
-import { COUNCIL_SEED } from '../../contracts/index.js';
+import { COUNCIL_WINDOW_OPTION_KEY } from '../../../shared/trainingLegacy/index.js';
+import { COUNCIL_SEED, graderProviderRegistry } from '../../contracts/index.js';
 import type { InferenceFailureKind } from '../../contracts/index.js';
 import { randomBytes } from 'node:crypto';
 import { stableDigest } from '../format/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
-import { averageAnswers, councilContentDigest, defaultGrokWindow, grokWindowOpen, reusableCouncil } from './policy.js';
+import { averageAnswers, councilContentDigest, reusableCouncil } from './policy.js';
 import { councilPrompt, councilPromptVersion, decodeCouncilAnswers } from './protocol.js';
 import type { CouncilOptions, CouncilOutput, CouncilTeacher, ReferenceCall, TeacherAnswer } from './types.js';
 
 export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput> {
   const { instances, teachers, providers } = options;
   if (new Set(teachers.map(t => t.id)).size !== teachers.length || !teachers.length) throw new Error('Council teacher IDs must be unique and nonempty');
-  if (!['codex', 'claude'].every(provider => teachers.some(teacher => teacher.provider === provider))) {
-    throw new Error('Council requires independent codex and claude teachers');
+  const policy = graderProviderRegistry().council;
+  if (!policy.requiredProviders.every(provider => teachers.some(teacher => teacher.provider === provider))) {
+    throw new Error(policy.requiredMessage);
   }
   if (new Set(instances.map(i => i.id)).size !== instances.length) throw new Error('Duplicate check IDs');
   if (options.timeoutMs !== undefined && (!Number.isInteger(options.timeoutMs) || options.timeoutMs <= 0)) throw new Error('Invalid council timeout');
   const batchSize = options.batchSize ?? 40;
   if (!Number.isSafeInteger(batchSize) || batchSize < 1) throw new Error('Invalid council batch size');
-  const window = options.grokWindow ?? defaultGrokWindow;
+  const window = options[COUNCIL_WINDOW_OPTION_KEY] ?? policy.defaultWindow;
   const now = options.now ?? new Date();
-  const windowOpen = grokWindowOpen(now, window);
-  const skipped = teachers.filter(t => t.provider === 'grok' && !windowOpen)
-    .map(t => ({ teacher: t.id, reason: `Outside Grok window ${window.start}-${window.end} ${window.timeZone ?? 'Europe/Berlin'}` }));
+  const windowOpen = policy.windowOpen(now, window);
+  const skipped = teachers.filter(t => t.provider === policy.limitedProvider && !windowOpen)
+    .map(t => ({ teacher: t.id, reason: policy.outsideWindow(window) }));
   const active = teachers.filter(t => !skipped.some(s => s.teacher === t.id));
   const adjudicator = options.adjudicator ? active.find(t => t.id === options.adjudicator) : active[0];
   if (!adjudicator) throw new Error('Adjudicator is not an active teacher');
@@ -60,9 +62,9 @@ export async function runCouncil(options: CouncilOptions): Promise<CouncilOutput
     const id = stableDigest([identity, teacher.id, prompt.digest, batch.map(instance => ({ id: instance.id, unit: instance.unit_id, template: instance.template_id, state: instance.digest })), run ?? null]);
     const existing = calls.findLast(call => call.id === id && ['received', 'completed'].includes(call.outcome));
     if (existing && existing.outcome !== 'received') return existing.answers ?? null;
-    if (!existing && teacher.provider === 'grok' && !grokWindowOpen(options.now ?? new Date(), window)) {
+    if (!existing && teacher.provider === policy.limitedProvider && !policy.windowOpen(options.now ?? new Date(), window)) {
       if (!skipped.some(item => item.teacher === teacher.id)) skipped.push({ teacher: teacher.id,
-        reason: `Grok window closed before ${competing ? 'adjudication' : 'teacher'} call` });
+        reason: policy.closedWindow(competing ? 'adjudication' : 'teacher') });
       return null;
     }
     const start = performance.now();

@@ -40,3 +40,7 @@ unit.source_snapshots and unit.pair.source_snapshots select caller-validated
 context.source_snapshots by their cites row-ID arrays. Every derived cited row
 must be covered; empty citation sets, absent sources and incomplete pair coverage
 remain missing. Unrelated sources never enter these scoped projections.
+
+Provider IDs, teacher factories, extraction roles, provenance policies and council
+availability enter through the contracts grader-provider registry. Composition installs
+its immutable descriptors before parsing; graders never select engine implementations.

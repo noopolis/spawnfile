@@ -1,10 +1,10 @@
 /** Authored controls live in the dataset, never in the subject workspace. */
 export interface TrainingModel {
-  /** `grok-broker`: short Daimon broker inference grants (training containers); never a desktop login. */
-  provider: 'claude-subscription' | 'codex-subscription' | 'grok-subscription' | 'grok-broker' | 'ollama';
+  /** Registered inference provider identifier, supplied by host composition. */
+  provider: string;
   model: string;
   endpoint?: string;
-  /** Grok only. `grok-broker` requires it and accepts low, medium or high. */
+  /** Provider-specific reasoning control; validated by its descriptor. */
   reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh';
   /** Native Ollama controls; other providers must reject these fields. */
   think?: boolean;

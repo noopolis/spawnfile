@@ -35,3 +35,6 @@ export function normalizedTrainingEnvironment(env: NodeJS.ProcessEnv = process.e
   }
   return normalized;
 }
+
+/** Historical credential exclusion retained byte-for-byte for subscription isolation. */
+export const LEGACY_SUBSCRIPTION_SECRET_ENVIRONMENT = /^(ANTHROPIC_(API_KEY|AUTH_TOKEN|BASE_URL|CUSTOM_HEADERS|PROFILE|FEDERATION_.*|ORGANIZATION_ID|IDENTITY_TOKEN_FILE)|CLAUDE_CODE_(OAUTH_TOKEN.*|USE_.*|API_KEY_HELPER.*)|TYPESAFE_API_KEY|OPENAI_API_KEY|CODEX_API_KEY)$/u;

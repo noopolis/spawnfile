@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { cliFixture, datasetText, fixtureAdapter } from './fixture.js';
+import { cliFixture, datasetText, fixtureAdapter } from '../../../fixtures/support/training/cli-fixture.js';
 import { main } from './commands.js';
 import { loadInvocationViewer, startLiveViewer } from './viewer.js';
 import { projectTrials } from '../viewer/index.js';

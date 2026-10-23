@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { access, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main } from './commands.js';
-import { cliFixture } from './fixture.js';
+import { cliFixture } from '../../../fixtures/support/training/cli-fixture.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

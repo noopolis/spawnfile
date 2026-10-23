@@ -1,4 +1,4 @@
-import { canonicalWireId } from '../../../../../training/contracts/index.js';
+import { canonicalWireId } from '../../../../../training/index.js';
 import { join } from 'node:path';
 import { parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import type { DockerCommand } from './docker.js';

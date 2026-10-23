@@ -6,7 +6,11 @@ export interface DecisionHttpOptions {
 
 /** A rejected request is missing evidence; canaries retain its declared identity. */
 export class DecisionRequestRejected extends Error {
-  constructor(message: string, readonly fingerprints: Record<string, string> = {}) { super(message); }
+  readonly fingerprints: Record<string, string>;
+  constructor(message: string, fingerprints: Record<string, string> = {}) {
+    super(message);
+    this.fingerprints = fingerprints;
+  }
 }
 
 async function rejection(response: Response): Promise<DecisionRequestRejected> {

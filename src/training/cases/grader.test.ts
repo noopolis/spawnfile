@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';

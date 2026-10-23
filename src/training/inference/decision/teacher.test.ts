@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it, vi } from 'vitest';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import type { DecisionRequest } from '../../contracts/grading.js';

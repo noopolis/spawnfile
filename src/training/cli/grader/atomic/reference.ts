@@ -1,3 +1,4 @@
+import { COUNCIL_WINDOW_OPTION_KEY, COUNCIL_WINDOW_CONFIG_KEY } from '../../../../shared/trainingLegacy/index.js';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stableDigest } from '../../../graders/index.js';
@@ -47,7 +48,7 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
     const filename = join(checkpoints, `${stableDigest(key)}.json`);
     const previous = await readOptional<CouncilOutput>(filename);
     outputs[key] = await runCouncil({ outputDigest, instances, teachers, providers, previous,
-      batchSize: options.batchSize, now: options.now, grokWindow: templates.grok_window, timeoutMs: options.timeoutMs, signal: options.signal,
+      batchSize: options.batchSize, now: options.now, [COUNCIL_WINDOW_OPTION_KEY]: templates[COUNCIL_WINDOW_CONFIG_KEY], timeoutMs: options.timeoutMs, signal: options.signal,
       onCheckpoint: output => atomicWrite(filename, output) });
   };
   await workers(inputs, options.concurrency ?? 2, async input => {

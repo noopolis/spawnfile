@@ -3,9 +3,10 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { parseDatasetYaml } from '../../cases/index.js';
-import type { GrokInferenceGrantAuthority, InferenceProvider, TrainingModel } from '../../contracts/index.js';
-import { createTrainingInference } from './inference.js';
+import { parseDatasetYaml } from '../../../../fixtures/support/training/providers.js';
+import type { InferenceProvider, TrainingModel } from '../../contracts/index.js';
+import type { GrokInferenceGrantAuthority } from '../../../../fixtures/support/training/providers.js';
+import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
 
 const yaml = `
 schema: spawnfile.training.dataset.v1
@@ -82,7 +83,7 @@ function build(fake = fakeGrantAuthority(), noAuthority = false) {
     capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
     generate: async () => { claude++; return { text: 'claude', model: 'claude', route: 'claude-subscription', usage: null }; } };
   const training = parseDatasetYaml(yaml).dataset.training;
-  const configured = createTrainingInference({ command: 'train', flags: {}, training }, { modelInference, ...(noAuthority ? {} : { grokGrantAuthority: async () => fake.authority }) },
+  const configured = createTrainingInference({ command: 'train', flags: {}, training }, { modelInference, ...(noAuthority ? {} : { grantAuthority: async () => fake.authority }) },
     60_000, { prose: 'grok-4.6' }, { prose: 0 });
   return { configured, fake, claude: () => claude };
 }

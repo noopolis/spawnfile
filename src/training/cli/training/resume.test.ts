@@ -1,8 +1,8 @@
-import * as providerPolicies from '../../contracts/inference-policy.js';
+import * as providerPolicies from '../../providers/index.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { cliFixture, datasetText } from '../fixture.js';
+import { cliFixture, datasetText } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import { loadInvocationViewer } from '../viewer.js';
 import type { InvocationIndex } from '../types.js';
@@ -57,8 +57,8 @@ training:
   expect(f.observedInstructions).toHaveLength(1); expect(optimizerCalls).toBe(0);
   commandPolicy.mockRestore(); f.stderr.length = 0;
   const originalRoute = providerPolicies.trainingRoutePolicies;
-  const optimizerPolicy = vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((config, route) =>
-    originalRoute(config, route).map(value => ({ ...value, policy: `${value.policy}:changed` })));
+  const optimizerPolicy = vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((...args) =>
+    originalRoute(...args).map(value => ({ ...value, policy: `${value.policy}:changed` })));
   expect(await main([...argv, '--resume'], f.io, f.dependencies)).not.toBe(0);
   const failedStore = await openExperimentStore(join(f.root, 'out'));
   const failedIndex = JSON.parse(await readFile(join(f.root, 'out/invocation.json'), 'utf8'));

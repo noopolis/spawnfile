@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { parseArguments } from '../arguments.js';
 import type { SpawnfileCliIntegration } from '../types.js';
-import { contextFixture } from './fixture.js';
-import { cliFixture, datasetText } from '../fixture.js';
+import { contextFixture } from '../../../../fixtures/support/training/spawnfile-fixture.js';
+import { cliFixture, datasetText } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import { authoredArguments, populationSearch } from '../training/index.js';
 

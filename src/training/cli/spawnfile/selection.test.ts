@@ -3,9 +3,9 @@ import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main } from '../commands.js';
 import { parseArguments } from '../arguments.js';
-import { datasetText } from '../fixture.js';
+import { datasetText } from '../../../../fixtures/support/training/cli-fixture.js';
 import type { CliIO } from '../types.js';
-import { contextFixture } from './fixture.js';
+import { contextFixture } from '../../../../fixtures/support/training/spawnfile-fixture.js';
 import { prepareSpawnfileInputs } from './selection.js';
 import * as candidates from '../../candidates/index.js';
 

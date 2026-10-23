@@ -97,3 +97,10 @@ describe("runtime registry", () => {
     ]);
   });
 });
+
+
+it('training entry declares its adapter and the runtime engine vocabulary', () => {
+  const [entry] = parseRuntimeRegistry('runtimes:\n  daimon:\n    default_branch: main\n    ref: v1\n    remote: local\n    status: active\n');
+  expect(entry!.training?.adapterId).toBe('daimon-native');
+  expect(entry!.training?.engines).toEqual(['agy', 'codex', 'grok']);
+});

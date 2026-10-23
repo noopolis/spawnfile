@@ -1,8 +1,10 @@
+import { COUNCIL_WINDOW_OPTION_KEY } from '../../../shared/trainingLegacy/index.js';
+import type { ProviderAvailabilityWindow } from '../../contracts/index.js';
 import type { InferenceProvider, Usage, InferenceAttempt, InferenceFailureKind, InferenceDiagnostic } from '../../contracts/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
 
 export interface CouncilTeacher { id: string; provider: string; model: string; effort?: string }
-export interface GrokWindow { start: string; end: string; timeZone?: string }
+export type AvailabilityWindow = ProviderAvailabilityWindow;
 export type TeacherAnswer = ({ answer: string; status?: never } |
   { answer: null; status: 'missing' | 'abstain' | 'uncertain' }) & { p?: number; span?: string };
 export interface ReferenceCall {
@@ -30,7 +32,7 @@ export interface CouncilOutput {
 export interface CouncilOptions {
   outputDigest: string; instances: CheckInstance[]; teachers: CouncilTeacher[];
   providers: Record<string, InferenceProvider>; adjudicator?: string;
-  grokWindow?: GrokWindow; now?: Date; seed?: string; timeoutMs?: number; batchSize?: number;
+  [COUNCIL_WINDOW_OPTION_KEY]?: AvailabilityWindow; now?: Date; seed?: string; timeoutMs?: number; batchSize?: number;
   signal?: AbortSignal; previous?: CouncilOutput; onCheckpoint?: (output: CouncilOutput) => void | Promise<void>;
 }
 export interface TrapAssessment {

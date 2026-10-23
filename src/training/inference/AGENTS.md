@@ -33,7 +33,7 @@ generation and the entire completed JSON response afterward. Support synchronous
 draft-07 object schemas with local references, no external fetching or custom
 formats, at most 64 KiB. Reject non-finite values and duplicate response keys.
 Providers retain measured usage and model identity when rejecting a completion.
-Codex/Claude extraction may explicitly opt into responseJsonFence: accept only one
+Subscription extraction may explicitly opt into responseJsonFence: accept only one
 surrounding json fence before the same schema/duplicate-key validation. Default
 requests remain strict. Native structured_output, when present, stays authoritative.
 
@@ -52,6 +52,6 @@ the routed wrapper carries both through so a judge classifies from typed evidenc
 rather than reconstructing one from `kind` or from prose.
 
 `auth-stale` means a shared credential authority (`capabilities.credentialAuthority`,
-e.g. one Daimon broker realm) is stale. Routing records the attempt, never retries a
+e.g. one broker realm) is stale. Routing records the attempt, never retries a
 route on that authority and may continue to an authored route on another authority.
 

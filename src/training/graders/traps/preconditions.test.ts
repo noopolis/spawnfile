@@ -1,6 +1,7 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { generateTraps as generate, validateTrap } from './index.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../fixtures/support/training/graderTrapFixtures.js';
 function generateTraps(...[templates, document, inputs, options]: Parameters<typeof generate>) {
   const baseFinals = Object.fromEntries([...document.units, ...(document.audit?.missed ?? [])].flatMap(unit =>
     templates.templates.filter(template => template.applies_to === unit.kind).map(template => [`${template.id}@${unit.id}`, template.expected[0]!] )));

@@ -30,10 +30,10 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   }
   if (args.command === 'validate') {
     const dataset = new CliDatasets(pairs(args.flags.judge ?? []), io.cwd, {
-      inferenceExecutionIdentity: dependencies.spawnfile?.inferenceExecutionIdentity,
+      inferenceExecutionIdentity: dependencies.spawnfile?.inferenceExecutionIdentity, inferenceProviders: dependencies.inferenceProviders,
       registry: { preparations: dependencies.spawnfile?.preparations },
       unlockedSetupPaths: dependencies.spawnfile?.unlockedSetupPaths,
-    }, judgeVersions(args.training, dependencies.spawnfile?.inferenceExecutionIdentity, Object.keys(pairs(args.flags.judge ?? []))), args.frozenDataset).load(args.dataset!, false);
+    }, judgeVersions(args.training, dependencies.spawnfile?.inferenceExecutionIdentity, Object.keys(pairs(args.flags.judge ?? [])), dependencies.inferenceProviders), args.frozenDataset).load(args.dataset!, false);
     io.stdout(`${JSON.stringify({ status: 'valid', datasetId: dataset.id, records: dataset.records.length,
       sourceDigest: dataset.sourceDigest, planDigest: dataset.sharedPlanDigest })}\n`);
     return 0;
@@ -62,7 +62,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const costConfig = readCostConfig(args, io);
   const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, validation, test,
     subjectModel: inputs.model, ...(comparison ? {mode:'comparison' as const} : {optimizerModel: optimizerModel!}), validationGroups: args.flags['validation-group'],
-    ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs),
+    ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs, dependencies.inferenceProviders),
     maxTrials: inputs.maxTrials, maxProposals, testRepeats, ...costConfig });
   const native = await prepareNative(args, io, dependencies, trialTimeoutMs, inputs, inferenceMs);
   // Completion, failure and SIGINT/SIGTERM (launch aborts `signal`) all release inference grants here.
@@ -201,10 +201,10 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
   try {
-    const authored = authoredArguments(parseArguments(argv), io);
+    const authored = authoredArguments(parseArguments(argv), io, dependencies.inferenceProviders);
     const context = authored.command === 'train' && (authored.flags['spawnfile-context'] || dependencies.spawnfileContext !== undefined) && dependencies.spawnfile?.trainingOptimizer
       ? resolveSpawnfileContext(authored.flags['spawnfile-context'] ? resolve(io.cwd, one(authored, 'spawnfile-context')) : undefined, dependencies.spawnfileContext) : undefined;
-    const args = await resolveTrainingOptimizer(authored, dependencies.spawnfile, context);
+    const args = await resolveTrainingOptimizer(authored, dependencies.spawnfile, context, dependencies.inferenceProviders);
     if (args.command === 'help') { io.stdout(helpText); return 0; }
     const deadlines = commandDeadlines(args);
     const timeoutMs = deadlines.experimentMs;

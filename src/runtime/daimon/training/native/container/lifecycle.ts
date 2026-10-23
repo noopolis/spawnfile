@@ -1,7 +1,7 @@
-import { canonicalWireId } from '../../../../../training/contracts/index.js';
+import { canonicalWireId } from '../../../../../training/index.js';
 import { randomUUID } from 'node:crypto';
 import { verifyNativeSandbox } from './preflight.js';
-import type { StopReceipt } from '../../../../../training/contracts/execution.js';
+import type { StopReceipt } from '../../../../../training/index.js';
 import { createContainerArguments, inspectOwned, workerRequest, type DockerCommand } from './docker.js';
 import type { VerifiedNativeLaunch } from '../receipt/index.js';
 import type { NativeStopEvidence } from '../worker/index.js';

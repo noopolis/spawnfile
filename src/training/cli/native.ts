@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../contracts/index.js';
 import { judgeVersions, createTrainingInference, prepareJudgeCaches } from './training/index.js';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -10,7 +11,6 @@ import type { CliDependencies, CliIO } from './types.js';
 import { spawnfileEnvironment } from './spawnfile/index.js';
 import { prepareSpawnfileInputs } from './spawnfile/index.js';
 import type { StoredTrialOptions } from '../experiments/index.js';
-import { createExperimentSlotFreshness } from '../subjects/index.js';
 
 export function resourceMappings(args: CliArguments): ResourceMapping[] {
   const instructions = args.flags.instructions ?? [];
@@ -29,7 +29,7 @@ export function resourceMappings(args: CliArguments): ResourceMapping[] {
 }
 
 /** File selection only; deliberately has no runtime or inference construction. */
-export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string, subjects?: CliDependencies['subjects']) {
+export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string, subjects?: CliDependencies['subjects'], inferenceProviders?: InferenceProviderRegistry) {
   const runtime = one(args, 'runtime');
   if (!runtime || !subjects || !Object.hasOwn(subjects, runtime)) throw new Error(`Supported native runtimes: ${Object.keys(subjects ?? {}).join(', ') || 'none registered'}`);
   const model = one(args, 'model');
@@ -37,7 +37,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
   const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/training' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
   const judges = pairs(args.flags.judge ?? []);
-  const datasets = new CliDatasets(judges, io.cwd, { inferenceExecutionIdentity: executionIdentity }, judgeVersions(args.training, executionIdentity, Object.keys(judges)), args.frozenDataset);
+  const datasets = new CliDatasets(judges, io.cwd, { inferenceExecutionIdentity: executionIdentity, inferenceProviders }, judgeVersions(args.training, executionIdentity, Object.keys(judges), inferenceProviders), args.frozenDataset);
   return { context: undefined, readiness: undefined, runtime, model, sourceRoot, out, candidate, judges, datasets,
     citationRepairs: judgeCitationRepairs(args, judges),
     maxTrials: count(args, 'max-trials', 20, 10000),
@@ -47,7 +47,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
 
 export async function prepareCliInputs(args: CliArguments, io: CliIO, dependencies: CliDependencies) {
   return args.flags['spawnfile-context'] || dependencies.spawnfileContext !== undefined
-    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile, dependencies.spawnfileContext) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects);
+    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile, dependencies.spawnfileContext, dependencies.inferenceProviders) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects, dependencies.inferenceProviders);
 }
 
 export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number,
@@ -55,10 +55,10 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   const inputs = prepared ?? await prepareCliInputs(args, io, dependencies);
   const { runtime, model, judges, datasets } = inputs;
   const graders = await datasets.buildGraders(dependencies.grader, args.command === 'train');
-  // One training-owned freshness store per experiment, in its durable output state.
-  const services = inputs.context !== undefined ? { grokSlots: createExperimentSlotFreshness(inputs.out) } : undefined;
+  // Native services are created once per experiment in its durable output state.
+  const services = inputs.context !== undefined ? (dependencies.createTrialServices?.(inputs.out) ?? {}) : undefined;
   const adapter = inputs.context !== undefined
-    ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs, grokSlots: services!.grokSlots })
+    ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs, ...services })
     : dependencies.adapter?.(runtime, { model, timeoutMs })
       ?? resolveSubjectAdapter(dependencies.subjects, runtime, { model, timeoutMs });
   const configured = createTrainingInference(args, dependencies, inferenceTimeoutMs, judges, inputs.citationRepairs);

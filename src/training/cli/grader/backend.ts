@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../../contracts/index.js';
 import type { DecisionBackend, DecisionRequestReceipt, DecisionSpendBudget } from '../../contracts/grading.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import type { Grader } from '../../graders/index.js';
@@ -6,6 +7,7 @@ import { createOllamaDecision, createJevDecision, createTeacherDecision, createT
 import { createGraderTeacher } from './label.js';
 
 export interface GraderDependencies {
+  inferenceProviders?: InferenceProviderRegistry;
   /** Explicit transport injection for atomic graders; tests never call live JEV. */
   atomicFetch?: typeof fetch;
   decisionBudget?: DecisionSpendBudget;
@@ -19,6 +21,7 @@ export function graderBackend(grader: Grader, dependencies: GraderDependencies =
   const model = grader.model!;
   if (model.backend === 'ollama-logprobs') return createOllamaDecision({ endpoint: model.endpoint, model: model.name, contextTokens: model.context_tokens });
   if (model.backend === 'typesafe') return createTypeSafeDecision({ endpoint: model.endpoint, model: model.name,
+    ...(dependencies.inferenceProviders ? { inferenceProviders: dependencies.inferenceProviders } : {}),
     concurrency: model.concurrency, pricePerMtokUsd: model.price_per_mtok_usd, budget: dependencies.decisionBudget, maxSpendUsd: dependencies.maxSpendUsd ?? grader.max_spend_usd });
   if (model.backend !== 'teacher') return createJevDecision({ endpoint: model.endpoint });
   const teacher = grader.teachers.find(item => item.id === model.teacher)!;

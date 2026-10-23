@@ -1,6 +1,7 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { instantiateChecks, parseCheckTemplates } from './index.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../fixtures/support/training/graderDecompositionFixtures.js';
 
 function snapshotFixture(pair = false) {
   const f = fixture();

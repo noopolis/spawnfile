@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { openExperimentStore } from '../../storage/index.js';
 import { main, type InvocationIndex } from '../index.js';
-import { cliFixture, datasetText } from '../fixture.js';
+import { cliFixture, datasetText } from '../../../../fixtures/support/training/cli-fixture.js';
 import { loadInvocationViewer } from '../viewer.js';
 import type { CliFailureReport } from './failure.js';
 import * as viewer from '../../viewer/index.js';

@@ -1,7 +1,7 @@
 import { assertLeasedLaunch } from './slot.js';
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { basename, dirname, join, posix, resolve } from 'node:path';
-import type { SubjectStart } from '../../../../../training/contracts/execution.js';
+import type { SubjectStart } from '../../../../../training/index.js';
 import { grokContainerUnsupported } from './preflight.js';
 import { readGrokSlotDenials } from './grok-slot.js';
 import { containerPaths, grokSubjectRoots, isGrokLaunch, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256, within,

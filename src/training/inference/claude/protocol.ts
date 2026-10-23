@@ -1,3 +1,4 @@
+import { LEGACY_SUBSCRIPTION_SECRET_ENVIRONMENT } from '../../../shared/trainingLegacy/index.js';
 import type { InferenceFailureEvidence } from '../failure.js';
 import type { Usage } from '../../contracts/execution.js';
 
@@ -25,7 +26,7 @@ export function claudeResultUsage(value: Record<string, unknown>): Usage | null 
     const entry = usage?.[key];
     return typeof entry === 'number' && Number.isSafeInteger(entry) && entry >= 0 ? entry : null;
   };
-  // Claude input_tokens excludes cache reads/writes, unlike Codex's total input_tokens.
+  // Claude input_tokens excludes cache reads/writes, rather than reporting total input_tokens.
   const uncached = count('input_tokens');
   const reads = count('cache_read_input_tokens');
   const writes = count('cache_creation_input_tokens');
@@ -54,7 +55,7 @@ export function claudeEnvironment(): NodeJS.ProcessEnv {
   delete env['CLAUDECODE'];
   delete env['CLAUDE_CODE_SIMPLE'];
   for (const name of Object.keys(env)) {
-    if (/^(ANTHROPIC_(API_KEY|AUTH_TOKEN|BASE_URL|CUSTOM_HEADERS|PROFILE|FEDERATION_.*|ORGANIZATION_ID|IDENTITY_TOKEN_FILE)|CLAUDE_CODE_(OAUTH_TOKEN.*|USE_.*|API_KEY_HELPER.*)|TYPESAFE_API_KEY|OPENAI_API_KEY|CODEX_API_KEY)$/u.test(name)) delete env[name];
+    if (LEGACY_SUBSCRIPTION_SECRET_ENVIRONMENT.test(name)) delete env[name];
   }
   return env;
 }

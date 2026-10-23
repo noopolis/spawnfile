@@ -51,8 +51,12 @@ export interface DspyFailureEvidence {
 }
 
 export class DspyOptimizationError extends Error {
-  constructor(readonly code: string, message: string, readonly evidence: DspyFailureEvidence) {
+  readonly code: string;
+  readonly evidence: DspyFailureEvidence;
+  constructor(code: string, message: string, evidence: DspyFailureEvidence) {
     super(message);
+    this.code = code;
+    this.evidence = evidence;
     this.name = 'DspyOptimizationError';
   }
 }

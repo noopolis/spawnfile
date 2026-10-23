@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { decisionModels, graderForModel, parseGrader } from './index.js';
 
@@ -74,4 +75,9 @@ it('defaults and bounds Ollama context in legacy and named authoring only', () =
   for (const model of [local, teacher]) {
     expect(() => parseGrader(withModels([{ ...model, context_tokens: 16384 }]))).toThrow('models');
   }
+});
+
+it('preserves unsupported grader provider diagnostics after composition', () => {
+  expect(() => parseGrader({ ...base, teachers: [{ ...base.teachers[0], provider: 'unknown' }] }))
+    .toThrow(new Error('$.teachers.0.provider: Unsupported grader provider'));
 });

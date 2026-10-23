@@ -1,10 +1,11 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import type { InferenceProvider, TrainingConfiguration } from '../../contracts/index.js';
-import { parseDatasetYaml, resolveDataset, trainingJudgeVersions } from '../../cases/index.js';
+import { parseDatasetYaml, resolveDataset, trainingJudgeVersions } from '../../../../fixtures/support/training/providers.js';
 import { snapshotCandidate, deriveCandidate, deriveAuthoredCandidate } from '../../candidates/index.js';
 import { createJudgeCache, evaluateRubric } from '../../evaluation/semantic/index.js';
 import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
@@ -16,8 +17,8 @@ import type { CheckInstance } from '../../graders/decomposition/index.js';
 import { gradeOutput, decisionBackendIdentity } from '../../graders/runtime/index.js';
 import { decisionPrompt, createJevDecision, createOllamaDecision } from '../../inference/decision/index.js';
 import { TrainingCheckpoint, type TrainingOptions } from '../../experiments/training/index.js';
-import { createTrainingInference } from './inference.js';
-import { commandCheckpoint } from './checkpoint.js';
+import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
+import { commandCheckpoint } from '../../../../fixtures/support/training/providers.js';
 
 // Executed this identical fixture against origin/main (624a972c) in a detached
 // worktree. Values below are outputs of public APIs, not copies of hash formulas.

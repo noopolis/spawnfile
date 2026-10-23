@@ -1,19 +1,13 @@
+import { graderProvider } from '../../contracts/index.js';
 import { performance } from 'node:perf_hooks';
 import type { InferenceProvider, InferenceResult, InferenceFailureKind } from '../../contracts/execution.js';
-import { createClaudeInference, createCodexInference, createGrokInference, InferenceFailure } from '../../inference/index.js';
+import { InferenceFailure } from '../../inference/index.js';
 import { stableDigest, type Grader, type Label } from '../../graders/index.js';
 import { buildLabelPrompt, decodeLabelVotes, teacherPolicyDigest, type LabelGroup } from '../../graders/labeling/index.js';
 
 type Teacher = Grader['teachers'][number];
 export function createGraderTeacher(teacher: Teacher, timeoutMs?: number): InferenceProvider {
-  if (teacher.provider === 'claude') {
-    if (teacher.effort !== undefined) throw new Error('Claude teacher effort is unsupported');
-    return createClaudeInference({ timeoutMs });
-  }
-  if (teacher.provider === 'codex') return createCodexInference({ timeoutMs, reasoningEffort: teacher.effort });
-  const effort = teacher.effort;
-  if (effort !== undefined && !['low', 'medium', 'high', 'xhigh'].includes(effort)) throw new Error('Unsupported Grok teacher effort');
-  return createGrokInference({ timeoutMs, reasoningEffort: effort as 'low' | 'medium' | 'high' | 'xhigh' | undefined });
+  return graderProvider(teacher.provider).create(teacher, timeoutMs);
 }
 
 export async function labelCall(label: Label, group: LabelGroup, teacher: Teacher, provider: InferenceProvider, signal?: AbortSignal): Promise<{ calls: number; votes: number; missing: number; failures: Partial<Record<InferenceFailureKind, number>>; stopped?: InferenceFailureKind }> {

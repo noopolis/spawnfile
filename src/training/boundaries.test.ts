@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint, type Linter } from 'eslint';
@@ -22,10 +22,11 @@ vi.setConfig({ testTimeout: 15_000, hookTimeout: 15_000 });
 
 async function sourceFiles(directory: string, typescriptOnly = true): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
-  const files = await Promise.all(entries.map((entry) => {
+  const files = await Promise.all(entries.map(async (entry) => {
     const filename = path.join(directory, entry.name);
-    if (['.venv', '__pycache__', '.pytest_cache', 'node_modules', '.coverage', 'htmlcov'].includes(entry.name)) return Promise.resolve([]);
-    return entry.isDirectory() ? sourceFiles(filename, typescriptOnly) : Promise.resolve(entry.isFile() && (!typescriptOnly || /\.[cm]?tsx?$/.test(entry.name)) ? [filename] : []);
+    if (['.venv', '__pycache__', '.pytest_cache', 'node_modules', '.coverage', 'htmlcov'].includes(entry.name)) return [];
+    const kind = entry.isSymbolicLink() ? await stat(filename) : entry;
+    return kind.isDirectory() ? sourceFiles(filename, typescriptOnly) : kind.isFile() && (!typescriptOnly || /\.[cm]?tsx?$/.test(entry.name)) ? [filename] : [];
   }));
   return files.flat();
 }
@@ -88,9 +89,9 @@ function boundaryViolations(filename: string, source: string, resolve = importTa
   const relative = path.relative(root, filename).split(path.sep).join('/');
   // Only the composition entry points and their adjacent tests may reach across owners.
   const integration = /^src\/runtime\/[^/]+\/training\//u.test(relative) ||
-    /^src\/runtime\/training(?:Subjects|Cli)(?:\.test)?\.ts$/u.test(relative);
+    /^src\/runtime\/training(?:Subjects|Cli|Providers|GraderProviders)(?:\.test)?\.ts$/u.test(relative);
+  const runtimeTraining = /^src\/runtime\/[^/]+\/training\//u.test(relative);
   const forbidden = fromTraining ? [owners.runtime, owners.compiler] : integration ? [] : [owners.training];
-  if (forbidden.length === 0) return [];
   const violations: string[] = [];
   const imports = ts.preProcessFile(source, true, true);
   const parsed = relative === 'src/runtime/registry.ts' || needsSyntaxTree(source, imports, fromTraining)
@@ -103,7 +104,9 @@ function boundaryViolations(filename: string, source: string, resolve = importTa
     if (target.startsWith('file:')) target = fileURLToPath(target);
     if (!target.startsWith('.') && !path.isAbsolute(target)) return false;
     const resolved = resolve(filename, target);
-    return forbidden.some((directory) => inside(directory, resolved)) ||
+    const privateCore = runtimeTraining && inside(owners.training, resolved) &&
+      !inside(path.join(owners.training, 'contracts'), resolved) && resolved !== path.join(owners.training, 'index.ts');
+    return privateCore || forbidden.some((directory) => inside(directory, resolved)) ||
       (fromTraining && inside(owners.shared, resolved) && !inside(owners.trainingLegacy, resolved));
   }).map(({ specifier }) => specifier)];
 }
@@ -236,4 +239,54 @@ test('Daimon package text stays under its runtime owner throughout source files'
   const forbidden = ['@noopolis', 'daimon'].join('/');
   const violations = await Promise.all(files.map(async filename => (await readFile(filename, 'utf8')).includes(forbidden) ? path.relative(root, filename) : undefined));
   expect(violations.filter(Boolean)).toEqual([]);
+});
+
+function namedEngineViolations(filename: string, source: string): string[] {
+  if (!inside(trainingRoot, filename) || /(?:\.test\.[cm]?[jt]sx?$|_test\.py$)/u.test(filename)) return [];
+  return source.match(/codex|grok/giu) ?? [];
+}
+
+test('non-test training files contain no engine names', async () => {
+  const files = await sourceFiles(trainingRoot, false);
+  const violations = await Promise.all(files.map(async filename => {
+    // The Python packaging alias is a symlink to the frozen authority outside core.
+    // No other linked file is exempt, and a copied/replaced alias is scanned.
+    const alias = path.join(trainingRoot, 'dspy/spawnfile_training_dspy/legacy_wire_aliases.json');
+    const authority = path.join(owners.trainingLegacy, 'trainingLegacyWireAliases.json');
+    if (filename === alias && canonicalPath(filename) === authority) return undefined;
+    const hits = namedEngineViolations(filename, await readFile(filename, 'utf8'));
+    return hits.length ? `${path.relative(root, filename)}: ${hits.join(', ')}` : undefined;
+  }));
+  expect(violations.filter(Boolean)).toEqual([]);
+});
+
+test.each(['codex', 'GROK', 'createCodexInference', 'grok-broker'])('rejects engine text in any non-test core file: %s', text => {
+  for (const name of ['evaluation/example.ts', 'README.md', 'dspy/example.py', 'data.json']) {
+    expect(namedEngineViolations(path.join(trainingRoot, name), text)).not.toEqual([]);
+  }
+  expect(namedEngineViolations(path.join(trainingRoot, 'example.test.ts'), text)).toEqual([]);
+  expect(namedEngineViolations(path.join(trainingRoot, 'dspy/example_test.py'), text)).toEqual([]);
+});
+
+test.each([
+  "import '../../../training/inference/index.js';",
+  "export * from '../../../training/platform/index.js';",
+  "type Provider = import('../../../training/inference/failure.js');",
+  "const target = '../../../training/inference/index.js'; require(target);",
+  "await import('../../../training/subjects/index.js');",
+])('runtime training rejects private core implementations: %s', source => {
+  expect(boundaryViolations(path.join(root, 'src/runtime/daimon/training/check.ts'), source)).not.toEqual([]);
+});
+
+test('runtime training accepts neutral contracts and the explicit public barrel', () => {
+  for (const target of ['contracts/index', 'contracts/execution', 'index']) {
+    expect(boundaryViolations(path.join(root, 'src/runtime/daimon/training/check.ts'),
+      `import '../../../training/${target}.js';`)).toEqual([]);
+  }
+});
+
+
+test('the single legacy packaging alias resolves to the shared frozen authority', () => {
+  expect(canonicalPath(path.join(trainingRoot, 'dspy/spawnfile_training_dspy/legacy_wire_aliases.json')))
+    .toBe(path.join(owners.trainingLegacy, 'trainingLegacyWireAliases.json'));
 });

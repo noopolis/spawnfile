@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { fitNll, fitPlatt, selectQuestionModel, splitCalibration } from './index.js';
 import type { CalibrationRecord } from './index.js';

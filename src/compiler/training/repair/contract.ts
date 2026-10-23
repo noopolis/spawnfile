@@ -29,7 +29,7 @@ export const repairReceiptSchema = z.object({
     experimentId: z.string().uuid(), executionIdentity: z.string().regex(/^[a-f0-9]{64}$/u), manifestDigest: sha,
     checkpoints: z.object({ command: sha, training: sha, host: sha, optimizer: sha }).strict(),
     trainingIdentity: z.string().regex(/^[a-f0-9]{64}$/u) }).strict(),
-  current: z.object({ imageId: sha, canonicalSourceDigest: sha, adapterId: z.literal("daimon-native") }).strict(),
+  current: z.object({ imageId: sha, canonicalSourceDigest: sha, adapterId: z.string().min(1).max(512) }).strict(),
   compatibility: z.object({ version: z.literal("spawnfile.daimon-dspy-compatibility.v1"), digest: sha,
     components: z.record(z.string(), sha), inputs: z.record(z.string(), sha) }).strict()
 }).strict();

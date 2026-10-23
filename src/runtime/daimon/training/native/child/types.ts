@@ -1,6 +1,6 @@
 import type { NativeChildExternalInputs } from '../index.js';
 import type { VerifiedNativeLaunch } from '../receipt/index.js';
-import type { GrokSlotFreshnessStore } from '../../../../../training/subjects/index.js';
+import type { GrokSlotFreshnessStore } from '../../services/index.js';
 
 export interface NativeChildExecution {
   kind: 'child-process';

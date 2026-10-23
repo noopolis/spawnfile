@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CockpitMetrics, MetricDefinition, MetricSummary, RecordedCostGroup } from '../metrics/index.js';
 import { buildCockpitMetrics } from '../metrics/index.js';
-import { viewerFixture } from '../fixture.js';
+import { viewerFixture } from '../../../../fixtures/support/training/viewer-fixture.js';
 import { comparison, convergence, costChart, scoreAt } from './plots.js';
 
 const metric: MetricDefinition = { id: 'strict', label: 'Recorded reward', kind: 'strict' };

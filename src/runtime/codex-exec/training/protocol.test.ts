@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import type { Observation } from '../../../training/contracts/execution.js';
+import type { Observation } from '../../../training/index.js';
 import { asObject, codexUsage, decodeCodex, usageDelta } from './protocol.js';
 
 it('captures authentic dispatch/completion identities and source-local ordering', async () => {

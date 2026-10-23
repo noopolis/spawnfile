@@ -1,5 +1,5 @@
 import { dirname, join } from 'node:path';
-import type { Usage } from '../../../../training/contracts/execution.js';
+import type { Usage } from '../../../../training/index.js';
 import { aggregateUsage } from './observations.js';
 import { isGrokLaunch, type NativeLaunch } from './receipt/index.js';
 import { readSealedGrokUsage, readSealedGrokRequests, readSealedGrokTurnSeals, type NativeGrokUsage, type NativeRequestUsage, type NativeTurnSeal } from './worker/index.js';
