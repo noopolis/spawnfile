@@ -136,12 +136,16 @@ it.each(['{}', 'null', '[]', '{"schema":"wrong","modelCallsMade":0}',
 });
 
 it("accepts a receipt split across writes without a trailing newline", async () => {
+  const stdout = vi.fn(), stderr = vi.fn();
   core.mockImplementation(async (_argv, io) => {
     io.stdout('diagnostic\n{"schema":"paideia.training-');
     io.stdout('cost-plan.v1","modelCallsMade":0}');
+    io.stderr('partial '); io.stderr('diagnostic\nlast diagnostic');
     return 0;
   });
-  expect(await runTraining(options())).toBe(0);
+  expect(await runTraining({ ...options(), streams: { stdout, stderr } })).toBe(0);
+  expect(stdout.mock.calls).toEqual([['diagnostic'], ['{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}']]);
+  expect(stderr.mock.calls).toEqual([['partial diagnostic'], ['last diagnostic']]);
 });
 
 it("rejects completion after synchronous work delayed the deadline timer", async () => {
@@ -153,6 +157,16 @@ it("rejects completion after synchronous work delayed the deadline timer", async
     return 0;
   });
   await expect(runTraining(options())).rejects.toThrow("exceeded its command deadline");
+});
+
+it("preserves cancellation while flushing a final unterminated receipt", async () => {
+  const controller = new AbortController();
+  core.mockImplementation(async (_argv, io) => {
+    io.stdout('{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}');
+    return 0;
+  });
+  expect(await runTraining({ ...options(), signal: controller.signal,
+    streams: { stdout: () => controller.abort(), stderr() {} } })).toBe(130);
 });
 
 it("abandons an externally cancelled core even if it ignores the signal", async () => {

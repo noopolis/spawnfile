@@ -56,7 +56,8 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
   }
   const controller = new AbortController();
   const deadline = performance.now() + options.timeoutMs;
-  let active = true, lastLine = "", pending = "";
+  let active = true, lastLine = "";
+  const pending = { stdout: "", stderr: "" };
   let stop!: (code: number, error?: Error) => void;
   const stopped = new Promise<number>((resolve, reject) => {
     stop = (code, error) => {
@@ -72,18 +73,25 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
   const timer = setTimeout(expire, options.timeoutMs);
   process.once("SIGINT", interrupt); process.once("SIGTERM", terminate);
   options.signal?.addEventListener("abort", interrupt, { once: true });
+  const emit = (channel: "stdout" | "stderr", raw: string): void => {
+    if (performance.now() >= deadline) expire();
+    if (!active) return;
+    const line = raw.replace(/\r$/u, "");
+    if (!line.trim()) return;
+    if (channel === "stdout") lastLine = line;
+    options.streams[channel](line);
+  };
+  const flush = (): void => {
+    for (const channel of ["stdout", "stderr"] as const) {
+      const text = pending[channel]; pending[channel] = ""; emit(channel, text);
+    }
+  };
   const forward = (channel: "stdout" | "stderr", text: string): void => {
     if (performance.now() >= deadline) expire();
     if (!active) return;
-    if (channel === "stdout") {
-      const lines = (pending + text).split("\n");
-      pending = lines.pop()!;
-      for (const line of lines) if (line.trim()) lastLine = line;
-    }
-    for (const raw of text.split("\n")) {
-      const line = raw.replace(/\r$/u, "");
-      if (line.trim()) options.streams[channel](line);
-    }
+    const lines = (pending[channel] + text).split("\n");
+    pending[channel] = lines.pop()!;
+    for (const line of lines) emit(channel, line);
   };
   try {
     const invocation = async (): Promise<number> => {
@@ -100,7 +108,10 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
     const code = await Promise.race([stopped, invocation()]);
     // Synchronous core work can delay the timer; elapsed time still forbids success.
     if (active && performance.now() >= deadline) { expire(); return await stopped; }
-    if (active && code === 0 && !validCostReceipt(pending.trim() ? pending : lastLine)) {
+    if (active) flush();
+    if (active && performance.now() >= deadline) expire();
+    if (!active) return await stopped;
+    if (active && code === 0 && !validCostReceipt(lastLine)) {
       throw failure("Training exited without the required final training receipt");
     }
     return code;

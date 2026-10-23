@@ -19,8 +19,8 @@ const usesExternalTraining = (source: string): boolean => {
   const visit = (node: ts.Node): boolean => {
     if (ts.isStringLiteralLike(node) && node.text === "paideia") {
       const parent = node.parent;
-      if ((ts.isVariableDeclaration(parent) || ts.isPropertyAssignment(parent) || ts.isParameter(parent)) &&
-        commandName.test(parent.name.getText())) return true;
+      if ((ts.isVariableDeclaration(parent) || ts.isPropertyAssignment(parent) || ts.isParameter(parent) || ts.isBindingElement(parent)) &&
+        commandName.test(ts.isIdentifier(parent.name) || ts.isStringLiteralLike(parent.name) ? parent.name.text : parent.name.getText())) return true;
       if (ts.isBinaryExpression(parent) && commandName.test(parent.left.getText())) return true;
       if (ts.isCallExpression(parent) && (
         (processCall.test(parent.expression.getText()) && parent.arguments[0] === node) ||
@@ -72,6 +72,10 @@ it.each([
   'spawn("paideia", ["train", "--dry-run"])', "execFile('paideia', ['--version'])",
   'program.option("--paideia-command <executable>", "Training command", "paideia")',
   'const command = `paideia`; spawn(command, ["train"]);',
+  'const { command = "paideia" } = options; spawn(command, args);',
+  'function run({ executable = "paideia" }) {}',
+  'const cfg = { "command": "paideia" };',
+  'const cfg = { "executable": "paideia" };',
   'spawn(process.execPath, ["--experimental-strip-types", supervisor, options.command, "train", ...options.args])'
 ])("rejects a reintroduced external training dependency: %s", source => {
   expect(scan(["src/cli/reintroduced.ts"], () => source)).toEqual(["src/cli/reintroduced.ts"]);
