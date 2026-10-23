@@ -1,12 +1,14 @@
-import { expect, it } from 'vitest';
-import { provider } from './common.js';
-import { parseGrader } from './index.js';
+import { beforeEach, expect, it, vi } from 'vitest';
 
-it('surfaces missing provider composition from the provider refinement', () => {
+beforeEach(() => vi.resetModules());
+
+it('surfaces missing provider composition from the provider refinement', async () => {
+  const { provider } = await import('./common.js');
   expect(() => provider.parse('claude')).toThrow(new Error('Grader provider registry is not configured'));
 });
 
-it('surfaces missing provider composition from public grader parsing', () => {
+it('surfaces missing provider composition from public grader parsing', async () => {
+  const { parseGrader } = await import('./index.js');
   expect(() => parseGrader({
     schema: 'spawnfile.training.grader.v1', id: 'writing', golden: 'labels.yaml', calibration: 'calibration.json',
     teachers: [{ id: 'teacher', provider: 'claude', model: 'chosen' }],

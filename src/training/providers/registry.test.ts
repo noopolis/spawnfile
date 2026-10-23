@@ -53,7 +53,7 @@ records: [{id: one, input: {prompt: Write.}}]
   expect(() => validateTrainingConfiguration(changed, '$.training', registry)).toThrow('registration rejected');
 });
 
-it('lists only injected provider ids in registration order for invalid authored providers', () => {
+it('lists only injected provider ids in registry key order for invalid authored providers', () => {
   const { registry } = registration();
   const descriptor = registry.providers.registered!;
   const injected = { ...registry, providers: { second: descriptor, first: descriptor } };

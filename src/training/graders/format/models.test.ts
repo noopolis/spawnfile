@@ -79,5 +79,5 @@ it('defaults and bounds Ollama context in legacy and named authoring only', () =
 
 it('preserves unsupported grader provider diagnostics after composition', () => {
   expect(() => parseGrader({ ...base, teachers: [{ ...base.teachers[0], provider: 'unknown' }] }))
-    .toThrow(/\$\.teachers\.0\.provider: Unsupported grader provider/);
+    .toThrow(new Error('$.teachers.0.provider: Unsupported grader provider'));
 });

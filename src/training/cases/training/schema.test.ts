@@ -20,6 +20,8 @@ const dataset = (training?: unknown) => ({ schema: 'spawnfile.training.dataset.v
 describe('dataset-authored training configuration', () => {
   it.each([
     ['unknown id', { provider: 'foo', model: 'chosen' }],
+    ['unknown id before missing model', { provider: 'foo' }],
+    ['unknown id before empty model', { provider: 'foo', model: '' }],
     ['empty id', { provider: '', model: 'chosen' }],
     ['missing id', { model: 'chosen' }],
   ])('preserves the exact invalid-provider diagnostic for %s', (_name, model) => {
