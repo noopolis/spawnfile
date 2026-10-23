@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { dockerFixture } from "../container/fixtures.test-helper.js";
-import { mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
@@ -146,6 +147,9 @@ it("carries the packaged build declaration through preparation to the authored l
 
 it("stages only Spawnfile training and runs the integration's hook through its own composition", async () => {
   const f = await fixture();
+  // A separate package scope prevents the surrounding checkout's self-reference
+  // from bypassing the staged dependency when CI places temporary files there.
+  await f.put("integration/package.json", JSON.stringify({ name: "training-image-fixture", type: "module", private: true }));
   await f.put("own/dist/runtime/trainingCli.js", `export async function launch(argv, dependencies) {
     await dependencies.beforeTraining();
     process.stdout.write(JSON.stringify({ argv, source: 'spawnfile' }));
@@ -155,7 +159,10 @@ it("stages only Spawnfile training and runs the integration's hook through its o
     await launch(process.argv.slice(2), { beforeTraining: () => writeFile(process.env.HOOK_RECEIPT, 'hook-ran') });`);
   const plan = await planTrainingImage(f.build, f.root, [], f.own);
   expect(plan.files.every(file => !file.destination.startsWith("paideia/") && !file.destination.startsWith("bridge/"))).toBe(true);
-  const staging = path.join(f.root, "container"), receipt = path.join(f.root, "hook.json");
+  const parent = fileURLToPath(new URL("../../../../.tmp/", import.meta.url));
+  await mkdir(parent, { recursive: true });
+  const staging = await mkdtemp(path.join(parent, "training-image-entry-")), receipt = path.join(f.root, "hook.json");
+  roots.push(staging);
   await copySealed(plan.files, staging);
   await mkdir(path.join(staging, "integration/node_modules"), { recursive: true });
   await symlink(path.join(staging, "spawnfile"), path.join(staging, "integration/node_modules/spawnfile"));
