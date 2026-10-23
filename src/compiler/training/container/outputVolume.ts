@@ -1,4 +1,4 @@
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import { lstat, mkdir, open, realpath, rename } from "node:fs/promises";
 import path from "node:path";
 import { parseDetachedContainerInspect } from "../../runProjectDocker.js";
@@ -22,8 +22,20 @@ export const createTrainingOutputVolume = (options: {
   runtimeUid: number; runtimeGid: number; context: string; authSources?: readonly string[]; call: DockerCall; stderr(line: string): void;
 }) => {
   const { call } = options;
+  const authPaths = new Set<string>();
+  for (const source of options.authSources ?? []) {
+    authPaths.add(source); authPaths.add(path.resolve(source));
+    try { authPaths.add(realpathSync(source)); } catch { /* Retain lexical redaction if the leaf disappeared. */ }
+  }
+  for (const source of [...authPaths]) {
+    // Docker Desktop can report either spelling of macOS's system symlink roots,
+    // including the short spelling when the declared bind is already canonical.
+    if (/^\/private\/(?:var|tmp|etc)\//u.test(source)) authPaths.add(source.slice('/private'.length));
+    if (/^\/(?:var|tmp|etc)\//u.test(source)) authPaths.add(`/private${source}`);
+  }
+  const redactions = [...authPaths].filter(Boolean).sort((a, b) => b.length - a.length);
   const diagnostic = (text: string): string => {
-    for (const source of [...options.authSources ?? []].sort((a, b) => b.length - a.length)) text = text.replaceAll(source, "[auth source]");
+    for (const source of redactions) text = text.replaceAll(source, "[auth source]");
     return boundedRedactedText(text.replace(/\p{Cc}/gu, " "), 2048);
   };
   const volume = `${options.name}-output`;
