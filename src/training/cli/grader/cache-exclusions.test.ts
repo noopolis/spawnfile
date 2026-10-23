@@ -248,3 +248,14 @@ it('retains origin/main Ollama and Jev backend identity hash inputs', async () =
 });
 
 });
+
+it('pins the key emitted by origin/main cachedScores for a realistic decision request', async () => {
+  const root = await temporary();
+  const request: DecisionRequest = { key: 'claim', type: 'yes-no', optionLabels: ['yes', 'no'], expectedOptions: ['yes'],
+    instructions: 'Is this supported?', projection: { text: 'A supported claim.' } };
+  await cachedScores(root, backend(async () => [{ key: 'claim', status: 'ok', probabilities: { yes: 0.9, no: 0.1 } }]),
+    'historical-model', [request], 1);
+  const saved = JSON.parse(await readFile(join(root, '.spawnfile-training/grader-cache/historical-model.jsonl'), 'utf8'));
+  // Captured by executing cachedScores at 624a972c in a detached worktree.
+  expect(saved.digest).toBe('597834c9f762fe442bdc28b28f780ed14c68621358b0ddfa812f8d10819039cf');
+});

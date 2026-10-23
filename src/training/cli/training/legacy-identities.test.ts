@@ -5,21 +5,19 @@ import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import type { InferenceProvider, TrainingConfiguration } from '../../contracts/index.js';
 import { parseDatasetYaml, resolveDataset, trainingJudgeVersions } from '../../cases/index.js';
-import { snapshotCandidate, deriveCandidate } from '../../candidates/index.js';
+import { snapshotCandidate, deriveCandidate, deriveAuthoredCandidate } from '../../candidates/index.js';
 import { createJudgeCache, evaluateRubric } from '../../evaluation/semantic/index.js';
 import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
 import { parseGrader, parseLabels, loadLabels, stableDigest, type Labels } from '../../graders/format/index.js';
-import { goldenIdentity, createCalibrationIdentity, type CalibrationFile } from '../../graders/identity.js';
+import { goldenIdentity, createCalibrationIdentity, type CalibrationFile } from '../../graders/index.js';
 import { groupLabelInstances, buildLabelPrompt, teacherPolicyDigest, validateStoredVotes, adjudicationRows } from '../../graders/labeling/index.js';
 import { runCouncil, councilPrompt } from '../../graders/references/index.js';
 import type { CheckInstance } from '../../graders/decomposition/index.js';
 import { gradeOutput, decisionBackendIdentity } from '../../graders/runtime/index.js';
-import { decisionPrompt, createJevDecision } from '../../inference/decision/index.js';
-import { TrainingCheckpoint } from '../../experiments/training/checkpoint.js';
-import type { TrainingOptions } from '../../experiments/training/training.js';
+import { decisionPrompt, createJevDecision, createOllamaDecision } from '../../inference/decision/index.js';
+import { TrainingCheckpoint, type TrainingOptions } from '../../experiments/training/index.js';
 import { createTrainingInference } from './inference.js';
 import { commandCheckpoint } from './checkpoint.js';
-import type { prepareCliInputs } from '../native.js';
 
 // Executed this identical fixture against origin/main (624a972c) in a detached
 // worktree. Values below are outputs of public APIs, not copies of hash formulas.
@@ -107,6 +105,11 @@ const historical: Record<string, unknown> = {
       "backend": "jev-http",
       "model": "qwen3:8b",
       "fingerprint": "94d33ac84a599025b16cd68272eea46542ca6aa65fdf7d8a5e1ed64f2e4b18bb"
+    },
+    "ollama": {
+      "backend": "ollama-logprobs",
+      "model": "qwen3:8b",
+      "digest": "962bd559804d6655beefb1fa7f9b110f7ad4c5c5b9aa3b2731ee1567258c1eb1"
     },
     "requests": [
       "623f40cef858bec3d07cd0ea72c9c4215b3b5872aa55310b7ddab8718bacdea1",
@@ -263,7 +266,9 @@ async function decisions() {
       answers: Object.fromEntries(Object.keys(body.questions).map(key => [key, { probabilities: { true: 0.9, false: 0.1 } }])) }));
   } });
   const identity = await backend.identity();
-  return { identity, requests: bodies.map(sha), prompt: sha(decisionPrompt({ key: 'claim', type: 'yes-no',
+  const ollama = createOllamaDecision({ endpoint: 'http://localhost', model: 'qwen3:8b', fetch: async url =>
+    new Response(JSON.stringify(String(url).endsWith('/tags') ? { models: [{ name: 'qwen3:8b', digest: 'installed-model-bytes' }] } : { version: '0.34.0' })) });
+  return { identity, ollama: await ollama.identity(), requests: bodies.map(sha), prompt: sha(decisionPrompt({ key: 'claim', type: 'yes-no',
     instructions: 'Is this supported?', projection: { text: 'A supported claim.' }, optionLabels: ['yes', 'no'] })) };
 }
 
@@ -276,8 +281,9 @@ async function checkpoints() {
     const candidate = deriveCandidate(baseline, baseline, { 'instructions#file': 'Follow the task precisely.\n' });
     const legacyBaseline = { ...baseline, schema: wire('candidate.v1') } as typeof baseline;
     expect(deriveCandidate(legacyBaseline, legacyBaseline, { 'instructions#file': 'Follow the task precisely.\n' }).id).toBe(candidate.id);
+    expect(deriveAuthoredCandidate(legacyBaseline, { 'AGENTS.md': 'Follow the task precisely.\n' }).id).toBe(candidate.id);
     const dataset = resolveDataset(parseDatasetYaml(datasetText), { registry: { judges: trainingJudgeVersions(training, 'image:historical') } });
-    const inputs = { out: join(root, 'command'), candidate: baseline, sourceRoot: '/historical/project', resources: [], model: 'gpt-5' } as unknown as Awaited<ReturnType<typeof prepareCliInputs>>;
+    const inputs = { out: join(root, 'command'), candidate: baseline, sourceRoot: '/historical/project', resources: [], model: 'gpt-5' } as unknown as Parameters<typeof commandCheckpoint>[1];
     const command = await commandCheckpoint({ command: 'train', flags: { train: ['train.yaml'], seed: ['7'] }, training }, inputs, {});
     const options = { id: 'experiment', baseline, concurrency: 1, native: { adapter: { id: 'codex' }, model: 'gpt-5', resources: [] },
       inference: { provider: { id: 'claude-subscription' }, model: 'claude-sonnet-4-6' }, seed: 7,
