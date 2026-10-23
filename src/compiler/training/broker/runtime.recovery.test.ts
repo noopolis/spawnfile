@@ -135,7 +135,7 @@ const auth = JSON.parse(fs.readFileSync(file, "utf8"));
 Object.values(auth)[0].key = "b".repeat(40);
 fs.writeFileSync(file, JSON.stringify(auth));
 `, { mode: 0o700 });
-    const moduleUrl = pathToFileURL(path.join(daimon, "src/runtime/grokBrokerCredentialAuthority.ts")).href;
+    const moduleUrl = pathToFileURL(path.join(daimon, "src/engines/grok/broker/grokBrokerCredentialAuthority.ts")).href;
     // Two processes model the crash/restart boundary. No credential bytes are
     // returned in stdout; the second process cannot invoke a refresh command.
     const runAuthority = async (body: string) => promisify(execFile)(process.execPath,
@@ -190,7 +190,7 @@ const auth = JSON.parse(fs.readFileSync(file, "utf8")), row = Object.values(auth
 row.key = String.fromCharCode(row.key.charCodeAt(0) + 1).repeat(40);
 fs.writeFileSync(file, JSON.stringify(auth));
 `, { mode: 0o700 });
-    const moduleUrl = pathToFileURL(path.join(daimon, "src/runtime/grokBrokerCredentialAuthority.ts")).href;
+    const moduleUrl = pathToFileURL(path.join(daimon, "src/engines/grok/broker/grokBrokerCredentialAuthority.ts")).href;
     // Each rotation gets a fresh process, so lineage must survive on disk.
     for (let generation = 1; generation <= 2; generation++) {
       await promisify(execFile)(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", `

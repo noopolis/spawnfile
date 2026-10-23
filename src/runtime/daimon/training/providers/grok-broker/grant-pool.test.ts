@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GrokGrantRefusal } from './grants.js';
 import { fakeGrantAuthority } from './grant-fixtures.js';
 import { GrokGrantPool, type GrokGrantKey } from './grant-pool.js';
@@ -129,12 +129,15 @@ describe('broker refusals', () => {
     const lease = await pool(fake).acquire(judge, 1000);
     expect(fake.requests).toHaveLength(3);
     await lease.settle({ ok: false });
-    const capped = fakeGrantAuthority({ refusals: Array.from({ length: 1000 }, () => new GrokGrantRefusal('grant_limit')) });
-    const controller = new AbortController();
-    const waiting = pool(capped, { capBackoffMs: [2, 2] }).acquire(judge, 1000, controller.signal);
-    await tick(); controller.abort();
-    await expect(waiting).rejects.toMatchObject({ kind: 'cancelled' });
-    expect(capped.requests.length).toBeGreaterThan(1);
+    vi.useFakeTimers();
+    try {
+      const capped = fakeGrantAuthority({ refusals: Array.from({ length: 1000 }, () => new GrokGrantRefusal('grant_limit')) });
+      const controller = new AbortController();
+      const waiting = pool(capped, { capBackoffMs: [2, 2] }).acquire(judge, 1000, controller.signal);
+      await vi.advanceTimersByTimeAsync(5); controller.abort();
+      await expect(waiting).rejects.toMatchObject({ kind: 'cancelled' });
+      expect(capped.requests.length).toBeGreaterThan(1);
+    } finally { vi.useRealTimers(); }
   });
 
   it('fails auth_stale fast without retrying and classifies other refusals', async () => {
