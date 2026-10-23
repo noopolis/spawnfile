@@ -1,22 +1,23 @@
+import { DAIMON_BROKER_ENGINE_ID, getDaimonEngineDescriptor, DAIMON_ENGINE_BROKER } from "./engines.js";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { SpawnfileError } from "../../shared/index.js";
 
 import {
-  DAIMON_GROK_ENGINE_BROKER,
   type DaimonGrokBrokerModel,
   type DaimonGrokBrokerReasoningEffort
 } from "./contractManifest.js";
 import { DAIMON_GROK_WORKER_CONFIG_BYTES, DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES } from "./grokWorkerConfigBytes.js";
 
-export const DAIMON_GROK_WORKER_SANDBOX_PROFILE = "daimon-strict" as const;
-export const DAIMON_GROK_WORKER_HOME_DIRECTORY = ".grok" as const;
+const workerDescriptor = getDaimonEngineDescriptor(DAIMON_BROKER_ENGINE_ID)!;
+export const DAIMON_GROK_WORKER_SANDBOX_PROFILE = workerDescriptor.sandbox.profile!;
+export const DAIMON_GROK_WORKER_HOME_DIRECTORY = workerDescriptor.homeDirectory;
 
 const sha256 = (bytes: string): string => createHash("sha256").update(bytes).digest("hex");
 
 /** Characters TOML or Grok would reinterpret inside a deny entry (mirrors Daimon's refusal set). */
-const UNSAFE_DENY_PATH_CHARACTER = new RegExp("[\"\\\\\\u0000-\\u001f\\u007f*?[\\]]", "u");
+const UNSAFE_DENY_PATH_CHARACTER = new RegExp(workerDescriptor.sandbox.denyPaths!.forbiddenCharacterPattern, "u");
 
 /**
  * The worker `config.toml` bytes for one declared model x effort: Daimon's own
@@ -28,7 +29,7 @@ export const resolveDaimonGrokWorkerConfig = (
   reasoningEffort: DaimonGrokBrokerReasoningEffort,
   vendored: Readonly<Record<string, Readonly<Record<string, string>>>> = DAIMON_GROK_WORKER_CONFIG_BYTES
 ): { bytes: string; sha256: string } => {
-  const pins = DAIMON_GROK_ENGINE_BROKER.worker.configSha256 as Readonly<Record<string, Readonly<Record<string, string>> | undefined>>;
+  const pins = DAIMON_ENGINE_BROKER.worker.configSha256 as Readonly<Record<string, Readonly<Record<string, string>> | undefined>>;
   const pin = pins[model]?.[reasoningEffort];
   const bytes = vendored[model]?.[reasoningEffort];
   if (pin === undefined || bytes === undefined || sha256(bytes) !== pin) {
@@ -47,9 +48,9 @@ export const resolveDaimonGrokClockedWorkerConfig = (
 ): { bytes: string; sha256: string } => {
   if (!Number.isSafeInteger(slot) || slot < 0) throw new SpawnfileError("compile_error", "Invalid Grok clock slot");
   const template = vendored[model]?.[reasoningEffort];
-  const pin = DAIMON_GROK_ENGINE_BROKER.worker.clockedConfigSha256[model]?.[reasoningEffort];
+  const pin = DAIMON_ENGINE_BROKER.worker.clockedConfigSha256[model]?.[reasoningEffort];
   if (!template || sha256(template) !== pin) throw new SpawnfileError("compile_error", "Clocked worker config does not match the contract manifest pin");
-  const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
+  const clock = DAIMON_ENGINE_BROKER.worker.taskClock;
   const bytes = template.replaceAll(clock.timestampFilePath, clock.slotFilePattern.replace("{slot}", String(slot)));
   return { bytes, sha256: sha256(bytes) };
 };
@@ -71,8 +72,8 @@ export const renderDaimonGrokWorkerSandboxProfile = (denyPaths: readonly string[
   }
   return [
     `[profiles.${DAIMON_GROK_WORKER_SANDBOX_PROFILE}]`,
-    'extends = "strict"',
-    "restrict_network = true",
+    `extends = ${JSON.stringify(workerDescriptor.sandbox.baseProfile)}`,
+    `restrict_network = ${workerDescriptor.sandbox.restrictNetwork}`,
     `deny = [${denied.map((entry) => JSON.stringify(entry)).join(", ")}]`,
     ""
   ].join("\n");

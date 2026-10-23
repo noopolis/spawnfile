@@ -1,3 +1,4 @@
+import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -32,16 +33,10 @@ const DAIMON_CONFIG_VERSIONS = [
   "noopolis.daimon.organization-runtime.v2"
 ] as const;
 
-const DAIMON_CODEX_STRICT_SANDBOX = {
-  mode: "workspace-write",
-  networkAccess: false,
-  webSearch: "disabled"
-} as const;
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
-const hasExactCodexStrictSandbox = (engine: Record<string, unknown>): boolean => {
+const hasExactCodexStrictSandbox = (engine: Record<string, unknown>, policy: Record<string, unknown> | undefined): boolean => {
   const sandbox = engine.codexSandbox;
   if (sandbox === undefined) return false;
   if (!isRecord(sandbox)) {
@@ -50,7 +45,8 @@ const hasExactCodexStrictSandbox = (engine: Record<string, unknown>): boolean =>
       "Daimon Codex sandbox policy has an invalid shape"
     );
   }
-  const expected = DAIMON_CODEX_STRICT_SANDBOX as Record<string, unknown>;
+  if (!policy) throw new SpawnfileError("runtime_error", "Daimon native sandbox descriptor has no strict policy");
+  const expected = policy;
   const keys = Object.keys(sandbox).sort();
   const expectedKeys = Object.keys(expected).sort();
   if (
@@ -103,14 +99,15 @@ export const resolveDaimonEngineDockerInterop = (source: string): DaimonEngineDo
       );
     }
     const kind = agent.engine.kind;
-    if (kind !== "agy" && kind !== "codex" && kind !== "grok") {
+    if (typeof kind !== "string" || !getDaimonEngineDescriptor(kind)) {
       throw new SpawnfileError(
         "validation_error",
         "Daimon generated organization config has an unsupported agent engine"
       );
     }
-    if (kind === "codex" && hasExactCodexStrictSandbox(agent.engine)) interop.codex = true;
-    if (kind === "grok") interop.grok = true;
+    const descriptor = getDaimonEngineDescriptor(kind as string)!;
+    if (descriptor.sandbox.policy && hasExactCodexStrictSandbox(agent.engine, descriptor.sandbox.policy)) interop.codex = true;
+    if (daimonEngineHasBroker(kind as string)) interop.grok = true;
   }
   return interop;
 };

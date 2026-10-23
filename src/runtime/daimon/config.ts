@@ -27,7 +27,8 @@ import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
 import { assertDaimonRecordingIsolation, daimonRecordingMountId, resolveDaimonAgentRecording } from "./recording.js";
 
-export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = { mode: "workspace-write", networkAccess: false, webSearch: "disabled" } as const;
+import { DAIMON_PINNED_PORTABLE_DESCRIPTOR } from "./engineDescriptorSchema.js";
+export const DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY = DAIMON_PINNED_PORTABLE_DESCRIPTOR.sandbox.policy;
 
 // Re-exported so every existing importer of these names keeps working; the
 // definitions themselves now live in `./memory.js`.
@@ -54,7 +55,7 @@ export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
 const DAIMON_MAX_CONFIG_BYTES = 1_048_576;
 const DAIMON_MAX_INSTRUCTION_BYTES = 16_384;
 const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 16_384;
-import { DAIMON_ENGINES } from "./engines.js";
+import { DAIMON_ENGINES, DAIMON_DEFAULT_ENGINE, getDaimonEngineDescriptor, daimonEngineHasBroker } from "./engines.js";
 export { DAIMON_ENGINES } from "./engines.js";
 type DaimonEngine = typeof DAIMON_ENGINES[number];
 
@@ -94,7 +95,7 @@ const assertPublicInstructionBounds = (agentId: string, instructions: string): v
 };
 
 const assertTurnLimitsEngine = (agentId: string, engine: DaimonEngine, turnLimits: unknown): void => {
-  if (engine !== "grok" && turnLimits !== undefined) {
+  if (!daimonEngineHasBroker(engine) && turnLimits !== undefined) {
     throw new SpawnfileError("validation_error", `Daimon runtime option turn_limits is only supported on a brokered Grok agent: ${agentId}`);
   }
 };
@@ -118,7 +119,7 @@ export const assertDaimonInstructionBounds = (agentId: string, node: ResolvedAge
   assertPublicInstructionBounds(agentId, formatInstructions(node));
 
 export const resolveDaimonEngine = (node: ResolvedAgentNode): DaimonEngine => {
-  const engine = node.runtime.options.engine ?? "codex";
+  const engine = node.runtime.options.engine ?? DAIMON_DEFAULT_ENGINE;
   if (typeof engine === "string" && (DAIMON_ENGINES as readonly string[]).includes(engine)) {
     return engine as DaimonEngine;
   }
@@ -132,14 +133,15 @@ const resolveDaimonEngineConfig = (
   node: ResolvedAgentNode
 ): { kind: DaimonEngine; model?: string; reasoningEffort?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY } => {
   const kind = resolveDaimonEngine(node);
-  if (kind === "grok") {
-    const declared = resolveDaimonGrokModel(node);
+  const descriptor = getDaimonEngineDescriptor(kind)!;
+  if (descriptor.broker) {
+    const declared = resolveDaimonGrokModel(node, descriptor);
     return { kind, model: declared.model, reasoningEffort: declared.reasoningEffort };
   }
-  const model = kind === "codex" ? node.execution?.model?.primary?.name : undefined;
-  const reasoningEffort = kind === "codex" ? node.execution?.model?.primary?.reasoning_effort : undefined;
-  const codexSandbox = kind === "codex" && node.runtime.options.codex_policy === "workspace-no-network"
-    ? DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY
+  const model = descriptor.modelSelection.configurable ? node.execution?.model?.primary?.name : undefined;
+  const reasoningEffort = descriptor.modelSelection.configurable ? node.execution?.model?.primary?.reasoning_effort : undefined;
+  const codexSandbox = descriptor.sandbox.policy && node.runtime.options.codex_policy === "workspace-no-network"
+    ? descriptor.sandbox.policy
     : undefined;
   return {
     kind,
@@ -162,9 +164,8 @@ const renderStartScript = (agents: Array<{
   const acceptanceStorePath = `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`;
   const readinessReceiptPath = `${acceptanceStorePath}/runtime-readiness.json`;
   const setup = agents.flatMap((agent) => {
-    const credential = agent.engine.kind === "codex"
-      ? DAIMON_ENGINE_CREDENTIALS.codex
-      : undefined;
+    const material = getDaimonEngineDescriptor(agent.engine.kind)?.credentialMaterial;
+    const credential = material?.sourceRelativePath ? material as typeof DAIMON_ENGINE_CREDENTIALS[keyof typeof DAIMON_ENGINE_CREDENTIALS] : undefined;
     const inbound = path.posix.join(agent.runtimeHomePath, ".daimon-inbound");
     return [
       // The workspace mode is owned by the uid entrypoint, which grants a grok worker
@@ -174,7 +175,7 @@ const renderStartScript = (agents: Array<{
       // A Grok agent's runtime home is traversable by its worker's group (the
       // broker provisioning grants `0710` so the worker can read its setgid
       // `tool-output/` spills); restating 0700 here would revoke that.
-      agent.engine.kind === "grok"
+      daimonEngineHasBroker(agent.engine.kind)
         ? `[ -d ${JSON.stringify(agent.runtimeHomePath)} ] || install -d -m 700 ${JSON.stringify(agent.runtimeHomePath)}`
         : `install -d -m 700 ${[
           agent.runtimeHomePath,
@@ -260,10 +261,10 @@ export const createDaimonContainerTargets = async (
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
   for (const agent of configAgents) assertTurnLimitsEngine(agent.id, agent.engine.kind, turnLimitsById.get(agent.id));
   const grokTurnLimitsByNodeId = Object.fromEntries(configAgents
-    .filter((agent) => agent.engine.kind === "grok" && turnLimitsById.get(agent.id) !== undefined)
+    .filter((agent) => daimonEngineHasBroker(agent.engine.kind) && turnLimitsById.get(agent.id) !== undefined)
     .map((agent) => [agent.id, turnLimitsById.get(agent.id)!]));
   const grokModelByNodeId = Object.fromEntries(configAgents
-    .filter((agent) => agent.engine.kind === "grok" && agent.engine.model !== undefined && agent.engine.reasoningEffort !== undefined)
+    .filter((agent) => daimonEngineHasBroker(agent.engine.kind) && agent.engine.model !== undefined && agent.engine.reasoningEffort !== undefined)
     .map((agent) => [agent.id, { model: agent.engine.model!, reasoningEffort: agent.engine.reasoningEffort! }]));
   // The compiled `.agents/skills` tree, in Daimon's engine-neutral form: root provisioning renders it into the worker's `$GROK_HOME/skills`.
   for (const input of agents) {
@@ -271,23 +272,21 @@ export const createDaimonContainerTargets = async (
     if (refused) throw new SpawnfileError("validation_error", refused);
   }
   const grokSkillsByNodeId = Object.fromEntries(agents
-    .filter((input) => engineByNodeId[input.id] === "grok" && input.value.skills.length > 0)
+    .filter((input) => daimonEngineHasBroker(engineByNodeId[input.id]!) && input.value.skills.length > 0)
     .map((input) => [input.id, daimonAgentSkillsFromResolved(input.value.skills)]));
-  const hasAgy = configAgents.some((agent) => agent.engine.kind === "agy");
-  const hasGrok = configAgents.some((agent) => agent.engine.kind === "grok");
+  const hasAgy = configAgents.some((agent) => getDaimonEngineDescriptor(agent.engine.kind)?.auth.staging === "secret-service");
+  const hasGrok = configAgents.some((agent) => daimonEngineHasBroker(agent.engine.kind));
   const agyRuntimeHomeMounts = configAgents
-    .filter((agent) => agent.engine.kind === "agy")
+    .filter((agent) => getDaimonEngineDescriptor(agent.engine.kind)?.auth.staging === "secret-service")
     .map((agent) => ({
       id: `daimon-agy-runtime-home-${path.posix.basename(agent.runtimeHomePath)}`,
       mountPath: agent.runtimeHomePath,
       reason: `Daimon AGY subscription runtime home for ${agent.id}`
     }));
   const portableEngineHomeMounts = configAgents
-    .filter((agent) => agent.engine.kind !== "agy")
+    .filter((agent) => getDaimonEngineDescriptor(agent.engine.kind)?.capabilities.portableCredential === true)
     .map((agent) => {
-      const destinationRelativePath = agent.engine.kind === "grok"
-        ? DAIMON_GROK_SUBSCRIPTION_REALM.agentCredentialRelativePath
-        : DAIMON_ENGINE_CREDENTIALS.codex.destinationRelativePath;
+      const destinationRelativePath = getDaimonEngineDescriptor(agent.engine.kind)!.credentialMaterial!.destinationRelativePath;
       return {
         id: `daimon-engine-home-${agent.engine.kind}-${path.posix.basename(agent.runtimeHomePath)}`,
         mountPath: path.posix.join(

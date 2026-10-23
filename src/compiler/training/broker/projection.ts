@@ -1,3 +1,4 @@
+import { DAIMON_BROKER_ENGINE_ID } from "../../../runtime/daimon/index.js";
 import { DAIMON_PACKAGE_NAME } from '../../../runtime/daimon/packageName.js';
 import { SpawnfileError } from "../../../shared/index.js";
 import {
@@ -65,7 +66,7 @@ export const trainingOrganizationRuntimeConfig = (declaration: {
     instructions: "training subject",
     workspacePath: trainingSlotPaths(slot).workspace,
     runtimeHomePath: trainingSlotPaths(slot).runtimeHome,
-    engine: { kind: "grok", model: declaration.model, reasoningEffort: declaration.reasoningEffort }
+    engine: { kind: DAIMON_BROKER_ENGINE_ID, model: declaration.model, reasoningEffort: declaration.reasoningEffort }
   }]
 });
 

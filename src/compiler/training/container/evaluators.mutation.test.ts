@@ -19,7 +19,7 @@ const mutations = [
     test: preparationTest, title: "refuses mismatched Codex preparation subjects before Docker: build", assertion: "Codex preparation subject admission guarantee" },
   ...[
     'agent.runtime.name !== "daimon"',
-    'resolveDaimonEngine(agent) !== "codex"',
+    'getDaimonEngineDescriptor(resolveDaimonEngine(agent))?.training.subject.isolation !== "native-sandbox"',
     'agent.runtime.options.codex_policy !== "workspace-no-network"',
     'agent.execution?.sandbox?.mode !== "workspace"'
   ].map(condition => ({
@@ -100,7 +100,7 @@ it("kills evaluator boundary mutants in isolated source copies with their intend
         try {
           await run(process.execPath, [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--coverage.enabled=false",
             "--maxWorkers=1", "--minWorkers=1", mutation.test, "-t", mutation.title], {
-            cwd: sandbox, timeout: 30_000, maxBuffer: 1024 * 1024, env: { ...process.env, TMPDIR: path.join(sandbox, "tmp") }
+            cwd: sandbox, timeout: 30_000, maxBuffer: 1024 * 1024, env: { ...process.env, TYPESAFE_API_KEY: undefined, TMPDIR: path.join(sandbox, "tmp") }
           });
         } catch (error) { failure = error as { code?: number }; }
         expect(failure?.code, `${mutation.name}: mutant survived or runner failed`).toBe(1);

@@ -1,3 +1,4 @@
+import { DAIMON_BROKER_ENGINE_ID } from "../../../runtime/daimon/index.js";
 import path from "node:path";
 import { z } from "zod";
 import { trainingEvaluatorRoutesSchema, trainingEvaluatorSecretsSchema } from "./evaluators.js";
@@ -9,7 +10,7 @@ const hostPath = z.string().min(1).refine((value) => path.isAbsolute(value) && !
 const inputPath = z.string().regex(/^\/run\/training\/inputs\/[A-Za-z0-9._/-]+$/u).refine((value) => path.posix.normalize(value) === value && !value.endsWith("/"));
 export const trainingImageSchema = z.string().regex(/^(?:sha256:[a-f0-9]{64}|[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[a-f0-9]{64})$/u);
 const brokerLaunchSchema = z.object({
-  engine: z.literal("grok"),
+  engine: z.literal(DAIMON_BROKER_ENGINE_ID),
   /** The named Docker volume holding the training Grok realm: `auth.json` and the broker credential journal, nothing else. */
   realmVolume: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u),
   /** Host leaf of the dedicated training Grok login. Never the desktop `~/.grok/auth.json`. */

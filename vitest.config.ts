@@ -19,9 +19,11 @@ const realBridgeTests = [
   "src/training/optimization/runner.test.ts",
 ];
 
-// Whole-source AST scans and nested Vitest processes contend with ordinary workers.
+// Source scans, package emission and nested Vitest processes contend with ordinary workers.
 // Give them a serial lane on every platform; keep each project's existing deadlines.
 const sourceGateTests = [
+  "src/compiler/daimonEngineBoundary.test.ts",
+  "src/compiler/training/rewind/memoryPackage.test.ts",
   "src/training/boundaries.test.ts",
   "src/deployment/providerRuntimeBoundary.test.ts",
   "src/ownership/mnemePublicImportBoundary.test.ts",

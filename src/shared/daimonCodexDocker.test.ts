@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import * as daimon from "../runtime/daimon/index.js";
 
 import {
   daimonEngineDockerSecurityArgsForConfigs,
@@ -20,7 +21,20 @@ const strictCodex = { codexSandbox: { mode: "workspace-write", networkAccess: fa
 const grok = { kind: "grok", model: "grok-4.6", reasoningEffort: "low" };
 const profilePath = "/tmp/spawnfile-security/seccomp.json";
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("Daimon engine Docker security options", () => {
+  it("accepts descriptor-declared engine identities and validates their strict sandbox policy", () => {
+    const lookup = daimon.getDaimonEngineDescriptor;
+    const portable = lookup(daimon.DAIMON_PORTABLE_ENGINE_ID)!;
+    vi.spyOn(daimon, "getDaimonEngineDescriptor").mockImplementation(engine => engine === "new-native"
+      ? { ...portable, id: engine } : lookup(engine));
+    expect(resolveDaimonEngineDockerInterop(config({ ...strictCodex, kind: "new-native" }))).toEqual({ codex: true, grok: false });
+    expect(() => resolveDaimonEngineDockerInterop(config({ kind: "new-native", codexSandbox: { mode: "workspace-write", networkAccess: true, webSearch: "disabled" } })))
+      .toThrow(/supported strict workspace-no-network policy/u);
+    expect(() => resolveDaimonEngineDockerInterop(config({ kind: "unknown" }))).toThrow(/unsupported agent engine/u);
+  });
+
   it("runs Grok under the pinned default-plus-userns seccomp profile and AppArmor unconfined, never fully unconfined", async () => {
     expect(resolveDaimonEngineDockerInterop(config(grok))).toEqual({ codex: false, grok: true });
     const args = await daimonEngineDockerSecurityArgsForConfigs([config(grok, { kind: "codex" }, { kind: "agy" })], async () => profilePath);

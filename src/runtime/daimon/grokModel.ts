@@ -1,9 +1,8 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { SpawnfileError } from "../../shared/index.js";
+import { DAIMON_BROKER_ENGINE_ID, getDaimonEngineDescriptor, type DaimonEngineDescriptor } from "./engines.js";
 
 import {
-  DAIMON_GROK_BROKER_MODELS,
-  DAIMON_GROK_BROKER_REASONING_EFFORTS,
   type DaimonGrokBrokerModel,
   type DaimonGrokBrokerReasoningEffort
 } from "./contractManifest.js";
@@ -25,20 +24,26 @@ export interface DaimonGrokModel {
  * list, a target-level `auth.method: grok`, and `reasoning_effort` — and there
  * is exactly one model (no fallback, no legacy model-level auth).
  */
-export const resolveDaimonGrokModel = (node: ResolvedAgentNode): DaimonGrokModel => {
+export const resolveDaimonGrokModel = (
+  node: ResolvedAgentNode,
+  descriptor: DaimonEngineDescriptor = getDaimonEngineDescriptor(DAIMON_BROKER_ENGINE_ID)!
+): DaimonGrokModel => {
+  const models = descriptor.modelSelection.models?.kind === "enum" ? descriptor.modelSelection.models.values : [];
+  const efforts = descriptor.modelSelection.reasoningEfforts;
+  const { provider, method } = descriptor.auth;
   const fail = (detail: string): never => {
     throw new SpawnfileError(
       "validation_error",
-      `Daimon Grok agent ${node.name} ${detail}; declare execution.model.primary { provider: xai, name: ${DAIMON_GROK_BROKER_MODELS.join(" | ")}, auth: { method: grok }, reasoning_effort: ${DAIMON_GROK_BROKER_REASONING_EFFORTS.join(" | ")} }`
+      `Daimon Grok agent ${node.name} ${detail}; declare execution.model.primary { provider: ${provider}, name: ${models.join(" | ")}, auth: { method: ${method} }, reasoning_effort: ${efforts.join(" | ")} }`
     );
   };
   const declared = node.execution?.model;
   if (!declared) return fail("must declare its brokered model and reasoning effort");
   if (declared.fallback?.length || declared.auth) fail("must declare exactly one model with target-level auth");
   const primary = declared.primary;
-  if (primary.provider !== "xai" || primary.endpoint || primary.auth?.method !== "grok") fail("must use provider xai with auth.method grok");
-  if (!(DAIMON_GROK_BROKER_MODELS as readonly string[]).includes(primary.name)) fail(`declares unsupported model ${primary.name}`);
+  if (primary.provider !== provider || primary.endpoint || primary.auth?.method !== method) fail(`must use provider ${provider} with auth.method ${method}`);
+  if (!models.includes(primary.name)) fail(`declares unsupported model ${primary.name}`);
   const effort = primary.reasoning_effort;
-  if (effort === undefined || !(DAIMON_GROK_BROKER_REASONING_EFFORTS as readonly string[]).includes(effort)) fail("must declare reasoning_effort");
+  if (effort === undefined || !efforts.includes(effort)) fail("must declare reasoning_effort");
   return { model: primary.name as DaimonGrokBrokerModel, reasoningEffort: effort as DaimonGrokBrokerReasoningEffort };
 };

@@ -1,3 +1,4 @@
+import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import path from "node:path";
 
 import { SpawnfileError } from "../shared/index.js";
@@ -212,7 +213,7 @@ export const resolveDaimonGrokWorkerDenyPaths = (
   const daimonOwn = [
     DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath,
     DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
-    ...(agents.some(([, engine]) => engine === "agy") ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath, DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath] : []),
+    ...(agents.some(([, engine]) => getDaimonEngineDescriptor(engine)?.auth.staging === "secret-service") ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath, DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath] : []),
     daimonGrokAcceptanceStoreDenyPath(instanceRoot),
     ...peers.flatMap((slug) => [
       path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, slug),
@@ -267,7 +268,7 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
   const entries = plans
     .filter((plan) => plan.runtimeName === "daimon")
     .flatMap((plan) => Object.entries(plan.engineByNodeId ?? {})
-      .filter(([, engine]) => engine === "grok")
+      .filter(([, engine]) => daimonEngineHasBroker(engine))
       .map(([agentId]) => ({ agentId, plan })))
     .sort((left, right) => left.agentId.localeCompare(right.agentId));
   const homes = entries.map((_, slot) => path.posix.join(DAIMON_WORKER_ROOT, String(DAIMON_FIRST_WORKER_UID + slot)));

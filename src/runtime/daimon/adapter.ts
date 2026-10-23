@@ -24,6 +24,7 @@ import {
   DAIMON_ENGINES,
   resolveDaimonEngine
 } from "./config.js";
+import { DAIMON_ENGINE_DESCRIPTORS, DAIMON_BROKER_ENGINE_ID, getDaimonEngineDescriptor } from "./engines.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
 import { prepareDaimonRuntimeAuth } from "./runAuth.js";
 import { hasDaimonScheduleAuthority } from "./scheduleAuthority.js";
@@ -44,8 +45,8 @@ const assertDaimonSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void
 };
 
 const assertDaimonModel = (target: EffectiveModelTarget): void => {
-  if (target.provider === "openai" && target.auth.method === "codex" && !target.endpoint) return;
-  if (target.provider === "xai" && target.auth.method === "grok" && !target.endpoint) return;
+  if (!target.endpoint && Object.values(DAIMON_ENGINE_DESCRIPTORS).some(({ auth }) =>
+    auth.provider === target.provider && auth.method === target.auth.method)) return;
   throw new SpawnfileError(
     "validation_error",
     "Daimon organization runtime v1 accepts only the optional OpenAI Codex subscription intent or a brokered xAI Grok declaration; AGY engine auth stays Daimon-owned"
@@ -100,7 +101,7 @@ const daimonCodexPolicyError = (node: ResolvedAgentNode): string | undefined => 
   if (node.runtime.options.codex_policy !== "workspace-no-network") {
     return "Daimon runtime option codex_policy must be workspace-no-network";
   }
-  if (resolveDaimonEngine(node) !== "codex") {
+  if (!getDaimonEngineDescriptor(resolveDaimonEngine(node))?.sandbox.policy) {
     return "Daimon runtime option codex_policy=workspace-no-network is only supported for Codex agents";
   }
   if (node.execution?.sandbox?.mode !== "workspace") {
@@ -130,16 +131,17 @@ const unsupportedAgentFeatures = (node: ResolvedAgentNode): void => {
     if (server.transport === "stdio" && !isTargetAbsolutePath(server.command)) throw new SpawnfileError("validation_error", `Daimon stdio MCP server ${server.name} requires an absolute command`);
   }
   const engine = resolveDaimonEngine(node);
-  if (engine === "agy" && node.execution?.model) {
+  const descriptor = getDaimonEngineDescriptor(engine)!;
+  if (!descriptor.modelSelection.configurable && node.execution?.model) {
     throw new SpawnfileError(
       "validation_error",
       "Daimon AGY agents must omit Spawnfile execution.model; their subscription auth and model selection are Daimon-owned"
     );
   }
-  if (engine === "codex" && node.execution?.model?.primary.auth?.method === "grok") {
+  if (descriptor.auth.staging === "portable-file" && node.execution?.model?.primary.auth?.method === getDaimonEngineDescriptor(DAIMON_BROKER_ENGINE_ID)?.auth.method) {
     throw new SpawnfileError("validation_error", `Daimon Codex agent ${node.name} cannot declare Grok model auth`);
   }
-  if (engine === "grok") resolveDaimonGrokModel(node);
+  if (descriptor.broker) resolveDaimonGrokModel(node, descriptor);
 };
 
 const scheduleCapabilityFor = async (
@@ -263,7 +265,7 @@ export const daimonAdapter: RuntimeAdapter = {
     if (options.codex_policy !== undefined && options.codex_policy !== "workspace-no-network") {
       diagnostics.push(createDiagnostic("error", "Daimon runtime option codex_policy must be workspace-no-network"));
     }
-    if (options.codex_policy === "workspace-no-network" && options.engine !== undefined && options.engine !== "codex") {
+    if (options.codex_policy === "workspace-no-network" && options.engine !== undefined && !(typeof options.engine === "string" && getDaimonEngineDescriptor(options.engine)?.sandbox.policy)) {
       diagnostics.push(createDiagnostic("error", "Daimon runtime option codex_policy=workspace-no-network is only supported for Codex agents"));
     }
     try { resolveDaimonAttention(options.attention); }

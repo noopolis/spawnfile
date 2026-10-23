@@ -1,5 +1,6 @@
+import { DAIMON_ENGINE_BROKER } from "./engines.js";
 import { SpawnfileError } from "../../shared/index.js";
-import { DAIMON_GROK_ENGINE_BROKER } from "./contractManifest.js";
+
 
 export type DaimonGrokTurnLimits = Readonly<{
   maxRequests?: number;
@@ -7,7 +8,7 @@ export type DaimonGrokTurnLimits = Readonly<{
   timeoutMs?: number;
 }>;
 
-const bounds = DAIMON_GROK_ENGINE_BROKER.turnLimits.bounds;
+const bounds = DAIMON_ENGINE_BROKER.turnLimits.bounds;
 
 const fields = {
   max_requests: { target: "maxRequests", range: bounds.maxRequests },
@@ -58,7 +59,7 @@ export const resolveDaimonGrokTurnLimits = (value: unknown): DaimonGrokTurnLimit
 export const resolveDaimonGrokRegistrationLimits = (
   declared: DaimonGrokTurnLimits | undefined
 ): { maxRequests: number; maxTokens: number; timeoutMs: number } => ({
-  ...DAIMON_GROK_ENGINE_BROKER.turnLimits.v1Defaults,
+  ...DAIMON_ENGINE_BROKER.turnLimits.v1Defaults,
   ...(declared?.maxRequests === undefined ? {} : { maxRequests: declared.maxRequests }),
   ...(declared?.maxTokens === undefined ? {} : { maxTokens: declared.maxTokens }),
   ...(declared?.timeoutMs === undefined ? {} : { timeoutMs: declared.timeoutMs })

@@ -5,6 +5,7 @@ import { parse as parseYaml } from "yaml";
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { SpawnfileError } from "../../shared/index.js";
 
+import { daimonEngineHasBroker } from "./engines.js";
 import { daimonAgentSkillsFromResolved, parseDaimonAgentSkills } from "./grokWorkerSkills.js";
 
 /** The first Daimon whose broker accepts `skillsSha256` and renders `$GROK_HOME/skills` (noopolis/daimon-harness#55). */
@@ -49,7 +50,7 @@ export const daimonGrokSkillsError = (
   engine: string,
   version: () => string = () => pinnedDaimonRuntimeVersion()
 ): string | undefined => {
-  if (engine !== "grok" || node.skills.length === 0) return undefined;
+  if (!daimonEngineHasBroker(engine) || node.skills.length === 0) return undefined;
   try {
     parseDaimonAgentSkills(daimonAgentSkillsFromResolved(node.skills));
   } catch (error) {

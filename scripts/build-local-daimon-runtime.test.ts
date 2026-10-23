@@ -265,8 +265,8 @@ test("Daimon Dockerfile verifies the AGY archive before extracting antigravity a
   assert.match(dockerfile, /fs\.realpathSync\(p\)/u);
   assert.match(dockerfile, /runtime link escape/u);
   assert.match(dockerfile, /if\(raw!==c\(m\)\+"\\n"\|\|/u);
-  assert.match(dockerfile, /e=\{codex:/u);
-  assert.doesNotMatch(dockerfile, /e=\{agy:/u);
+  assert.match(dockerfile, /e=v6\?Object\.fromEntries\(.*auth\?\.staging==="portable-file".*:\{codex:/u);
+  assert.doesNotMatch(dockerfile, /:\{agy:\{sourceSlot:/u);
   assert.match(dockerfile, /a\.unlockSourceSlot!=="agy-unlock-secret"/u);
   assert.match(dockerfile, /a\.directoryMode!==448\|\|a\.fileMode!==384\|\|a\.maxUnlockBytes!==4096/u);
   assert.match(dockerfile, /DAIMON_DEPENDENCY_MODE.*offline-bundle/su);

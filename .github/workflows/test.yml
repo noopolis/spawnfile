@@ -85,6 +85,11 @@ jobs:
           ref: ${{ steps.daimon-fixture.outputs.ref }}
           path: .tmp/daimon-source
 
+      - name: Verify generated Daimon descriptors against the exact runtime pin
+        env:
+          SPAWNFILE_DAIMON_SOURCE_DIR: ${{ github.workspace }}/.tmp/daimon-source
+        run: env -u TYPESAFE_API_KEY npm run vendor:daimon-engine-descriptors -- --check
+
       - name: Build pinned Daimon for training parity tests
         working-directory: .tmp/daimon-source
         run: env -u TYPESAFE_API_KEY npm ci && env -u TYPESAFE_API_KEY npm run build

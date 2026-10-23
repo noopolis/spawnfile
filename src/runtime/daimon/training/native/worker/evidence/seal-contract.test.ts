@@ -13,7 +13,7 @@ const runtime = daimonCheckoutRuntime();
 // Test-only inspection of the installed bundle; no product import or fallback serializer.
 async function installedModule(filename: string): Promise<Record<string, unknown>> {
   // eslint-disable-next-line structure/module-boundaries -- Optional-peer serializer parity needs a URL relative to its resolved public entry point.
-  return await import(new URL(filename, runtime).href) as Record<string, unknown>;
+  return await import(new URL(`../engines/grok/broker/${filename}`, runtime).href) as Record<string, unknown>;
 }
 const writer = runtime ? await installedModule('engineBrokerSealLedger.js') : undefined;
 const protocol = runtime ? await installedModule('engineBrokerProtocol.js') : undefined;

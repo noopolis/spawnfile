@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -34,6 +36,29 @@ test("Daimon Dockerfile manifest literals accept the vendored contract", () => {
   const manifestPath = fileURLToPath(new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url));
   // Run the actual image-build guard: its version and every other literal must match the vendored bytes.
   execFileSync(process.execPath, ["--input-type=commonjs", "-e", validators[0]![1]!, manifestPath], { timeout: 5_000 });
+});
+
+test("Daimon Dockerfile accepts v6 descriptors and rejects inventory, broker or version drift", () => {
+  const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
+  const validator = [...dockerfile.matchAll(/node -e '([^'\n]+)' \$\{RUNTIME_ROOT\}\/contract-manifest\.json/gu)][0]![1]!;
+  const raw = JSON.parse(readFileSync(new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url), "utf8"));
+  const engines = JSON.parse(readFileSync(new URL("../src/runtime/daimon/engine-descriptors.json", import.meta.url), "utf8")).engines;
+  const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(",")}]`
+    : value && typeof value === "object" ? `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}` : JSON.stringify(value);
+  const directory = mkdtempSync(path.join(tmpdir(), "spawnfile-image-manifest-"));
+  const run = (value: unknown): void => {
+    const file = path.join(directory, "manifest.json"); writeFileSync(file, `${canonical(value)}\n`);
+    execFileSync(process.execPath, ["--input-type=commonjs", "-e", validator, file], { timeout: 5_000, stdio: "pipe" });
+  };
+  try {
+    const v6 = { ...raw, version: "noopolis.daimon.runtime-contract-manifest.v6", engines };
+    run(v6);
+    assert.throws(() => run({ ...v6, version: "noopolis.daimon.runtime-contract-manifest.v7" }));
+    assert.throws(() => run({ ...v6, engines: {} }));
+    assert.throws(() => run({ ...v6, supportedEngineKinds: ["codex"] }));
+    assert.throws(() => run({ ...v6, engines: { ...engines, codex: { ...engines.codex, id: "other" } } }));
+    assert.throws(() => run({ ...v6, engines: { ...engines, grok: { ...engines.grok, broker: null } } }));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test("publish inputs reject floating or credential-bearing pins", () => {
