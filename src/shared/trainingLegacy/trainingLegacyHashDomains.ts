@@ -8,3 +8,4 @@ export const GRADER_CACHE_PROMPT_DOMAIN = 'paideia.grader-prompt.v4';
 export const GRADER_CACHE_LEGACY_DIRECTORY = '.paideia';
 export const DECOMPOSITION_DIGEST_SCHEMA = 'paideia.decomposition.v1';
 export const CHECK_TEMPLATES_DIGEST_SCHEMA = 'paideia.check-templates.v1';
+export const EVIDENCE_UNITS_DIGEST_SCHEMA = 'paideia.evidence-units.v1';

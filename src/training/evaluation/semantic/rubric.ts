@@ -1,3 +1,4 @@
+import { EVIDENCE_UNITS_DIGEST_SCHEMA } from '../../contracts/index.js';
 import { randomUUID } from 'node:crypto';
 import type { CheckNode } from '../../contracts/dataset.js';
 import type { EvaluationContext, EvaluationResult, JudgeCall, JudgeFailureCause } from '../../contracts/evaluation.js';
@@ -66,10 +67,14 @@ export async function evaluateRubric(check: CheckNode, context: EvaluationContex
   try { if (route.template) rendered = await renderJudgeTemplate(route.template, instruction, context.signal); }
   catch { return failed('route-unusable', 'Judge template rendering failed'); }
   // The authored rubric cannot disappear when an optional template omits its variable.
-  const prompt = `${rendered ? `JUDGE INSTRUCTIONS\n${rendered}\n\n` : ''}FIXED RUBRIC\n${instruction}\n\nSOURCE DATA\n${JSON.stringify(ids?.packet ?? sources)}`;
+  const renderPrompt = (data: unknown) => `${rendered ? `JUDGE INSTRUCTIONS\n${rendered}\n\n` : ''}FIXED RUBRIC\n${instruction}\n\nSOURCE DATA\n${JSON.stringify(data)}`;
+  const prompt = renderPrompt(ids?.packet ?? sources);
+  // Freeze only the protocol discriminator in the hash view; source values and
+  // the actual model request keep their exact current bytes.
+  const cachePrompt = ids ? renderPrompt({ ...ids.packet, schema: EVIDENCE_UNITS_DIGEST_SCHEMA }) : prompt;
   if (route.cache && !route.identity) return failed('route-unusable', 'Judge cache requires a frozen route identity');
   if (route.cache?.persistent && !route.cacheScope) return failed('route-unusable', 'Persistent judge cache requires a frozen dataset and phase scope');
-  const cacheKey = judgmentCacheKey(route.identity ?? route.provider.id, judgeSystem, prompt, check.minimum as number, route.cacheScope);
+  const cacheKey = judgmentCacheKey(route.identity ?? route.provider.id, judgeSystem, cachePrompt, check.minimum as number, route.cacheScope);
   const observed = (value: EvaluationResult): EvaluationResult => ({ ...value, evidence: references,
     judgeCalls: calls, ...(calls.some(call => call.usage) ? { usage: calls.flatMap(call => call.usage ? [call.usage] : []) } : {}) });
   const attempt = async (request: { system: string; prompt: string }, original?: Judgment) => {
