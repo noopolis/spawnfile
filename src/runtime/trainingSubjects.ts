@@ -20,7 +20,7 @@ export async function trainingDependencies(dependencies: CliDependencies = {}): 
   return { ...dependencies, subjects: dependencies.subjects ?? await createTrainingSubjects() };
 }
 
-/** Composition entry for imported training CLI consumers; Spawnfile still delegates externally. */
+/** Shared host/container composition of the runtime-neutral training CLI. */
 export async function main(...[argv, io, dependencies]: Parameters<typeof trainingMain>): Promise<number> {
   return trainingMain(argv, io, await trainingDependencies(dependencies));
 }

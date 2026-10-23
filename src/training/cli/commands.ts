@@ -1,5 +1,5 @@
 import { testRepeatCount } from '../contracts/training-config.js';
-import { readSpawnfileContext } from './spawnfile/index.js';
+import { resolveSpawnfileContext } from './spawnfile/index.js';
 import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
@@ -41,7 +41,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   if (args.command === 'train' && args.flags.concurrency) count(args, 'concurrency', 4, 8);
   if (args.training?.comparison && (args.flags.concurrency || args.flags['slots-file'])) throw new Error('Comparison does not support trial concurrency controls');
   if (args.command === 'train' && args.flags['dry-run']) return dryRunTraining(args, io, dependencies);
-  if (args.flags['spawnfile-context'] && !dependencies.spawnfile) throw new Error('Spawnfile native training requires a supported isolated preparation integration; no native trial was started');
+  if ((args.flags['spawnfile-context'] || dependencies.spawnfileContext !== undefined) && !dependencies.spawnfile) throw new Error('Spawnfile native training requires a supported isolated preparation integration; no native trial was started');
   const prepared = await prepareCliInputs(args, io, dependencies);
   const dataset = prepared.datasets.load(args.command === 'train' ? one(args, 'train') : args.dataset!, args.command === 'train');
   const validation = args.command === 'train' && args.flags.validation ? prepared.datasets.load(one(args, 'validation'), true) : undefined;
@@ -202,8 +202,8 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
   let timedOut = false;
   try {
     const authored = authoredArguments(parseArguments(argv), io);
-    const context = authored.command === 'train' && authored.flags['spawnfile-context'] && dependencies.spawnfile?.trainingOptimizer
-      ? readSpawnfileContext(resolve(io.cwd, one(authored, 'spawnfile-context'))) : undefined;
+    const context = authored.command === 'train' && (authored.flags['spawnfile-context'] || dependencies.spawnfileContext !== undefined) && dependencies.spawnfile?.trainingOptimizer
+      ? resolveSpawnfileContext(authored.flags['spawnfile-context'] ? resolve(io.cwd, one(authored, 'spawnfile-context')) : undefined, dependencies.spawnfileContext) : undefined;
     const args = await resolveTrainingOptimizer(authored, dependencies.spawnfile, context);
     if (args.command === 'help') { io.stdout(helpText); return 0; }
     const deadlines = commandDeadlines(args);

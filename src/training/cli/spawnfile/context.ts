@@ -22,9 +22,14 @@ const schema = z.object({ version: z.literal('spawnfile.training-context.v1'),
 }).strict();
 export type SpawnfileTrainingContext = z.infer<typeof schema>;
 
-/** Recheck canonical bytes; the temporary receipt alone is not proof its sources still match. */
+/** Container receipt reader; host composition passes the same context directly. */
 export function readSpawnfileContext(path: string): SpawnfileTrainingContext {
-  const context = schema.parse(JSON.parse(readCliText(path, 2_000_000)));
+  return validateSpawnfileContext(JSON.parse(readCliText(path, 2_000_000)));
+}
+
+/** Recheck canonical source bytes for either a container receipt or an in-process context. */
+export function validateSpawnfileContext(value: unknown): SpawnfileTrainingContext {
+  const context = schema.parse(value);
   const root = context.project.root;
   if (!isAbsolute(root) || realpathSync(root) !== root) throw new Error('Spawnfile project root must be canonical and absolute');
   const entries = new Map<string, typeof context.sources[number]>();
@@ -56,4 +61,14 @@ export function readSpawnfileContext(path: string): SpawnfileTrainingContext {
     if (!context.sources.some(entry => entry.sourcePath === manifest)) throw new Error('Spawnfile manifest is not pinned in the source inventory');
   }
   return context;
+}
+
+/** Never let a file receipt override a context supplied by trusted host composition. */
+export function resolveSpawnfileContext(path: string | undefined, context?: SpawnfileTrainingContext): SpawnfileTrainingContext {
+  if (context !== undefined) {
+    if (path !== undefined) throw new Error('Spawnfile context must be supplied either in-process or by file, not both');
+    return validateSpawnfileContext(context);
+  }
+  if (path === undefined) throw new Error('Spawnfile training requires a canonical context');
+  return readSpawnfileContext(path);
 }

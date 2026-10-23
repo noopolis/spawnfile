@@ -29,6 +29,8 @@ export interface CliIO {
 /** Tests inject only the native/inference boundaries; experiment/storage code stays real. */
 export interface CliDependencies {
   subjects?: SubjectAdapterRegistry;
+  /** Canonical host context, validated against pinned source bytes without a temporary receipt file. */
+  spawnfileContext?: SpawnfileTrainingContext;
   grader?: GraderDependencies;
   /** Container integrations may bind internally; the launcher must publish only on host loopback. */
   viewerBindHost?: '127.0.0.1' | '0.0.0.0';

@@ -2,13 +2,25 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { readSpawnfileContext } from './context.js';
+import { readSpawnfileContext, validateSpawnfileContext, resolveSpawnfileContext } from './context.js';
 import { contextFixture, inventoryDigest } from './fixture.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 describe('canonical Spawnfile source handoff', () => {
+  it('requires an explicit canonical context source', () => {
+    expect(() => resolveSpawnfileContext(undefined)).toThrow('requires a canonical context');
+  });
+  it('validates in-process context without reading a receipt and rejects stale canonical bytes', async () => {
+    const f = await contextFixture(); roots.push(f.root);
+    await rm(f.path);
+    const validated = validateSpawnfileContext(f.context);
+    expect(validated).toEqual(f.context);
+    expect(validated).not.toBe(f.context);
+    await writeFile(join(f.root, 'AGENTS.md'), 'Changed after host resolution.');
+    expect(() => validateSpawnfileContext(f.context)).toThrow('source changed');
+  });
   it('verifies raw source pins up to the producer limit without decoding unselected sources', async () => {
     const f = await contextFixture(); roots.push(f.root);
     const bytes = Buffer.alloc(3 * 1024 * 1024, 0xff);
@@ -65,6 +77,7 @@ describe('canonical Spawnfile source handoff', () => {
       }
       await f.save();
       expect(() => readSpawnfileContext(f.path)).toThrow();
+      expect(() => validateSpawnfileContext(f.context)).toThrow();
     });
   it('rejects a source redirected outside the project by a symlink', async () => {
     const f = await contextFixture(), other = await contextFixture(); roots.push(f.root, other.root);

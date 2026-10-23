@@ -95,6 +95,6 @@ Training subject registration is optional. Registry entries expose an async
 `training.subject()` loader; only `trainingSubjects.ts` resolves it, so ordinary
 compiler and CLI startup never evaluates training adapters. The scoped training
 typecheck/build also covers the moved adapters and supplies their strict checks.
-`trainingCli.ts` composes the imported training CLI separately from the existing
-external Paideia delegation. `codex-exec/` is a standalone subject, not a compiled
+`trainingCli.ts` is the import-safe training composition and executable container entry.
+Host consumers pass canonical context directly; container consumers retain the context-file flag. `codex-exec/` is a standalone subject, not a compiled
 runtime. `trainingSubjects.test.ts` owns default factory composition coverage.

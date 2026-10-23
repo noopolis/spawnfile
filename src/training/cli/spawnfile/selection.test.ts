@@ -20,6 +20,29 @@ async function fixture() {
 }
 
 describe('Spawnfile dry-run selection', () => {
+  it('selects in-process context identically without a receipt, fails closed on mutations and needs integration for execution', async () => {
+    const f = await fixture();
+    await writeFile(join(f.root, 'train.yaml'), datasetText([{ id: 'a', group: 'a' }, { id: 'b', group: 'b' }]));
+    await writeFile(join(f.root, 'test.yaml'), datasetText([{ id: 'x', group: 'x' }]).replace('id: example', 'id: sealed'));
+    const flags = ['--editable', 'AGENTS.md', '--out', 'out', '--train', 'train.yaml', '--test', 'test.yaml',
+      '--optimizer-model', 'claude-fable-5-1'];
+    expect(await main(['train', '--spawnfile-context', f.path, ...flags, '--dry-run'], f.io)).toBe(0);
+    const filePlan = JSON.parse(f.stdout.join(''));
+    await rm(f.path); f.stdout.length = 0;
+    const adapter = vi.fn(() => { throw new Error('Must not construct a runtime'); });
+    const dependencies = { spawnfileContext: f.context, adapter };
+    expect(await main(['train', ...flags, '--dry-run'], f.io, dependencies)).toBe(0);
+    expect(JSON.parse(f.stdout.join(''))).toEqual(filePlan);
+    expect(await main(['train', ...flags], f.io, dependencies)).toBe(2);
+    expect(f.stderr.join('')).toContain('isolated preparation integration');
+    f.stderr.length = 0;
+    expect(await main(['train', '--spawnfile-context', f.path, ...flags, '--dry-run'], f.io, dependencies)).toBe(2);
+    expect(f.stderr.join('')).toContain('either in-process or by file');
+    await writeFile(join(f.root, 'AGENTS.md'), 'Changed after host resolution.');
+    expect(await main(['train', ...flags, '--dry-run'], f.io, dependencies)).toBe(2);
+    expect(f.stderr.join('')).toContain('source changed');
+    expect(adapter).not.toHaveBeenCalled();
+  });
   it('preserves canonical system/identity/skill files and honors only selected editable resources', async () => {
     const f = await fixture();
     const selected = await prepareSpawnfileInputs(parseArguments([...f.args, '--resource', 'archive=fixtures',

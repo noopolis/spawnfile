@@ -46,8 +46,8 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
 }
 
 export async function prepareCliInputs(args: CliArguments, io: CliIO, dependencies: CliDependencies) {
-  return args.flags['spawnfile-context']
-    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects);
+  return args.flags['spawnfile-context'] || dependencies.spawnfileContext !== undefined
+    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile, dependencies.spawnfileContext) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects);
 }
 
 export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number,
@@ -55,7 +55,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   const inputs = prepared ?? await prepareCliInputs(args, io, dependencies);
   const { runtime, model, judges, datasets } = inputs;
   const graders = await datasets.buildGraders(dependencies.grader, args.command === 'train');
-  // One Paideia-owned freshness store per experiment, in its durable output state.
+  // One training-owned freshness store per experiment, in its durable output state.
   const services = inputs.context !== undefined ? { grokSlots: createExperimentSlotFreshness(inputs.out) } : undefined;
   const adapter = inputs.context !== undefined
     ? dependencies.spawnfile!.createAdapter(inputs.context, { model, timeoutMs, grokSlots: services!.grokSlots })
