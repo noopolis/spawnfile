@@ -25,6 +25,13 @@ const pinnedGrokCli = (): string => {
 };
 const sha512 = (file: string): string => `sha512:${createHash("sha512").update(readFileSync(file)).digest("hex")}`;
 
+const assertRejected = (result: ReturnType<typeof spawnSync>, label: string, diagnostic: RegExp): void => {
+  assert.ifError(result.error);
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  assert.ok(result.status !== null && result.status > 0, `${label} must be rejected (status=${result.status})\n${output}`);
+  assert.match(output, diagnostic, `${label} must fail at its verifier`);
+};
+
 // A full pass — offline closure, shipped artifact, wrapper image, literal org
 // container, and four tamper rejections — measured 328 s on a GitHub-hosted
 // runner, so the budget leaves room for a slower one rather than 32 s.
@@ -82,7 +89,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     const port = mapped.slice(mapped.lastIndexOf(":") + 1);
     const identityPath = path.join(repository, ".local-daimon-runtime-identity.json"), priorIdentity = existsSync(identityPath) ? readFileSync(identityPath) : null;
     try {
-      execFileSync("npm", ["run", "--silent", "build:local-daimon"], { cwd: repository, env: { ...process.env, AGY_CLI_SHA256: agySha, AGY_CLI_SHA512: sha512(agyTar), AGY_CLI_URL: "https://invalid.example/agy", AGY_CLI_VERSION: "fixture", CODEX_CLI_SHA256: codexSha, GROK_CLI_SHA256: grokSha, GROK_CLI_URL: pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url, GROK_CLI_VERSION: pinnedManifest.grokEngineBroker.grokCliVersion, SPAWNFILE_AGY_CLI_ARCHIVE: agyTar, SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE: dependencyTar, SPAWNFILE_DAIMON_LOCAL_IMAGE_TAG: `127.0.0.1:${port}/noopolis/spawnfile-runtime-daimon:archive-wrapper`, SPAWNFILE_DAIMON_SOURCE_BUNDLE: sourceTar, SPAWNFILE_GROK_CLI_FILE: grok }, stdio: "ignore" });
+      execFileSync("npm", ["run", "--silent", "build:local-daimon"], { cwd: repository, env: { ...process.env, SPAWNFILE_DAIMON_TARGET_ARCH: "amd64", AGY_CLI_SHA256: agySha, AGY_CLI_SHA512: sha512(agyTar), AGY_CLI_URL: "https://invalid.example/agy", AGY_CLI_VERSION: "fixture", CODEX_CLI_SHA256: codexSha, GROK_CLI_SHA256: grokSha, GROK_CLI_URL: pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url, GROK_CLI_VERSION: pinnedManifest.grokEngineBroker.grokCliVersion, SPAWNFILE_AGY_CLI_ARCHIVE: agyTar, SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE: dependencyTar, SPAWNFILE_DAIMON_LOCAL_IMAGE_TAG: `127.0.0.1:${port}/noopolis/spawnfile-runtime-daimon:archive-wrapper`, SPAWNFILE_DAIMON_SOURCE_BUNDLE: sourceTar, SPAWNFILE_GROK_CLI_FILE: grok }, stdio: "inherit" });
       const wrapperIdentity = JSON.parse(readFileSync(identityPath, "utf8")); assert.equal(wrapperIdentity.image_architecture, "amd64"); assert.match(wrapperIdentity.image_reference, new RegExp(`^127\\.0\\.0\\.1:${port}/noopolis/spawnfile-runtime-daimon@sha256:[a-f0-9]{64}$`, "u"));
     } finally { if (priorIdentity) writeFileSync(identityPath, priorIdentity); else rmSync(identityPath, { force: true }); }
     const receipt = { architecture: "amd64", daimon: { package_sha256: packageSha, source_inputs: sourceInputs, source_sha256: digest(path.join(packageContext, "source-inputs.json")) }, engines: { agy: { executable_sha256: agySha }, codex: { executable_sha256: codexSha }, grok: { executable_sha256: grokSha } }, manifest_sha256: manifestSha, provenance: { agy: { archive: { format: "tar.gz", sha512: sha512(agyTar), url: "https://invalid.example/agy", version: "fixture" } }, grok: { executable: { sha256: grokSha, url: pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url, version: pinnedManifest.grokEngineBroker.grokCliVersion } } }, version: "spawnfile.daimon-runtime-capability-receipt.v1" };
@@ -138,13 +145,41 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     const fakeReceipt = validateSourceBundle(readFileSync(fakeTar));
     mkdirSync(fakeContext); mkdirSync(fakeOutput); cpSync(fakeTar, path.join(fakeContext, "dependencies.tar"));
     const fakeArgs = args.map((value) => value === `dependency_bundle=${dependencyContext}` ? `dependency_bundle=${fakeContext}` : value === `DEPENDENCY_ARCHIVE_SHA256=${dependencyReceipt.archive_sha256}` ? `DEPENDENCY_ARCHIVE_SHA256=${fakeReceipt.archive_sha256}` : value === `DEPENDENCY_MANIFEST_SHA256=${dependencyReceipt.manifest_sha256}` ? `DEPENDENCY_MANIFEST_SHA256=${fakeReceipt.manifest_sha256}` : value === `type=local,dest=${output}` ? `type=local,dest=${fakeOutput}` : value);
-    assert.notEqual(spawnSync("docker", fakeArgs, { stdio: "ignore" }).status, 0);
-    for (const fault of ["missing", "wrong"]) {
-      const badRoot=path.join(temporary,`bad-native-${fault}`),badTar=path.join(temporary,`bad-native-${fault}.tar`),badContext=path.join(temporary,`bad-native-${fault}-context`),badOutput=path.join(temporary,`bad-native-${fault}-output`);
-      mkdirSync(badRoot);execFileSync("tar",["-xf",sourceTar,"-C",badRoot]);rmSync(path.join(badRoot,".spawnfile-source-manifest.json"),{force:true});const artifact=path.join(badRoot,"src","runtime","native","artifacts","daimon-engine-broker-x64");if(fault==="missing")rmSync(artifact);else writeFileSync(artifact,"wrong-native-artifact\n",{mode:0o755});
-      const badReceipt=createSourceBundle(badRoot,badTar);mkdirSync(badContext);mkdirSync(badOutput);cpSync(badTar,path.join(badContext,"source.tar"));const badArgs=args.map((value)=>value===`source_bundle=${sourceContext}`?`source_bundle=${badContext}`:value===`SOURCE_ARCHIVE_SHA256=${sourceReceipt.archive_sha256}`?`SOURCE_ARCHIVE_SHA256=${badReceipt.archive_sha256}`:value===`SOURCE_MANIFEST_SHA256=${sourceReceipt.manifest_sha256}`?`SOURCE_MANIFEST_SHA256=${badReceipt.manifest_sha256}`:value===`type=local,dest=${output}`?`type=local,dest=${badOutput}`:value);assert.notEqual(spawnSync("docker",badArgs,{stdio:"ignore"}).status,0);
+    assertRejected(spawnSync("docker", fakeArgs, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }), "false Codex lock integrity", /npm error code (?:EINTEGRITY|ENOTCACHED)/u);
+    for (const fault of ["missing", "wrong"] as const) {
+      const badRoot = path.join(temporary, `bad-native-${fault}`), badTar = path.join(temporary, `bad-native-${fault}.tar`),
+        badContext = path.join(temporary, `bad-native-${fault}-context`), badOutput = path.join(temporary, `bad-native-${fault}-output`);
+      mkdirSync(badRoot);
+      execFileSync("tar", ["-xf", sourceTar, "-C", badRoot]);
+      rmSync(path.join(badRoot, ".spawnfile-source-manifest.json"));
+      // Daimon's engine ownership move relocated the source artifact; the pack
+      // and installed runtime still ship this exact x64 broker's bytes.
+      const artifact = path.join(badRoot, "src", "engines", "grok", "broker", "native", "artifacts", "daimon-engine-broker-x64");
+      assert.deepEqual(readFileSync(artifact), packedBroker, "tamper target must be the shipped broker");
+      execFileSync("npm", ["run", "verify:native"], { cwd: badRoot, stdio: "pipe" });
+      if (fault === "missing") rmSync(artifact);
+      else writeFileSync(artifact, "wrong-native-artifact\n", { mode: 0o755 });
+      const diagnostic = fault === "missing" ? /ENOENT[^\n]*daimon-engine-broker-x64/u : /native broker provenance mismatch/u;
+      // Check the verifier directly as well: a missing file breaking a later
+      // copy/build must not hide a verifier that silently ignores that file.
+      assertRejected(spawnSync("npm", ["run", "verify:native"], { cwd: badRoot, encoding: "utf8" }), `${fault} native verifier`, diagnostic);
+      const badReceipt = createSourceBundle(badRoot, badTar);
+      mkdirSync(badContext); mkdirSync(badOutput); cpSync(badTar, path.join(badContext, "source.tar"));
+      const badArgs = args.map((value) => value === `source_bundle=${sourceContext}` ? `source_bundle=${badContext}`
+        : value === `SOURCE_ARCHIVE_SHA256=${sourceReceipt.archive_sha256}` ? `SOURCE_ARCHIVE_SHA256=${badReceipt.archive_sha256}`
+        : value === `SOURCE_MANIFEST_SHA256=${sourceReceipt.manifest_sha256}` ? `SOURCE_MANIFEST_SHA256=${badReceipt.manifest_sha256}`
+        : value === `type=local,dest=${output}` ? `type=local,dest=${badOutput}` : value);
+      assertRejected(spawnSync("docker", badArgs, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }), `${fault} native source build`, diagnostic);
     }
-    const tampered = readFileSync(path.join(dependencyContext, "dependencies.tar")); const tamperOffset = tampered.length - 1025; tampered[tamperOffset] = (tampered[tamperOffset] ?? 0) ^ 1; writeFileSync(path.join(dependencyContext, "dependencies.tar"), tampered);
-    assert.notEqual(spawnSync("docker", args, { stdio: "ignore" }).status, 0);
+    // Alter whitespace in the real bundled lock, preserving valid JSON and
+    // dependency semantics. Only the archive digest should reject this case.
+    const tampered = readFileSync(path.join(dependencyContext, "dependencies.tar"));
+    const lockBytes = execFileSync("tar", ["-xOf", dependencyTar, "package-lock.json"]);
+    const lockOffset = tampered.indexOf(lockBytes), whitespace = lockBytes.indexOf(" ");
+    assert.ok(lockOffset >= 0 && whitespace >= 0, "archive tamper target must exist");
+    tampered[lockOffset + whitespace] = 0x09;
+    writeFileSync(path.join(dependencyContext, "dependencies.tar"), tampered);
+    assert.notEqual(digest(path.join(dependencyContext, "dependencies.tar")), dependencyReceipt.archive_sha256);
+    assertRejected(spawnSync("docker", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }), "changed dependency archive", /did not complete successfully.*exit code: 1/u);
   } finally { if (registry) spawnSync("docker", ["rm", "--force", registry], { stdio: "ignore" }); rmSync(temporary, { force: true, recursive: true }); }
 });

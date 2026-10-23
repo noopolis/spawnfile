@@ -74,10 +74,22 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Resolve exact Daimon provenance fixture revision
+        id: daimon-provenance
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs';
+          import { parse } from 'yaml';
+          const ref = parse(readFileSync('runtimes.yaml', 'utf8')).runtimes.daimon.ref;
+          if (!/^[a-f0-9]{40}$/.test(ref)) throw Error('Daimon provenance requires a full commit pin');
+          console.log(`ref=${ref}`);
+          NODE
+
       - name: Check out Daimon provenance fixture
         uses: actions/checkout@v4
         with:
           repository: noopolis/daimon-harness
+          ref: ${{ steps.daimon-provenance.outputs.ref }}
           path: daimon-fixture
 
       # The shipped runtime refuses any Grok executable but the manifest-pinned
