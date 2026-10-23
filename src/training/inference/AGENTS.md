@@ -10,6 +10,7 @@ are a separate provider contract and are not supplied by this text-generation ro
   public module; calibration, escalation and aggregation remain with graders.
 - Subscription-backed CLI routes serve DSPy reflection/proposals and semantic
   judges. Every enabled generation route is explicit; no paid API fallback.
+- `safe-diagnostic.ts` marks owner-authored static startup errors; never wrap untrusted text in that class.
 - Do not copy login credentials into cases or expose them through captures.
 - Surface quota/authentication/unsupported-option failures; never fabricate
   temperature, seeds, structured-output guarantees, embeddings or usage.

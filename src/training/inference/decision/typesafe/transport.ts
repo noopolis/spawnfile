@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../../safe-diagnostic.js';
 import type { InferenceProviderRegistry } from '../../../contracts/inference-registry.js';
 import { trainingEnvironment } from '../../../platform/index.js';
 import { assertModelRequestAdmission } from '../../request-cap.js';
@@ -24,30 +25,30 @@ export interface TypeSafeTransportOptions {
 export const TYPESAFE_ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 
 export function createDecisionSpendBudget(maxUsd?: number): DecisionSpendBudget {
-  if (maxUsd !== undefined && (!Number.isFinite(maxUsd) || maxUsd < 0)) throw new Error('Invalid maximum spend USD');
+  if (maxUsd !== undefined && (!Number.isFinite(maxUsd) || maxUsd < 0)) throw new SafeDiagnosticError('Invalid maximum spend USD');
   return { maxUsd, spentUsd: 0, reservedUsd: 0 };
 }
 
 export function typeSafeTransport(options: TypeSafeTransportOptions) {
   assertModelRequestAdmission('typesafe', 'decisions', { purpose: 'decisions', model: options.model }, options.inferenceProviders);
   const key = (typeSafeEvaluatorEnvironment() ?? options.env ?? process.env).TYPESAFE_API_KEY;
-  if (!key?.trim()) throw new Error('TypeSafe requires TYPESAFE_API_KEY');
+  if (!key?.trim()) throw new SafeDiagnosticError('TypeSafe requires TYPESAFE_API_KEY');
   let endpoint: URL;
   try { endpoint = new URL(options.endpoint ?? TYPESAFE_ENDPOINT); }
-  catch { throw new Error('Invalid TypeSafe endpoint'); }
+  catch { throw new SafeDiagnosticError('Invalid TypeSafe endpoint'); }
   const evaluatorCapped = trainingEnvironment('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP') === 'broker' || trainingEnvironment('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE') !== undefined;
   if (evaluatorCapped && endpoint.href !== TYPESAFE_ENDPOINT) {
-    throw new Error('Capped TypeSafe evaluator requires the declared hosted endpoint');
+    throw new SafeDiagnosticError('Capped TypeSafe evaluator requires the declared hosted endpoint');
   }
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password ||
-    endpoint.search || endpoint.hash || endpoint.href.includes(key)) throw new Error('Invalid TypeSafe endpoint');
-  if (!/^jev-\d+\.\d+\.\d+$/.test(options.model) || options.model.includes(key)) throw new Error('TypeSafe requires a pinned versioned model');
+    endpoint.search || endpoint.hash || endpoint.href.includes(key)) throw new SafeDiagnosticError('Invalid TypeSafe endpoint');
+  if (!/^jev-\d+\.\d+\.\d+$/.test(options.model) || options.model.includes(key)) throw new SafeDiagnosticError('TypeSafe requires a pinned versioned model');
   // Configurable estimate, never a claim about the current provider price or invoice.
   const price = options.pricePerMtokUsd ?? 0.042;
   const attempts = options.maxAttempts ?? 3, timeout = options.timeoutMs ?? 180_000, base = options.retryBaseMs ?? 250;
   if (!Number.isFinite(price) || price <= 0 || !Number.isSafeInteger(attempts) || attempts < 1 || attempts > 10 ||
     !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 2_147_483_647 || !Number.isSafeInteger(base) || base < 0 || base > 60_000) {
-    throw new Error('Invalid TypeSafe transport options');
+    throw new SafeDiagnosticError('Invalid TypeSafe transport options');
   }
   const budget = options.budget ?? createDecisionSpendBudget(options.maxSpendUsd);
   const receipts: DecisionRequestReceipt[] = [];

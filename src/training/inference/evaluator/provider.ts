@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../safe-diagnostic.js';
 import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
 import { defaultInferenceProviders } from '../../providers/index.js';
 import { trainingEnvironment } from '../../platform/index.js';
@@ -35,5 +36,5 @@ export function typeSafeEvaluatorEnvironment(): Readonly<Record<string, string |
     const key = readProtectedFile(file, 16 * 1024).trim();
     if (!key || /[\r\n\0]/u.test(key)) throw Error('invalid');
     return { TYPESAFE_API_KEY: key };
-  } catch { throw Error('Invalid evaluator TypeSafe secret file'); }
+  } catch { throw new SafeDiagnosticError('Invalid evaluator TypeSafe secret file'); }
 }

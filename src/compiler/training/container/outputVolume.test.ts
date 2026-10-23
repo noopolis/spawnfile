@@ -1,8 +1,9 @@
-import { readFile, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { dockerFixture, fixture, image } from "./fixtures.test-helper.js";
 import { launchTrainingContainer } from "./launch.js";
+import { createTrainingOutputVolume } from "./outputVolume.js";
 const roots: string[] = [];
 afterEach(async () => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const setup = async () => { const f = await fixture(); roots.push(f.root); return f; };
@@ -167,4 +168,41 @@ it("surfaces bounded seed create stderr while redacting auth sources and tokens"
   expect(error.message).not.toContain(secretPath);
   expect(error.message).not.toContain("opaque-secret");
   expect(error.message.length).toBeLessThan(2150);
+});
+
+it.each(['seed', 'export'] as const)('redacts canonical and macOS auth aliases from %s diagnostics', async direction => {
+  const f = await setup(), output = streams();
+  const secret = f.config.auth[0]!.source;
+  const alias = secret.startsWith('/private/') ? secret.slice('/private'.length) : `/private${secret}`;
+  const docker = dockerFixture(undefined, async args => helper(args, direction)
+    ? { code: 1, stdout: '', stderr: `cannot bind ${secret}; alias ${alias}; /unrelated/input` } : undefined);
+  const error = await launchTrainingContainer({ ...f, image, timeoutMs: 3000, streams: output, process: docker.process }).catch(error => error);
+  const diagnostic = `${error.message} ${output.stderr.mock.calls.flat().join(' ')}`;
+  expect(diagnostic).toContain('/unrelated/input');
+  expect(diagnostic).not.toContain(secret); expect(diagnostic).not.toContain(alias);
+  expect(diagnostic).toContain('[auth source]');
+});
+
+it('redacts the realpath of a declared auth alias and retains lexical redaction after removal', async () => {
+  const f = await setup();
+  const canonical = await realpath(f.config.auth[0]!.source), alias = path.join(f.root, 'auth-alias');
+  await symlink(canonical, alias);
+  const canonicalAlias = canonical.startsWith('/private/') ? canonical.slice('/private'.length) : `/private${canonical}`;
+  for (const state of ['present', 'removed-after-construction', 'already-missing']) {
+    if (state === 'already-missing') await rm(alias, { force: true });
+    const volume = createTrainingOutputVolume({ name: 'alias-test', image, host: f.output, scratch: f.root,
+      uid: 1000, gid: 1000, runtimeUid: 1000, runtimeGid: 1000, context: 'local', authSources: [alias], stderr: vi.fn(),
+      call: async args => args[0] === 'volume'
+        ? { code: 0, stdout: args[1] === 'create' ? 'alias-test-output' : JSON.stringify({ Name: 'alias-test-output', Driver: 'local', Labels: { 'com.spawnfile.training.owner': 'alias-test' } }), stderr: '' }
+        : args[1] === 'ls' ? { code: 0, stdout: '', stderr: '' }
+          : { code: 1, stdout: '', stderr: `cannot bind ${alias}; ${state === 'already-missing' ? '' : `${canonical}; ${canonicalAlias}`}` },
+    });
+    if (state === 'removed-after-construction') await rm(alias);
+    const error = await volume.seed().catch(error => error);
+    expect(error.message).toContain('cannot bind [auth source]');
+    expect(error.message).not.toContain(alias);
+    if (state !== 'already-missing') {
+      expect(error.message).not.toContain(canonical); expect(error.message).not.toContain(canonicalAlias);
+    }
+  }
 });

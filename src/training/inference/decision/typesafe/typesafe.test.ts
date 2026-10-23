@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../../safe-diagnostic.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspect } from 'node:util';
 import type { DecisionRequest } from '../../../contracts/grading.js';
@@ -127,14 +128,20 @@ describe('TypeSafe transport safety', () => {
     vi.stubEnv('TYPESAFE_API_KEY', 'changed');
     await backend.score([request()]);
     expect(fetch.mock.calls[0]![1]!.headers).toMatchObject({ Authorization: `Bearer ${key}` });
-    for (const value of [undefined, '', ' ']) expect(() => createTypeSafeDecision({ model, env: { TYPESAFE_API_KEY: value } })).toThrow('requires TYPESAFE_API_KEY');
+    for (const value of [undefined, '', ' ']) {
+      const construct = () => createTypeSafeDecision({ model, env: { TYPESAFE_API_KEY: value } });
+      expect(construct).toThrow('requires TYPESAFE_API_KEY'); expect(construct).toThrow(SafeDiagnosticError);
+    }
     expect(() => createTypeSafeDecision({ model: 'jev-latest', env })).toThrow('pinned');
+    expect(() => createTypeSafeDecision({ model: 'jev-latest', env })).toThrow(SafeDiagnosticError);
     for (const endpoint of ['bad', 'ftp://host', 'http://u:p@host', 'http://host?q=x', 'http://host#x', `http://host/${key}`]) {
-      expect(() => createTypeSafeDecision({ model, env, endpoint })).toThrow('Invalid TypeSafe endpoint');
+      const construct = () => createTypeSafeDecision({ model, env, endpoint });
+      expect(construct).toThrow('Invalid TypeSafe endpoint'); expect(construct).toThrow(SafeDiagnosticError);
     }
     for (const options of [{ pricePerMtokUsd: NaN }, { pricePerMtokUsd: -1 }, { maxAttempts: 0 }, { maxAttempts: 11 },
       { timeoutMs: 0 }, { retryBaseMs: -1 }, { maxEstimatedTokens: 0 }, { maxEstimatedTokens: 64_001 }]) {
-      expect(() => createTypeSafeDecision({ model, env, ...options })).toThrow('Invalid TypeSafe');
+      const construct = () => createTypeSafeDecision({ model, env, ...options });
+      expect(construct).toThrow('Invalid TypeSafe'); expect(construct).toThrow(SafeDiagnosticError);
     }
     expect(() => createDecisionSpendBudget(-1)).toThrow('Invalid maximum');
   });

@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../../safe-diagnostic.js';
 import { expect, it, vi } from 'vitest';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { DecisionRequest } from '../../../contracts/grading.js';
@@ -43,7 +44,9 @@ it.each([1, 3, 32])('bounds the configured pool at %i concurrent groups', async 
 });
 
 it.each([0, -1, 1.5, 33, NaN, Infinity])('rejects invalid concurrency %s', concurrency => {
-  expect(() => createTypeSafeDecision({ model, env, concurrency })).toThrow('Invalid TypeSafe concurrency');
+  const construct = () => createTypeSafeDecision({ model, env, concurrency });
+  expect(construct).toThrow('Invalid TypeSafe concurrency');
+  expect(construct).toThrow(SafeDiagnosticError);
 });
 
 it('times out only the hung attempt and retries it while other groups complete', async () => {

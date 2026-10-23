@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../../safe-diagnostic.js';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../../contracts/grading.js';
 import { typeSafeTransport, type TypeSafeTransportOptions } from './transport.js';
 import { decode, estimatedTokens, missing, payload, question } from './wire.js';
@@ -10,8 +11,8 @@ export function createTypeSafeDecision(options: TypeSafeDecisionOptions): Decisi
   const transport = typeSafeTransport(options);
   const limit = options.maxEstimatedTokens ?? 48_000;
   const concurrency = options.concurrency ?? 8;
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64_000) throw new Error('Invalid TypeSafe token estimate limit');
-  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 32) throw new Error('Invalid TypeSafe concurrency');
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64_000) throw new SafeDiagnosticError('Invalid TypeSafe token estimate limit');
+  if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 32) throw new SafeDiagnosticError('Invalid TypeSafe concurrency');
   return {
     capabilities: { billing: 'api', batch: true },
     identity: async signal => transport.identity(signal),
