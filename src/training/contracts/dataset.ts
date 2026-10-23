@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from './inference-registry.js';
 import type { TrainingConfiguration } from './training-config.js';
 /** Versioned, runtime-neutral authored and resolved dataset contracts. */
 export type DataValue = null | boolean | number | string | DataValue[] | DataMap;
@@ -130,6 +131,7 @@ export interface DatasetRegistry {
   embeddings?: Readonly<Record<string, { version: string }>>;
 }
 export interface ResolutionOptions {
+  inferenceProviders?: InferenceProviderRegistry;
   /** Trusted runtime invocation identity, shared with installed judge versions; never authored YAML. */
   inferenceExecutionIdentity?: string;
   registry?: DatasetRegistry;

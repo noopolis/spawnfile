@@ -1,12 +1,13 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { authoredArguments } from './configuration.js';
+import { authoredArguments } from '../../../../fixtures/support/training/providers.js';
 import { parseArguments } from '../arguments.js';
-import { cliFixture, datasetText } from '../fixture.js';
+import { cliFixture, datasetText } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import { prepareCliInputs } from '../native.js';
-import { createTrainingInference, configuredCostRoutes } from './inference.js';
+import { configuredCostRoutes } from './inference.js';
+import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { openExperimentStore } from '../../storage/index.js';
 import { InferenceFailure } from '../../inference/index.js';

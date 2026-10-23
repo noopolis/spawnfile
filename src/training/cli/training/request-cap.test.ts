@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { TrainingConfiguration, TrainingModel } from '../../contracts/index.js';
-import { createTrainingInference } from './inference.js';
+import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
 import { assertModelRequestAdmission } from '../../inference/index.js';
 
 afterEach(() => vi.unstubAllEnvs());

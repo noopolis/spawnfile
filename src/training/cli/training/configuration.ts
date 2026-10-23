@@ -4,14 +4,15 @@ import { parseDatasetYaml, trainingJudgeVersions } from '../../cases/index.js';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { one, pairs, type CliArguments } from '../arguments.js';
 import { readCliText } from '../datasets.js';
+import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
 import type { CliIO } from '../types.js';
 
 /** Resolve authored controls before the command-wide timer or any native factory. */
-export function authoredArguments(args: CliArguments, io: CliIO): CliArguments {
+export function authoredArguments(args: CliArguments, io: CliIO, inferenceProviders?: InferenceProviderRegistry): CliArguments {
   if (!['train', 'evaluate', 'validate'].includes(args.command)) return args;
   const file = args.command === 'train' ? one(args, 'train') : args.dataset!;
   const path = resolve(io.cwd, file);
-  const document = parseDatasetYaml(readCliText(path, 2_000_000), { sourceName: path });
+  const document = parseDatasetYaml(readCliText(path, 2_000_000), { sourceName: path, inferenceProviders });
   const frozenDataset = { path, sourceDigest: document.sourceDigest };
   const training = document.dataset.training;
   if (!training) {
@@ -62,8 +63,8 @@ export function authoredArguments(args: CliArguments, io: CliIO): CliArguments {
   return { ...args, flags, training, frozenDataset };
 }
 
-export function judgeVersions(training?: TrainingConfiguration, executionIdentity?: string, judgeNames: readonly string[] = []) {
-  return trainingJudgeVersions(training, executionIdentity, judgeNames);
+export function judgeVersions(training?: TrainingConfiguration, executionIdentity?: string, judgeNames: readonly string[] = [], inferenceProviders?: InferenceProviderRegistry) {
+  return trainingJudgeVersions(training, executionIdentity, judgeNames, inferenceProviders);
 }
 
 export async function validateAuthoredTemplates(args: CliArguments, signal?: AbortSignal): Promise<void> {

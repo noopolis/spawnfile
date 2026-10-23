@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { validateTrainingConfiguration } from './index.js';
+import { validateTrainingConfiguration } from '../../../../fixtures/support/training/providers.js';
 
 const models = { reflect: { provider: 'ollama', model: 'local' } };
 const optimizer = { model: 'reflect', variants: 4, keep: 2, budget: { rounds: 3 } };

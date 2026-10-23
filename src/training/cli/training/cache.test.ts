@@ -5,12 +5,12 @@ import { chmod, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } fro
 import { join } from 'node:path';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
-import { parseDatasetYaml } from '../../cases/index.js';
+import { parseDatasetYaml } from '../../../../fixtures/support/training/providers.js';
 import { openExperimentStore } from '../../storage/index.js';
-import { cliFixture } from '../fixture.js';
+import { cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import { parseArguments, type CliArguments } from '../arguments.js';
-import { authoredArguments } from './configuration.js';
+import { authoredArguments } from '../../../../fixtures/support/training/providers.js';
 import { prepareJudgeCaches } from './cache.js';
 
 const roots: string[] = [];

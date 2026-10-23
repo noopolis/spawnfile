@@ -1,8 +1,8 @@
 import { AUTHORED_JUDGE_VERSION_PREFIX } from '../../contracts/index.js';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
-import { parseDatasetYaml, resolveDataset } from '../index.js';
-import { trainingJudgeVersions, validateTrainingConfiguration } from './index.js';
+import { parseDatasetYaml, resolveDataset } from '../../../../fixtures/support/training/providers.js';
+import { trainingJudgeVersions, validateTrainingConfiguration } from '../../../../fixtures/support/training/providers.js';
 
 const config = {
   models: { cheap: { provider: 'grok-subscription', model: 'grok-fast' },

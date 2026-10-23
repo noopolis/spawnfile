@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import * as optimization from '../../optimization/index.js';
 import { openExperimentStore } from '../../storage/index.js';
 import type { TrainingReport } from '../../experiments/index.js';
-import { cliFixture, datasetText, fixtureAdapter } from '../fixture.js';
+import { cliFixture, datasetText, fixtureAdapter } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 
 const roots: string[] = [];

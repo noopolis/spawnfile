@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
 import { isDeepStrictEqual } from 'node:util';
 import { validateTrainingConfiguration } from '../../cases/index.js';
 import { type CandidateManifest } from '../../candidates/index.js';
@@ -9,10 +10,10 @@ import type { SpawnfileTrainingContext } from '../spawnfile/index.js';
 
 /** Merge only equal declarations, resolving a public model name to its explicit route. */
 export async function resolveTrainingOptimizer(args: CliArguments, integration?: SpawnfileCliIntegration,
-  context?: SpawnfileTrainingContext): Promise<CliArguments> {
+  context?: SpawnfileTrainingContext, inferenceProviders?: InferenceProviderRegistry): Promise<CliArguments> {
   if (args.command !== 'train') return args;
   if (args.training?.comparison) {
-    validateTrainingConfiguration(args.training);
+    validateTrainingConfiguration(args.training, '$.training', inferenceProviders);
     return args;
   }
   const resolved = context === undefined ? undefined : await integration?.trainingOptimizer?.(context);
@@ -38,7 +39,7 @@ export async function resolveTrainingOptimizer(args: CliArguments, integration?:
       throw new Error('training.optimizer.boundaries conflicts with the integration optimizer');
     }
     training = validateTrainingConfiguration({ ...training, optimizer: { ...authored, ...mapped,
-      boundaries: mapped.boundaries === undefined ? authored?.boundaries : mapped.boundaries } });
+      boundaries: mapped.boundaries === undefined ? authored?.boundaries : mapped.boundaries } }, '$.training', inferenceProviders);
     const model = training.models[mapped.model]!.model;
     if (flags['optimizer-model'] && flags['optimizer-model'][0] !== model) throw new Error('training.optimizer.model conflicts with --optimizer-model');
     flags['optimizer-model'] = [model];

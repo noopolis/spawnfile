@@ -2,16 +2,16 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { TrainingConfiguration } from '../../contracts/index.js';
 import { runProcess, type ProcessOptions } from '../../platform/process/index.js';
-import { createCodexInference } from '../../inference/index.js';
-import { createTrainingInference } from './inference.js';
+import { createCodexInference } from '../../../../fixtures/support/training/providers.js';
+import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
 import { createDspyGeneration } from '../../optimization/index.js';
 
 vi.mock('../../platform/process/index.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../platform/process/index.js')>();
   return { ...actual, runProcess: vi.fn() };
 });
-vi.mock('../../inference/index.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../inference/index.js')>();
+vi.mock('../../../../fixtures/support/training/providers.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../fixtures/support/training/providers.js')>();
   return { ...actual, createCodexInference: vi.fn(actual.createCodexInference) };
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });

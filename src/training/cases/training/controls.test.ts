@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { trainingJudgeVersions, validateTrainingConfiguration } from './index.js';
+import { trainingJudgeVersions, validateTrainingConfiguration } from '../../../../fixtures/support/training/providers.js';
 const config = { models: { small: { provider: 'ollama', model: 'qwen3:4b', think: false, keep_alive_seconds: 300, max_output_tokens: 256, context_window: 8192 } },
   judges: { narrow: { model: 'small', protocol: 'evidence-ids', timeout_ms: 10000 } },
   optimizer: { model: 'small', proposal: { strategy: 'refine', min_change: 0.1, max_attempts: 2, history_entries: 20, history_bytes: 65536 } } };

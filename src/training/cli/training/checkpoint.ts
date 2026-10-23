@@ -25,7 +25,7 @@ export async function commandCheckpoint(args: CliArguments, inputs: Awaited<Retu
     !['resume','view','out','spawnfile-context','dry-run'].includes(name)).sort(([a],[b]) => a.localeCompare(b)));
   const identity = createHash('sha256').update(JSON.stringify({
     ...(repair ? {measurementRepair:repair.digest} : {}),
-    version:COMMAND_EXECUTION_DOMAIN,comparisonCandidateId:context.comparisonCandidateId,providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity),flags,training:args.training,candidate:inputs.candidate.id,
+    version:COMMAND_EXECUTION_DOMAIN,comparisonCandidateId:context.comparisonCandidateId,providerPolicies:trainingInferencePolicies(args.training, integration?.inferenceExecutionIdentity, dependencies.inferenceProviders),flags,training:args.training,candidate:inputs.candidate.id,
     sourceRoot:inputs.sourceRoot,resources:inputs.resources,model:inputs.model,
     context:inputs.context !== undefined ? inputs.context : null,
     integration:integration ? {id:integration.id,version:integration.version,environment:environment ?? null,

@@ -2,7 +2,7 @@ import * as providerPolicies from '../../contracts/inference-policy.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { cliFixture, datasetText } from '../fixture.js';
+import { cliFixture, datasetText } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import { loadInvocationViewer } from '../viewer.js';
 import type { InvocationIndex } from '../types.js';

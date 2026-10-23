@@ -4,7 +4,8 @@ import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { type CliArguments } from '../arguments.js';
 import type { SpawnfileCliIntegration } from '../types.js';
 import type { SpawnfileTrainingContext } from '../spawnfile/index.js';
-import { bridgeProposal, populationSearch, resolveTrainingOptimizer, trainingTrialBudget } from './optimizer.js';
+import { bridgeProposal, populationSearch, trainingTrialBudget } from './optimizer.js';
+import { resolveTrainingOptimizer } from '../../../../fixtures/support/training/providers.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { force: true, recursive: true }))); });

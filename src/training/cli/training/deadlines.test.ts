@@ -2,11 +2,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { commandDeadlines } from './deadlines.js';
-import { authoredArguments } from './configuration.js';
+import { authoredArguments } from '../../../../fixtures/support/training/providers.js';
 import { parseArguments } from '../arguments.js';
 import { main } from '../commands.js';
-import { cliFixture, datasetText, fixtureAdapter } from '../fixture.js';
-import { createTrainingInference } from './inference.js';
+import { cliFixture, datasetText, fixtureAdapter } from '../../../../fixtures/support/training/cli-fixture.js';
+import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
 import { openExperimentStore } from '../../storage/index.js';
 import type { CliDependencies } from '../types.js';
 

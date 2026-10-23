@@ -42,3 +42,12 @@ EvaluationResult.mechanicalEvidence retains deterministic counts and missing val
 beside source-byte references; it does not assert semantic support or live finality.
 
 SubjectTurnResult.evidence carries an adapter ID and opaque payload; native execution IDs stay in adapter-owned types.
+
+`grader-providers.ts` owns immutable startup registration for grader provider
+validation, per-call factories and externally supplied council policy. Registration
+is idempotent only for the installed registry and refuses incompatible replacement.
+Provider instances and their mutable run state are never stored in the registry.
+
+`inference-registry.ts` defines host-supplied provider descriptors, validators,
+capabilities, identity normalization and factories. Provider identifiers are data;
+contracts never define an engine/provider enumeration.

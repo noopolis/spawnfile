@@ -1,24 +1,23 @@
-import { INFERENCE_POLICY_VERSIONS } from '../../shared/trainingLegacy/index.js';
-import type { TrainingConfiguration, TrainingModel, TrainingRoute } from './training-config.js';
-
-/** Versions describe maintained invocation policy, not model/account or ambient profile contents. */
-const policies: Readonly<Record<TrainingModel['provider'], string>> = INFERENCE_POLICY_VERSIONS;
+import type { InferenceProviderRegistry } from './inference-registry.js';
+import { inferenceProviderDescriptor } from './inference-registry.js';
+import { defaultInferenceProviders } from '../providers/index.js';
+import type { TrainingConfiguration, TrainingRoute } from './training-config.js';
 
 /** Preserve route order and include every declared fallback, whether invoked or not. */
-export function trainingRoutePolicies(configuration: TrainingConfiguration, route: TrainingRoute, executionIdentity?: string) {
+export function trainingRoutePolicies(configuration: TrainingConfiguration, route: TrainingRoute, executionIdentity?: string, registry: InferenceProviderRegistry = defaultInferenceProviders) {
   return [route.model, ...(route.fallbacks ?? [])].map(name => {
     const provider = configuration.models[name]!.provider;
-    return { provider, policy: policies[provider], ...executionPolicy(executionIdentity) };
+    return { provider, policy: inferenceProviderDescriptor(registry, provider).policyVersion, ...executionPolicy(executionIdentity) };
   });
 }
 
 /** Pure command identity input; dry-run never constructs a provider or reads host configuration. */
-export function trainingInferencePolicies(configuration?: TrainingConfiguration, executionIdentity?: string) {
-  const legacy = [{ provider: 'claude-subscription', policy: policies['claude-subscription'], ...executionPolicy(executionIdentity) }];
+export function trainingInferencePolicies(configuration?: TrainingConfiguration, executionIdentity?: string, registry: InferenceProviderRegistry = defaultInferenceProviders) {
+  const legacy = [{ provider: registry.defaultProviderId, policy: inferenceProviderDescriptor(registry, registry.defaultProviderId).policyVersion, ...executionPolicy(executionIdentity) }];
   return {
     judges: Object.fromEntries(Object.entries(configuration?.judges ?? {}).sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, route]) => [name, trainingRoutePolicies(configuration!, route, executionIdentity)])),
-    optimizer: configuration?.comparison ? [] : configuration?.optimizer ? trainingRoutePolicies(configuration, configuration.optimizer, executionIdentity) : legacy,
+      .map(([name, route]) => [name, trainingRoutePolicies(configuration!, route, executionIdentity, registry)])),
+    optimizer: configuration?.comparison ? [] : configuration?.optimizer ? trainingRoutePolicies(configuration, configuration.optimizer, executionIdentity, registry) : legacy,
   };
 }
 

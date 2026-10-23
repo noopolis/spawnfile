@@ -22,3 +22,6 @@ Authored comparison remains single-pass and refuses nondefault repeats.
 
 Bound training.budget.trial_retries to integer 0..3; omit to preserve no retry.
 Authored comparison refuses nonzero retries; trial execution belongs to training.
+
+Provider validation and identity defaults come from the injected inference registry.
+Do not add provider IDs or provider-specific controls to the core schema.

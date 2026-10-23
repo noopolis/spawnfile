@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { validateTrainingConfiguration } from './schema.js';
+import { validateTrainingConfiguration } from '../../../../fixtures/support/training/providers.js';
 const config = () => ({ models: { judge: { provider: 'grok-subscription', model: 'm' } },
   comparison: { candidate: { name: 'Authored', replacements: [{ resource: 'agent/AGENTS.md', source: 'variant/AGENTS.md' }] } } });
 it('accepts strictly authored comparison configuration', () => {
