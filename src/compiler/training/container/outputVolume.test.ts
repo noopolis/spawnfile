@@ -187,18 +187,22 @@ it('redacts the realpath of a declared auth alias and retains lexical redaction 
   const f = await setup();
   const canonical = await realpath(f.config.auth[0]!.source), alias = path.join(f.root, 'auth-alias');
   await symlink(canonical, alias);
-  for (const removed of [false, true]) {
-    if (removed) await rm(alias);
+  const canonicalAlias = canonical.startsWith('/private/') ? canonical.slice('/private'.length) : `/private${canonical}`;
+  for (const state of ['present', 'removed-after-construction', 'already-missing']) {
+    if (state === 'already-missing') await rm(alias, { force: true });
     const volume = createTrainingOutputVolume({ name: 'alias-test', image, host: f.output, scratch: f.root,
       uid: 1000, gid: 1000, runtimeUid: 1000, runtimeGid: 1000, context: 'local', authSources: [alias], stderr: vi.fn(),
       call: async args => args[0] === 'volume'
         ? { code: 0, stdout: args[1] === 'create' ? 'alias-test-output' : JSON.stringify({ Name: 'alias-test-output', Driver: 'local', Labels: { 'com.spawnfile.training.owner': 'alias-test' } }), stderr: '' }
         : args[1] === 'ls' ? { code: 0, stdout: '', stderr: '' }
-          : { code: 1, stdout: '', stderr: `cannot bind ${alias}; ${removed ? '' : canonical}` },
+          : { code: 1, stdout: '', stderr: `cannot bind ${alias}; ${state === 'already-missing' ? '' : `${canonical}; ${canonicalAlias}`}` },
     });
+    if (state === 'removed-after-construction') await rm(alias);
     const error = await volume.seed().catch(error => error);
     expect(error.message).toContain('cannot bind [auth source]');
     expect(error.message).not.toContain(alias);
-    if (!removed) expect(error.message).not.toContain(canonical);
+    if (state !== 'already-missing') {
+      expect(error.message).not.toContain(canonical); expect(error.message).not.toContain(canonicalAlias);
+    }
   }
 });
