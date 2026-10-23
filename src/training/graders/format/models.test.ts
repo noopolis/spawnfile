@@ -76,3 +76,8 @@ it('defaults and bounds Ollama context in legacy and named authoring only', () =
     expect(() => parseGrader(withModels([{ ...model, context_tokens: 16384 }]))).toThrow('models');
   }
 });
+
+it('preserves unsupported grader provider diagnostics after composition', () => {
+  expect(() => parseGrader({ ...base, teachers: [{ ...base.teachers[0], provider: 'unknown' }] }))
+    .toThrow(/\$\.teachers\.0\.provider: Unsupported grader provider/);
+});
