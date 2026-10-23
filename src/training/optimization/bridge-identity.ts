@@ -67,7 +67,7 @@ export async function bridgeExecutionIdentity(root: string | undefined, context:
       if (entry.name.startsWith('.') || entry.name === '__pycache__' || entry.name.endsWith('_test.py') || entry.name.endsWith('.md')) continue;
       const path = join(directory, entry.name), label = `${relative}/${entry.name}`;
       if (relative === '' && entry.name === 'legacy_wire_aliases.json') {
-        if (entry.isSymbolicLink() && await readlink(path) !== '../../../shared/trainingLegacyWireAliases.json') throw new Error('Unsupported bridge wire alias resource');
+        if (entry.isSymbolicLink() && await readlink(path) !== '../../../shared/trainingLegacy/trainingLegacyWireAliases.json') throw new Error('Unsupported bridge wire alias resource');
         await bind(await realpath(path), `package${label}`);
         wireAliasesBound = true;
         continue;

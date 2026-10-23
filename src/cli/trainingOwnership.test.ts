@@ -12,24 +12,24 @@ const forbidden = /paideia/iu;
 // the single history note. No directory or blanket test exemptions.
 const legacyPaths = new Set([
   'src/cli/trainingOwnership.test.ts',
-  'src/shared/trainingLegacyHashDomains.ts',
+  'src/shared/trainingLegacy/trainingLegacyHashDomains.ts',
   'src/training/cli/grader/atomic/legacy-checkpoints.test.ts',
-  'src/training/cli/grader/legacy-cache.test.ts',
-  'src/shared/trainingLegacyWire.ts',
-  'src/shared/trainingLegacyWireAliases.json',
+  'src/training/cli/grader/cache-exclusions.test.ts',
+  'src/shared/trainingLegacy/trainingLegacyWire.ts',
+  'src/shared/trainingLegacy/trainingLegacyWireAliases.json',
   'src/training/dspy/spawnfile_training_dspy/legacy_wire_aliases.json',
   'src/training/dspy/spawnfile_training_dspy/protocol_test.py',
   'src/training/dspy/spawnfile_training_dspy/main_test.py',
-  'src/shared/trainingLegacyWire.test.ts',
+  'src/shared/trainingLegacy/trainingLegacyWire.test.ts',
   'src/training/experiments/replay/legacy-wire.test.ts',
   'src/training/experiments/repair/legacy-wire.test.ts',
   'src/compiler/training/repair/legacy-wire.test.ts',
   'src/training/graders/format/legacy-wire.test.ts',
-  'src/shared/trainingLegacyEnvironment.ts',
-  'src/shared/trainingLegacyEnvironment.test.ts',
+  'src/shared/trainingLegacy/trainingLegacyEnvironment.ts',
+  'src/shared/trainingLegacy/trainingLegacyEnvironment.test.ts',
   'src/training/platform/legacy-environment.test.ts',
-  'src/shared/trainingLegacyFiles.ts',
-  'src/shared/trainingLegacyFiles.test.ts',
+  'src/shared/trainingLegacy/trainingLegacyFiles.ts',
+  'src/shared/trainingLegacy/trainingLegacyFiles.test.ts',
   'specs/TRAINING.md',
 ]);
 
@@ -113,7 +113,7 @@ it.each([
 });
 
 it("allows legacy data only in the exact compatibility allowlist", () => {
-  expect(scan(['src/shared/trainingLegacyWire.ts'], () => 'paideia.dataset.v1')).toEqual([]);
+  expect(scan(['src/shared/trainingLegacy/trainingLegacyWire.ts'], () => 'paideia.dataset.v1')).toEqual([]);
   expect(scan(['src/training/legacy.ts'], () => '/run/paideia/context.json paideia.dataset.v1'))
     .toEqual(['src/training/legacy.ts']);
   expect(scan(['src/legacy.ts'], () => 'join(root, "paideia"); "paideia" in image.build;'))

@@ -13,6 +13,8 @@ const owners = {
   training: canonicalPath(trainingRoot),
   runtime: canonicalPath(path.join(root, 'src/runtime')),
   compiler: canonicalPath(path.join(root, 'src/compiler')),
+  shared: canonicalPath(path.join(root, 'src/shared')),
+  trainingLegacy: canonicalPath(path.join(root, 'src/shared/trainingLegacy')),
 };
 const runtimePackage = ['@noopolis', 'daimon'].join('/');
 // Retain the training project's deadlines when this file runs in the serial lane.
@@ -101,7 +103,8 @@ function boundaryViolations(filename: string, source: string, resolve = importTa
     if (target.startsWith('file:')) target = fileURLToPath(target);
     if (!target.startsWith('.') && !path.isAbsolute(target)) return false;
     const resolved = resolve(filename, target);
-    return forbidden.some((directory) => inside(directory, resolved));
+    return forbidden.some((directory) => inside(directory, resolved)) ||
+      (fromTraining && inside(owners.shared, resolved) && !inside(owners.trainingLegacy, resolved));
   }).map(({ specifier }) => specifier)];
 }
 
@@ -129,6 +132,23 @@ test('training stays runtime neutral through scoped runtime composition', async 
   const violations = await Promise.all(files.map(async (filename) => boundaryViolations(filename, await readFile(filename, 'utf8'), resolve)
     .map((specifier) => `${path.relative(root, filename)} imports ${specifier}`)));
   expect(violations.flat()).toEqual([]);
+});
+
+test.each([
+  "import '../../shared/index.js';",
+  "export * from '../../shared/daimonCodexDocker.js';",
+  "await import('../../shared/constants.js');",
+  "type Shared = import('../../shared/types.js');",
+  "const target = '../../shared/index.js'; require(target);",
+])('rejects training imports outside the shared legacy module: %s', source => {
+  expect(boundaryViolations(path.join(trainingRoot, 'evaluation/check.ts'), source)).not.toEqual([]);
+});
+
+test('allows the neutral shared legacy barrel and helpers', () => {
+  for (const target of ['index', 'trainingLegacyWire', 'trainingLegacyHashDomains']) {
+    expect(boundaryViolations(path.join(trainingRoot, 'contracts/check.ts'),
+      `export * from '../../shared/trainingLegacy/${target}.js';`)).toEqual([]);
+  }
 });
 
 test.each([

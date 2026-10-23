@@ -1,1 +1,1 @@
-export { trainingEnvironment, normalizedTrainingEnvironment, checkTrainingFilename, readTrainingBytes } from '../../shared/index.js';
+export { trainingEnvironment, normalizedTrainingEnvironment, checkTrainingFilename, readTrainingBytes } from '../../shared/trainingLegacy/index.js';
