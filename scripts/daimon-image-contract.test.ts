@@ -10,7 +10,9 @@ type Material = {
   directoryMode: number; fileMode: number;
 };
 const readJson = (file: string): unknown => JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8"));
-const v5 = readJson("../src/runtime/daimon/contract-manifest.json") as Record<string, unknown>;
+const vendored = readJson("../src/runtime/daimon/contract-manifest.json") as Record<string, unknown>;
+const { engines: _engines, ...legacy } = vendored;
+const v5 = { ...legacy, version: "noopolis.daimon.runtime-contract-manifest.v5" };
 const mirror = readJson("../src/runtime/daimon/engine-descriptors.json") as {
   engines: Record<string, { id: string; auth: { staging: string }; credentialMaterial: Material | null }>;
 };
@@ -24,7 +26,7 @@ const v6 = (portableCount: 1 | 2) => {
       sourceRelativePath: ".daimon-inbound/another-auth", sourceSlot: "another-auth"
     } };
   }
-  return { ...structuredClone(v5), version: "noopolis.daimon.runtime-contract-manifest.v6",
+  return { ...structuredClone(vendored), version: "noopolis.daimon.runtime-contract-manifest.v6",
     engines, supportedEngineKinds: Object.keys(engines).sort(), engineCredentialMaterial: Object.fromEntries(
       Object.values(engines).filter(e => e.auth.staging === "portable-file").map(e => [e.id, structuredClone(e.credentialMaterial!)])) };
 };
@@ -48,7 +50,11 @@ const checkImageContract = (value: unknown): number | null => {
   } finally { rmSync(root, { force: true, recursive: true }); }
 };
 
-test("the image accepts the pinned v5 contract", () => {
+test("the image accepts the pinned v6 contract", () => {
+  assert.equal(checkImageContract(vendored), 0);
+});
+
+test("the image retains v5 compatibility", () => {
   assert.equal(checkImageContract(v5), 0);
 });
 

@@ -12,14 +12,14 @@ import { DAIMON_GROK_WORKER_SKILLS_SAMPLES } from "../../../runtime/daimon/grokW
 import { renderDaimonGrokServiceConfig } from "../../containerDaimonGrokWorkerRender.js";
 
 // Source checkout integration is explicit: no runtime dependency on Daimon and no provider calls.
-const source = process.env.SPAWNFILE_DAIMON_SOURCE_DIR;
+const source = process.env.DAIMON_SOURCE_ROOT ?? process.env.SPAWNFILE_DAIMON_SOURCE_DIR;
 const load = (file: string) => import(/* @vite-ignore */ pathToFileURL(path.join(source!, file)).href);
 
 describe.skipIf(!source)("clocked training slots against Daimon's actual contract", () => {
   it("attests every model/effort and slot, and verifies the clocked projection receipt", async () => {
     const [projectionApi, slotApi, configApi, receiptApi] = await Promise.all([
-      load("src/runtime/grokBrokerProjection.ts"), load("src/runtime/grokBrokerSlot.ts"),
-      load("src/runtime/grokBrokerWorkerConfig.ts"), load("src/runtime/grokSlotPreflightReceipt.ts")
+      load("src/engines/grok/broker/grokBrokerProjection.ts"), load("src/engines/grok/broker/grokBrokerSlot.ts"),
+      load("src/engines/grok/broker/grokBrokerWorkerConfig.ts"), load("src/engines/grok/broker/grokSlotPreflightReceipt.ts")
     ]);
     const daimon = { ...projectionApi, GROK_ENGINE_BROKER: DAIMON_GROK_ENGINE_BROKER } as DaimonProjectionModule;
     for (const count of [1, 4, 8]) for (const p of trainingSlotDescriptors(count)) {
@@ -49,8 +49,8 @@ describe.skipIf(!source)("clocked training slots against Daimon's actual contrac
 
   it("binds declared skills exactly as Daimon's projection, service parser and pre-turn attestation do", async () => {
     const [projectionApi, serviceApi, homeApi, skillsApi] = await Promise.all([
-      load("src/runtime/grokBrokerProjection.ts"), load("src/runtime/engineBrokerServiceConfig.ts"),
-      load("src/runtime/grokWorkerHomeAttestation.ts"), load("src/runtime/grokWorkerSkills.ts")
+      load("src/engines/grok/broker/grokBrokerProjection.ts"), load("src/engines/grok/broker/engineBrokerServiceConfig.ts"),
+      load("src/engines/grok/broker/grokWorkerHomeAttestation.ts"), load("src/engines/grok/broker/grokWorkerSkills.ts")
     ]);
     const daimon = { ...projectionApi, GROK_ENGINE_BROKER: DAIMON_GROK_ENGINE_BROKER } as DaimonProjectionModule;
     const skills = DAIMON_GROK_WORKER_SKILLS_SAMPLES[2]!.skills.map((skill) => ({ name: skill.name, files: skill.files.map((file) => ({ ...file })) }));
