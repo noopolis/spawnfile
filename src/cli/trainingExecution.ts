@@ -20,6 +20,14 @@ export interface RunTrainingOptions {
 }
 
 const failure = (message: string): SpawnfileError => new SpawnfileError("runtime_error", message);
+const validCostReceipt = (line: string): boolean => {
+  try {
+    const receipt: unknown = JSON.parse(line);
+    return typeof receipt === "object" && receipt !== null &&
+      "schema" in receipt && receipt.schema === "paideia.training-cost-plan.v1" &&
+      "modelCallsMade" in receipt && receipt.modelCallsMade === 0;
+  } catch { return false; }
+};
 
 /** Owns image preparation/launch and invokes host estimates through the training composition. */
 export const runTraining = async (options: RunTrainingOptions): Promise<number> => {
@@ -47,27 +55,59 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
       context: options.context, args: options.args, execution: options.execution, timeoutMs: options.timeoutMs, streams: options.streams, signal: options.signal });
   }
   const controller = new AbortController();
-  let signalExit: number | undefined;
-  const interrupt = (): void => { signalExit = 130; controller.abort(); };
-  const terminate = (): void => { signalExit = 143; controller.abort(); };
+  const deadline = performance.now() + options.timeoutMs;
+  let active = true, lastLine = "", pending = "";
+  let stop!: (code: number, error?: Error) => void;
+  const stopped = new Promise<number>((resolve, reject) => {
+    stop = (code, error) => {
+      if (!active) return;
+      active = false;
+      if (error) reject(error); else resolve(code);
+      controller.abort(error);
+    };
+  });
+  const expire = (): void => stop(1, failure("Training exceeded its command deadline"));
+  const interrupt = (): void => stop(130);
+  const terminate = (): void => stop(143);
+  const timer = setTimeout(expire, options.timeoutMs);
   process.once("SIGINT", interrupt); process.once("SIGTERM", terminate);
+  options.signal?.addEventListener("abort", interrupt, { once: true });
   const forward = (channel: "stdout" | "stderr", text: string): void => {
+    if (performance.now() >= deadline) expire();
+    if (!active) return;
+    if (channel === "stdout") {
+      const lines = (pending + text).split("\n");
+      pending = lines.pop()!;
+      for (const line of lines) if (line.trim()) lastLine = line;
+    }
     for (const raw of text.split("\n")) {
       const line = raw.replace(/\r$/u, "");
       if (line.trim()) options.streams[channel](line);
     }
   };
   try {
-    const { main: trainingMain } = await import("../runtime/trainingCli.js");
-    const args = options.args.includes("--dry-run") ? options.args : [...options.args, "--dry-run"];
-    const code = await trainingMain(["train", ...args], {
-      cwd: process.cwd(),
-      signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
-      stdout: text => forward("stdout", text),
-      stderr: text => forward("stderr", text)
-    }, { spawnfileContext: options.context });
-    return signalExit ?? code;
+    const invocation = async (): Promise<number> => {
+      const { main: trainingMain } = await import("../runtime/trainingCli.js");
+      if (performance.now() >= deadline) expire();
+      if (!active) return stopped;
+      const args = options.args.includes("--dry-run") ? options.args : [...options.args, "--dry-run"];
+      return trainingMain(["train", ...args], {
+        cwd: process.cwd(), signal: controller.signal,
+        stdout: text => forward("stdout", text), stderr: text => forward("stderr", text)
+      }, { spawnfileContext: options.context });
+    };
+    if (options.signal?.aborted) interrupt();
+    const code = await Promise.race([stopped, invocation()]);
+    // Synchronous core work can delay the timer; elapsed time still forbids success.
+    if (active && performance.now() >= deadline) { expire(); return await stopped; }
+    if (active && code === 0 && !validCostReceipt(pending.trim() ? pending : lastLine)) {
+      throw failure("Training exited without the required final training receipt");
+    }
+    return code;
   } finally {
+    active = false;
+    clearTimeout(timer);
     process.removeListener("SIGINT", interrupt); process.removeListener("SIGTERM", terminate);
+    options.signal?.removeEventListener("abort", interrupt);
   }
 };

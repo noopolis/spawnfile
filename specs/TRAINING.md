@@ -1021,10 +1021,14 @@ and reserves both judge attempts without adding subject trials or optimizer prop
 
 Exit 0 requires the mode's final receipt. Completed actual runs also require
 `status: completed` and a nonempty `index` path; exit 1 preserves completed failed checks.
-Training-core errors return exit 2. The in-process host path forwards cancellation
-through an AbortSignal and removes its signal handlers on completion. SIGINT and
-SIGTERM retain exit 130 and 143. The core owns experiment and per-trial deadlines;
-the container launcher retains its Docker lifecycle and final-receipt validation.
+Training-core errors return exit 2. Host dry-run requires a final
+`paideia.training-cost-plan.v1` receipt with `modelCallsMade: 0`. The in-process
+host path forwards cancellation through an AbortSignal and enforces its outer
+command deadline: timeout fails, aborts the core and abandons the invocation,
+discarding subsequent output even if the core ignores cancellation. It removes
+its timer and signal handlers on completion. SIGINT and SIGTERM retain exit 130
+and 143. The core owns experiment and per-trial deadlines; the container launcher
+retains its Docker lifecycle and final-receipt validation.
 No external training process, process-group supervisor or temporary host context
 file is involved.
 
