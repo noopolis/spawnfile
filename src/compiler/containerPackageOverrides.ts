@@ -11,7 +11,7 @@ const execFile = promisify(execFileCallback);
 
 /**
  * Compile-time-only request map: runtime install npm package name (e.g.
- * "@noopolis/daimon") to the absolute local package directory that should
+ * "Daimon") to the absolute local package directory that should
  * be packed and installed into the generated container instead of the
  * pinned registry version. Only opt-in local/E2E compiles set this (see
  * src/e2e/AGENTS.md); a standard compile passes no overrides and the

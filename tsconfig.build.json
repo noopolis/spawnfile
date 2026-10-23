@@ -17,6 +17,7 @@
     "src/deployment/native/build.ts",
     "src/deployment/native/copyArtifacts.ts",
     "src/evidenceExportHelper/copyAssets.ts",
-    "src/runtime/copyScaffoldAssets.ts"
+    "src/runtime/copyScaffoldAssets.ts",
+    "src/training/**"
   ]
 }

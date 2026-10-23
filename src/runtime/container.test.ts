@@ -119,13 +119,13 @@ describe("runtime container install recipes", () => {
 
     expect(recipe.commands[1]).toContain("@noopolis/mneme@0.1.1");
     expect(recipe.commands[1]).toContain("/opt/spawnfile/vendor/noopolis-daimon-0.1.2.tgz");
-    expect(recipe.commands[1]).not.toContain("@noopolis/daimon@0.1.2");
+    expect(recipe.commands[1]).not.toContain(`@noopolis/daimon@0.1.2`);
   });
 
   it("omits the vendor copy command when the Pi recipe has no overrides", async () => {
     const recipe = await createRuntimeInstallRecipe("pi", {});
     expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands[1]).toContain("@noopolis/daimon@0.1.2");
+    expect(recipe.commands[1]).toContain(`@noopolis/daimon@0.1.2`);
   });
 
   it("omits the vendor copy command when a prebuilt Pi base image is configured, even with overrides set", async () => {

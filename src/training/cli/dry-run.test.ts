@@ -1,0 +1,104 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { access, readdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { main } from './commands.js';
+import { cliFixture, datasetText } from './fixture.js';
+import { readCostConfig } from './dry-run.js';
+import { parseArguments } from './arguments.js';
+import type { SubjectAdapterRegistry } from '../subjects/index.js';
+
+const roots: string[] = [];
+afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+async function fixture() {
+  const f = await cliFixture(); roots.push(f.root);
+  await writeFile(join(f.root, 'train.yaml'), datasetText([{ id: 'a', group: 'a' }, { id: 'b', group: 'b' }]));
+  await writeFile(join(f.root, 'test.yaml'), datasetText([{ id: 'x', group: 'x' }]).replace('id: example', 'id: sealed'));
+  const args = ['train', '--train', 'train.yaml', '--test', 'test.yaml', '--runtime', 'codex', '--model', 'gpt-5.5',
+    '--instructions', 'AGENTS.md', '--editable', 'AGENTS.md', '--optimizer-model', 'claude-fable-5-1', '--dry-run'];
+  return { ...f, args };
+}
+
+describe('training dry-run command', () => {
+  const registries: (SubjectAdapterRegistry | undefined)[] = [undefined, {}, { codex: { create: () => { throw new Error('No native construction'); } } }];
+  it.each(registries)(
+    'rejects an unknown runtime with absent or explicit subjects before native or inference construction: %j', async subjects => {
+      const f = await fixture();
+      const before = await readdir(f.root);
+      const adapter = vi.fn(() => { throw new Error('No native construction'); });
+      const inference = vi.fn(() => { throw new Error('No inference construction'); });
+      expect(await main(f.args.map(arg => arg === 'codex' ? 'unknown-runtime' : arg), f.io, { subjects, adapter, inference })).toBe(2);
+      expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
+      expect(f.stderr.join('')).toContain('Supported native runtimes');
+      expect(f.stdout).toEqual([]);
+      expect(await readdir(f.root)).toEqual(before);
+    });
+  it('makes zero adapter/inference calls and no trial, optimizer or output directory', async () => {
+    const f = await fixture();
+    const before = await readdir(f.root);
+    const adapter = vi.fn(() => { throw new Error('Native factory was invoked'); });
+    const inference = vi.fn(() => { throw new Error('Inference factory was invoked'); });
+    expect(await main(f.args, f.io, { ...f.dependencies, adapter, inference })).toBe(0);
+    expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
+    expect(f.stderr).toEqual([]);
+    const plan = JSON.parse(f.stdout.join(''));
+    expect(plan).toMatchObject({ schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0, coverage: 'estimated' });
+    expect(plan.candidateId).toBeTruthy();
+    expect(plan.apiEquivalentUsd.high).toBeGreaterThan(0);
+    expect(await readdir(f.root)).toEqual(before);
+    await expect(access(join(f.root, 'out'))).rejects.toThrow();
+  });
+  it('uses local price/assumption configuration and rejects missing/invalid inputs', async () => {
+    const f = await fixture();
+    await writeFile(join(f.root, 'cost.yaml'), 'schema: paideia.cost-config.v1\nassumptions:\n  subject:\n    inputTokens: {low: 1000, high: 2000}\n    outputTokens: {low: 100, high: 200}\n    cacheReadFraction: {low: 0, high: 0}\n');
+    expect(await main([...f.args, '--cost-config', 'cost.yaml'], f.io, f.dependencies)).toBe(0);
+    expect(JSON.parse(f.stdout[0]!).assumptions.subject.inputTokens.high).toBe(2000);
+    expect(await main([...f.args, '--cost-config', 'absent.yaml'], f.io, f.dependencies)).toBe(2);
+    await writeFile(join(f.root, 'cost.yaml'), 'schema: a\nschema: b\n');
+    expect(() => readCostConfig(parseArguments([...f.args, '--cost-config', 'cost.yaml']), f.io)).toThrow('Invalid cost configuration');
+    expect(await main(f.args.filter((_, index) => ![12, 13].includes(index)), f.io, f.dependencies)).toBe(2);
+  });
+  it('prices independently selected named judges without opening inference', async () => {
+    const f = await fixture();
+    const checks = ['prose', 'grounding'].map(judge => ({ id: judge, eval: 'llm-rubric', judge,
+      input: 'output.text', minimum: 0.8, rubric: { prompt: 'Check the declared output.' } }));
+    for (const [name, groups] of [['train', ['a', 'b']], ['test', ['x']]] as const) {
+      await writeFile(join(f.root, `${name}.yaml`), JSON.stringify({ schema: 'paideia.dataset.v1', id: name, checks,
+        records: groups.map(group => ({ id: group, group, input: { prompt: 'Reply OK.' } })) }));
+    }
+    const inference = vi.fn(() => { throw new Error('No judge construction'); });
+    expect(await main([...f.args, '--judge', 'prose=claude-fable-5-1', '--judge', 'grounding=unpriced-judge-model',
+      '--judge-citation-repairs', 'prose=1'], f.io, { ...f.dependencies, inference })).toBe(0);
+    const plan = JSON.parse(f.stdout.join(''));
+    expect(plan.coverage).toBe('partial'); expect(plan.apiEquivalentUsd).toBeNull();
+    expect(plan.lines.filter((line: { role: string }) => line.role === 'judge').map((line: { name: string; model: string }) => [line.name, line.model]))
+      .toEqual([['prose', 'claude-fable-5-1'], ['prose', 'claude-fable-5-1'], ['grounding', 'unpriced-judge-model'], ['grounding', 'unpriced-judge-model']]);
+    expect(plan.judgeRoutes).toEqual({ prose: { model: 'claude-fable-5-1', provider: 'claude-subscription', citationRepairs: 1 },
+      grounding: { model: 'unpriced-judge-model', provider: 'claude-subscription', citationRepairs: 0 } });
+    expect(plan.lines.map((line: { role: string; name: string; plannedCalls: number }) => [line.role, line.name, line.plannedCalls]))
+      .toEqual([['subject', 'subject', 18], ['subject', 'subject', 2], ['judge', 'prose', 36], ['judge', 'prose', 4],
+        ['judge', 'grounding', 18], ['judge', 'grounding', 2], ['optimizer', 'reflection', 3]]);
+    expect(inference).not.toHaveBeenCalled();
+  });
+  it('rejects unknown, duplicate and invalid repair selections before native or inference factories', async () => {
+    const f = await fixture();
+    const adapter = vi.fn(() => { throw new Error('No native construction'); });
+    const inference = vi.fn(() => { throw new Error('No judge construction'); });
+    for (const command of [f.args, f.args.filter(arg => arg !== '--dry-run')]) {
+      for (const flags of [['--judge-citation-repairs', 'missing=1'], ['--judge-citation-repairs', 'prose=2'],
+        ['--judge-citation-repairs', 'prose=1', '--judge-citation-repairs', 'prose=0']]) {
+        expect(await main([...command, '--judge', 'prose=model', ...flags], f.io, { ...f.dependencies, adapter, inference })).toBe(2);
+      }
+    }
+    expect(adapter).not.toHaveBeenCalled(); expect(inference).not.toHaveBeenCalled();
+    expect(f.stdout).toEqual([]);
+    expect(f.stderr.join('')).toMatch(/unknown judge/);
+    expect(f.stderr.join('')).toMatch(/literal NAME=0 or NAME=1/);
+    expect(f.stderr.join('')).toMatch(/unique NAME=VALUE/);
+  });
+  it('parses dry-run as a standalone boolean only on training', () => {
+    expect(parseArguments(['train', '--dry-run']).flags['dry-run']).toEqual(['true']);
+    expect(() => parseArguments(['train', '--dry-run', '--dry-run'])).toThrow('only once');
+    expect(() => parseArguments(['train', '--dry-run', 'false'])).toThrow();
+    expect(() => parseArguments(['evaluate', 'data.yaml', '--dry-run'])).toThrow('Unsupported');
+  });
+});

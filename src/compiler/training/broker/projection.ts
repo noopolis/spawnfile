@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from '../../../runtime/daimon/packageName.js';
 import { SpawnfileError } from "../../../shared/index.js";
 import {
   DAIMON_GROK_ENGINE_BROKER,
@@ -10,7 +11,7 @@ import { trainingSlotPaths } from "./paths.js";
 import { resolveTrainingGrokRegistration } from "./registration.js";
 
 /**
- * The slice of Daimon's public `@noopolis/daimon/runtime` export the slot
+ * The slice of Daimon's public `Daimon/runtime` export the slot
  * supervisor needs. Daimon stays the resolver: the slot preflight receipt binds
  * `projection_sha256`, and a second implementation of that digest would fork
  * the contract the moment either side changed a member.
@@ -23,14 +24,14 @@ export interface DaimonProjectionModule {
 
 /** Indirect specifier: Daimon is an in-image runtime peer of the training container, never a Spawnfile source dependency. */
 const loadRuntime = async (): Promise<unknown> => {
-  const packageName = "@noopolis/daimon/runtime";
+  const packageName = `${DAIMON_PACKAGE_NAME}/runtime`;
   return import(packageName);
 };
 
 export const loadDaimonProjectionModule = async (load: () => Promise<unknown> = loadRuntime): Promise<DaimonProjectionModule> => {
   let daimon: DaimonProjectionModule;
   try { daimon = await load() as DaimonProjectionModule; }
-  catch { throw new SpawnfileError("runtime_error", "The training image must install @noopolis/daimon with its public /runtime export"); }
+  catch { throw new SpawnfileError("runtime_error", `The training image must install ${DAIMON_PACKAGE_NAME} with its public /runtime export`); }
   if (typeof daimon.resolveOrganizationGrokBrokerProjection !== "function" || typeof daimon.grokBrokerProjectionSha256 !== "function"
     || daimon.GROK_ENGINE_BROKER?.projectionVersion !== DAIMON_GROK_ENGINE_BROKER.projectionVersion
     || daimon.GROK_ENGINE_BROKER.controlProtocolVersion !== DAIMON_GROK_ENGINE_BROKER.controlProtocolVersion
@@ -104,7 +105,7 @@ export const resolveTrainingGrokProjection = async (
   // A Daimon older than 0.2.2 ignores `skills`, and a drifted mirror would provision a tree the broker
   // refuses every turn: either way the projection must carry exactly the provisioned skills digest.
   if (projection.skillsSha256 !== registration.skills?.sha256) {
-    throw new SpawnfileError("runtime_error", "Daimon's Grok broker projection skills digest differs from the provisioned skills; the training image needs @noopolis/daimon >= 0.2.2");
+    throw new SpawnfileError("runtime_error", `Daimon's Grok broker projection skills digest differs from the provisioned skills; the training image needs ${DAIMON_PACKAGE_NAME} >= 0.2.2`);
   }
   const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
   const expectedClock = { ...clock, directoryPath: clock.slotDirectoryPattern.replace("{slot}", String(registration.slot)),

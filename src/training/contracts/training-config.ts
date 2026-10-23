@@ -1,0 +1,82 @@
+/** Authored controls live in the dataset, never in the subject workspace. */
+export interface TrainingModel {
+  /** `grok-broker`: short Daimon broker inference grants (training containers); never a desktop login. */
+  provider: 'claude-subscription' | 'codex-subscription' | 'grok-subscription' | 'grok-broker' | 'ollama';
+  model: string;
+  endpoint?: string;
+  /** Grok only. `grok-broker` requires it and accepts low, medium or high. */
+  reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh';
+  /** Native Ollama controls; other providers must reject these fields. */
+  think?: boolean;
+  keep_alive_seconds?: number;
+  max_output_tokens?: number;
+  context_window?: number;
+}
+export interface TrainingRoute {
+  model: string;
+  fallbacks?: string[];
+  attempts?: number;
+  timeout_ms?: number;
+}
+export interface TrainingProposalPolicy {
+  strategy?: 'refine' | 'rewrite';
+  min_change?: number;
+  rewrite_share?: number;
+  hypothesis_similarity?: number;
+  max_attempts?: number;
+  history_entries?: number;
+  history_bytes?: number;
+}
+export interface TrainingOptimizer extends TrainingRoute {
+  method?: 'gepa';
+  variants?: number;
+  keep?: number;
+  budget?: { rounds: number };
+  selection?: 'pareto' | 'top-k';
+  boundaries?: string[];
+  patience?: number;
+  proposal?: TrainingProposalPolicy;
+}
+export interface TrainingJudge extends TrainingRoute {
+  protocol?: 'citations' | 'evidence-ids';
+  template?: { language: 'jinja'; text: string };
+  citation_repairs?: 0 | 1;
+}
+export interface TrainingComparison {
+  candidate: { name: string; replacements: { resource: string; source: string }[] };
+}
+export interface TrainingScoring {
+  /** Closed deferred deliveries remain failures; optionally retain measured stage reward. */
+  deferred?: 'zero' | 'stage-score';
+}
+export interface TrainingConfiguration {
+  scoring?: TrainingScoring;
+  comparison?: TrainingComparison;
+  models: Record<string, TrainingModel>;
+  judges?: Record<string, TrainingJudge>;
+  optimizer?: TrainingOptimizer;
+  budget?: { trial_retries?: number; test_repeats?: number; max_trials?: number; max_proposals?: number; timeout_ms?: number;
+    experiment_timeout_ms?: number; trial_timeout_ms?: number };
+  cache?: { mode: 'off' | 'exact' | 'persistent'; max_entries?: number; namespace?: string; directory?: string };
+  recovery?: { max_attempts?: number };
+  test?: string;
+  validation?: string;
+  validation_groups?: string[];
+  seed?: number;
+}
+
+/** Independent sealed native trials per candidate/case; omitted preserves one pass. */
+export function testRepeatCount(value: number = 1): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 8) {
+    throw new Error('training.budget.test_repeats must be an integer from 1 to 8');
+  }
+  return value;
+}
+
+/** Fresh replacements for infrastructure-failed native trials only. */
+export function trialRetryCount(value: number = 0): number {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 3) {
+    throw new Error('training.budget.trial_retries must be an integer from 0 to 3');
+  }
+  return value;
+}

@@ -1,0 +1,47 @@
+# Native Daimon adapter container
+
+Owns one isolated Codex attention trial through the public Daimon runtime and a
+caller-owned local container. Never compile organizations, reconstruct identity,
+replace memory/tools, copy credentials, wake production agents or invent evidence.
+Project profiles and transport bootstrap remain caller-owned. Require exact launch
+receipts, authenticated native activity, closed telemetry and verified containment.
+Use public module indexes across child boundaries; no sibling implementation imports.
+Keep adjacent tests, files below 400 lines and per-file coverage above 90 percent.
+
+Separate-container Grok is unsupported and refused before any Docker call. The
+unconfined seccomp/AppArmor options and the codex-auth ingress mount are Codex-only.
+
+`manifest.ts` holds both path policies. Codex anchors the control root, control
+inputs and every writable root inside the evaluator's own trial runtime home.
+Grok cannot: the training container fixes `<slot>/{workspace,runtime-home,state}`
+as siblings and keeps control inputs in the denied `/run/paideia` root, and none
+of it can move without changing `projection_sha256`. `grok-slot.ts` reads the
+root supervisor's slot preflight receipt before any process starts and supplies
+the equivalent authority — the digest it certifies must be this launch's, and its
+worker-uid denial canaries decide what may be a control path and what may not be
+writable. Codex rules stay byte-equal; the Grok branch never runs for Codex.
+
+`loadNativeLaunch` derives the receipt path from `realpath(runtimeHomePath)`. The
+value still comes from the evaluator, never from the launch, and every check
+below pins that resolved root — for Grok, to the digest-bound slot runtime home —
+so resolving cannot redirect the receipt. It exists because a fixed container
+slot is reached through the runner's allocated trial path, and the worker refuses
+a control file whose own path traverses a symlink.
+
+The request the exec runs inside the container uses `node:http`, not `fetch`, for
+the reason the transport guide gives: undici's ambient 300-second header timeout
+is shorter than a legitimate turn, and a worker that is still working must not be
+cut off. The caller's deadline, on the request and on the surrounding exec, is the
+only bound. The token path travels with the request instead of being fixed in the
+script, which is what lets a test run the emitted script against a real server.
+
+With a leased SubjectStart, verify the project-written launch receipt's broker
+slot/uid, workspace/home/control/ledger/preflight paths and control port against
+that descriptor before launching or copying the receipt. Never rewrite digest-bound
+projection inputs to make a mismatched receipt pass.
+
+Shared-uid v2 leases admit Codex only, bind workerUid to the evaluator's effective
+uid and always bound the host control port. Optional named roots pin both source
+and target for workspace/runtimeHome/memory/transport/state, or controlRoot.
+Unknown roots fail closed; empty roots retain the existing per-trial path policy.
+Grok retains the existing broker-evidence checks and cannot use a shared-uid lease.

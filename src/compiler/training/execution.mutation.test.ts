@@ -1,13 +1,52 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { cp, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 
-const run = promisify(execFile);
 const root = fileURLToPath(new URL("../../../", import.meta.url));
+
+function runOwned(args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }, timeoutMs = 25_000) {
+  return new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, args, { ...options, detached: true, stdio: "ignore" });
+    let reaped = false;
+    const timer = setTimeout(() => {
+      // Only signal the group while its leader is still ours; a reaped PID may be reused.
+      if (reaped || child.pid === undefined) return;
+      try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
+    }, timeoutMs);
+    child.once("exit", () => { reaped = true; clearTimeout(timer); });
+    child.once("error", error => { clearTimeout(timer); reject(error); });
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(Object.assign(new Error("Mutation runner did not succeed"), { code, signal }));
+    });
+  });
+}
+
+it("reaps a timed-out runner and its worker before restoring the mutation copy", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "mutation-process-group-"));
+  const pidFile = path.join(directory, "worker-pid");
+  let worker = 0;
+  const script = `const {spawn}=require('node:child_process');const worker=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(worker.pid));setInterval(()=>{},1000);`;
+  const stopped = runOwned(["-e", script], { cwd: directory, env: { ...process.env, TYPESAFE_API_KEY: undefined } }, 2_000)
+    .then(() => new Error("Runner unexpectedly succeeded"), (error: unknown) => error);
+  try {
+    // Observe the worker while alive: a missing worker cannot prove descendant cleanup.
+    await vi.waitFor(async () => { worker = Number(await readFile(pidFile, "utf8")); expect(worker).toBeGreaterThan(0); }, 1_500);
+    expect(() => process.kill(worker, 0)).not.toThrow();
+    expect(await stopped).toMatchObject({ code: null, signal: "SIGKILL" });
+    await vi.waitFor(() => expect(() => process.kill(worker, 0), "owned worker cleanup guarantee")
+      .toThrow(expect.objectContaining({ code: "ESRCH" })), 5_000);
+  } finally {
+    await stopped;
+    if (worker) { try { process.kill(worker, "SIGKILL"); } catch { /* Already reaped. */ } }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 const mutations = [
   { name: "timestamp normalization refusal boundary", file: "src/compiler/training/moments.ts",
     before: 'entries.push(entry);\n      try {\n        const lineage = `moment:${hash([plan.agent.id, normalizeInstant(example.at), example.wake])}`;\n        entry.lineage = lineage;',
@@ -93,39 +132,45 @@ const mutations = [
     test: "src/cli/trainCommand.execution.test.ts", title: "creates fresh direct-launch output", assertion: "fresh output launch guarantee" }
 ];
 
-it("kills each key-guarantee mutant in an isolated source copy, without changing the working tree", async () => {
-  const sandbox = await mkdtemp(path.join(os.tmpdir(), "spawnfile-execution-mutations-"));
+let sandbox: string;
+beforeAll(async () => {
+  sandbox = await mkdtemp(path.join(os.tmpdir(), "spawnfile-execution-mutations-"));
+  // An isolated source tree avoids racing the normal suite and never mutates public files.
+  for (const file of ["src", "package.json", "vitest.config.ts", "runtimes.yaml", "moltnet-releases.json"]) {
+    await cp(path.join(root, file), path.join(sandbox, file), { recursive: true,
+      filter: entry => !/[\\/](?:\.venv|__pycache__|\.pytest_cache)(?:[\\/]|$)/.test(entry) });
+  }
+  await symlink(path.join(root, "node_modules"), path.join(sandbox, "node_modules"));
+  await mkdir(path.join(sandbox, "coverage")); await mkdir(path.join(sandbox, "tmp"));
+});
+afterAll(async () => { if (sandbox) await rm(sandbox, { recursive: true, force: true }); });
+
+// Each independent guarantee owns one bounded runner, rather than sharing an
+// aggregate deadline across 27 cold Vitest starts on a small machine.
+it.each(mutations)("kills $name in an isolated source copy", async mutation => {
+  const file = path.join(sandbox, mutation.file), original = await readFile(file, "utf8");
+  expect(original.split(mutation.before), mutation.name).toHaveLength(2);
+  await writeFile(file, original.replace(mutation.before, mutation.after));
   try {
-    // An isolated source tree avoids racing the normal suite and never mutates public files.
-    for (const file of ["src", "package.json", "vitest.config.ts", "runtimes.yaml", "moltnet-releases.json"]) {
-      await cp(path.join(root, file), path.join(sandbox, file), { recursive: true });
-    }
-    await symlink(path.join(root, "node_modules"), path.join(sandbox, "node_modules"));
-    await mkdir(path.join(sandbox, "coverage")); await mkdir(path.join(sandbox, "tmp"));
-    for (const mutation of mutations) {
-      const file = path.join(sandbox, mutation.file), original = await readFile(file, "utf8");
-      expect(original.split(mutation.before), mutation.name).toHaveLength(2);
-      await writeFile(file, original.replace(mutation.before, mutation.after));
-      try {
-        // Delete stale evidence; run exactly one mutant against its intended assertion.
-        await rm(path.join(sandbox, "coverage/vitest-results.json"), { force: true });
-        let result: { code: number; stdout: string; stderr: string } | undefined;
-        try {
-          await run(process.execPath, [path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--coverage.enabled=false",
-            "--maxWorkers=1", "--minWorkers=1", mutation.test, "-t", mutation.title], {
-            cwd: sandbox, timeout: 30_000, maxBuffer: 1024 * 1024, env: { ...process.env, TMPDIR: path.join(sandbox, "tmp") }
-          });
-        } catch (error) { result = error as typeof result; }
-        expect(result?.code, `${mutation.name}: mutant survived or runner did not complete`).toBe(1);
-        const report = JSON.parse(await readFile(path.join(sandbox, "coverage/vitest-results.json"), "utf8")) as {
-          testResults: { assertionResults: { fullName: string; status: string; failureMessages: string[] }[] }[];
-        };
-        const assertions = report.testResults.flatMap(suite => suite.assertionResults);
-        const failed = assertions.filter(test => test.status === "failed");
-        expect(failed, mutation.name).toHaveLength(1);
-        expect(failed[0]!.fullName, mutation.name).toContain(mutation.title);
-        expect(failed[0]!.failureMessages.join("\n"), mutation.name).toContain(mutation.assertion);
-      } finally { await writeFile(file, original); }
-    }
-  } finally { await rm(sandbox, { recursive: true, force: true }); }
-}, 180_000);
+    // Delete stale evidence; run exactly one mutant against its intended assertion.
+    await rm(path.join(sandbox, "coverage/vitest-results.json"), { force: true });
+    let result: { code: number | null } | undefined;
+    try {
+      await runOwned([path.join(root, "node_modules/vitest/vitest.mjs"), "run", "--coverage.enabled=false",
+        "--maxWorkers=1", "--minWorkers=1", mutation.test, "-t", mutation.title], {
+        // Leave time to reap the child and restore the shared copy before this case expires.
+        cwd: sandbox,
+        env: { ...process.env, TYPESAFE_API_KEY: undefined, TMPDIR: path.join(sandbox, "tmp") }
+      });
+    } catch (error) { result = error as typeof result; }
+    expect(result?.code, `${mutation.name}: mutant survived or runner did not complete`).toBe(1);
+    const report = JSON.parse(await readFile(path.join(sandbox, "coverage/vitest-results.json"), "utf8")) as {
+      testResults: { assertionResults: { fullName: string; status: string; failureMessages: string[] }[] }[];
+    };
+    const assertions = report.testResults.flatMap(suite => suite.assertionResults);
+    const failed = assertions.filter(test => test.status === "failed");
+    expect(failed, mutation.name).toHaveLength(1);
+    expect(failed[0]!.fullName, mutation.name).toContain(mutation.title);
+    expect(failed[0]!.failureMessages.join("\n"), mutation.name).toContain(mutation.assertion);
+  } finally { await writeFile(file, original); }
+}, 30_000);

@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from './daimon/packageName.js';
 import { createDaimonInstallCommands } from "./daimonInstall.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -27,7 +28,6 @@ const LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV =
   "SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT";
 const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
 const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
-const DAIMON_PACKAGE_NAME = "@noopolis/daimon";
 const PI_DAIMON_PACKAGE_VERSION = "0.1.2";
 const MNEME_PACKAGE_NAME = "@noopolis/mneme";
 const MNEME_PACKAGE_VERSION = "0.1.1";

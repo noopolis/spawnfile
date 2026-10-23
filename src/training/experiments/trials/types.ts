@@ -1,0 +1,94 @@
+import type { TrialSlot } from '../../contracts/trial-slot.js';
+import type { CandidateManifest } from '../../candidates/index.js';
+import type { ResolvedRecord, TaskInput } from '../../contracts/dataset.js';
+import type { EvaluationContext, EvaluationRegistry, EvaluationResult, EvaluationSnapshot, PlanEvaluation, Verdict } from '../../contracts/evaluation.js';
+import type { DeclaredLimit, FixtureTool, Observation, StopReceipt, SubjectAdapter, SubjectStartupDiagnostic, SubjectTurnResult } from '../../contracts/execution.js';
+
+export interface TrialPaths { root: string; workspace: string; control: string; runtimeHome: string }
+/** Completed turns so far; absent before any turn returns, partial during live observation. */
+export interface TrialOutcome { turns: readonly { id: string; native: SubjectTurnResult }[] }
+export interface PreparedTrial {
+  instructions: string;
+  tools?: readonly FixtureTool[];
+  /** Trusted collector; acceptedCallId may only originate in authentic filing receipts. */
+  collect?: (outcome?: TrialOutcome) => Promise<EvaluationSnapshot['artifacts']>;
+}
+export interface TrialEvent { type: string; payload: unknown }
+export interface TrialOptions {
+  /** Opt-in provenance for training rewards; omission preserves legacy report bytes. */
+  retainDeferredStatus?: boolean;
+  slot?: TrialSlot;
+  id: string;
+  phase: 'train' | 'validation' | 'test';
+  /** Optimizer search round; sealed tests and legacy trials have no round. */
+  round?: number;
+  record: ResolvedRecord;
+  candidateId: string;
+  datasetDigest: string;
+  planDigest: string;
+  adapter: SubjectAdapter;
+  model: string;
+  root: string;
+  /** Optional caller-owned subject-only scratch; evaluator data remains under root. */
+  subjectRoot?: string;
+  timeoutMs: number;
+  resources?: Readonly<Record<string, string>>;
+  protectedPaths?: readonly string[];
+  prepare(paths: TrialPaths, signal: AbortSignal): Promise<PreparedTrial>;
+  registry: EvaluationRegistry;
+  evaluation: Pick<EvaluationContext, 'judges' | 'graders' | 'embeddings' | 'readText' | 'observeJudgeAttempt'>;
+  /** Awaited durable sink. A write failure interrupts the trial. */
+  persist(event: TrialEvent): Promise<void>;
+  signal?: AbortSignal;
+}
+export interface TurnReport { id: string; native: SubjectTurnResult; checks: EvaluationResult[] }
+export interface TrialReport {
+  schema: 'paideia.trial.v1';
+  id: string;
+  phase: TrialOptions['phase'];
+  candidateId: string;
+  /** Exact evaluated bundle, including proposals rejected by the optimizer. */
+  candidate?: CandidateManifest;
+  round?: number;
+  datasetDigest: string;
+  planDigest: string;
+  recordId: string;
+  /** Host elapsed time through final evaluation/closure; absent in older captures. */
+  durationMs?: number;
+  /** Declared adapter isolation, not proof of historical reconstruction fidelity. */
+  subject?: { adapterId: string; requestedModel: string; isolation: string };
+  paths: TrialPaths;
+  status: Verdict;
+  /** All terminal/live/turn gates before adding the failing delivery witness. */
+  preDeferralStatus?: Verdict;
+  /**
+   * `deferred` is the subject's own closed execution whose delivery is still
+   * waiting on external input: the machine worked and the task did not finish.
+   * It is scored and never passed; `failed` requires failureKind to distinguish
+   * native infrastructure from behavioral and measurement failures.
+   * `limit-exceeded` is the subject's own closed execution stopped by a budget
+   * it declared (`limit` names which), with closure confirmed: scored, never passed.
+   */
+  execution: 'completed' | 'deferred' | 'limit-exceeded' | 'interrupted' | 'failed';
+  /** Present exactly on `limit-exceeded`: the declared budget the subject exhausted. */
+  limit?: DeclaredLimit;
+  /** Present on classified failures only; absent legacy failures are not retryable. */
+  failureKind?: 'native-infrastructure' | 'behavioral' | 'measurement';
+  /** A failed collector requires explicit zero-admission evidence before replacement. */
+  collectionFailed?: true;
+  hostWork: 'settled' | 'incomplete';
+  snapshot: EvaluationSnapshot;
+  /** Authored turn count, retained independently of returned native results. */
+  expectedTurns?: number;
+  turns: TurnReport[];
+  evaluation: PlanEvaluation;
+  live: { checkId: string; boundary: string; result: EvaluationResult }[];
+  /** Only the monitor's stop-selected final mechanical witness, never advisory findings. */
+  decisiveFailure?: EvaluationResult;
+  /** Adapter-published, redacted account of a subject that never became ready; it outlives the runtime it happened in. */
+  diagnostic?: SubjectStartupDiagnostic;
+  stop?: StopReceipt;
+  error?: string;
+}
+export interface TurnInput { id: string; input: TaskInput }
+export interface BindingScope { events: readonly Observation[]; context: EvaluationSnapshot['context'] }

@@ -11,7 +11,7 @@ import {
 
 describe("resolveInstallPackageSpec", () => {
   it("returns the pinned registry spec when there is no override", () => {
-    expect(resolveInstallPackageSpec("@noopolis/daimon", "0.1.2")).toBe("@noopolis/daimon@0.1.2");
+    expect(resolveInstallPackageSpec("@noopolis/daimon", "0.1.2")).toBe(`@noopolis/daimon@0.1.2`);
   });
 
   it("returns the pinned registry spec when overrides exist for other packages only", () => {
@@ -19,7 +19,7 @@ describe("resolveInstallPackageSpec", () => {
       "@noopolis/mneme": { filename: "noopolis-mneme-0.1.1.tgz" }
     };
     expect(resolveInstallPackageSpec("@noopolis/daimon", "0.1.2", overrides)).toBe(
-      "@noopolis/daimon@0.1.2"
+      `@noopolis/daimon@0.1.2`
     );
   });
 

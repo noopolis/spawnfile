@@ -87,7 +87,7 @@ it("kills evaluator boundary mutants in isolated source copies with their intend
   const sandbox = await mkdtemp(path.join(os.tmpdir(), "spawnfile-evaluator-mutations-"));
   try {
     for (const file of ["src", "package.json", "vitest.config.ts", "runtimes.yaml", "moltnet-releases.json"])
-      await cp(path.join(root, file), path.join(sandbox, file), { recursive: true });
+      await cp(path.join(root, file), path.join(sandbox, file), { recursive: true, filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
     await symlink(path.join(root, "node_modules"), path.join(sandbox, "node_modules"));
     await mkdir(path.join(sandbox, "coverage")); await mkdir(path.join(sandbox, "tmp"));
     for (const mutation of mutations) {

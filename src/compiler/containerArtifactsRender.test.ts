@@ -586,7 +586,7 @@ describe("renderDockerfile", () => {
     expect(dockerfile).toContain(
       "COPY --from=noopolis/spawnfile-runtime-openclaw:2026.6.11 /opt/spawnfile/runtime-installs/openclaw /opt/spawnfile/runtime-installs/openclaw"
     );
-    expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @noopolis/daimon");
+    expect(dockerfile).not.toContain(`npm install --omit=dev --no-fund --no-audit @noopolis/daimon`);
     expect(dockerfile.indexOf("COPY --from=noopolis/spawnfile-runtime-daimon")).toBeLessThan(
       dockerfile.indexOf("COPY container/rootfs/ /")
     );

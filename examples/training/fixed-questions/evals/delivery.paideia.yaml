@@ -1,0 +1,33 @@
+schema: paideia.dataset.v1
+id: fixed-delivery
+records:
+  - id: item
+    input: { prompt: Write a short delivery notice from the supplied public task materials. }
+    outputs: { article: article.json }
+    context:
+      grounding: >-
+        A delivery of 10 items to the community library is planned for Monday.
+        Total price: USD 25. The delivery has not arrived.
+    checks:
+      - id: length
+        eval: word-count
+        input: artifact:article#/body
+        ignore: ['\[E\d+\]']
+        min: 15
+        max: 100
+      - id: values
+        eval: values-in-source
+        input: artifact:article#/body
+        source: context:grounding
+        ignore: ['\[E\d+\]']
+      - id: reader
+        eval: grader
+        grader: item.grader.yaml
+        input: artifact:article
+        context: { grounding: 'context:grounding' }
+      - id: clarity
+        eval: llm-rubric
+        input: artifact:article#/body
+        judge: prose
+        rubric: { prompt: Assess clarity and readability; quote the article as evidence. }
+        minimum: 0.7

@@ -9,7 +9,7 @@ const run = promisify(execFile), root = fileURLToPath(new URL("../../../../", im
 it("kills the removed-export mutant with the host receipt assertion", async () => {
   const sandbox = await mkdtemp(path.join(os.tmpdir(), "output-volume-mutation-"));
   try {
-    for (const file of ["src", "package.json", "vitest.config.ts"]) await cp(path.join(root, file), path.join(sandbox, file), { recursive: true });
+    for (const file of ["src", "package.json", "vitest.config.ts"]) await cp(path.join(root, file), path.join(sandbox, file), { recursive: true, filter: entry => !/[\\/]\.venv(?:[\\/]|$)|[\\/]__pycache__(?:[\\/]|$)|[\\/]\.pytest_cache(?:[\\/]|$)/.test(entry) });
     await symlink(path.join(root, "node_modules"), path.join(sandbox, "node_modules"));
     await mkdir(path.join(sandbox, "tmp"));
     const file = path.join(sandbox, "src/compiler/training/container/outputVolume.ts");

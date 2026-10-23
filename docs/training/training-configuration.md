@@ -1,0 +1,512 @@
+# Training controls in the dataset
+
+`train.paideia.yaml` may contain `training` beside its records and criteria. No
+additional experiment or judge configuration file is required. This document
+describes the validated authoring contract; provider execution, caching and CLI
+integration must independently implement each control before accepting a run.
+
+```yaml
+schema: paideia.dataset.v1
+id: writing-development
+training:
+  models:
+    fast:
+      provider: grok-subscription
+      model: your-installed-model
+      reasoning_effort: low
+    reflection:
+      provider: grok-subscription
+      model: your-installed-model
+      reasoning_effort: medium
+    local:
+      provider: ollama
+      model: your-local-model
+      endpoint: http://localhost:11434
+  judges:
+    clarity:
+      model: fast
+      fallbacks: [local]
+      attempts: 2
+      timeout_ms: 60000
+      citation_repairs: 1
+      template:
+        language: jinja
+        text: "Evaluate only this criterion: {{ rubric }}"
+  optimizer:
+    model: reflection
+  budget:
+    max_trials: 16
+    test_repeats: 1
+    max_proposals: 4
+    experiment_timeout_ms: 43200000
+    trial_timeout_ms: 3600000
+  cache:
+    mode: persistent
+    namespace: editorial-calibration-v1
+    max_entries: 1000
+  recovery:
+    max_attempts: 2
+  test: test.paideia.yaml
+  validation_groups: [held-out-development]
+  seed: 0
+checks:
+  - id: clear
+    eval: llm-rubric
+    input: output.text
+    judge: clarity
+    rubric:
+      prompt: Every paragraph adds a distinct fact or explanation.
+    minimum: 0.8
+records:
+  - id: first
+    group: training-example
+    input:
+      prompt: Explain the supplied evidence plainly.
+```
+
+`training.scoring.deferred` accepts `zero` (the default) or `stage-score`:
+
+```yaml
+training:
+  # Alongside the existing models/optimizer controls:
+  scoring:
+    deferred: stage-score
+```
+
+`stage-score` lets optimization rank a graded artifact even when another delivery
+in the same native wake remains deferred. It uses the final stage's `score.lower`
+only after acknowledged shutdown, confirmed quiescence and settled host work, and
+only when **all terminal, live and turn gates passed before the deferral witness**.
+The native trial still reports `fail`; the CLI still exits nonzero for a deferred
+selected test trial. Train/validation callbacks, frozen held-out means and local
+report exports use the same policy. A failing atomic writing grade used only as a
+score term retains its numeric score; the explicit stage gate owns the verdict.
+
+Failed or unknown gates, decisive failures and legacy deferred reports without the
+pre-deferral verdict still score zero. Missing score coverage and atomic measurement
+errors remain unscorable and throw; infrastructure failures remain unscorable.
+A deferred trial without a final stage score receives zero, never an implicit one.
+Omission or explicit `zero` preserves existing rewards and native report shape.
+The opt-in records `preDeferralStatus` at trial finalization and `scoring` on the
+training report; it binds checkpoint identity, so changing policy requires a new run.
+These paths are covered with deterministic native/provider fixtures, not a new live
+newsroom optimization acceptance run.
+
+The names under `models` are reusable references. Judges and the optimizer select
+a primary name and ordered fallback names. A fallback must differ from the primary
+and every referenced model must exist. Provider names currently accepted by this
+schema are `claude-subscription`, `codex-subscription`, `grok-subscription`, `grok-broker` and `ollama`; only Ollama accepts
+an endpoint. Endpoints cannot contain credentials, queries or fragments. Model names
+are provider-specific strings, not a claim that a particular model is installed.
+
+Grok models accept `reasoning_effort: low | medium | high | xhigh`. Omission means
+explicit `medium`; the process never inherits effort from local Grok configuration.
+Use separate named model entries to give focused judges and prompt optimization
+different efforts. Effort changes invalidate exact judge reuse. Other providers
+reject this field until their adapters support it.
+
+`grok-broker` runs judges and the optimizer through short Daimon broker inference
+grants instead of a desktop login; training containers select it. Its `model` is one
+of `grok-4.6`, `grok-4.5` or `grok-build`, and `reasoning_effort` (`low`, `medium` or
+`high`) is required. The container supplies `PAIDEIA_GROK_BROKER_CONTROL_SOCKET` (the
+broker control socket) and `PAIDEIA_GROK_GRANT_HOME_ROOT` (a private evaluator
+directory for per-call Grok homes, owned by the training user with mode 0700); without them, without an installed Daimon, or when
+Daimon's client config no longer matches Paideia's pin, every call fails closed. A
+route may not mix `grok-broker` with `grok-subscription`. A stale broker realm fails
+`auth-stale` immediately: later routes on the same broker are skipped, while an
+authored fallback on another provider (for example Claude) may still run. Usage is
+recorded by Paideia per call with source `grok-broker-grant.result.usage.lower-bound`.
+
+Judge templates declare Jinja source; parsing validates their shape, while the
+evaluation layer owns rendering and rejects unsupported template behavior before
+inference. Subject output and source evidence remain separately supplied evaluator
+data. They do not become template instructions. Existing inline rubric prompts and
+rubric files remain valid without a judge template.
+
+The parser rejects unknown fields, fractional or nonpositive limits, more than ten
+attempts, attempts exceeding the primary plus fallback count, route deadlines beyond one
+hour, and cache capacity beyond ten thousand entries. Each declared route is tried at
+most once; attempts bounds the total routes attempted, not retries per model.
+Trial and proposal budgets cannot exceed 10,000 and 1,000 respectively.
+Seed is a nonnegative safe integer; citation repair is either zero or one. A test
+path is contained and relative to the authored dataset. Criteria batteries continue
+to use ordinary checks, stages, gates and weighted scores.
+
+Resolution preserves a detached copy of the configuration. Declaring a judge does
+not install one: a caller must construct and register its runtime implementation.
+The resolver combines its registered version with a digest of the authored judge
+policy and referenced models. Changing a model, endpoint, template or fallback
+therefore changes the shared evaluation identity. Optimizer budgets and cache
+capacity do not change that scoring identity. Train and test must resolve the same
+effective judge policy before their scores can be compared.
+
+Rendering uses the pinned Hugging Face Jinja 0.5.10 engine, including its supported
+conditions, loops, macros and filters. It does not promise every Python Jinja
+extension. Syntax preflight and rendering run in a fresh worker, with a one-second
+deadline and 64 MiB old-generation heap limit. Source is limited to 32 KiB, rubric
+text to 128 KiB and output to 256 KiB. Cancellation terminates the worker. The only
+authored context value is `rubric`; wall-clock access is disabled so the same
+inputs do not acquire time-dependent instructions. Unsupported syntax, includes,
+render failures and exhausted limits fail before inference.
+
+Exact caching is invocation-local LRU reuse, bounded by the declared entry count
+and a 32 MiB internal byte ceiling. It does not promise durable cross-command
+reuse or provider-side prompt caching. Changing model routing, template, criterion
+or selected evidence must prevent inappropriate reuse.
+
+## Execution and limits
+
+The CLI now consumes these controls directly. `spawnfile train` forwards the
+canonical agent context; Paideia loads the named judges and optimizer, performs
+preflight, runs bounded DSPy optimization, freezes selection, and evaluates the
+sealed test. A registered isolated project preparation is still required for a
+canonical Spawnfile environment. Install the packaged DSPy bridge executable
+`paideia-dspy` on PATH, or select its explicit executable with `--bridge-command`.
+
+Classified quota, transport, unavailable, individual attempt timeout and attested
+`invalid-response` schema failures advance to the next configured model. `timeout_ms` bounds the whole route, including
+all attempts and audit writes. Each attempt receives an equal share of remaining
+time divided by remaining authored attempts; unused time carries forward. With
+`attempts: 2` and `timeout_ms: 180000`, the first model gets at most 90 seconds,
+leaving the rest for its fallback. Authentication, native protocol failures, operator
+cancellation and exhaustion of the overall deadline stop that request. A valid failing grade is final. Citation repair, when selected,
+can change only citations, never the score, verdict or reasons. Failed attempts
+retain their known token usage and actual model identities where available.
+
+The train YAML supplies the default test path, optimizer, budgets, seed and
+validation groups. Explicit scalar CLI budget overrides remain available. Judge
+model overrides that conflict with an authored route are rejected. `--dry-run`
+constructs no provider and values every permitted fallback attempt; unknown model
+prices remain unknown. These are API-equivalent estimates, not subscription fees
+or spending guarantees.
+
+DSPy proposals request a JSON object whose exact keys are the selected editable
+resources and whose values are replacement text. Grok and Claude use their native
+JSON-schema controls; local Ollama uses `format`. Paideia also validates the whole
+completed response before accepting it, then checks the candidate's edit policy.
+This does not change the authored rubric or permit edits to locked sections.
+Custom inference integrations receive optional `responseSchema`; unsupported
+schema controls must be rejected. Native tool isolation does not imply the CLI's
+built-in prompt context has been removed.
+
+Cache hits preserve the original attempt IDs, actual model identity and historical
+usage as provenance. They incur no new judge call or current token charge. Exact
+reuse binds the frozen route, rendered instructions, sources, threshold, dataset
+identity and phase. A held-out judgment cannot satisfy a training request.
+
+Persistent caches use a private SQLite store, an explicit calibration namespace,
+entry and payload-byte bounds, and oldest-insertion eviction. Change the namespace
+when a mutable model alias or calibration changes. Transactions survive process
+exit without stale application locks; hashes and schema checks reject corrupted
+entries. This is host-owned storage, outside the subject's accessible paths. The
+first valid exact judgment wins, including a failing grade. Infrastructure errors
+and invalid responses are never cached. A cache hit is reused evidence, not an
+independent native trial or a new quality measurement.
+
+`cache.mode: persistent` requires a nonblank `namespace`. Its default directory is
+inside the command output; optional `directory` is contained beneath the dataset
+directory, with symbolic path components rejected. A trusted container integration
+can provide `judgeCacheRoot`, an existing canonical writable directory. Its explicit
+relative YAML directory then resolves beneath that base; without a YAML directory,
+`judge-cache` is used beneath the base. The dataset stays readonly. Cache identities
+and namespaces are unchanged, and the actual cache directory is protected from the
+subject. Dry-run creates no cache or directories. The same namespace and exact
+evidence can reuse judgments across commands; distinct judge names remain separate.
+
+## Interruption and resume
+
+Training defaults to a 12-hour experiment deadline and a separate one-hour native
+trial deadline. Declare `budget.experiment_timeout_ms` (up to seven days) and
+`budget.trial_timeout_ms` (up to 24 hours), or override them with
+`--experiment-timeout-ms` and `--trial-timeout-ms`. Legacy `budget.timeout_ms` and
+`--timeout-ms` still bound the experiment; the explicit experiment spelling takes
+precedence when both spellings appear at the same level. Either CLI experiment
+flag overrides both YAML spellings. A larger experiment budget never extends a
+trial, broker turn or extraction call.
+
+Training judge/optimizer inference defaults to 30 minutes per call; a route's
+`timeout_ms` overrides that default at both routing and provider construction.
+Broker registrations retain their own authored turn limits (declare 1800000 for
+a 30-minute turn). Atomic `extractor.deadline_ms` stays separate, defaulting to
+15 minutes. Evaluate/grader commands retain their three-minute command default.
+
+Repeat the same command with `--resume` and the same `--out`. Resume validates
+the candidate, resources, dataset and criterion identities, runtime integration,
+budgets and optimizer checkpoint. Presentation flags may change. Native Spawnfile
+integrations must provide an immutable execution identity; changed runtime images,
+tools or fixture evidence reject resume.
+
+Completed native work is restored from immutable captures. A settled native result
+whose judgment failed transiently can be rescored without rewriting the article.
+`recovery.max_attempts` bounds these rescoring attempts across invocations (default
+two, zero disables them). Valid failed grades are never retried for a better score.
+Incomplete native execution or unconfirmed shutdown blocks reuse.
+
+The real GEPA state, sampler state and callback journal resume together. Trial and
+proposal attempt budgets remain cumulative; each command invocation has its own
+deadline. A process lock prevents overlapping commands and releases on process
+death. Reports distinguish new trials, restored captures and rescoring. Resume is
+not production deployment and does not alter the selected native source files.
+
+With `--view`, persisted measurements stream to the local console. The displayed
+chart can rise, fall or stay flat. Browser updates invoke no agent or judge work.
+Each scored criterion shows its authored weight and measured contribution; gates
+remain independent of that score.
+
+Stable instructions precede source data, allowing provider prefix caching where
+supported; only reported cache counters establish actual reuse. Exact response
+caching does not imply semantic similarity caching or optimizer checkpoint resume.
+Missing research remains a blocked task.
+
+The acceptance tests use the real DSPy bridge with isolated deterministic subject
+and inference fixtures. They verify YAML-only control, failure routing, frozen
+held-out comparison and persisted artifacts. They do not establish that a
+particular newsroom agent's writing improves, nor guarantee convergence.
+
+DSPy receives a fresh private home for each bridge process, separate from the
+operator's home and provider credentials. Checkpointed runs place it under the
+protected checkpoint directory. Its disposable caches are removed after confirmed
+process closure and are not resume state; uncertain closure preserves them and
+fails the optimization.
+
+
+## Infrastructure trial retries
+
+`training.budget.trial_retries` is an opt-in integer from `0` to `3`, default
+`0`. Each train, validation or sealed-test trial whose `execution` is `failed`
+may run that many fresh isolated replacements for the same candidate, case,
+phase and repeat. Replacements require settled host work and acknowledged,
+confirmed native shutdown; ambiguous closure blocks retry. Behavioral failures,
+deferred deliveries, interruptions and successfully captured trials with errored
+measurements are never replacement triggers. Measurement recovery remains separate.
+
+For native child execution, the parent verifies idle native activity, acknowledged
+native stop, clean worker exit and process-group disappearance. A worker's
+`parent-container-owner` stop frame alone never authorizes replacement. Historical
+unknown receipts are not upgraded on resume. Retained tool events, output, usage
+or incomplete admission evidence still veto replacement, regardless of a zero
+trace count or an infrastructure error message.
+
+Failed infrastructure reports remain persisted with unknown scores; only the final
+replacement supplies the optimizer reward or held-out sample. Exhaustion preserves
+the existing infrastructure error instead of supplying a zero. The training report
+and local REPORT.json/REPORT.md list failed IDs, replacement IDs, attempt numbers
+and causes. All native attempts remain in trial lists and cost accounting.
+
+Retries stay inside the original optimizer callback or held-out worker, acquire
+ordinary slot leases, and share its experiment cancellation/deadline. They do not
+create optimizer metric calls or additional held-out samples. `max_trials` reserves
+logical evaluations and sealed samples as before; opted-in replacements can add up
+to `trial_retries` native attempts per logical trial beyond that reservation.
+Cost planning does not predict which attempts will fail.
+
+Nonzero retry bounds bind checkpoint identity. Each replacement has its own durable
+key and native ID, so resume retains the consumed retry count and reuses published
+successful captures, including publication before checkpoint completion. As with
+ordinary trials, a reserved attempt without verifiable stored terminal evidence
+blocks resume; it is never presumed stopped or repeated. Separate authored
+`comparison` runs refuse nonzero retry controls.
+
+After selection freezes, resume reuses that exact optimizer result and every
+settled successful capture. It revisits failed infrastructure entries through the
+same retry gate and remaining replacement budget; it neither reselects nor
+regrades completed trials. A failed measurement with attributable subject behavior
+continues to block, even when another failure in the same run was replaceable.
+
+## Held-out test repeats
+
+`training.budget.test_repeats` optionally repeats each sealed test case for each
+frozen arm (baseline and selected candidate). It is an integer from `1` to `8`,
+defaulting to `1` (the existing single-pass behavior). Each repeat starts a fresh
+isolated native trial. Resume restores that exact repeat's capture and runs only
+missing repeats; measurement recovery never substitutes for another repeat.
+The frozen selection cannot change from test results. Identical baseline/selected
+content shares one arm, as before; budgets conservatively reserve two arms.
+
+`max_trials` includes `2 * test cases * test_repeats` reserved sealed trials;
+optimizer metric calls use the remainder. Cost plans multiply held-out subject
+and judge calls by the repeat count. Population defaults include this reservation;
+legacy GEPA retains its default 20-trial cap, so increase `max_trials` if needed.
+Changing repeats invalidates resume identity. The separate authored `comparison`
+mode currently accepts only the default single pass.
+
+For repeat counts above one, completed held-out arms retain `meanScore`,
+`trialIds` and `evaluationIds`, adding aligned `trialScores` and `standardError`. The mean weights all case/repeat trials
+equally; standard error is sample standard deviation divided by `sqrt(n)`, or
+`null` when fewer than two trials are available. Single-pass reports keep their
+existing shape and omit these additive fields. Local report exports and completed
+viewer projections retain these figures. This is descriptive variation assuming independent trials
+on the fixed test cases, not a confidence interval for unseen cases. Rescores
+replace measurements without increasing sample size. Per-case paired uncertainty
+in the report remains separate from this trial-level figure.
+
+## Round-based population search
+
+Declare `optimizer.variants`, `keep` and `budget.rounds` to enable population search.
+See [population authoring](population-search.md) for exact defaults, boundary
+constraints, budget accounting and the resolved integration optimizer seam.
+
+## Proposal memory and diversity
+
+```yaml
+training:
+  optimizer:
+    model: reflection
+    proposal:
+      strategy: rewrite
+      min_change: 0.15
+      max_attempts: 2
+      history_entries: 20
+      history_bytes: 65536
+```
+
+`rewrite` asks for structural changes inside already-editable resources, with a
+hypothesis and predicted criterion impacts. The default is `refine`. Prior training
+prompt bodies, results, failed proposals and token usage inform each generation;
+validation text and sealed test data stay excluded. Full originals remain durable,
+while explicit excerpts and omission counts bound the reflection context.
+
+Whitespace-equivalent and previously proposed bundles are rejected before native
+trials. In legacy mode, `min_change` (default `0`, range `0–1`) adds a token-trigram lexical-distance
+guard; it does not measure semantic quality. Repair attempts (default `2`, range
+`1–5`) consume the existing total `max_proposals` budget. Exhaustion stops cleanly
+with the measured best candidate; provider failures remain failures.
+
+History defaults to `20` entries (`1–100`) and `65536` bytes (`1024–262144`), with
+criterion score vectors and native usage ahead of optional prose. These are
+reflection bounds, not storage limits or a promise of convergence. See the
+[bridge contract](../bridges/dspy/README.md#proposal-memory-and-authored-rewrites)
+for response-envelope, truncation and exact-resume semantics.
+
+[Focused evidence-ID judges and native Ollama controls](../src/evaluation/semantic/README.md)
+describes the separate judge authoring and calibration surface.
+
+`spawnfile train --dry-run` estimates the authored workload without loading native
+preparation plugins, credentials, containers or models. It still checks YAML,
+fixtures, context/binding references, criterion files, judge routes and dataset
+splits. Its `preparationValidation` lists profiles whose availability, parameter
+semantics and override permissions remain **unverified**. A cost estimate is not
+execution readiness; normal training validates these with the installed integration.
+The estimate uses a separate projection containing no executable task inputs.
+
+A completed provider response that passes native authentication, isolation and
+completion checks but fails the requested JSON schema is `invalid-response`.
+It may use the next configured fallback within the same attempt/deadline budget;
+valid grades are never retried. Completed native captures may use existing bounded
+measurement recovery for this class. Framing, unfinished output, authentication
+and tool-isolation failures remain terminal, as do older generic protocol errors.
+Failed answer diagnostics are retained only in protected evaluator audit events.
+Oversized answers are explicitly omitted with their byte count and SHA-256; raw
+provider stderr and hidden reasoning are never captured by this diagnostic path.
+
+## Repair measurements after an evaluator upgrade
+
+`spawnfile train … --repair-measurements <parent-output> --out <fresh-output>`
+creates a separate experiment with explicit parent lineage. It is not an exact
+resume: ordinary `--resume` still rejects changed execution identities. The public
+Spawnfile training preparation must prove unchanged native worker, setup, pinned
+compiler, project inputs and dataset semantics before allowing future native work.
+For older runs without an automatic preparation witness, the command also requires
+`--repair-witness <preserved-image-witness>`; an operator assertion is insufficient.
+
+The parent is projected read-only. Original native reports, prompts, valid grades,
+trial IDs, proposal history and costs remain intact. Only failed final semantic
+checks are measured again; valid passing and failing checks are retained exactly.
+New rescoring records link to the original capture and compatibility receipt, and
+aggregate scores are recalculated. Native trials and completed optimizer calls are
+not repeated. Recovery and optimizer budgets remain cumulative across the fork.
+
+The initial repair contract accepts development-stage parents only. Frozen
+selection, sealed-test state, unconfirmed native shutdown, changed criteria and
+unsupported runtime compatibility are rejected. A repaired measurement is not a
+new independent native trial or evidence of a writing improvement. The child can
+subsequently use ordinary `--resume` with the same repair declaration. `--dry-run`
+does not import captures or invoke models and conservatively estimates a full run;
+it does not certify that a parent is compatible.
+
+## Compare a fixed authored candidate
+
+Use `spawnfile train` with `training.comparison` to measure a baseline against a
+supplied candidate, without DSPy or optimizer calls. Both arms use the same declared
+resources, runtime, tools, cases and frozen criteria. For example:
+
+```yaml
+training:
+  models:
+    editor: { provider: grok-subscription, model: grok-4.6 }
+  judges:
+    prose: { model: editor, protocol: evidence-ids, timeout_ms: 10000 }
+  comparison:
+    candidate:
+      name: skill-guided
+      replacements:
+        - resource: agents/foreman/AGENTS.md
+          source: variants/skill-guided/AGENTS.md
+  validation_groups: [validation]
+  test: test.paideia.yaml
+  budget: { max_trials: 10, timeout_ms: 3600000 }
+```
+
+`resource` names an already-declared editable candidate file. `source` is a bounded
+UTF-8 file relative to the training dataset directory; it cannot escape that root.
+Complete replacement bytes must preserve every locked section. Missing, unchanged,
+undeclared and locked replacements fail before native execution. File contents enter
+the command identity: changing bytes at the same path rejects exact `--resume`.
+Skills can remain locked and identical in both arms while only their instruction
+index differs. Available native skill catalogs can still affect either arm; this
+comparison does not establish that unused skills have zero context cost.
+
+Each train, validation and test case runs once per arm, baseline then authored,
+using fresh native trials. `max_trials` must cover the complete pair count (five
+cases require ten trials). There is no optimizer selection or automatic promotion.
+Omit `optimizer`, `max_proposals` and bridge flags. `--dry-run` estimates those exact
+pairs and judge routes with zero optimizer cost, retaining the usual unknown-cost
+and unverified-preparation disclosures.
+
+The separate `paideia.comparison.v1` report records both candidate identities,
+per-case scores and differences, original captures and costs. The cockpit names
+both arms and shows their chronological measurements without a GEPA panel. Valid
+failed grades are retained; infrastructure interruptions remain incomplete. Exact
+`--resume` verifies and reuses completed captures, and existing bounded recovery
+can rescore eligible judge outages without repeating the subject. Measurement-repair
+forks are currently rejected for comparison runs. Exit status reflects the authored
+arm's held-out verdicts, not a claim of statistical superiority.
+
+Trusted integrations receive `CliExecutionIdentityContext.comparisonCandidateId`
+with the frozen authored content identity and no `bridge` for this mode. Bind that
+explicit comparison identity into the environment receipt; do not require or invent
+a DSPy launch. Ordinary optimizer execution still supplies its actual bridge launch.
+
+Completed optimizer runs export [local training reports and candidate bundles](training-report-export.md).
+
+## Explicit authored validation and historical cases
+
+`train --validation validation.paideia.yaml` selects a separate validation dataset;
+`training.validation` provides the same dataset-relative default. This retains every
+train record and the validation dataset's own identity. It is mutually exclusive
+with `validation_groups` and `--validation-group`. Execution, comparison and dry-run
+apply the same group, record, source-path, source-hash and optional `record.lineage`
+cross-role isolation checks. Each lineage ancestor must stay in one role.
+
+Spawnfile integrations can declare named `momentPreparations` callbacks for
+`setup.trainingMoment` cases. The frozen `spawnfile.training-moment-case.v1` metadata
+contains projectRoot, agent, role, dataset, role-prefixed example, at, effectiveAt,
+wake, group, lineage, lowered momentRoot, optional historyDir and hook name.
+The callback receives fresh trial paths, signal, trial, project context and metadata;
+it re-runs rewind into `paths.control/moment` and prepares the native environment.
+The lowered bundle is provenance, never a writable trial template.
+
+Without an explicit validation dataset, automatic or `--validation-group` holdouts
+retain their authored `role: train`, dataset and `train:` example selector for
+rewind. The callback receives `trial.phase: validation` for evaluation separately;
+it must rewind using the authored metadata. All other role/phase mismatches fail
+before the callback runs, and rewind evidence must retain the authored role.
+
+The callback returns ordinary environment fields plus `momentReceipt` with
+`version: paideia.training-moment-prepared.v1`, trialId, example, momentRoot and at.
+Paideia verifies an initially absent destination, a real isolated directory,
+receipt identity and the rewind's materialized `moment.json` plus successful
+`leak-check.json` before starting the adapter. Missing hooks, stale/shared roots,
+refused rewinds, mismatched identities and cancellation fail the trial. The
+registered callback owns domain state reconstruction and native research/filing
+behavior; neither the public dispatcher nor the core invents those observations.

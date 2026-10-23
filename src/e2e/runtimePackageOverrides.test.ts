@@ -18,7 +18,7 @@ describe("applyRuntimePackageOverrides", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-runtime-overrides-"));
     temporaryDirectories.push(directory);
     const packageJsonPath = path.join(directory, "package.json");
-    await writeUtf8File(packageJsonPath, '{"dependencies":{"@noopolis/daimon":"0.1.2"}}\n');
+    await writeUtf8File(packageJsonPath, `{"dependencies":{"@noopolis/daimon":"0.1.2"}}\n`);
 
     await applyRuntimePackageOverrides(packageJsonPath, {
       "@noopolis/daimon": "file:/tmp/daimon",
@@ -37,7 +37,7 @@ describe("applyRuntimePackageOverrides", () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-runtime-overrides-"));
     temporaryDirectories.push(directory);
     const packageJsonPath = path.join(directory, "package.json");
-    const original = '{"dependencies":{"@noopolis/daimon":"0.1.2"}}\n';
+    const original = `{"dependencies":{"@noopolis/daimon":"0.1.2"}}\n`;
     await writeUtf8File(packageJsonPath, original);
 
     await applyRuntimePackageOverrides(packageJsonPath, undefined);

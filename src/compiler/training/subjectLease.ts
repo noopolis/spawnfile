@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from '../../runtime/daimon/packageName.js';
 import { readFile } from "node:fs/promises";
 import type { Socket } from "node:net";
 import path from "node:path";
@@ -66,7 +67,7 @@ export interface LeaseTrainingSubjectOptions {
   /** Required for Codex; a Grok subject lives at the container's fixed slot roots. */
   trialRoots?: TrainingSubjectTrialRoots;
   signal: AbortSignal;
-  /** Resolves Daimon's public `@noopolis/daimon/runtime` export. */
+  /** Resolves Daimon's public `Daimon/runtime` export. */
   loadDaimon?: () => Promise<unknown>;
   /** Test seams: the supervisor connection and the declaration file. */
   connect?: () => Socket;
@@ -162,7 +163,7 @@ const leaseGrokSubject = async (options: LeaseTrainingSubjectOptions): Promise<T
 
 /** Indirect specifier: Daimon is an in-image runtime peer, never a Spawnfile source dependency. */
 const loadDaimonRuntime = async (): Promise<unknown> => {
-  const packageName = "@noopolis/daimon/runtime";
+  const packageName = `${DAIMON_PACKAGE_NAME}/runtime`;
   return import(packageName);
 };
 
@@ -170,7 +171,7 @@ const loadDaimonRuntime = async (): Promise<unknown> => {
 const codexCredentialRelativePath = async (load: () => Promise<unknown> = loadDaimonRuntime): Promise<string> => {
   let daimon: { ENGINE_CREDENTIAL_MATERIAL?: { codex?: { sourceRelativePath?: unknown } } };
   try { daimon = await load() as typeof daimon; }
-  catch { return refused("The training image must install @noopolis/daimon with its public /runtime export"); }
+  catch { return refused(`The training image must install ${DAIMON_PACKAGE_NAME} with its public /runtime export`); }
   const relative = daimon?.ENGINE_CREDENTIAL_MATERIAL?.codex?.sourceRelativePath;
   if (relative !== DAIMON_ENGINE_CREDENTIALS.codex.sourceRelativePath) {
     return refused("The installed Daimon Codex credential material differs from this compiler's vendored manifest");

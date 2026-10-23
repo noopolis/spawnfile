@@ -1,3 +1,4 @@
+import { DAIMON_PACKAGE_NAME } from '../daimon/packageName.js';
 import type { PiGeneratedAgent } from "./appTemplateTypes.js";
 
 export { renderPiApp } from "./appSource.js";
@@ -25,7 +26,6 @@ export {
   type PiGeneratedAgent
 } from "./appTemplateTypes.js";
 
-export const DAIMON_PACKAGE_NAME = "@noopolis/daimon";
 export const DAIMON_PACKAGE_VERSION = "0.1.2";
 export const MNEME_PACKAGE_NAME = "@noopolis/mneme";
 export const MNEME_PACKAGE_VERSION = "0.1.1";
@@ -53,3 +53,5 @@ export const renderPiAppConfig = (agents: PiGeneratedAgent[]): string =>
     agents,
     version: "spawnfile.pi-app.v1"
   });
+
+export { DAIMON_PACKAGE_NAME } from '../daimon/packageName.js';

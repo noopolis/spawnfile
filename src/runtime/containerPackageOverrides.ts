@@ -1,6 +1,6 @@
 /**
  * Contract for overriding one runtime install npm package (e.g.
- * `@noopolis/daimon`) with a locally packed tarball instead of the pinned
+ * `Daimon`) with a locally packed tarball instead of the pinned
  * registry version, inside a generated container build.
  *
  * This is opt-in and compile-time only: `createRuntimeInstallRecipe`
@@ -25,7 +25,7 @@ export interface RuntimeContainerPackageOverride {
   filename: string;
 }
 
-/** Keyed by npm package name, e.g. "@noopolis/daimon". */
+/** Keyed by npm package name, e.g. "Daimon". */
 export type RuntimeContainerPackageOverrides = Record<string, RuntimeContainerPackageOverride>;
 
 /** The single Dockerfile COPY line that stages the packed vendor tarballs

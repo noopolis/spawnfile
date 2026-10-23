@@ -1,0 +1,236 @@
+import json
+
+import dspy
+import pytest
+
+from .fixtures_test import request
+from .native import decode_component, encode_component
+from .protocol import BridgeError
+from .reflection import ComponentProposer, SubscriptionLM, parse_component_response
+from .session import Session
+
+
+def native_request():
+    return dspy.LMRequest.from_call(model="host-route", messages=[{"role": "user", "content": "reflect"}])
+
+
+def test_typed_lm_retains_observed_model_and_unknown_usage():
+    calls = []
+
+    def host(method, params):
+        calls.append((method, params))
+        return {"text": "replacement", "model": "observed-native-model", "usage": None}
+
+    session = Session(request(), host)
+    lm = SubscriptionLM(session)
+    typed = lm(request=native_request())
+    assert typed.model == "observed-native-model"
+    assert typed.usage is None
+    assert lm(messages=[{"role": "user", "content": "second"}]) == ["replacement"]
+    assert calls[0] == ("generate", {"purpose": "reflection", "messages": [
+        {"role": "user", "content": "reflect"}], "options": {}})
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda r: r.metadata.update({"unsupported": True}),
+    lambda r: r.tools.append(object()),
+    lambda r: setattr(r.messages[0], "role", "tool"),
+    lambda r: setattr(r.messages[0], "name", "worker"),
+    lambda r: r.messages[0].metadata.update({"unsupported": True}),
+    lambda r: r.messages[0].parts[0].metadata.update({"unsupported": True}),
+    lambda r: setattr(r.messages[0].parts[0], "type", "image"),
+    lambda r: setattr(r.config, "temperature", 0.5),
+    lambda r: r.config.extensions.update({"seed": 7}),
+])
+def test_unsupported_inference_features_fail_before_generation(mutation):
+    calls = []
+    session = Session(request(), lambda *args: calls.append(args))
+    lm_request = native_request()
+    mutation(lm_request)
+    with pytest.raises(BridgeError) as error:
+        SubscriptionLM(session).forward(lm_request)
+    assert error.value.code == "unsupported_control"
+    assert calls == []
+    assert session.failure is error.value
+
+
+def proposal_input():
+    return {"component_0": encode_component("AGENTS.md", "Original\n")}, {
+        "component_0": [{"Inputs": {"case_id": "train"}, "Feedback": "Improve."}],
+    }, ["component_0"]
+
+
+@pytest.mark.parametrize("fenced", [False, True])
+def test_public_proposer_preserves_json_text_and_does_not_request_model_controls(fenced):
+    replacement = "\n  Revised café\n```text\nkeep this skill example\n```\n\n"
+    response = json.dumps({"AGENTS.md": replacement})
+    if fenced:
+        response = "```json\n" + response + "\n```"
+    session = Session(request(), lambda method, params: {
+        "text": response, "model": "observed", "usage": None,
+    })
+    with dspy.context(lm=SubscriptionLM(session)):
+        result = ComponentProposer(session)(*proposal_input())
+    assert decode_component(result["component_0"]) == ("AGENTS.md", replacement)
+    assert session.proposals == 1
+
+
+@pytest.mark.parametrize("text", ['{}', '{"extra":"x"}', '{"AGENTS.md":5}', '```json\n{}\n```'])
+def test_malformed_proposal_latches_and_cannot_trigger_gepa_retry_generation(text):
+    session = Session(request(), lambda *args: {"text": text, "model": "m", "usage": None})
+    proposer = ComponentProposer(session)
+    with dspy.context(lm=SubscriptionLM(session)):
+        for _ in range(2):
+            with pytest.raises(BridgeError):
+                proposer(*proposal_input())
+    assert session.proposals == 1
+    assert session.failure is not None
+
+
+def test_missing_subscription_route_never_uses_a_dspy_default_lm():
+    session = Session(request(), lambda *args: pytest.fail("unexpected callback"))
+    with dspy.context(lm=None), pytest.raises(BridgeError) as error:
+        ComponentProposer(session)(*proposal_input())
+    assert error.value.code == "missing_inference"
+
+
+@pytest.mark.parametrize("text", [
+    'Before\n```json\n{"AGENTS.md":"x"}\n```',
+    '```json\n{"AGENTS.md":"x"}\n```\nAfter',
+    '```json\n{"AGENTS.md":"x"}\n```\n```json\n{"AGENTS.md":"y"}\n```',
+    '```\n{"AGENTS.md":"x"}\n```',
+    '```JSON\n{"AGENTS.md":"x"}\n```',
+    '```json {"AGENTS.md":"x"}```',
+    '```json\n{"AGENTS.md":"x"}\n',
+    '```json\n{"AGENTS.md":"x","AGENTS.md":"y"}\n```',
+    '```json\n{"AGENTS.md":NaN}\n```',
+    '```json\n{"AGENTS.md":Infinity}\n```',
+])
+def test_model_envelope_never_extracts_arbitrary_json_or_weakens_strict_json(text):
+    with pytest.raises(BridgeError) as error:
+        parse_component_response(text)
+    assert error.value.code == "invalid_json"
+
+
+@pytest.mark.parametrize("text", [
+    '```json\n{"AGENTS.md":"x","SOUL.md":"changed locked text"}\n```',
+    '```json\n{"AGENTS.md":1e999}\n```',
+    '```json\n["replacement"]\n```',
+])
+def test_fenced_proposal_keeps_exact_resource_and_text_guards_without_retry(text):
+    session = Session(request(), lambda *args: {"text": text, "model": "m", "usage": None})
+    proposer = ComponentProposer(session)
+    with dspy.context(lm=SubscriptionLM(session)):
+        for _ in range(2):
+            with pytest.raises(BridgeError):
+                proposer(*proposal_input())
+    assert session.proposals == 1
+
+
+def test_proposer_requests_exact_selected_resource_schema_through_real_typed_lm():
+    calls = []
+
+    def host(method, params):
+        calls.append(params)
+        return {"text": '{"AGENTS.md":"Updated\\n"}', "model": "observed", "usage": None}
+
+    session = Session(request(), host)
+    with dspy.context(lm=SubscriptionLM(session)):
+        ComponentProposer(session)(*proposal_input())
+    assert calls[0]["options"] == {"responseSchema": {
+        "type": "object", "properties": {"AGENTS.md": {"type": "string", "description": (
+            "Complete replacement instructions for this editable resource, ready for the agent to execute. "
+            "Use the observed training failures to improve its decisions while preserving its role and required interfaces.")}},
+        "required": ["AGENTS.md"], "additionalProperties": False,
+    }}
+
+
+@pytest.mark.parametrize("schema", [None, [], "object", 1])
+def test_typed_lm_rejects_nonobject_schema_before_host_call(schema):
+    calls = []
+    session = Session(request(), lambda *args: calls.append(args))
+    with pytest.raises(BridgeError) as error:
+        SubscriptionLM(session)(messages=[{"role": "user", "content": "reflect"}],
+                                extensions={"responseSchema": schema})
+    assert error.value.code == "unsupported_control"
+    assert calls == []
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_response_contract_has_one_unambiguous_shape_and_meaningful_native_schema(structured):
+    calls = []
+    replacement = {"AGENTS.md": "Read the evidence, state the supported conclusion, and verify citations before filing."}
+    envelope = {"components": replacement, "hypothesis": "Citation verification addresses the observed unsupported attribution.",
+                "expectedImpact": [{"criterion": "grounding", "effect": "Fewer unsupported attributions after explicit verification."}]}
+    def host(method, params):
+        calls.append(params)
+        return {"text": json.dumps(envelope if structured else replacement), "model": "fixture", "usage": None}
+    session = Session(request(**({"proposal": {"strategy": "rewrite"}} if structured else {})), host)
+    with dspy.context(lm=SubscriptionLM(session)):
+        ComponentProposer(session)(*proposal_input())
+    system = calls[0]["messages"][0]["content"]
+    schema = calls[0]["options"]["responseSchema"]
+    direct_map_instruction = "Return only a JSON object mapping exactly the updateOnly resource paths"
+    envelope_instruction = "Return only a JSON object with exactly three top-level fields: components, hypothesis, and expectedImpact."
+    if structured:
+        assert envelope_instruction in system
+        assert direct_map_instruction not in system
+        assert set(schema["required"]) == {"components", "hypothesis", "expectedImpact"}
+        assert "observed training failures" in schema["properties"]["hypothesis"]["description"]
+        assert "criterion IDs" in schema["properties"]["expectedImpact"]["description"]
+        resource_schema = schema["properties"]["components"]
+    else:
+        assert direct_map_instruction in system
+        assert envelope_instruction not in system
+        resource_schema = schema
+    assert resource_schema["required"] == ["AGENTS.md"]
+    assert "ready for the agent to execute" in resource_schema["properties"]["AGENTS.md"]["description"]
+    assert "full instruction text the agent will actually receive" in system or "instruction text the agent will actually receive" in system
+
+
+@pytest.mark.parametrize("count", [1, 20])
+def test_proposal_parts_converts_impact_array_to_map_without_changing_text(count):
+    from .reflection import proposal_parts
+    entries = [{"criterion": f"criterion-{i}", "effect": "  Predicted café effect\n"} for i in range(count)]
+    body = {"components": {"AGENTS.md": "  Replacement\n"}, "hypothesis": "h" * 2000,
+            "expectedImpact": entries}
+    assert proposal_parts(body, True) == (
+        body["components"], body["hypothesis"], {entry["criterion"]: entry["effect"] for entry in entries})
+    assert body["expectedImpact"] == entries
+
+
+@pytest.mark.parametrize("impact", [
+    None, {}, {"quality": "effect"}, "effect", [],
+    [{"criterion": str(i), "effect": "effect"} for i in range(21)],
+    [None], ["effect"], [[]], [{}], [{"criterion": "quality"}], [{"effect": "effect"}],
+    [{"criterion": "quality", "effect": "effect", "extra": True}],
+    *[[{"criterion": criterion, "effect": "effect"}] for criterion in [None, 1, [], "", " \n"]],
+    *[[{"criterion": "quality", "effect": effect}] for effect in [None, 1, [], "", " \n", "x" * 1001]],
+    [{"criterion": "quality", "effect": "first"}, {"criterion": "quality", "effect": "second"}],
+])
+def test_proposal_parts_rejects_invalid_impact_after_parsing(impact):
+    from .reflection import proposal_parts
+    body = parse_component_response(json.dumps({
+        "components": {"AGENTS.md": "Replacement"}, "hypothesis": "Reason", "expectedImpact": impact}))
+    with pytest.raises(BridgeError) as error:
+        proposal_parts(body, True)
+    assert error.value.code == "invalid_proposal"
+
+
+@pytest.mark.parametrize("hypothesis", [None, 1, "", " \n", "x" * 2001])
+def test_proposal_parts_keeps_hypothesis_guards(hypothesis):
+    from .reflection import proposal_parts
+    with pytest.raises(BridgeError):
+        proposal_parts({"components": {}, "hypothesis": hypothesis,
+                        "expectedImpact": [{"criterion": "quality", "effect": "x" * 1000}]}, True)
+
+
+def test_structured_proposal_records_keep_internal_impact_map():
+    envelope = {"components": {"AGENTS.md": "Verify all citations before filing."},
+                "hypothesis": "Verification reduces errors.",
+                "expectedImpact": [{"criterion": "grounding", "effect": "x" * 1000}]}
+    session = Session(request(proposal={"strategy": "rewrite"}), lambda *_: {
+        "text": json.dumps(envelope), "model": "fixture", "usage": None})
+    with dspy.context(lm=SubscriptionLM(session)):
+        ComponentProposer(session)(*proposal_input())
+    assert session.proposal_records[0]["expectedImpact"] == {"grounding": "x" * 1000}

@@ -1,0 +1,71 @@
+import type { FileSelector, ResolvedDataset, ResolvedRecord } from '../contracts/dataset.js';
+import { fail } from './validation.js';
+
+export function selectedFiles(record: ResolvedRecord): FileSelector[] {
+  return [ ...(record.input?.files ?? []), ...(record.turns?.flatMap(turn => turn.input.files ?? []) ?? []),
+    ...(record.reference?.files ?? []) ];
+}
+export interface SplitProjection {
+  subject?: string;
+  structureDigest: string;
+  records: Array<{ id: string; group?: string; lineage?: string[]; selectedFiles: FileSelector[] }>;
+}
+export function validateDatasetSplit(train: ResolvedDataset, test: ResolvedDataset, validation?: ResolvedDataset): void {
+  const project = (dataset: ResolvedDataset): SplitProjection => ({ subject: dataset.subject,
+    structureDigest: dataset.sharedPlanDigest, records: dataset.records.map(record => ({
+      id: record.id, group: record.group, lineage: record.lineage, selectedFiles: selectedFiles(record) })) });
+  validateCostDatasetSplit(project(train), project(test), validation ? project(validation) : undefined);
+}
+
+/** Shared role checks over file identities only; this projection cannot execute a trial. */
+export function validateCostDatasetSplit(train: SplitProjection, test: SplitProjection, validation?: SplitProjection): void {
+  const roles = [{ name: 'train', dataset: train }, ...(validation ? [{ name: 'validation', dataset: validation }] : []),
+    { name: 'test', dataset: test }];
+  const records = new Map<string, string>();
+  const groups = new Map<string, string>();
+  const ancestors = new Map<string, string>();
+  const files = new Map<string, string>();
+  for (const { name, dataset } of roles) {
+    if (dataset.subject !== train.subject) fail(name, 'native subject identity differs between roles');
+    if (dataset.structureDigest !== train.structureDigest) fail(name, 'shared evaluation plan drift');
+    for (const record of dataset.records) {
+      if (!record.group) fail(`${name}.${record.id}`, 'evidence group is required');
+      if (records.has(record.id)) fail(`${name}.${record.id}`, 'duplicate record membership across roles');
+      records.set(record.id, name);
+      const previousGroup = groups.get(record.group);
+      if (previousGroup && previousGroup !== name) fail(name, `evidence-family leakage: ${record.group}`);
+      groups.set(record.group, name);
+      for (const ancestor of record.lineage ?? []) {
+        const previous = ancestors.get(ancestor);
+        if (previous && previous !== name) fail(name, `evidence-lineage leakage: ${ancestor}`);
+        ancestors.set(ancestor, name);
+      }
+      for (const file of record.selectedFiles) {
+        // Catch same source through changed hashes and identical bytes through renamed selectors.
+        for (const identity of [`path:${file.resource}:${file.path}`, `bytes:${file.sha256}`]) {
+          const previousRole = files.get(identity);
+          if (previousRole && previousRole !== name) fail(name, `source evidence overlaps ${previousRole}: ${identity}`);
+          files.set(identity, name);
+        }
+      }
+    }
+  }
+}
+
+export function validateReferenceIsolation(records: ResolvedRecord[]): void {
+  const hidden = new Set<string>();
+  for (const record of records) {
+    for (const file of record.reference?.files ?? []) {
+      hidden.add(`path:${file.resource}:${file.path}`);
+      hidden.add(`bytes:${file.sha256}`);
+    }
+  }
+  for (const record of records) {
+    const visible = [...(record.input?.files ?? []), ...(record.turns?.flatMap(turn => turn.input.files ?? []) ?? [])];
+    for (const file of visible) {
+      if (hidden.has(`path:${file.resource}:${file.path}`) || hidden.has(`bytes:${file.sha256}`)) {
+        fail(`record.${record.id}.input.files`, 'selected reference material cannot become subject input');
+      }
+    }
+  }
+}
