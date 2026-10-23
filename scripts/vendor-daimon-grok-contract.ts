@@ -46,7 +46,7 @@ type DaimonModules = {
 
 /** `COMPONENT` is not exported, so its pattern is read from the source it is defined in; a missing definition fails vendoring. */
 const skillComponentPattern = (daimonDirectory: string): string => {
-  const match = /^const COMPONENT = \/(.+)\/u;$/mu.exec(readFileSync(path.join(daimonDirectory, "src/runtime/grokWorkerSkills.ts"), "utf8"));
+  const match = /^const COMPONENT = \/(.+)\/u;$/mu.exec(readFileSync(path.join(daimonDirectory, "src/engines/grok/broker/grokWorkerSkills.ts"), "utf8"));
   if (!match) throw new Error("Daimon grokWorkerSkills.ts no longer defines its COMPONENT rule as a /.../u literal");
   return match[1]!;
 };
@@ -55,9 +55,9 @@ const loadDaimon = async (daimonDirectory: string): Promise<DaimonModules> => {
   const load = (relative: string): Promise<Record<string, unknown>> => import(pathToFileURL(path.join(daimonDirectory, relative)).href);
   const [emitter, config, profile, skills] = await Promise.all([
     load("scripts/emitRuntimeContractManifest.ts"),
-    load("src/runtime/grokBrokerWorkerConfig.ts"),
-    load("src/runtime/grokWorkerSandboxProfile.ts"),
-    load("src/runtime/grokWorkerSkills.ts")
+    load("src/engines/grok/broker/grokBrokerWorkerConfig.ts"),
+    load("src/engines/grok/broker/grokWorkerSandboxProfile.ts"),
+    load("src/engines/grok/broker/grokWorkerSkills.ts")
   ]);
   return {
     contractManifestArtifacts: emitter.contractManifestArtifacts as DaimonModules["contractManifestArtifacts"],

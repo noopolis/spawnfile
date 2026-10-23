@@ -69,7 +69,7 @@ const manifest = () => ({
     activeDeliveryIdempotency: "unbounded-until-terminal", terminalReceiptHorizon: 2_048,
     recovery: "at-least-once-with-stable-wake-id", concurrentSameAgentTurns: false, externalEffectsExactlyOnce: false
   },
-  version: DAIMON_CONTRACT_MANIFEST_VERSION
+  version: "noopolis.daimon.runtime-contract-manifest.v5"
 });
 
 const writeManifest = async (source: string): Promise<string> => {
@@ -96,6 +96,7 @@ describe("Daimon contract manifest", () => {
       contractManifestSha256: vendored.digest
     });
     expect(vendored.digest).toBe(DAIMON_CONTRACT_MANIFEST_SHA256);
+    expect(vendored.manifest.version).toBe(DAIMON_CONTRACT_MANIFEST_VERSION);
   });
 
   it("supports wake recording only when its exact section and consumed field appear together", () => {

@@ -9,9 +9,9 @@ import { DAIMON_PINNED_BROKER_DESCRIPTOR, DAIMON_PINNED_PORTABLE_DESCRIPTOR, DAI
 import { daimonContractManifestV6Schema } from "./contractManifestSchema.js";
 
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
-  "noopolis.daimon.runtime-contract-manifest.v5" as const;
+  "noopolis.daimon.runtime-contract-manifest.v6" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:e39551277c6727c8807b1247e759f57addcee3f17f1405ebc927179647d64de6" as const;
+  "sha256:9f91388983cc5308137ba0259302b9faec75a9f0e032b2a031b6a774ff3f409f" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -76,7 +76,7 @@ export interface DaimonContractManifest {
     concurrentSameAgentTurns: false;
     externalEffectsExactlyOnce: false;
   }>;
-  readonly version: typeof DAIMON_CONTRACT_MANIFEST_VERSION | "noopolis.daimon.runtime-contract-manifest.v6";
+  readonly version: typeof DAIMON_CONTRACT_MANIFEST_VERSION | "noopolis.daimon.runtime-contract-manifest.v5";
 }
 
 export interface VerifiedDaimonContractManifest {
@@ -165,7 +165,7 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   if (hasWakeMoments && !isDaimonWakeMoments(root.wakeMoments)) return fail("has an unsupported wakeMoments contract");
   const configFields = hasWakeMoments ? [...expectedConfigFields, DAIMON_WAKE_MOMENTS.configField] : expectedConfigFields;
   if (
-    (!v6 && root.version !== DAIMON_CONTRACT_MANIFEST_VERSION) ||
+    (!v6 && root.version !== "noopolis.daimon.runtime-contract-manifest.v5") ||
     !Array.isArray(root.supportedEngineKinds) ||
     root.supportedEngineKinds.join("\0") !== engineKinds.join("\0") ||
     !Array.isArray(root.consumedConfigFields) ||
@@ -228,7 +228,7 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
       activeDeliveryIdempotency: "unbounded-until-terminal", terminalReceiptHorizon: 2_048,
       recovery: "at-least-once-with-stable-wake-id", concurrentSameAgentTurns: false, externalEffectsExactlyOnce: false
     }),
-    version: v6 ? "noopolis.daimon.runtime-contract-manifest.v6" : DAIMON_CONTRACT_MANIFEST_VERSION
+    version: v6 ? DAIMON_CONTRACT_MANIFEST_VERSION : "noopolis.daimon.runtime-contract-manifest.v5"
   });
 };
 

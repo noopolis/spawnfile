@@ -18,7 +18,6 @@
     "executable_sha256": "sha256:61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70",
     "version": "0.162.1"
   },
-  "contract_manifest_sha256": "sha256:9f91388983cc5308137ba0259302b9faec75a9f0e032b2a031b6a774ff3f409f",
   "daimon": {
     "commit": "5e8bffc10779838e3ff0b6687de06db6b6fde02a",
     "package_version": "0.2.9",

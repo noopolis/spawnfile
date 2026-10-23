@@ -4,7 +4,7 @@ import { parse as parseYaml } from "yaml";
 import Ajv2020 from "ajv/dist/2020.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import manifestV5 from "./contract-manifest.json" with { type: "json" };
+import manifest from "./contract-manifest.json" with { type: "json" };
 import mirror from "./engine-descriptors.json" with { type: "json" };
 import { DAIMON_ENGINE_DESCRIPTOR_SOURCE_COMMIT, DAIMON_V5_ENGINE_DESCRIPTORS } from "./engineDescriptors.generated.js";
 import { parseDaimonContractManifest } from "./contractManifest.js";
@@ -13,8 +13,12 @@ import { parseDaimonEngineDescriptors } from "./engineDescriptorSchema.js";
 import { createPiTestNode } from "../pi/testHelpers.js";
 
 type Mutable<T> = { -readonly [K in keyof T]: Mutable<T[K]> };
-const v6 = () => ({ ...structuredClone(manifestV5), version: DAIMON_CONTRACT_MANIFEST_V6_VERSION,
-  engines: structuredClone(DAIMON_V5_ENGINE_DESCRIPTORS) as Mutable<typeof DAIMON_V5_ENGINE_DESCRIPTORS> });
+const v5 = () => {
+  const { engines: _engines, ...legacy } = structuredClone(manifest);
+  return { ...legacy, version: "noopolis.daimon.runtime-contract-manifest.v5" };
+};
+const v6 = () => ({ ...structuredClone(manifest),
+  engines: structuredClone(manifest.engines) as Mutable<typeof DAIMON_V5_ENGINE_DESCRIPTORS> });
 afterEach(() => { vi.doUnmock("./contract-manifest.json"); vi.resetModules(); });
 
 describe("Daimon descriptor authority", () => {
@@ -26,22 +30,24 @@ describe("Daimon descriptor authority", () => {
     expect(mirror.sourceCommit).toBe(registry.runtimes.daimon.ref);
     expect(DAIMON_ENGINE_DESCRIPTOR_SOURCE_COMMIT).toBe(mirror.sourceCommit);
     expect(DAIMON_V5_ENGINE_DESCRIPTORS).toEqual(mirror.engines);
-    expect(parseDaimonContractManifest(manifestV5).engines).toEqual(mirror.engines);
-    expect(parseDaimonContractManifest(manifestV5).supportedEngineKinds).toEqual(["agy", "codex", "grok"]);
+    expect(parseDaimonContractManifest(v5()).engines).toEqual(mirror.engines);
+    expect(parseDaimonContractManifest(v5()).supportedEngineKinds).toEqual(["agy", "codex", "grok"]);
   });
 
   it("accepts v6 through both the portable JSON Schema and consumed-contract parser", () => {
     const ajv = new Ajv2020.default({ strict: false });
     const validate = ajv.compile(DAIMON_CONTRACT_MANIFEST_V6_JSON_SCHEMA);
     expect(validate(v6()), JSON.stringify(validate.errors)).toBe(true);
-    expect(parseDaimonContractManifest(v6()).engines).toEqual(mirror.engines);
+    expect(manifest.version).toBe(DAIMON_CONTRACT_MANIFEST_V6_VERSION);
+    expect(parseDaimonContractManifest(manifest).engines).toEqual(manifest.engines);
+    expect(manifest.engines).toEqual(mirror.engines);
     const malformed = { ...v6(), engines: { ...v6().engines, codex: { ...v6().engines.codex, unknown: true } } };
     expect(validate(malformed)).toBe(false);
     expect(() => parseDaimonContractManifest(malformed)).toThrow(/v6 schema/u);
   });
 
   it("does not accept injected descriptors as v5 authority", () => {
-    expect(() => parseDaimonContractManifest({ ...manifestV5, engines: mirror.engines })).toThrow(/v5/u);
+    expect(() => parseDaimonContractManifest({ ...v5(), engines: mirror.engines })).toThrow(/v5/u);
     expect(() => parseDaimonContractManifest({ ...v6(), version: "noopolis.daimon.runtime-contract-manifest.v7" })).toThrow(/manifest/u);
   });
 

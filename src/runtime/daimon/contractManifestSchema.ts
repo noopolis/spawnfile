@@ -1,13 +1,13 @@
 import { z } from "zod";
 
-import manifestV5 from "./contract-manifest.json" with { type: "json" };
+import manifest from "./contract-manifest.json" with { type: "json" };
 import { daimonEngineDescriptorsSchema } from "./engineDescriptorSchema.js";
 
 export const DAIMON_CONTRACT_MANIFEST_V6_VERSION = "noopolis.daimon.runtime-contract-manifest.v6" as const;
 
 /** v6 retains every v5 section. Embedded protocol schemas remain JSON data. */
 export const daimonContractManifestV6Schema = z.strictObject({
-  ...Object.fromEntries(Object.keys(manifestV5).map((key) => [key, z.json()])),
+  ...Object.fromEntries(Object.keys(manifest).map((key) => [key, z.json()])),
   version: z.literal(DAIMON_CONTRACT_MANIFEST_V6_VERSION),
   engines: daimonEngineDescriptorsSchema,
   supportedEngineKinds: z.array(z.string().regex(/^[a-z][a-z0-9-]*$/u)).min(1),
