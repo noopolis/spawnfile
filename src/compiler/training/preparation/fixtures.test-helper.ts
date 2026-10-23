@@ -20,7 +20,7 @@ export async function preparationFixture() {
   }
   await put("own/dist/cli/index.js"); await put("own/runtimes.yaml"); await put("own/moltnet-releases.json");
   await put("own/runtime-images/training/Dockerfile", "ARG NATIVE_IMAGE\nFROM ${NATIVE_IMAGE}\nCOPY train /opt/training/bin/train\n");
-  await put("own/dist/runtime/trainingCli.js"); await put("own/dist/runtime/trainingSubjects.js"); await put("own/dist/training/cli/index.js"); await put("own/dist/training/dspy/pyproject.toml"); await put("own/dist/training/dspy/requirements.lock");
+  await put("own/dist/runtime/trainingCli.js"); await put("own/dist/runtime/trainingSubjects.js"); await put("own/dist/runtime/daimon/training/native/worker/cli.js"); await put("own/dist/training/cli/index.js"); await put("own/dist/training/dspy/pyproject.toml"); await put("own/dist/training/dspy/requirements.lock");
   await put("own/dist/training/dspy/paideia_dspy/__init__.py"); await put("integration/entry.ts"); await put("bootstrap/start.ts"); await put("grok", "native-binary");
   const config: TrainingPreparationConfig = {
     version: "spawnfile.training-container.v2", slots: 4, dockerContext: "local",

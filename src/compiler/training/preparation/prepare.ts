@@ -18,7 +18,7 @@ function mappedReceipt(digest: string, image: string, config: ReturnType<typeof 
     bindings: config.inputs.map(input => ({ inputId: input.id, destination: input.destination })), outputRoot: "/run/training/output",
     packagePaths: { spawnfile: "build" in config.image && config.image.build.compiler
       ? "/opt/training/compiler/dist/cli/index.js" : "/opt/training/spawnfile/dist/cli/index.js", training: "/opt/training/spawnfile/dist/training", bridge: "/opt/training/spawnfile/dist/training/dspy",
-      nativeWorker: "/opt/training/spawnfile/dist/runtime/daimon/training", integration: "/opt/training/integration", bootstrap: "/opt/training/bootstrap" }, integration: config.integration });
+      nativeWorker: "/opt/training/spawnfile/dist/runtime/daimon/training/native", integration: "/opt/training/integration", bootstrap: "/opt/training/bootstrap" }, integration: config.integration });
 }
 
 export interface PrepareTrainingOptions {

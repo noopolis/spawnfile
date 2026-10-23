@@ -21,6 +21,7 @@ it("prepares cold and warm runs, preserves mapped identity and resumes without r
   expect((await lstat(path.join(f.root, "output"))).isDirectory()).toBe(true);
   const mapped = parseTrainingMappedPreparation(JSON.parse(await readFile(first.preparationPath, "utf8")));
   expect(mapped.bindings).toEqual([{ inputId: "project", destination: "/run/training/inputs/project" }, { inputId: "settings", destination: "/run/training/inputs/settings" }]);
+  expect(mapped.packagePaths.nativeWorker, "native worker root guarantee").toBe("/opt/training/spawnfile/dist/runtime/daimon/training/native");
   expect(JSON.stringify(mapped)).not.toContain(f.root);
   const resumed = await prepareTraining({ ...f.options, args: [...f.args, "--resume"] });
   expect(resumed).toEqual({ ...first, args: [...first.args, "--resume"] });

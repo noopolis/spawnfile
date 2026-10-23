@@ -12,9 +12,9 @@ export async function readTrainingWitness(file: string) {
   const canonical = await exactPath(file), bytes = await readFile(canonical, "utf8");
   if (Buffer.byteLength(bytes) > 8 * 1024 * 1024) throw Error("Training witness exceeds 8 MiB");
   const raw = JSON.parse(bytes) as { manifest: unknown; digest: string };
-  const legacy = raw.manifest as { image?: { build?: Record<string, unknown>; files?: { destination?: string }[] } };
-  if ((legacy.image?.build && ("paideia" in legacy.image.build || "bridge" in legacy.image.build)) ||
-    legacy.image?.files?.some(file => file.destination?.startsWith("paideia/"))) {
+  const legacy = raw.manifest as { image?: { build?: Record<string, unknown>; files?: { destination?: string }[] } } | null;
+  if ((legacy?.image?.build && ("paideia" in legacy.image.build || "bridge" in legacy.image.build)) ||
+    legacy?.image?.files?.some(file => file.destination?.startsWith("paideia/"))) {
     throw Error("Repair witness references an external training distribution; re-prepare with Spawnfile before repairing measurements");
   }
   if (hashJson(raw.manifest) !== raw.digest) throw Error("Training witness digest mismatch");

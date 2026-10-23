@@ -88,3 +88,12 @@ execution:
     await expect(readTrainingWitness(file), "witness execution identity guarantee").rejects.toThrow("preparation identity mismatch");
   }
 });
+
+
+it("validates a null witness manifest without throwing a property access error", async () => {
+  const f = await preparationFixture(); roots.push(f.root);
+  const file = path.join(f.root, "null-witness.json");
+  await writeFile(file, JSON.stringify({ manifest: null, digest: hashJson(null) }));
+  const error = await readTrainingWitness(file).then(() => undefined, error => error);
+  expect(error).toMatchObject({ name: "ZodError" });
+});

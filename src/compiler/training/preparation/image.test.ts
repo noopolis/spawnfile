@@ -166,3 +166,30 @@ it("stages only Spawnfile training and runs the integration's hook through its o
   expect(JSON.parse(result.stdout)).toEqual({ argv: ["train", "--spawnfile-context", "/run/paideia/context.json"], source: "spawnfile" });
   expect(await readFile(receipt, "utf8")).toBe("hook-ran");
 });
+
+
+it("requires the native worker entry consumed under the mapped worker root", async () => {
+  const f = await fixture();
+  const worker = "dist/runtime/daimon/training/native/worker/cli.js";
+  const plan = await planTrainingImage(f.build, f.root, [], f.own);
+  expect(plan.files.some(file => file.destination === `spawnfile/${worker}`), "native worker distribution guarantee").toBe(true);
+  await rm(path.join(f.own, worker));
+  await expect(planTrainingImage(f.build, f.root, [], f.own)).rejects.toThrow(`missing spawnfile/${worker}`);
+});
+
+it("never stages host Python environments or caches over the image-built venv", async () => {
+  const f = await fixture();
+  const before = await planTrainingImage(f.build, f.root, [], f.own);
+  for (const name of [".venv/bin/python", "__pycache__/optimizer.pyc", ".pytest_cache/nodeids"]) {
+    await f.put(`own/dist/training/dspy/${name}`, "host-generated-state");
+  }
+  const plan = await planTrainingImage(f.build, f.root, [], f.own);
+  expect(plan.digest, "host Python environment exclusion guarantee").toBe(before.digest);
+  const staging = path.join(f.root, "sealed-context");
+  await copySealed(plan.files, staging);
+  for (const distribution of ["spawnfile", "compiler"]) {
+    for (const name of [".venv", "__pycache__", ".pytest_cache"]) {
+      await expect(readdir(path.join(staging, distribution, "dist/training/dspy", name))).rejects.toThrow();
+    }
+  }
+});
