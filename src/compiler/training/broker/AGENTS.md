@@ -5,7 +5,7 @@ slot preflight receipt of `spawnfile.training-container.v4` — the training
 container that runs a brokered Grok subject beside the evaluator.
 
 - `paths.ts` fixes every container path. Its slot descriptors are deterministic because the root
-  entrypoint, the slot supervisor and Paideia's `launch.v2` must agree on them
+  entrypoint, the slot supervisor and the training core's `launch.v2` must agree on them
   without talking to each other, and Daimon's projection never resolves a path.
 - `declaration.ts` is the host's read-only `spawnfile.training-broker.v2` input.
   It is data, never code: no host executable or script is ever mounted, so the
@@ -28,7 +28,7 @@ container that runs a brokered Grok subject beside the evaluator.
 - `supervisor.ts` is the one-verb root socket server (one verb, slot and nonce,
   no caller-supplied path or command) and owns `startTrainingSlot`, the only
   preflight publication after shared startup. Recycles serialize per slot; different
-  slots overlap. Paideia must retain its exclusive slot lease throughout recycle.
+  slots overlap. the training core must retain its exclusive slot lease throughout recycle.
 - `recycleClient.ts` is the public evaluator-side client of the supervisor verb: bounded reply, timeout/abort, exact slot/nonce/protocol echo, refusal reasons surfaced. Its tests drive the real `serveTrainingSlotSupervisor` socket with only ownership facts stubbed.
 - `receipt.ts` writes `noopolis.daimon.grok-slot-preflight.v2`.
 - `taskClock.ts` reclaims the clock subtree only during shared startup,

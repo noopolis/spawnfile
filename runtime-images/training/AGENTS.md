@@ -1,7 +1,7 @@
 # Training image
 
 Owns the single-container training dependency recipe. Spawnfile launches and
-stops the outer container; Paideia supervises experiments and native trial child
+stops the outer container; the training core supervises experiments and native trial child
 processes inside it. No Docker socket or host home is mounted.
 
 Build inputs are explicit package distributions, locked dependency manifests,
@@ -14,7 +14,7 @@ The recipe is opt-in during incubation; no published runtime is implied.
 
 Layers run from least to most frequently changing: Python parent copies,
 Bookworm's pinned `libfaketime=0.9.10-2.1`, the baked `2000`/`2100`/`2200..2207` Daimon identities (context-independent, so first),
-locked Claude/Paideia/Spawnfile/compiler dependencies, the lock-keyed DSPy venv,
+locked Claude/Spawnfile/compiler dependencies, the lock-keyed DSPy venv,
 one layout RUN, bridge source plus its editable install, then the entrypoints and
 distributions. Nothing RUNs after the late COPY layers, so a changed distribution
 rebuilds its own COPY layer, every later COPY layer and the label, but no RUN
@@ -61,3 +61,10 @@ not a manifest-pinned 1.0.34 build is refused at slot provisioning and again by
 the slot supervisor, by digest. `spawnfile/node_modules/@noopolis/daimon` links
 to the same install so the root entrypoint can import Daimon's public
 `/runtime` export for the broker projection.
+
+The image uses Spawnfile's own `dist/training` and `dist/training/dspy`; the
+bridge venv is built beside that bridge. The declared integration entry imports
+`spawnfile/dist/runtime/trainingCli.js` to retain project hooks and the runtime
+subject registry. No external training package, binary, source tree or symlink
+is installed. Context, preparation, repair, slots and secrets retain the legacy
+`/run/paideia/*` mount names until the wire-name migration.

@@ -19,7 +19,7 @@ import { DAIMON_WORKER_ROOT } from "../../containerDaimonGrokWorkerRender.js";
  * They are deterministic because three parties must agree on them
  * without talking to each other: the root entrypoint that provisions them, the
  * root slot supervisor that wipes and re-provisions them on recycle, and
- * Paideia's native adapter, which writes them into `paideia.daimon-native.launch.v2`
+ * Spawnfile's native training adapter, which writes them into `paideia.daimon-native.launch.v2`
  * and has no way to ask the container what it chose. Daimon's projection never
  * resolves a path, so each one must also be canonical and never a symlink; the
  * provisioning program asserts that before a slot is used.

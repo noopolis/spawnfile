@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { assertControlRecipe, assertNewRecipe, CONTROL_CLOSURE, deriveControlRecipe, diffModeListings, identicalModes, LISTING_ROOTS, MODE_ROOTS } from "./training-image-modes.ts";
 
 const row = (entry: string, mode = "755", type = "d", target = "") => `${entry}\t${mode}\troot\troot\t${type}\t${target}`;
-const base = [row("/opt/training"), row("/opt/training/paideia/bridges/dspy/.venv"), row("/opt/training/bin/grok", "555", "f"),
+const base = [row("/opt/training"), row("/opt/training/spawnfile/dist/training/dspy/.venv"), row("/opt/training/bin/grok", "555", "f"),
   row("/opt/training/bin/claude", "777", "l", "/opt/training/claude/node_modules/.bin/claude"),
   row("/usr/local/lib/daimon"), row("/usr/local/lib/daimon/libfaketime.so.1", "777", "l", "/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1"),
   row("/usr/lib/x86_64-linux-gnu/faketime/libfaketime.so.1", "644", "f")];

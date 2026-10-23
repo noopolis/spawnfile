@@ -74,7 +74,7 @@ export interface TrainingEntrypointOptions {
  * production capability set, start the launcher (root) and the broker and
  * relay (2100) and prove each one's post-drop identity, publish the slot
  * supervisor socket, and only then drop to uid 2000 with an empty capability
- * bounding set to run `train`. Paideia, DSPy and the judges are that uid; the
+ * bounding set to run `train`. The training core, DSPy and the judges are that uid; the
  * model's own tools are the worker uid the launcher alone can reach.
  */
 export const runTrainingBrokerEntrypoint = async (options: TrainingEntrypointOptions): Promise<number> => {

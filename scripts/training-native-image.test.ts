@@ -45,7 +45,7 @@ test("renders immutable sources, shared receipt/manifest/broker checks, and veri
   }
   assert.ok(rendered.indexOf("sha256sum -c -") < rendered.indexOf("tar -xzf"));
   assert.match(rendered, /install -m 0755 .* \/usr\/local\/bin\/moltnet/u);
-  assert.match(rendered, /ln -s .*\/node_modules \/opt\/paideia\/node_modules/u);
+  assert.match(rendered, /ln -s .*\/node_modules \/opt\/training\/node_modules/u);
   assert.doesNotMatch(rendered, /@@|evaluator-codex|npm install|mneme\/package.json/u);
 });
 

@@ -39,9 +39,9 @@ it("dry-run reads declarations without Docker, auth access, output or staging mu
 
 it("rejects changed executable, fixture, declaration and saved image on exact resume", async () => {
   const f = await fixture(); await prepareTraining(f.options);
-  await f.put("paideia/dist/src/cli/main.js", "changed");
+  await f.put("own/dist/runtime/trainingCli.js", "changed");
   await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).rejects.toThrow("changed");
-  await f.put("paideia/dist/src/cli/main.js"); await f.put("project/train.yaml", "changed");
+  await f.put("own/dist/runtime/trainingCli.js"); await f.put("project/train.yaml", "changed");
   await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"] })).rejects.toThrow("changed");
   await f.put("project/train.yaml");
   await expect(prepareTraining({ ...f.options, args: [...f.args, "--resume"], process: async args => args[0] === "context"

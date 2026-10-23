@@ -14,14 +14,14 @@ const recipe = () => readFile(new URL("../../../../runtime-images/training/Docke
 
 /** Modes staged before normalization: private dirs from `mkdir 0700` and assorted source file modes. */
 async function assortedTree(root: string): Promise<void> {
-  const files: [string, number][] = [["train-broker", 0o700], ["train", 0o600], ["bridge/requirements.lock", 0o600], ["bridge/pkg/tool.py", 0o640],
-    ["bridge/pkg/run.sh", 0o710], ["integration/entry.ts", 0o400], ["integration/bin/partial", 0o100], ["paideia/dist/main.js", 0o644],
-    ["paideia/dist/exec.js", 0o755], ["paideia/dist/owner-exec.js", 0o744], ["bootstrap/start.ts", 0o604], ["sticky/file", 0o4750]];
+  const files: [string, number][] = [["train-broker", 0o700], ["train", 0o600], ["own/dist/training/dspy/requirements.lock", 0o600], ["own/dist/training/dspy/pkg/tool.py", 0o640],
+    ["own/dist/training/dspy/pkg/run.sh", 0o710], ["integration/entry.ts", 0o400], ["integration/bin/partial", 0o100], ["spawnfile/dist/main.js", 0o644],
+    ["spawnfile/dist/exec.js", 0o755], ["spawnfile/dist/owner-exec.js", 0o744], ["bootstrap/start.ts", 0o604], ["sticky/file", 0o4750]];
   for (const [file, mode] of files) {
     await mkdir(path.dirname(path.join(root, file)), { recursive: true, mode: 0o700 });
     await writeFile(path.join(root, file), file); await chmod(path.join(root, file), mode);
   }
-  for (const [directory, mode] of [["bridge", 0o700], ["bridge/pkg", 0o711], ["integration/bin", 0o750], ["sticky", 0o2700]] as const) {
+  for (const [directory, mode] of [["own/dist/training/dspy", 0o700], ["own/dist/training/dspy/pkg", 0o711], ["integration/bin", 0o750], ["sticky", 0o2700]] as const) {
     await chmod(path.join(root, directory), mode);
   }
 }
@@ -40,7 +40,7 @@ async function modes(root: string): Promise<Record<string, string>> {
 it("renders a closure that is exactly `chmod -R a+rX` for every staged mode shape", async () => {
   const dockerfile = await recipe();
   const idioms = [...dockerfile.matchAll(/find (\S+) (\\\( \\\( -type d .*? -exec chmod a\+rX \{\} \+)/gu)];
-  expect(idioms.map(match => match[1])).toEqual(["/opt/training", "/opt/training/paideia/bridges/dspy"]);
+  expect(idioms.map(match => match[1])).toEqual(["/opt/training", "/opt/training/spawnfile/dist/training/dspy"]);
   expect(new Set(idioms.map(match => match[2])).size).toBe(1);
   const root = await temporary(), reference = path.join(root, "reference"), candidate = path.join(root, "candidate");
   await assortedTree(reference); await assortedTree(candidate);
@@ -58,9 +58,9 @@ it("stages COPY content with the modes the former chmod 0555 train/train-broker 
   const expected = await modes(reference);
   expect(await modes(candidate)).toEqual(expected);
   // Documented expectation: directories 0755, readable files 0644, executables 0755, train/train-broker 0555.
-  expect(expected).toMatchObject({ bridge: "755", "bridge/pkg": "755", "bridge/requirements.lock": "644", "bridge/pkg/run.sh": "755",
+  expect(expected).toMatchObject({ "own/dist/training/dspy": "755", "own/dist/training/dspy/pkg": "755", "own/dist/training/dspy/requirements.lock": "644", "own/dist/training/dspy/pkg/run.sh": "755",
     "integration/entry.ts": "444", "integration/bin/partial": "555", "train-broker": "555", train: "555" });
-  expect((await lstat(path.join(candidate, "bridge/pkg/tool.py"))).mtime).toEqual(TRAINING_CONTEXT_MTIME);
+  expect((await lstat(path.join(candidate, "own/dist/training/dspy/pkg/tool.py"))).mtime).toEqual(TRAINING_CONTEXT_MTIME);
   expect(readableClosure(0o600, false)).toBe(0o644);
   // The OS may clear special bits during chmod; the real chmod comparison above owns that parity.
   expect(readableClosure(0o2700, true)).toBe(0o2755);
@@ -80,7 +80,7 @@ it("hands Docker a normalized context and never runs a layer after the distribut
       }
       return docker.process(args, options);
     } });
-  expect(staged).toMatchObject({ "train-broker": "555", train: "555", integration: "755", "integration/entry.ts": "644", bridge: "755", "paideia/dist/src/cli": "755" });
+  expect(staged).toMatchObject({ "train-broker": "555", train: "555", integration: "755", "integration/entry.ts": "644", "spawnfile/dist/training/dspy": "755", "spawnfile/dist/runtime": "755" });
   expect(Object.entries(staged).filter(([, mode]) => !["755", "644", "555"].includes(mode))).toEqual([]);
   expect([...mtimes]).toEqual([TRAINING_CONTEXT_MTIME.getTime()]);
 
@@ -94,20 +94,17 @@ it("hands Docker a normalized context and never runs a layer after the distribut
     expect(numeric, "a numeric chmod may only touch a runtime mount point").toMatch(/^chmod 0[0-7]{3}(\s+\/run\/training\S*)+\s*$/u);
   }
   const firstLate = instructions.indexOf("COPY train /opt/training/bin/train");
-  expect(instructions.slice(firstLate).map(line => line.split(" ")[0])).toEqual(["COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "ENV", "ENV", "WORKDIR", "ENTRYPOINT"]);
+  expect(instructions.slice(firstLate).map(line => line.split(" ")[0])).toEqual(["COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "COPY", "ENV", "ENV", "WORKDIR", "ENTRYPOINT"]);
   const copies = instructions.filter(line => line.startsWith("COPY ") && !line.startsWith("COPY --from"));
-  expect(copies.flatMap(line => line.split(/\s+/u).slice(1, -1)).sort()).toEqual(["bootstrap", "bridge", "bridge/requirements.lock", "claude/package-lock.json", "claude/package.json",
+  expect(copies.flatMap(line => line.split(/\s+/u).slice(1, -1)).sort()).toEqual(["bootstrap", "claude/package-lock.json", "claude/package.json",
     "compiler/dist", "compiler/moltnet-releases.json", "compiler/package-lock.json", "compiler/package.json", "compiler/runtimes.yaml", "integration",
-    "paideia/dist", "paideia/package-lock.json", "paideia/package.json", "spawnfile/dist", "spawnfile/moltnet-releases.json", "spawnfile/package-lock.json",
+    "spawnfile/dist", "spawnfile/dist/training/dspy", "spawnfile/dist/training/dspy/requirements.lock", "spawnfile/moltnet-releases.json", "spawnfile/package-lock.json",
     "spawnfile/package.json", "spawnfile/runtimes.yaml", "train", "train-broker"]);
   expect(instructions.filter(line => line.startsWith("COPY --from"))).toHaveLength(2);
   expect(dockerfile.match(/ln -s \S+ \S+/gu)).toEqual([
     'ln -s "$library" /usr/local/lib/daimon/libfaketime.so.1',
-    `ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon node_modules/@noopolis/daimon`,
     "ln -s /opt/training/claude/node_modules/.bin/claude /opt/training/bin/claude",
-    "ln -s /opt/training/paideia/dist/src/cli/main.js /opt/training/bin/paideia",
     "ln -s /opt/training/spawnfile/dist/cli/index.js /opt/training/bin/spawnfile",
-    "ln -s /opt/training/paideia /opt/training/integration/node_modules/@noopolis/paideia",
     "ln -s /opt/training/spawnfile /opt/training/integration/node_modules/spawnfile",
     `ln -s /opt/spawnfile/runtime-installs/daimon/node_modules/@noopolis/daimon /opt/training/integration/node_modules/@noopolis/daimon`,
     // The v3 root entrypoint imports Daimon's public /runtime export for the broker projection.

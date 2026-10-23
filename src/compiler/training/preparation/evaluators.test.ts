@@ -71,8 +71,8 @@ it("preserves evaluator authorization and secret references through preparation 
 
 it("excludes evaluator secrets from input output and every image source before Docker", async () => {
   const f = await setup();
-  for (const source of ["project/Spawnfile", "settings/settings.json", "paideia/dist/src/cli/main.js", "integration/entry.ts",
-    "bridge/requirements.lock", "bootstrap/start.ts", "own/dist/cli/index.js", "output/key"]) {
+  for (const source of ["project/Spawnfile", "settings/settings.json", "own/dist/runtime/trainingCli.js", "integration/entry.ts",
+    "own/dist/training/dspy/requirements.lock", "bootstrap/start.ts", "own/dist/cli/index.js", "output/key"]) {
     const original = await readFile(path.join(f.root, source), "utf8").catch(() => undefined);
     await f.put(source, "test-only-key-marker"); f.config.evaluatorSecrets![0]!.source = source; await f.save();
     const refusal = await prepareTraining(f.options).then(() => undefined, error => error);
