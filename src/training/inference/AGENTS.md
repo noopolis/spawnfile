@@ -52,6 +52,6 @@ the routed wrapper carries both through so a judge classifies from typed evidenc
 rather than reconstructing one from `kind` or from prose.
 
 `auth-stale` means a shared credential authority (`capabilities.credentialAuthority`,
-e.g. one Daimon broker realm) is stale. Routing records the attempt, never retries a
+e.g. one broker realm) is stale. Routing records the attempt, never retries a
 route on that authority and may continue to an authored route on another authority.
 

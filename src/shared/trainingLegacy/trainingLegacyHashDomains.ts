@@ -37,3 +37,6 @@ export const JEV_IDENTITY_KEY = 'paideia_identity';
 export const JEV_IDENTITY_LONG_KEY = 'paideia_identity_long';
 export const JEV_CANARY_MARKER = 'PAIDEIA_CANARY_END';
 export const JEV_CANARY_QUESTION = 'Does the supplied text end with PAIDEIA_CANARY_END?';
+
+/** Frozen repair compatibility discriminator; retained for existing signed receipts. */
+export const LEGACY_MEASUREMENT_COMPATIBILITY_VERSION = 'spawnfile.daimon-dspy-compatibility.v1';

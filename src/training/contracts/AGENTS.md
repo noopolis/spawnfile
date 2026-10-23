@@ -11,7 +11,7 @@ Owns versioned IDs, capabilities, interfaces and shared result schemas.
 - Keep wire compatibility and validation versioned. Split schema families into
   cohesive children when they grow; do not centralize every type in one file.
 - Tests should reject malformed, ambiguous and incompatible values while accepting
-  the supported public contract. Shared contracts must work without Daimon.
+  the supported public contract. Shared contracts must work without installed runtimes.
 
 Evaluation contexts may carry injected neutral grader runtimes. Nested gate
 execution and the graded artifact are engine-owned capabilities; grader results
