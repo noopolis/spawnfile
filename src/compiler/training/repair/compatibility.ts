@@ -10,6 +10,9 @@ export function verifyTrainingCompatibility(witness: TrainingWitness, current: T
   if (context.agent.runtime !== "daimon" || context.project.sourceDigest !== witness.context.project.sourceDigest ||
     JSON.stringify(context.agent) !== JSON.stringify(witness.context.agent)) throw Error("Repair canonical agent changed");
   const old = witness.image.files, next = fileIdentity(current.files);
+  if (old.some(file => file.destination.startsWith("paideia/"))) {
+    throw Error("Repair references an external training distribution; re-prepare with Spawnfile before repairing measurements");
+  }
   const selection = (files: typeof old, prefix: string, excludes: string[] = []) => {
     const values = files.filter(file => file.destination.startsWith(prefix) && !excludes.some(value => file.destination === value || (value.endsWith("/") && file.destination.startsWith(value))))
       .map(file => ({ ...file, destination: file.destination.slice(prefix.length) })).sort((a, b) => a.destination.localeCompare(b.destination));
@@ -23,11 +26,18 @@ export function verifyTrainingCompatibility(witness: TrainingWitness, current: T
   };
   for (const field of ["nativeImage", "pythonImage", "platform"] as const) compare(field,
     hashJson(witness.image.build[field]), hashJson(current.build[field]));
-  compare("compiler", selection(old, witness.image.build.compiler ? "compiler/" : "spawnfile/"), selection(next, "compiler/"));
-  for (const [name, prefix] of Object.entries({ integration: "integration/", native: "paideia/dist/src/adapters/daimon-native/",
-    trials: "paideia/dist/src/experiments/trials/" })) compare(name, selection(old, prefix), selection(next, prefix));
-  const excluded = ["bridge/paideia_dspy/checkpoint.py", "bridge/paideia_dspy/protocol.py", "bridge/README.md", "bridge/protocol.md", "bridge/.coverage", "bridge/.pytest_cache/", "bridge/coverage.json"];
-  compare("optimizer", selection(old, "bridge/", excluded), selection(next, "bridge/", excluded));
+  // The compiler closure excludes the training implementation so repair may update
+  // evaluator/fork transport while preserving subject and optimizer semantics below.
+  const compilerExclusions = ["compiler/dist/training/", "compiler/dist/runtime/trainingCli.js",
+    "compiler/dist/runtime/trainingCli.d.ts", "compiler/dist/runtime/trainingSubjects.js",
+    "compiler/dist/runtime/trainingSubjects.d.ts", "compiler/dist/runtime/daimon/training/", "compiler/dist/runtime/codex-exec/training/"];
+  compare("compiler", selection(old, "compiler/", compilerExclusions), selection(next, "compiler/", compilerExclusions));
+  for (const [name, prefix] of Object.entries({ integration: "integration/", "training-native": "spawnfile/dist/runtime/daimon/training/",
+    "training-trials": "spawnfile/dist/training/experiments/trials/" })) compare(name, selection(old, prefix), selection(next, prefix));
+  const bridge = "spawnfile/dist/training/dspy/";
+  const excluded = ["paideia_dspy/checkpoint.py", "paideia_dspy/protocol.py", "README.md", "protocol.md", ".coverage", ".pytest_cache/", "coverage.json"]
+    .map(file => bridge + file);
+  compare("training-optimizer", selection(old, bridge, excluded), selection(next, bridge, excluded));
   const previousInputs = witness.inputs.map(input => ({ id: input.id, destination: input.destination, digest: input.digest }));
   const currentInputs = inputs.map(input => ({ id: input.id, destination: input.destination, digest: input.digest }));
   if (hashJson(previousInputs) !== hashJson(currentInputs)) throw Error("Repair evidence or dataset inputs changed");

@@ -1,7 +1,7 @@
 # Measurement repair transport
 
 Owns trusted preparation witnesses, subject-environment compatibility checks and
-read-only captured-work projection for an explicit fresh training fork. Paideia
+read-only captured-work projection for an explicit fresh training fork. the training core
 owns checkpoint parsing, repair eligibility, scoring and optimizer continuation.
 Never reinterpret measurements, expose runtime homes/auth, or weaken normal
 resume. Compare pinned compiler/native/integration/input closures before a receipt.
@@ -12,3 +12,8 @@ mutation-tested. No model calls or project scripts belong here.
 - Parent command checkpoints may contain the documented optional strict lineage
   fields. Preserve those bytes and cumulative rescores when chaining repairs;
   automatically use the immediate parent witness, never rewrite identities.
+
+- Compatibility covers Spawnfile's compiler closure, runtime training adapter,
+  trial execution and DSPy optimizer. Exclude training modules from the compiler
+  closure so evaluator/checkpoint transport fixes can form compatible repairs.
+  Old external-distribution witnesses and component receipts require re-preparation.

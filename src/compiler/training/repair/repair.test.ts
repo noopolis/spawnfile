@@ -11,11 +11,11 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
   const f = await preparationFixture(); roots.push(f.root);
-  await f.put("paideia/dist/src/adapters/daimon-native/adapter.js", "native");
-  await f.put("paideia/dist/src/experiments/trials/trial.js", "subject");
-  await f.put("bridge/paideia_dspy/checkpoint.py", "checkpoint-v1");
-  await f.put("bridge/paideia_dspy/protocol.py", "wire-v1");
-  await f.put("bridge/paideia_dspy/optimizer.py", "gepa");
+  await f.put("own/dist/runtime/daimon/training/adapter.js", "native");
+  await f.put("own/dist/training/experiments/trials/trial.js", "subject");
+  await f.put("own/dist/training/dspy/paideia_dspy/checkpoint.py", "checkpoint-v1");
+  await f.put("own/dist/training/dspy/paideia_dspy/protocol.py", "wire-v1");
+  await f.put("own/dist/training/dspy/paideia_dspy/optimizer.py", "gepa");
   const docker = imageDocker();
   const options = { configPath: f.configPath, context: f.context, args: f.args, dryRun: false,
     process: docker.process, timeoutMs: 30000, packageRoot: path.join(f.root, "own"), streams: { stdout() {}, stderr() {} } };
@@ -38,9 +38,9 @@ async function fixture() {
 it("seals future witness automatically and projects repair captures with exact identities and no native homes", async () => {
   const f = await fixture();
   // Only evaluator and checkpoint transport changes are compatible.
-  await f.put("paideia/dist/src/cli/main.js", "fixed evaluator");
-  await f.put("bridge/paideia_dspy/checkpoint.py", "fork-support");
-  await f.put("bridge/paideia_dspy/protocol.py", "fork-wire");
+  await f.put("own/dist/runtime/trainingCli.js", "fixed evaluator");
+  await f.put("own/dist/training/dspy/paideia_dspy/checkpoint.py", "fork-support");
+  await f.put("own/dist/training/dspy/paideia_dspy/protocol.py", "fork-wire");
   const parentBytes = await readFile(path.join(f.parent, "checkpoint/host.json"));
   const prepared = await prepareTraining(f.options); if ("dryRun" in prepared) throw Error("actual");
   const envelope = repairEnvelopeSchema.parse(JSON.parse(await readFile(prepared.repairPath!, "utf8")));
@@ -64,8 +64,8 @@ it("seals future witness automatically and projects repair captures with exact i
 
 it.each(["native", "trials", "compiler", "integration", "optimizer", "input", "source", "image", "settings"])("rejects changed %s before Docker or output writes", async kind => {
   const f = await fixture();
-  const changes: Record<string, string> = { native: "paideia/dist/src/adapters/daimon-native/adapter.js", trials: "paideia/dist/src/experiments/trials/trial.js",
-    compiler: "own/dist/cli/index.js", integration: "integration/entry.ts", optimizer: "bridge/paideia_dspy/optimizer.py", input: "project/train.yaml" };
+  const changes: Record<string, string> = { native: "own/dist/runtime/daimon/training/adapter.js", trials: "own/dist/training/experiments/trials/trial.js",
+    compiler: "own/dist/cli/index.js", integration: "integration/entry.ts", optimizer: "own/dist/training/dspy/paideia_dspy/optimizer.py", input: "project/train.yaml" };
   if (changes[kind]) await f.put(changes[kind], "changed");
   if (kind === "source") f.options.context = { ...f.context, project: { ...f.context.project, sourceDigest: `sha256:${"f".repeat(64)}` } };
   if (kind === "image" && "build" in f.config.image) { f.config.image.build.nativeImage = `sha256:${"f".repeat(64)}`; await f.save(); }
@@ -193,3 +193,15 @@ it.each([{}, { parentId: "not-uuid", parentIdentity: "a".repeat(64), receiptDige
     await writeFile(file, JSON.stringify({ ...original, lineage }));
     await expect(prepareTraining({ ...f.options, dryRun: true })).rejects.toThrow();
   });
+
+
+it("refuses old external training witnesses with re-prepare guidance before schema parsing", async () => {
+  const f = await fixture();
+  const envelope = JSON.parse(await readFile(f.witnessPath, "utf8"));
+  envelope.manifest.image.build.paideia = "old-install";
+  envelope.manifest.image.build.bridge = "old-bridge";
+  envelope.digest = hashJson(envelope.manifest);
+  await chmod(f.witnessPath, 0o600);
+  await writeFile(f.witnessPath, JSON.stringify(envelope));
+  await expect(readTrainingWitness(f.witnessPath)).rejects.toThrow("re-prepare with Spawnfile");
+});
