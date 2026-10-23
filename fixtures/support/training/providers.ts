@@ -4,7 +4,7 @@ import * as cases from '../../../src/training/cases/index.js';
 import * as inference from '../../../src/training/cli/training/inference.js';
 import * as configuration from '../../../src/training/cli/training/configuration.js';
 import * as optimizer from '../../../src/training/cli/training/optimizer.js';
-import * as policies from '../../../src/training/contracts/inference-policy.js';
+import * as policies from '../../../src/training/providers/index.js';
 import type { InferenceProviderRegistry } from '../../../src/training/contracts/index.js';
 
 export { createGrokInference } from '../../../src/runtime/daimon/training/providers/grok-subscription/index.js';

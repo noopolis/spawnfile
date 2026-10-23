@@ -65,5 +65,17 @@ export function createTrainingProviderRegistry(dependencies: Pick<CliDependencie
     },
   };
   return { ...defaultInferenceProviders, brokerAdmissionLabel: 'grok-broker',
-    providers: { ...defaultInferenceProviders.providers, 'claude-subscription': { ...defaultInferenceProviders.providers['claude-subscription']!, validate: (model, path) => validate(model, path, 'none') }, 'codex-subscription': codex, 'grok-subscription': grok, 'grok-broker': broker } };
+    providers: { ...defaultInferenceProviders.providers, ollama: {
+      ...defaultInferenceProviders.providers.ollama!,
+      validate(model, path) {
+        // Preserve the historical host-composed configuration diagnostic outside the neutral core.
+        if (model.reasoning_effort !== undefined) {
+          // Common authored shape errors precede provider-control diagnostics.
+          for (const field of Object.keys(model)) if (!modelFields.includes(field)) fail(`${path}.${field}`, 'unknown field');
+          if (typeof model.model !== 'string' || !model.model.length) fail(`${path}.model`, 'expected a nonempty string');
+          fail(`${path}.reasoning_effort`, 'only supported for grok-subscription or grok-broker');
+        }
+        defaultInferenceProviders.providers.ollama!.validate(model, path);
+      },
+    }, 'claude-subscription': { ...defaultInferenceProviders.providers['claude-subscription']!, validate: (model, path) => validate(model, path, 'none') }, 'codex-subscription': codex, 'grok-subscription': grok, 'grok-broker': broker } };
 }

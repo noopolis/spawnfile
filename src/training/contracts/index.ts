@@ -7,7 +7,6 @@ export type * from './execution.js';
 export type * from './evaluation.js';
 export { judgeFailureCauses } from './evaluation.js';
 export { inferenceFailureDetails } from './execution.js';
-export { trainingRoutePolicies, trainingInferencePolicies } from './inference-policy.js';
 export type * from './inference-grants.js';
 export type * from './grading.js';
 export type { AtomicFeedback } from './atomic-feedback.js';

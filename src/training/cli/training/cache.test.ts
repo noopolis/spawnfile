@@ -1,5 +1,5 @@
 import * as inferenceFactory from './inference.js';
-import * as providerPolicies from '../../contracts/inference-policy.js';
+import * as providerPolicies from '../../providers/index.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { chmod, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';

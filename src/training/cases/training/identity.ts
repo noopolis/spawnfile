@@ -2,7 +2,7 @@ import { inferenceProviderDescriptor } from '../../contracts/inference-registry.
 import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
 import { defaultInferenceProviders } from '../../providers/index.js';
 import { LEGACY_INFERENCE_VERSION_PREFIX, AUTHORED_JUDGE_VERSION_PREFIX } from '../../contracts/index.js';
-import { trainingRoutePolicies, trainingInferencePolicies } from '../../contracts/inference-policy.js';
+import { trainingRoutePolicies, trainingInferencePolicies } from '../../providers/index.js';
 import { createHash } from 'node:crypto';
 import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { canonical } from '../validation.js';

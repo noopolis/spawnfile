@@ -1,5 +1,5 @@
 import type { InferenceProviderDescriptor, InferenceProviderRegistry } from '../contracts/inference-registry.js';
-import { INFERENCE_POLICY_VERSIONS } from '../../shared/trainingLegacy/index.js';
+import { INFERENCE_POLICY_VERSIONS, LEGACY_DEFAULT_JUDGE_VERSION } from '../../shared/trainingLegacy/index.js';
 import { createClaudeInference } from '../inference/claude/index.js';
 import { createOllamaInference } from '../inference/ollama/index.js';
 import { fail, fields, number, string } from '../cases/index.js';
@@ -16,7 +16,7 @@ function integer(value: unknown, path: string, min: number, max: number): void {
 }
 
 const subscription: InferenceProviderDescriptor = {
-  policyVersion: INFERENCE_POLICY_VERSIONS['claude-subscription']!, legacyJudgeVersion: 'cli.claude-subscription.v1',
+  policyVersion: INFERENCE_POLICY_VERSIONS['claude-subscription']!, legacyJudgeVersion: LEGACY_DEFAULT_JUDGE_VERSION,
   capabilities: {},
   validate(model, path) {
     base(model, path);

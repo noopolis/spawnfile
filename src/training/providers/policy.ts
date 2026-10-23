@@ -1,7 +1,7 @@
-import type { InferenceProviderRegistry } from './inference-registry.js';
-import { inferenceProviderDescriptor } from './inference-registry.js';
-import { defaultInferenceProviders } from '../providers/index.js';
-import type { TrainingConfiguration, TrainingRoute } from './training-config.js';
+import type { InferenceProviderRegistry } from '../contracts/inference-registry.js';
+import { inferenceProviderDescriptor } from '../contracts/inference-registry.js';
+import { defaultInferenceProviders } from './registry.js';
+import type { TrainingConfiguration, TrainingRoute } from '../contracts/training-config.js';
 
 /** Preserve route order and include every declared fallback, whether invoked or not. */
 export function trainingRoutePolicies(configuration: TrainingConfiguration, route: TrainingRoute, executionIdentity?: string, registry: InferenceProviderRegistry = defaultInferenceProviders) {

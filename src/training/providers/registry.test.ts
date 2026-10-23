@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { InferenceProviderDescriptor, InferenceProviderRegistry } from '../contracts/index.js';
-import { inferenceProviderDescriptor, trainingInferencePolicies } from '../contracts/index.js';
+import { inferenceProviderDescriptor } from '../contracts/index.js';
+import { trainingInferencePolicies } from './index.js';
 import { parseDatasetYaml, resolveDataset, trainingJudgeVersions, validateTrainingConfiguration } from '../cases/index.js';
 import { createTrainingInference, configuredCostRoutes } from '../cli/training/index.js';
 import { defaultInferenceProviders } from './index.js';

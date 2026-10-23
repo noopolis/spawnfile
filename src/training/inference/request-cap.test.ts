@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { assertModelRequestAdmission } from './request-cap.js';
+import { assertModelRequestAdmission } from '../../../fixtures/support/training/evaluator.js';
 
 afterEach(() => vi.unstubAllEnvs());
 it('requires broker admission only in explicitly capped containers and rejects unknown policies', () => {

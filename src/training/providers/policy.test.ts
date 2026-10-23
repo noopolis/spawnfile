@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import { trainingInferencePolicies, trainingRoutePolicies } from './inference-policy.js';
-import type { TrainingConfiguration } from './training-config.js';
+import { trainingInferencePolicies, trainingRoutePolicies } from '../../../fixtures/support/training/providers.js';
+import type { TrainingConfiguration } from '../contracts/training-config.js';
 
 const config: TrainingConfiguration = {
   models: { primary: { provider: 'grok-subscription', model: 'grok' },

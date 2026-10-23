@@ -1,7 +1,7 @@
 import { COMMAND_EXECUTION_DOMAIN } from '../../contracts/index.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import type { MeasurementRepairReceipt } from '../../experiments/repair/index.js';
-import { trainingInferencePolicies } from '../../contracts/inference-policy.js';
+import { trainingInferencePolicies } from '../../providers/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { link, mkdir, open, unlink } from 'node:fs/promises';
 import { join } from 'node:path';

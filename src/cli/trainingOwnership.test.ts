@@ -20,7 +20,7 @@ const legacyPaths = new Set([
   'src/training/graders/references/batching.test.ts',
   'src/training/inference/decision/ollama.test.ts',
   'src/training/experiments/training/training.test.ts',
-  'src/training/contracts/inference-policy.test.ts',
+  'src/training/providers/policy.test.ts',
   'src/training/cli/grader/cache-exclusions.test.ts',
   'src/shared/trainingLegacy/trainingLegacyWire.ts',
   'src/shared/trainingLegacy/trainingLegacyWireAliases.json',

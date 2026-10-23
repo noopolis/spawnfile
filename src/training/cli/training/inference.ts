@@ -3,7 +3,7 @@ import type { InferenceProviderRegistry } from '../../contracts/inference-regist
 import { inferenceProviderDescriptor } from '../../contracts/inference-registry.js';
 import { OPTIMIZER_ROUTE_PREFIX } from '../../contracts/index.js';
 import { trainingEnvironment } from '../../platform/index.js';
-import { trainingRoutePolicies, trainingInferencePolicies } from '../../contracts/inference-policy.js';
+import { trainingRoutePolicies, trainingInferencePolicies } from '../../providers/index.js';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
 import type { InferenceProvider } from '../../contracts/index.js';

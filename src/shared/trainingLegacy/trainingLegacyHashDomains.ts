@@ -10,6 +10,7 @@ export const DECOMPOSITION_DIGEST_SCHEMA = 'paideia.decomposition.v1';
 export const CHECK_TEMPLATES_DIGEST_SCHEMA = 'paideia.check-templates.v1';
 export const EVIDENCE_UNITS_DIGEST_SCHEMA = 'paideia.evidence-units.v1';
 
+export const LEGACY_DEFAULT_JUDGE_VERSION = 'cli.claude-subscription.v1';
 export const LEGACY_INFERENCE_VERSION_PREFIX = 'paideia.legacy-inference:';
 export const AUTHORED_JUDGE_VERSION_PREFIX = 'paideia.authored-judge.v1:sha256:';
 export const OPTIMIZER_ROUTE_PREFIX = 'paideia.optimizer:';
