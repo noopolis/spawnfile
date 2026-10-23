@@ -46,3 +46,5 @@ Keep explicit caps and the 10000-trial ceiling. Verify the actual CLI/bridge run
 not just dry-run arithmetic; legacy GEPA and frozen comparisons retain defaults.
 
 Resolve training.validation relative to its dataset and reject simultaneous validation group declarations before native construction.
+
+`bridge-command.ts` freezes bare executable selection through the launch cwd and PATH before integration identity and execution consume the same command. Explicit paths retain their authored binding; pinned bridge verification stays in optimization.

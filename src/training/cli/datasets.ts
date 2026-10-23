@@ -73,7 +73,7 @@ export class CliDatasets {
           assertModelRequestAdmission('typesafe', 'grader decisions', { purpose: 'decisions', model: grader.model.name }, this.preparation.inferenceProviders);
         } else assertModelRequestAdmission('native-grader', 'grader', undefined, this.preparation.inferenceProviders);
       }
-      const runtime = graders[filename] ?? await buildExecutableGradingRuntime(filename, dependencies);
+      const runtime = graders[filename] ?? await buildExecutableGradingRuntime(filename, { ...dependencies, inferenceProviders: this.preparation.inferenceProviders ?? dependencies.inferenceProviders });
       if (runtime.definitionDigest !== binding.definitionDigest || ('kind' in runtime ? runtime.templatesDigest !== binding.templatesDigest || binding.kind !== 'atomic' : runtime.calibrationDigest !== binding.calibrationDigest)) {
         throw new Error(`Grader or calibration changed after dataset resolution: ${filename}`);
       }

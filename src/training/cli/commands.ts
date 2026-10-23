@@ -1,6 +1,6 @@
 import { testRepeatCount } from '../contracts/training-config.js';
 import { resolveSpawnfileContext } from './spawnfile/index.js';
-import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget } from './training/index.js';
+import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget, resolveTrainingBridgeCommand } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
 import { resolveTrainingPartitions } from '../experiments/training/index.js';
@@ -54,7 +54,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   if (metricCalls < 1) throw new Error('--max-trials cannot cover optimizer evaluation plus two reserved sealed-test passes');
   const bridgeCommand = args.command === 'train' && !comparison ? one(args, 'bridge-command') : undefined;
   const bridge = bridgeCommand === undefined ? undefined : Object.freeze({
-    command: bridgeCommand.includes('/') ? resolve(io.cwd, bridgeCommand) : bridgeCommand, cwd: inputs.sourceRoot, timeoutMs,
+    command: await resolveTrainingBridgeCommand(bridgeCommand.includes('/') ? resolve(io.cwd, bridgeCommand) : bridgeCommand, inputs.sourceRoot), cwd: inputs.sourceRoot, timeoutMs,
   });
   const optimizerModel = args.command === 'train' && !comparison ? one(args, 'optimizer-model') : undefined;
   const maxProposals = comparison ? 0 : count(args, 'max-proposals', 3, 1000);

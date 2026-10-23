@@ -73,3 +73,12 @@ it('keeps the missing-key refusal visible through named backend construction', (
   vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new Error('TypeSafe requires TYPESAFE_API_KEY'); });
   expect(() => graderBackends(grader({ backend: 'typesafe', name: 'jev-1.13.0' }))).toThrow('TypeSafe requires TYPESAFE_API_KEY');
 });
+
+it('surfaces safe startup causes while withholding arbitrary provider diagnostics', () => {
+  for (const message of ['Invalid evaluator route policy', 'Invalid evaluator TypeSafe secret file']) {
+    vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new Error(message); });
+    expect(() => graderBackends(grader({ backend: 'typesafe', name: 'jev-1.13.0' }))).toThrow(message);
+  }
+  vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new Error('private-opaque-secret'); });
+  expect(() => graderBackends(grader({ backend: 'typesafe', name: 'jev-1.13.0' }))).toThrow('startup diagnostic withheld');
+});

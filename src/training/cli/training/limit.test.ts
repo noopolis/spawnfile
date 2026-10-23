@@ -3,16 +3,17 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as optimization from '../../optimization/index.js';
 import { openExperimentStore } from '../../storage/index.js';
-import { cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
+import { installDefaultBridgeFixture, cliFixture } from '../../../../fixtures/support/training/cli-fixture.js';
 import { main } from '../commands.js';
 import type { TrainingReport } from '../../experiments/index.js';
 
 const roots: string[] = [];
-afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
 /** The run52 abort: a candidate that runs out of its own declared timeout is graded, fed back and the run goes on. */
 it('trains through a declared-limit stop with a zero score and budget feedback instead of an infrastructure abort', async () => {
   const f = await cliFixture(); roots.push(f.root);
+  vi.stubEnv('PATH', `${await installDefaultBridgeFixture(f.root)}:${process.env.PATH ?? ''}`);
   const dataset = (id: string, records: string[]) => ({ schema: 'spawnfile.training.dataset.v1', id,
     stages: [{ id: 'article', checks: [{ id: 'filed', eval: 'equals', input: 'output.text', value: 'DONE' }],
       gate: { passed: 'filed' }, score: { linear: { filed: 1 } } }],

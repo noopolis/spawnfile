@@ -8,3 +8,5 @@ export { reserveOutput } from './output-lock.js';
 export { prepareComparison } from './comparison.js';
 
 export { resolveTrainingOptimizer, populationSearch, bridgeProposal, editableResources, trainingTrialBudget } from './optimizer.js';
+
+export { resolveTrainingBridgeCommand } from './bridge-command.js';

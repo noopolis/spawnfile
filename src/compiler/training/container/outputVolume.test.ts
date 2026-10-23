@@ -156,3 +156,15 @@ it("stops a running native writer before exporting after cancellation", async ()
   expect(running).toBe(false);
   expect(docker.calls.findIndex(args => args[2] === "stop")).toBeLessThan(docker.calls.findIndex(args => helper(args, "export")));
 });
+
+it("surfaces bounded seed create stderr while redacting auth sources and tokens", async () => {
+  const f = await setup();
+  const secretPath = (JSON.parse(await readFile(f.configPath, "utf8"))).auth[0]!.source;
+  const docker = dockerFixture(undefined, async args => helper(args, "seed")
+    ? { code: 1, stdout: "", stderr: `bind source path does not exist: /missing/input; ${secretPath} TOKEN=opaque-secret ` + "x".repeat(3000) } : undefined);
+  const error = await launchTrainingContainer({ ...f, image, timeoutMs: 3000, streams: streams(), process: docker.process }).catch(error => error);
+  expect(error.message).toContain("bind source path does not exist: /missing/input");
+  expect(error.message).not.toContain(secretPath);
+  expect(error.message).not.toContain("opaque-secret");
+  expect(error.message.length).toBeLessThan(2150);
+});

@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rename } from "node:fs/promises";
 import path from "node:path";
 import { parseDetachedContainerInspect } from "../../runProjectDocker.js";
+import { boundedRedactedText } from "../../../shared/redaction.js";
 import { trainingOutputCopyProgram } from "./outputCopy.js";
 
 type DockerCall = (args: string[], cleanup?: boolean) => Promise<{ code: number; stdout: string; stderr: string }>;
@@ -18,9 +19,13 @@ export const trainingOutputVolumeEnabled = (): boolean => {
 /** One launch owns this volume; budgets and auth volumes are never touched. */
 export const createTrainingOutputVolume = (options: {
   name: string; image: string; host: string; scratch: string; uid: number; gid: number;
-  runtimeUid: number; runtimeGid: number; context: string; call: DockerCall; stderr(line: string): void;
+  runtimeUid: number; runtimeGid: number; context: string; authSources?: readonly string[]; call: DockerCall; stderr(line: string): void;
 }) => {
   const { call } = options;
+  const diagnostic = (text: string): string => {
+    for (const source of [...options.authSources ?? []].sort((a, b) => b.length - a.length)) text = text.replaceAll(source, "[auth source]");
+    return boundedRedactedText(text.replace(/\p{Cc}/gu, " "), 2048);
+  };
   const volume = `${options.name}-output`;
   let attempted = false, seeded = false, exported = false, exportAttempted = false, helperClosed = true;
   const recovery = (): string => `Training output retained in Docker volume ${volume}. Recover with: docker --context ${options.context} run --rm --network none --read-only --mount type=volume,src=${volume},dst=/output,readonly --entrypoint /bin/tar ${options.image} -C /output -cpf - . > training-output-recovery.tar`;
@@ -57,13 +62,13 @@ export const createTrainingOutputVolume = (options: {
         "-e", trainingOutputCopyProgram, "/source", "/destination",
         String(direction === "seed" ? options.runtimeUid : options.uid), String(direction === "seed" ? options.runtimeGid : options.gid)], direction === "export");
       const id = created.stdout.trim(); containerId = id;
-      if (created.code !== 0 || !/^[a-f0-9]{64}$/u.test(id)) throw Error(`Cannot create training output ${direction} helper`);
+      if (created.code !== 0 || !/^[a-f0-9]{64}$/u.test(id)) throw Error(`Cannot create training output ${direction} helper${created.stderr ? `: ${diagnostic(created.stderr)}` : ""}`);
       const checked = await call(["container", "inspect", "--format", inspectFormat, name], true);
       if (checked.code !== 0 || parseDetachedContainerInspect(checked.stdout, id, labels, name).imageId !== options.image) throw Error("Training output helper identity mismatch");
       const result = await call(["container", "start", "--attach", id], direction === "export");
       const terminal = await call(["container", "inspect", "--format", "{{json .State}}", id], true);
       const state = JSON.parse(terminal.stdout) as { Running?: unknown; ExitCode?: unknown };
-      if (result.code !== 0 || result.stdout.trim() !== "spawnfile-output-copy-complete" || terminal.code !== 0 || state.Running !== false || state.ExitCode !== 0) throw Error(`Training output ${direction} failed (copy incomplete or exceeds limits): ${result.stderr.replace(/\p{Cc}/gu, " ").slice(0, 2048)}`);
+      if (result.code !== 0 || result.stdout.trim() !== "spawnfile-output-copy-complete" || terminal.code !== 0 || state.Running !== false || state.ExitCode !== 0) throw Error(`Training output ${direction} failed (copy incomplete or exceeds limits): ${diagnostic(result.stderr)}`);
     } finally {
       if (creationAttempted) {
         const found = await call(["container", "inspect", "--format", inspectFormat, name], true);
