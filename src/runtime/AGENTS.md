@@ -85,6 +85,9 @@ step with `compileAgent`/`createContainerTargets` by calling the same check
 functions, never a copy.
 - Container targets may publish `agentPathsByNodeId` with the same placeholders as configuration; compiler expansion reports these facts for offline consumers.
 
+`trainingPublic.ts` is the selected package CLI integration barrel. It delegates
+to `trainingCli.ts` for runtime composition without exposing its internal `main`.
+
 `daimonInstall.ts` owns the receipt/manifest verification and CLI/broker
 installation commands shared by `container.ts` and the training-native parent
 renderer. Keep this one authority; never weaken parent verification or add

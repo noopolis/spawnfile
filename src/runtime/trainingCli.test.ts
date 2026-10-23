@@ -11,7 +11,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 describe('executable command entry', () => {
   it('imports the composition without starting a CLI', async () => {
     const { launch } = await import('../training/cli/index.js');
-    await import('./trainingCli.js');
+    await import('./trainingPublic.js');
     expect(launch).not.toHaveBeenCalled();
   });
   it('imports safely from a stdin host whose argv entry is not a file', async () => {

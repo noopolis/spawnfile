@@ -102,6 +102,41 @@ a string `adapterId`; launch validates it against the selected runtime's registe
 adapter before container operations. Existing string-valued receipts and launch
 versions remain readable without changing their wire shape.
 
+## Interim public integration entry points
+
+The package declares explicit ESM and TypeScript exports for integrations migrating
+from the former training package:
+
+- `spawnfile/training` retains compiler context, plans, moments, preparation and
+  subject leases, including `trainingPreparationSchema` and `prepareTrainingEvaluators`.
+- `spawnfile/training/core` supplies the selected dataset, candidate, trial,
+  evaluation, inference, optimizer identity and storage APIs.
+- `spawnfile/training/daimon` supplies the selected native subject, slot,
+  child-environment and worker-validation APIs. Its barrel lives with the Daimon
+  runtime; importing it never starts a worker or loads the external runtime package.
+- `spawnfile/training/cli` supplies `launch`, integration and moment types,
+  `spawnfileEnvironment`, `CliDatasets`, `createTrainingInference` and
+  `trainingDependencies`. `launch` uses the same runtime composition as the host CLI.
+- `spawnfile/auth` retains authentication staging.
+
+These selected named exports are an **interim integration surface, stable within
+0.1.x**. It is intended to shrink as application-owned training mechanisms move
+into Spawnfile and integrations become pure declarations (Goal 2). Retire an entry
+only after migrating its consumer; preserve the 0.1.x contract until then.
+The core entry point remains runtime-neutral; it never re-exports runtime composition.
+
+Low-level dataset and inference calls retain neutral defaults. Integrations using
+runtime providers MUST obtain `await trainingDependencies()` from the CLI entry
+and pass its `inferenceProviders` to dataset parsing/resolution, `CliDatasets`,
+admission and budget helpers; pass the dependencies to `createTrainingInference`.
+Compose before parsing authored graders. `launch` does this automatically.
+
+The existing package wildcard remains for legacy consumers (including
+`spawnfile/package.json`); it is not the route for these APIs. Do not construct
+`dist/` paths or resolve implementations relative to another package's directory.
+Existing wire-ID, environment-alias and measurement-identity compatibility rules
+still apply; executable closure changes require re-preparation as described above.
+
 ## Authoring
 
 Teams (including the root organization) MAY declare `shared.training`; agents and

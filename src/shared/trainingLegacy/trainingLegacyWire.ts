@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import legacyWireAliases from './trainingLegacyWireAliases.json' with { type: 'json' };
+import wireAliases from './trainingLegacyWireAliases.json' with { type: 'json' };
+
+// Keep emitted declarations independent of JSON import-attribute emission.
+const legacyWireAliases: Readonly<Record<string, string>> = wireAliases;
 
 /** Historical discriminators are translated only at explicit reader boundaries. */
 export { legacyWireAliases };

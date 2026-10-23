@@ -6,6 +6,7 @@ export { trainAgent, type TrainingOptions, type TrainingReport } from './trainin
 export { partitionTraining } from './training/index.js';
 export { trialScore } from './training/index.js';
 export { freezeCriteria } from './training/index.js';
+export { trainingFeedback } from './training/index.js';
 export { rescoreStoredTrial, type RescoreOptions, type RescoreReport } from './replay/index.js';
 export * from './costs/index.js';
 
