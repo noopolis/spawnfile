@@ -1,4 +1,3 @@
-import { CANDIDATE_DIGEST_SCHEMA, DATASET_DIGEST_SCHEMA } from '../../contracts/index.js';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -237,8 +236,8 @@ it('keeps the pre-population training checkpoint identity when search is absent'
   await TrainingCheckpoint.open(options, datasets);
   const saved = JSON.parse(await readFile(join(options.checkpoint.directory, 'training.json'), 'utf8'));
   const legacyIdentity = trainingDigest({
-    execution: options.checkpoint.identity, id: options.id, baseline: { ...options.baseline, schema: CANDIDATE_DIGEST_SCHEMA },
-    datasets: datasets.map(dataset => ({ ...dataset, schema: DATASET_DIGEST_SCHEMA })),
+    execution: options.checkpoint.identity, id: options.id, baseline: { ...options.baseline, schema: 'paideia.candidate.v1' },
+    datasets: datasets.map(dataset => ({ ...dataset, schema: 'paideia.dataset.v1' })),
     adapter: options.native.adapter.id, model: options.native.model, resources: options.native.resources,
     optimizer: { provider: options.inference.provider.id, model: options.inference.model },
     seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, maxRecoveryAttempts: 2,

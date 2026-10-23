@@ -9,7 +9,7 @@ import { snapshotCandidate, deriveCandidate, deriveAuthoredCandidate } from '../
 import { createJudgeCache, evaluateRubric } from '../../evaluation/semantic/index.js';
 import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
 import { parseGrader, parseLabels, loadLabels, stableDigest, type Labels } from '../../graders/format/index.js';
-import { goldenIdentity, createCalibrationIdentity, type CalibrationFile } from '../../graders/index.js';
+import { goldenIdentity, createCalibrationIdentity, parseCalibration, type CalibrationFile } from '../../graders/index.js';
 import { groupLabelInstances, buildLabelPrompt, teacherPolicyDigest, validateStoredVotes, adjudicationRows } from '../../graders/labeling/index.js';
 import { runCouncil, councilPrompt } from '../../graders/references/index.js';
 import type { CheckInstance } from '../../graders/decomposition/index.js';
@@ -226,11 +226,11 @@ async function labelsAndGrades() {
   const sample: Labels = { ...labels, labels: Array.from({ length: 20 }, (_, i) => ({ ...labels.labels[0]!, id: `story-${i}`, lineage: `story-${i}` })) };
   const backend = { identity: async () => ({ backend: 'jev-http', model: 'qwen3:8b', fingerprint: 'stable-server' }),
     score: async () => [{ key: 'q', status: 'ok' as const, probabilities: { yes: 0.95, no: 0.05 } }] };
-  const calibration: CalibrationFile = { schema: wire('grader-calibration.v1') as CalibrationFile['schema'],
+  const calibration: CalibrationFile = parseCalibration({ schema: wire('grader-calibration.v1'),
     identity: createCalibrationIdentity(g, { backendModel: await decisionBackendIdentity(g, backend),
       golden: golden.goldenDigest, promptTemplateVersion: 'fixture.v1', seed: '0', exclusions: [] }),
     questions: { q: { status: 'calibrated', failures: [], params: { a: 1, b: 0 }, band: [0.3, 0.7],
-      metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } };
+      metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } });
   const grade = await gradeOutput({ grader: g, calibration, backend, goldenDigest: golden.goldenDigest,
     promptTemplateVersion: 'fixture.v1', output, context: {}, resource: {} });
   expect(grade.status).toBe('pass');
