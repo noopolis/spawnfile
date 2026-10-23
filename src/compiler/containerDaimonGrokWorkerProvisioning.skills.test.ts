@@ -16,25 +16,27 @@ const sha256 = (value: unknown) => createHash("sha256").update(typeof value === 
 const withSkills = (base: RuntimeTargetPlan): RuntimeTargetPlan => ({ ...base, grokSkillsByNodeId: { "agent:a": sampleSkills() } });
 
 /**
- * Digests of the skill-less renders taken from the compiler *before* skills
- * existed (commit 9da4cfb): an agent that declares no skills must keep its
- * registration, service.json and root program byte-identical.
+ * Production digests retain the pre-skills compiler output (commit 9da4cfb).
+ * Training slot digests include the renamed evaluator context mask; its profile
+ * bytes and digest were checked against Daimon's public renderer.
  */
 const SKILL_LESS_GOLDEN = {
   registrations: "8812bbdcad06989866ce8d1c0d98ec5285458a59d3de6b70b2eca1de3a10f6cf",
   program: "54435a4dc2258fc390c0cb0ff9b8a747a97c7deefffeec89d7e29ab3a29f5f82",
   serviceV2: "0d59efa052956ed0fb5885d516b3e350a68859a10207a44c2eb98a6e4f6b7dfc",
-  serviceV3: "a9902ce8c09369312721466a967be356271a41eb19decfe4f1c67321105e7a96",
-  slotRegistration: "09ffc8c863bf62b33bbbda63baf588136df464f5d19912b6883b84261fc70d75",
-  slotProgram: "4112cc2c9134f58ccf40db78d14df528d319e3940ef7c632286005e936c22f80"
+  serviceV3: "fed05ea8dc946ca5fab07d9095ce79b5003cab1352b003f6ef576da1cff3060f",
+  slotRegistration: "203321f8929fa55749d31613cb10532e7a1a3dd3947dcca737a9bb6714e1e457",
+  slotProgram: "502bdb1794e0ddd2f2dd69c51043bd95ed422b58b46c86c280d01fffffea4b58"
 };
 
 describe("Grok worker skills provisioning", () => {
   const base = plan({ "agent:a": "grok", "agent:b": "grok", "agent:c": "codex" });
 
-  it("keeps every skill-less render byte-identical to the pre-skills compiler", () => {
+  it("keeps skill-less production renders unchanged and pins the renamed training slot", () => {
     const registrations = resolveDaimonGrokRegistrations([base]);
     const slot = resolveTrainingGrokRegistration({ agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low", slot: 1, slots: 2, limits: { maxRequests: 8, maxTokens: 100000, timeoutMs: 600000 } });
+    expect(slot.denyPaths).toContain("/run/spawnfile-training");
+    expect(slot.denyPaths).not.toContain("/run/training");
     expect({
       registrations: sha256(registrations), program: sha256(renderDaimonGrokWorkerProvisioning(registrations).join("\n")),
       serviceV2: sha256(renderDaimonGrokServiceConfig(registrations)), serviceV3: sha256(renderDaimonGrokServiceConfig([slot], { version: "v3" })),

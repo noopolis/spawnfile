@@ -7,7 +7,7 @@ import { candidateComponents, deriveCandidate, snapshotCandidate, validateCandid
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function baseline(content: string) {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-section-boundary-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-section-boundary-')); roots.push(root);
   await writeFile(join(root, 'AGENTS.md'), content);
   return snapshotCandidate({ sourceRoot: root, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
     destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: { headings: [['Foreman', 'Prose and beat']] } }] });

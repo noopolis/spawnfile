@@ -9,7 +9,7 @@ import { verifyCapturedRecord } from './repair/record.js';
 import { InferenceFailure } from '../inference/index.js';
 
 async function setup(change?: Parameters<typeof fixture>[0], nested?: 'all' | 'any' | 'not') {
-  const dataset = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  const dataset = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: original
 checks:
   - {id: quality, eval: llm-rubric, input: output.text, judge: editor, rubric: {prompt: Grade}, minimum: 0.8}

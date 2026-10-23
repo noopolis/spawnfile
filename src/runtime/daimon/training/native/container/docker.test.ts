@@ -65,7 +65,7 @@ test('Codex-only outer security options never reach a Grok launch, which cannot 
 
 test('the in-container worker request reaches the worker, bounds itself by the caller deadline and reports its status', async () => {
   const token = 'unit-control-token-not-an-auth-login';
-  const directory = await mkdtemp(join(tmpdir(), 'paideia-native-'));
+  const directory = await mkdtemp(join(tmpdir(), 'training-native-'));
   const tokenFile = join(directory, 'token');
   await writeFile(tokenFile, `${token}\n`);
   const calls: { url?: string; method?: string; auth?: string; body: string }[] = [];

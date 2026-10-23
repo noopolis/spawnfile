@@ -34,7 +34,7 @@ still require the original frozen candidate and an authorized test/release phase
 - Version-one captures contain no per-turn snapshots. Authored per-turn checks
   therefore reject. Live policies are not rerun; the returned scope is explicitly
   `final-stages`, with live/per-turn listed under `notReevaluated`.
-- A separate evaluator-only `paideia.rescore.v1` record references the original
+- A separate evaluator-only `spawnfile.training.rescore.v1` record references the original
   evaluation ID and integrity digest. Reusing an evaluation ID rejects. The original
   report and event journal remain unchanged.
 - `evaluation.status` describes the replacement terminal criteria. `status` also

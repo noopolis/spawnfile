@@ -1,3 +1,4 @@
+import { hasLegacyTrainingDistribution } from '../../../shared/index.js';
 import type { TrainingContext } from "../contract.js";
 import type { TrainingImagePlan } from "../preparation/image.js";
 import type { PlannedInput } from "../preparation/inputs.js";
@@ -10,7 +11,7 @@ export function verifyTrainingCompatibility(witness: TrainingWitness, current: T
   if (context.agent.runtime !== "daimon" || context.project.sourceDigest !== witness.context.project.sourceDigest ||
     JSON.stringify(context.agent) !== JSON.stringify(witness.context.agent)) throw Error("Repair canonical agent changed");
   const old = witness.image.files, next = fileIdentity(current.files);
-  if (old.some(file => file.destination.startsWith("paideia/"))) {
+  if (hasLegacyTrainingDistribution(witness.image)) {
     throw Error("Repair references an external training distribution; re-prepare with Spawnfile before repairing measurements");
   }
   const selection = (files: typeof old, prefix: string, excludes: string[] = []) => {
@@ -21,7 +22,7 @@ export function verifyTrainingCompatibility(witness: TrainingWitness, current: T
   };
   const components: Record<string, string> = {};
   const compare = (name: string, previous: string, updated: string) => {
-    if (previous !== updated) throw Error(`Repair subject compatibility changed: ${name}`);
+    if (previous !== updated) throw Error(`Repair subject compatibility changed: ${name}; re-prepare with Spawnfile before repairing measurements`);
     components[name] = updated;
   };
   for (const field of ["nativeImage", "pythonImage", "platform"] as const) compare(field,
@@ -35,7 +36,7 @@ export function verifyTrainingCompatibility(witness: TrainingWitness, current: T
   for (const [name, prefix] of Object.entries({ integration: "integration/", "training-native": "spawnfile/dist/runtime/daimon/training/",
     "training-trials": "spawnfile/dist/training/experiments/trials/" })) compare(name, selection(old, prefix), selection(next, prefix));
   const bridge = "spawnfile/dist/training/dspy/";
-  const excluded = ["paideia_dspy/checkpoint.py", "paideia_dspy/protocol.py", "README.md", "protocol.md", ".coverage", ".pytest_cache/", "coverage.json"]
+  const excluded = ["spawnfile_training_dspy/checkpoint.py", "spawnfile_training_dspy/protocol.py", "README.md", "protocol.md", ".coverage", ".pytest_cache/", "coverage.json"]
     .map(file => bridge + file);
   compare("training-optimizer", selection(old, bridge, excluded), selection(next, bridge, excluded));
   const previousInputs = witness.inputs.map(input => ({ id: input.id, destination: input.destination, digest: input.digest }));

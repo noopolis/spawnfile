@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { sha256, stableDigest, parseGrader, createCalibrationIdentity, type Label } from '../../graders/index.js';
 import { createOllamaDecision, createJevDecision } from '../../inference/decision/index.js';
@@ -27,10 +28,10 @@ describe('raw decision cache', () => {
   it.each(['v1', 'v2', 'v3'])('rescores legacy %s probabilities instead of reusing unsafe cached values', async version => {
     const dir = await temporary(), input = request('one');
     const { key: _key, ...content } = input;
-    const root = join(dir, '.paideia/grader-cache');
+    const root = join(dir, '.spawnfile-training/grader-cache');
     await mkdir(root, { recursive: true });
     const optimistic = { ...result(input.key), probabilities: { yes: 0.99, no: 0.01 } };
-    const legacyDigest = stableDigest({ content, identity: 'm', prompt: `paideia.grader-prompt.${version}` });
+    const legacyDigest = stableDigest({ content, identity: 'm', prompt: `training.grader-prompt.${version}` });
     await writeFile(join(root, 'm.jsonl'), `${JSON.stringify({ digest: legacyDigest, result: optimistic })}\n`);
     let calls = 0;
     const provider = backend(async requests => { calls++; return requests.map(r => result(r.key)); });
@@ -43,7 +44,7 @@ describe('raw decision cache', () => {
     const dir = await temporary(), calls: DecisionRequest[][] = [];
     const provider = backend(async requests => { calls.push(requests); return requests.map(r => result(r.key)); });
     expect(await cachedScores(dir, provider, 'model-a', [request('one')], 2)).toEqual([result('one')]);
-    expect((await readFile(join(dir, '.paideia/grader-cache/model-a.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(1);
+    expect((await readFile(join(dir, '.spawnfile-training/grader-cache/model-a.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(1);
     expect(await cachedScores(dir, provider, 'model-a', [{ ...request('one'), key: 'renamed' }], 2)).toEqual([result('renamed')]);
     expect(calls).toHaveLength(1);
     await cachedScores(dir, provider, 'model-a', [{ ...request('one'), instructions: 'Changed?' }], 2);
@@ -82,7 +83,7 @@ describe('raw decision cache', () => {
     }
     const aborted = new AbortController(); aborted.abort(new Error('cancelled'));
     await expect(cachedScores(dir, provider, 'm', [], 1, aborted.signal)).rejects.toThrow('cancelled');
-    const root = join(dir, '.paideia/grader-cache'); await mkdir(root, { recursive: true });
+    const root = join(dir, '.spawnfile-training/grader-cache'); await mkdir(root, { recursive: true });
     for (const entry of ['not-json', '{"digest":1,"result":{"status":"ok"}}', '{"digest":"x"}', '{"digest":"x","result":{"status":"bad"}}']) {
       await writeFile(join(root, 'm.jsonl'), entry);
       await expect(cachedScores(dir, provider, 'm', [], 1)).rejects.toThrow();
@@ -98,7 +99,7 @@ describe('raw decision cache', () => {
 describe('dataset exclusions', () => {
   it('reads both formats, deduplicates paths, and pins exact dataset bytes', async () => {
     const dir = await temporary(), a = join(dir, 'a.yaml'), b = join(dir, 'b.yaml');
-    const content = 'schema: paideia.dataset.v1\nrecords:\n  - id: example-a\n';
+    const content = 'schema: spawnfile.training.dataset.v1\nrecords:\n  - id: example-a\n';
     await writeFile(a, content);
     await writeFile(b, 'schema: spawnfile.dataset.v1\nexamples:\n  - id: example-b\n');
     const excluded = await readExclusions([b, a, join(dir, '.', 'a.yaml')]);
@@ -109,7 +110,7 @@ describe('dataset exclusions', () => {
   });
   it('excludes dataset groups across revision IDs and namespaces example matches', async () => {
     const dir = await temporary(), file = join(dir, 'sealed.yaml');
-    await writeFile(file, 'schema: paideia.dataset.v1\nid: sealed\nrecords:\n  - {id: story-7-r2, group: story-7}\n');
+    await writeFile(file, 'schema: spawnfile.training.dataset.v1\nid: sealed\nrecords:\n  - {id: story-7-r2, group: story-7}\n');
     const exclusions = await readExclusions([file]);
     const label = (id: string, lineage: string, dataset?: string): Label => ({ id, lineage,
       ...(dataset ? { example: { dataset, id: 'story-7-r2' } } : {}), output: null, context: {}, votes: {}, provenance: {} });
@@ -121,8 +122,8 @@ describe('dataset exclusions', () => {
   it('rejects malformed YAML, schema and record IDs' , async () => {
     const dir = await temporary(), file = join(dir, 'bad.yaml');
     for (const content of ['schema: x\nschema: y', '!unknown {}', 'null', '[]', '42', 'schema: other',
-      'schema: paideia.dataset.v1', 'schema: paideia.dataset.v1\nrecords: {}',
-      ...['null', '42', '{}', '{ id: 1 }', '{ id: " " }', '{ id: good, group: 1 }', '{ id: good, group: " " }'].map(record => `schema: paideia.dataset.v1\nrecords: [${record}]`)]) {
+      'schema: spawnfile.training.dataset.v1', 'schema: spawnfile.training.dataset.v1\nrecords: {}',
+      ...['null', '42', '{}', '{ id: 1 }', '{ id: " " }', '{ id: good, group: 1 }', '{ id: good, group: " " }'].map(record => `schema: spawnfile.training.dataset.v1\nrecords: [${record}]`)]) {
       await writeFile(file, content);
       await expect(readExclusions([file])).rejects.toThrow();
     }
@@ -161,7 +162,7 @@ it('separates raw cached scores by effective Ollama context even without authore
 
 it('separates Jev caches and calibration identity when server preparation or declared revision changes', async () => {
   const directory = await temporary();
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'cal.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'labels.yaml', calibration: 'cal.json',
     teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'jev-http', endpoint: 'http://localhost/jev', name: 'm' },
     escalate: { to: 't', between: [0.3, 0.7] }, score: { method: 'weighted' },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }] });
@@ -194,4 +195,67 @@ it('does not hide a dispatched batch spend-cap miss behind another result cached
   const requests = [request('a'), { ...request('a'), key: 'b' }];
   expect(await cachedScores(directory, provider, 'batch', requests, 2)).toEqual([result('a'),
     { key: 'b', status: 'missing', probabilities: null, reason: 'spend cap' }]);
+});
+
+describe('pre-rename cache compatibility', () => {
+// Historical key inputs from origin/main (624a972), independent of production constants.
+const prompt = 'paideia.grader-prompt.v4';
+const legacyRequest: DecisionRequest = { key: 'new-key', type: 'yes-no', optionLabels: ['yes', 'no'],
+  expectedOptions: ['yes'], instructions: 'Good?', projection: { value: 'one' } };
+const { key: _key, ...content } = legacyRequest;
+const digest = stableDigest({ content, identity: 'model', prompt });
+it('hits old-directory entries even with a partial current cache, prefers current entries and writes new scores only to current', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'legacy-cache-'));
+  try {
+    const old = join(directory, '.paideia/grader-cache'), current = join(directory, '.spawnfile-training/grader-cache');
+    await mkdir(old, { recursive: true }); await mkdir(current, { recursive: true });
+    const result = { key: 'old-key', status: 'ok' as const, probabilities: { yes: 0.7, no: 0.3 } };
+    const source = JSON.stringify({ digest, result }) + '\n';
+    await writeFile(join(old, 'model.jsonl'), source);
+    await writeFile(join(current, 'model.jsonl'), '');
+    const score = vi.fn<DecisionBackend['score']>(async requests => requests.map(r => ({ ...result, key: r.key })));
+    const backend: DecisionBackend = { identity: async () => ({ backend: 'fake', model: 'm' }), score };
+    expect(await cachedScores(directory, backend, 'model', [legacyRequest], 1)).toEqual([{ ...result, key: legacyRequest.key }]);
+    expect(score).not.toHaveBeenCalled();
+    const preferred = { ...result, probabilities: { yes: 0.9, no: 0.1 } };
+    await writeFile(join(current, 'model.jsonl'), JSON.stringify({ digest, result: preferred }) + '\n');
+    expect(await cachedScores(directory, backend, 'model', [legacyRequest], 1)).toEqual([{ ...preferred, key: legacyRequest.key }]);
+    expect(score).not.toHaveBeenCalled();
+    await cachedScores(directory, backend, 'model', [{ ...legacyRequest, instructions: 'Changed?' }], 1);
+    expect(score).toHaveBeenCalledTimes(1);
+    expect(await readFile(join(old, 'model.jsonl'), 'utf8')).toBe(source);
+    expect((await readFile(join(current, 'model.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(2);
+    await writeFile(join(current, 'model.jsonl'), '');
+    await writeFile(join(old, 'model.jsonl'), JSON.stringify({ digest, result: { key: 'x', status: 'missing', probabilities: null } }));
+    await cachedScores(directory, backend, 'model', [legacyRequest], 1);
+    expect(score).toHaveBeenCalledTimes(2);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+it('retains origin/main Ollama and Jev backend identity hash inputs', async () => {
+  const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  const ollama = createOllamaDecision({ endpoint: 'http://localhost', model: 'm', fetch: async url =>
+    new Response(JSON.stringify(String(url).endsWith('/tags') ? { models: [{ name: 'm', digest: 'installed' }] } : { version: '0.34.0' })) });
+  expect(await ollama.identity()).toEqual({ backend: 'ollama-logprobs', model: 'm', digest: hash({
+    modelDigest: 'installed', contextTokens: 16384, truncate: false, shift: false, protocol: prompt }) });
+  const jev = createJevDecision({ endpoint: 'http://localhost/jev', fetch: async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    return new Response(JSON.stringify({ model: 'm', answers: Object.fromEntries(Object.keys(body.questions).map(key =>
+      [key, { probabilities: { yes: 0.7, no: 0.3 } }])) }));
+  } });
+  expect(await jev.identity()).toEqual({ backend: 'jev-http', model: 'm', fingerprint: hash({ protocol: prompt,
+    model: 'm', outcomes: [{ status: '2xx', decision: 'yes' }, { status: '2xx', decision: 'yes' }] }) });
+});
+
+});
+
+it('pins the key emitted by origin/main cachedScores for a realistic decision request', async () => {
+  const root = await temporary();
+  const request: DecisionRequest = { key: 'claim', type: 'yes-no', optionLabels: ['yes', 'no'], expectedOptions: ['yes'],
+    instructions: 'Is this supported?', projection: { text: 'A supported claim.' } };
+  await cachedScores(root, backend(async () => [{ key: 'claim', status: 'ok', probabilities: { yes: 0.9, no: 0.1 } }]),
+    'historical-model', [request], 1);
+  const saved = JSON.parse(await readFile(join(root, '.spawnfile-training/grader-cache/historical-model.jsonl'), 'utf8'));
+  // Captured by executing cachedScores at 624a972c in a detached worktree.
+  expect(saved.digest).toBe('597834c9f762fe442bdc28b28f780ed14c68621358b0ddfa812f8d10819039cf');
 });

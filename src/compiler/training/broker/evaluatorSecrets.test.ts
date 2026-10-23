@@ -55,7 +55,7 @@ const canRead = (file: string, parent: string, uid: number) => {
 };
 
 it("delivers a host-private leaf only to uid2000 without altering the readonly source or environment", async () => {
-  const original = { ...storage.nodes.get(source)! }, env = { PAIDEIA_TYPESAFE_SECRET_FILE: target };
+  const original = { ...storage.nodes.get(source)! }, env = { SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE: target };
   const failure = await stageTrainingEvaluatorSecret(env).then(() => undefined, error => error);
   expect(failure, "evaluator secret ownership delivery guarantee").toBeUndefined();
   expect(storage.nodes.get(target), "evaluator secret ownership delivery guarantee").toMatchObject({ uid: 2000, gid: 2000, mode: 0o600 });
@@ -67,14 +67,14 @@ it("delivers a host-private leaf only to uid2000 without altering the readonly s
   expect(storage.nodes.get(target)!.bytes.toString()).toBe("test-only-secret-marker");
   expect(storage.nodes.get(source)).toEqual(original);
   expect(storage.operations.some(op => ["chown", "chmod"].includes(op.operation) && op.file === source)).toBe(false);
-  expect(env).toEqual({ PAIDEIA_TYPESAFE_SECRET_FILE: target });
+  expect(env).toEqual({ SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE: target });
 });
 
 it("refuses unbounded linked or symlink ingress and emits no credential bytes", async () => {
   for (const change of [{ size: 0 }, { size: 65537 }, { nlink: 2 }, { symlink: true }]) {
     Object.assign(storage.nodes.get(source)!, change);
     if ("size" in change) storage.nodes.get(source)!.bytes = Buffer.alloc(change.size!);
-    const failure = await stageTrainingEvaluatorSecret({ PAIDEIA_TYPESAFE_SECRET_FILE: target }).then(() => undefined, error => error);
+    const failure = await stageTrainingEvaluatorSecret({ SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE: target }).then(() => undefined, error => error);
     expect(failure?.message, "evaluator secret ingress safety guarantee").toBe("Evaluator secret staging failed");
     expect(storage.nodes.has(target)).toBe(false);
     Object.assign(storage.nodes.get(source)!, { size: 23, nlink: 1, symlink: false });
@@ -84,7 +84,7 @@ it("refuses unbounded linked or symlink ingress and emits no credential bytes", 
 
 it("rejects nonroot or redirected declarations and does nothing without a secret binding", async () => {
   await stageTrainingEvaluatorSecret({}); expect(storage.operations).toEqual([]);
-  await expect(stageTrainingEvaluatorSecret({ PAIDEIA_TYPESAFE_SECRET_FILE: "/tmp/arbitrary" })).rejects.toThrow("Invalid evaluator secret");
+  await expect(stageTrainingEvaluatorSecret({ SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE: "/tmp/arbitrary" })).rejects.toThrow("Invalid evaluator secret");
   vi.spyOn(process as { getuid: () => number }, "getuid").mockReturnValue(2000);
-  await expect(stageTrainingEvaluatorSecret({ PAIDEIA_TYPESAFE_SECRET_FILE: target })).rejects.toThrow("Invalid evaluator secret");
+  await expect(stageTrainingEvaluatorSecret({ SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE: target })).rejects.toThrow("Invalid evaluator secret");
 });

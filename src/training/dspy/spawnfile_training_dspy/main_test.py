@@ -17,23 +17,29 @@ from .protocol import SCHEMA
 class ReactiveReader:
     def __init__(self, start, writer, host):
         self.start, self.writer, self.host = start, writer, host
+        self.schema = start["schema"]
 
     def readline(self, _size):
         if self.start is not None:
             line, self.start = self.start, None
             return (json.dumps(line) + "\n").encode()
         outgoing = json.loads(self.writer.getvalue().splitlines()[-1])
-        reply = {"schema": SCHEMA, "kind": "response", "id": outgoing["id"],
+        reply = {"schema": self.schema, "kind": "response", "id": outgoing["id"],
                  "result": self.host(outgoing["method"], outgoing["params"])}
         return (json.dumps(reply) + "\n").encode()
 
 
-def test_main_runs_real_gepa_and_reserves_stdout_for_complete_jsonl():
+@pytest.mark.parametrize("legacy", [False, True])
+def test_main_runs_real_gepa_and_reserves_stdout_for_complete_jsonl(legacy):
     writer, diagnostic = io.StringIO(), io.StringIO()
-    reader = ReactiveReader(request().model_dump(by_alias=True), writer, SimulatedHost())
+    values = request().model_dump(by_alias=True)
+    if legacy:
+        values["schema"] = "paideia.dspy.v2"
+    reader = ReactiveReader(values, writer, SimulatedHost())
     assert run(reader, writer, diagnostic) == 0
     messages = [json.loads(line) for line in writer.getvalue().splitlines()]
     assert [message["kind"] for message in messages] == ["request"] * 9 + ["result"]
+    assert all(message["schema"] == SCHEMA for message in messages)
     assert messages[-1]["provenance"]["evaluations"] == 7
     assert messages[-1]["provenance"]["proposals"] == 2
     assert messages[-1]["provenance"]["candidates"][-1]["validationScore"] == 1
@@ -54,7 +60,7 @@ def test_unexpected_upstream_failure_is_not_a_success_or_raw_data_dump(monkeypat
     def fail(*args):
         raise RuntimeError("raw upstream sensitive data")
 
-    monkeypatch.setattr("paideia_dspy.main.optimize", fail)
+    monkeypatch.setattr("spawnfile_training_dspy.main.optimize", fail)
     writer = io.StringIO()
     assert run(io.BytesIO((request().model_dump_json(by_alias=True) + "\n").encode()), writer, io.StringIO()) == 1
     terminal = json.loads(writer.getvalue())
@@ -74,7 +80,7 @@ def test_cli_maps_protocol_outcome_to_process_exit(monkeypatch):
 
 
 def test_installed_process_exchanges_real_jsonl_and_produces_optimization():
-    executable = Path(sys.executable).with_name("paideia-dspy")
+    executable = Path(sys.executable).with_name("spawnfile-training-dspy")
     host = SimulatedHost()
     terminal = None
     with tempfile.TemporaryFile(mode="w+") as diagnostic:

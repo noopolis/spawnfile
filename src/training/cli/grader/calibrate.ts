@@ -214,7 +214,7 @@ async function calibrate(options: CalibrateOptions, dependencies: GraderDependen
     }
   }
   const modelIdentities = Object.fromEntries(candidates.map(candidate => [candidate.model.id, candidate.identity]));
-  const calibration = parseCalibration({ schema: 'paideia.grader-calibration.v1', questions,
+  const calibration = parseCalibration({ schema: 'spawnfile.training.grader-calibration.v1', questions,
     identity: createCalibrationIdentity(grader, { backendModel: grader.models ? stableDigest(modelIdentities) : candidates[0]!.identity,
       ...(grader.models ? { modelIdentities } : {}), golden: loaded.goldenDigest,
       promptTemplateVersion: DECISION_PROMPT_VERSION, seed, exclusions: exclusions.identities }) });

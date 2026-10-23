@@ -20,7 +20,7 @@ const training: TrainingConfiguration = {models:{small:{provider:'ollama',model:
   cache:{mode:'persistent',namespace:'calibration',directory:'shared-cache',max_entries:10}};
 const stages = [{id:'writing',checks:[{id:'clarity',eval:'llm-rubric',judge:'clarity',input:'output.text',minimum:0.8,
   rubric:{prompt:'Be clear.'}}],score:{linear:{clarity:1}},gate:{passed:'clarity'}}];
-const document = {schema:'paideia.dataset.v1',id:'cache-test',training,stages,records:[{id:'one',group:'train',input:{prompt:'Write.'}}]};
+const document = {schema:'spawnfile.training.dataset.v1',id:'cache-test',training,stages,records:[{id:'one',group:'train',input:{prompt:'Write.'}}]};
 async function fixture(config=training) {
   const f=await cliFixture(); roots.push(f.root); await mkdir(join(f.root,'evals'));
   const path=join(f.root,'evals/data.yaml'); await writeFile(path,JSON.stringify({...document,training:config}));
@@ -135,7 +135,7 @@ it.each(['grok-subscription', 'claude-subscription'] as const)('misses persisten
     'grok-subscription': '06c6c67791a7f48f6803e872e6ab1c88cb5d901775514fb7a970859934359ace',
     'claude-subscription': '882d117899786d5636216a8528b4dc683d3df672e1bc35fd1e4262c7acdc77ed',
   };
-  const legacy = `paideia.authored-judge.v1:sha256:${legacyHashes[primary]}`;
+  const legacy = `spawnfile.training.authored-judge.v1:sha256:${legacyHashes[primary]}`;
   const factory = inferenceFactory.createTrainingInference;
   const oldRuntime = vi.spyOn(inferenceFactory, 'createTrainingInference').mockImplementation((...args) => {
     const result = factory(...args); result.judges.clarity!.identity = legacy; return result;

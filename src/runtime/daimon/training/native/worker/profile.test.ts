@@ -94,7 +94,7 @@ test('Grok profile requires the declared broker model and effort without a Codex
     ];
     for (const [change, message] of cases) { const modified = structuredClone(config); change(modified); expect(() => assertNativeProfile(modified, launch)).toThrow(message); }
     expect(() => assertNativeProfile(config, { ...launch, broker: { ...launch.broker, limits: { ...launch.broker.limits, maxTokens: 2_000_000 } } })).toThrow('wake ceiling');
-    expect(() => assertNativeProfile(grokConfigFor(configFixture()), f.launch.schema === 'paideia.daimon-native.launch.v2' ? { ...launch, agent: { id: launch.agent.id, engine: 'codex', model: 'grok-4.6' } } as never : launch)).toThrow('Codex');
+    expect(() => assertNativeProfile(grokConfigFor(configFixture()), f.launch.schema === 'spawnfile.training.daimon-native.launch.v2' ? { ...launch, agent: { id: launch.agent.id, engine: 'codex', model: 'grok-4.6' } } as never : launch)).toThrow('Codex');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
@@ -105,7 +105,7 @@ test('a Grok launch admits the declared Mneme root only inside its single projec
     const home = launch.projections[0]!.target;
     const config = grokConfigFor(JSON.parse(await readFile(f.launch.config, 'utf8')) as NativeConfig);
     // Preparation's only possible placement for a one-projection launch: inside the digest-bound runtime home.
-    const inside = { ...config, agents: [{ ...config.agents[0]!, memory: { runtimeHomePath: join(home, 'paideia/memory') } }] };
+    const inside = { ...config, agents: [{ ...config.agents[0]!, memory: { runtimeHomePath: join(home, 'training/memory') } }] };
     expect(() => assertNativeProfile(inside, launch)).not.toThrow();
     for (const outside of [join(f.root, 'memory'), `${home}-sibling`, home]) {
       const moved = { ...config, agents: [{ ...config.agents[0]!, memory: { runtimeHomePath: outside } }] };
@@ -123,7 +123,7 @@ test('a Codex launch still requires its own fresh memory projection for the decl
     config.agents[0]!.runtimeHomePath = '/native/home';
     expect(() => assertNativeProfile(config, f.launch)).not.toThrow();
     // Containment is a Grok rule only: a Codex root inside the home still needs its own projection.
-    config.agents[0]!.memory = { runtimeHomePath: '/native/home/paideia/memory' };
+    config.agents[0]!.memory = { runtimeHomePath: '/native/home/training/memory' };
     expect(() => assertNativeProfile(config, f.launch)).toThrow('declared fresh memory projection');
     config.agents[0]!.memory = { runtimeHomePath: '/elsewhere/memory' };
     expect(() => assertNativeProfile(config, f.launch)).toThrow('declared fresh memory projection');

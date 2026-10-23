@@ -25,7 +25,7 @@ delivery IDs, observed batch membership and per-wake accounting. Missing batch o
 rendered allowance evidence is never reconstructed from prompt assumptions.
 Task clock environment is installed inside the running worker before host creation;
 Daimon owns child offset application and real-time engines. Ready/terminal frames
-retain origin plus real anchor; Paideia deadlines never use task time.
+retain origin plus real anchor; Training deadlines never use task time.
 
 External continuations are opt-in, sourced, bounded to three deliveries and share
 one trial deadline, accepting overrides through 24 hours at adapter and worker
@@ -44,7 +44,7 @@ adapter must not sum a recovered cumulative ledger into prior delivery totals.
 
 Grok is engine-parameterized, not a Codex fork: launch.v2 records model/effort and a
 broker slot, never a credential. Daimon resolves the slot projection and verifies
-the root supervisor's slot receipt; Paideia binds both by canonical digest and
+the root supervisor's slot receipt; Training binds both by canonical digest and
 requires a denied canary for every evaluator root. Codex behavior stays byte-equal.
 
 Grok path policy: the container fixes the slot paths, so writable roots are anchored
@@ -52,9 +52,9 @@ on the projection instead of the trial runtime home. Exactly two writable roots 
 trial workspace and the trial runtime home, the only projection — and both are bound
 by `projection_sha256`. The control root and every control input must sit in a slot
 root the root supervisor's receipt denies to the worker uid, and no writable root may
-touch one. Paideia owns exactly one subtree of that shared control root,
-`paideia-trials/trial-<digest>`, created fresh per trial; nothing else there is
-Paideia's to clear, and no recycle wipes on its behalf.
+touch one. Spawnfile training owns exactly one subtree of that shared control root,
+`training-trials/trial-<digest>`, created fresh per trial; nothing else there is
+Spawnfile training's to clear, and no recycle wipes on its behalf.
 
 A failed turn still reports what it spent. The worker's HTTP reply is the only
 route usage normally takes here, so a worker that dies mid-turn used to report
@@ -102,10 +102,10 @@ stream beside the two ledgers above, `turns.jsonl`, and `sealed-usage.ts` reads
 it on the same failure path, on the same bounded poll and for the same reason
 — sealing is the broker's reaction to losing its client. That path, rather than
 deriving the turn record's own location, because the launch receipt names only
-`usageLedgerPath`: the turn store is a `service.json` field Paideia never sees,
-the record's name is a digest of a turn id Paideia does not compute, and the
+`usageLedgerPath`: the turn store is a `service.json` field Training never sees,
+the record's name is a digest of a turn id Spawnfile training does not compute, and the
 store's mode denies this uid anyway. Inventing a path convention would be
-claiming knowledge of broker internals that Paideia is specifically not allowed
+claiming knowledge of broker internals that Training is specifically not allowed
 to hold.
 
 It publishes as an operator-only `diagnostic`, like every record beside it:
@@ -170,7 +170,7 @@ really produced text, and Daimon's own redacted worker reason is the evidence to
 read instead.
 
 `grants/` binds evaluator inference grants (judges and DSPy optimizer) to Daimon's
-public control client and client-config renderer behind a Paideia-owned pin.
+public control client and client-config renderer behind a Training-owned pin.
 
 
 Turn evidence publishes every admitted wake, its execution IDs (including delivery revisits from the worker-admitted trial ledger) and runtime-local protected per-wake evidence file. Unbound frames are never published. Consumers use NativeTurnEvidence rather than re-parsing worker frames.

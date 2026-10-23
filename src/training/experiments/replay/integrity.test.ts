@@ -47,7 +47,7 @@ test('requires one original trial, never rescores a rescore or guesses among mul
   const missing = await fixture();
   const replay = await missing.store.readReplay('trial', missing.options.access);
   const withoutOriginal = { ...missing.store, readReplay: async () => ({ ...replay,
-    evaluations: [{ id: 'only-rescore', visibility: 'evaluator' as const, digest: 'irrelevant', report: { schema: 'paideia.rescore.v1' } },
+    evaluations: [{ id: 'only-rescore', visibility: 'evaluator' as const, digest: 'irrelevant', report: { schema: 'spawnfile.training.rescore.v1' } },
       { id: 'empty', visibility: 'evaluator' as const, digest: 'irrelevant', report: null }] }) };
   await expect(rescoreStoredTrial({ ...missing.options, store: withoutOriginal })).rejects.toThrow('exactly one');
 });

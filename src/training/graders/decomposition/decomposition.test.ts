@@ -7,7 +7,7 @@ import { fixture, receipt } from './fixtures.js';
 describe('decomposition formats', () => {
   it('strictly parses typed criteria and YAML; rejects invented schemas/keys', () => {
     const { templates, document } = fixture();
-    expect(parseCheckTemplatesYaml('schema: paideia.check-templates.v1\ntemplates:\n- id: x\n  applies_to: sentence\n  type: choice\n  instructions: Check\n  criteria: {a: Good, b: Bad}\n  expected: [a]\n  state: [unit]\n  dimension: clarity\n  severity: minor')).toMatchObject({ context: {} });
+    expect(parseCheckTemplatesYaml('schema: spawnfile.training.check-templates.v1\ntemplates:\n- id: x\n  applies_to: sentence\n  type: choice\n  instructions: Check\n  criteria: {a: Good, b: Bad}\n  expected: [a]\n  state: [unit]\n  dimension: clarity\n  severity: minor')).toMatchObject({ context: {} });
     expect(() => parseDecomposition({ ...document, invented: 1 })).toThrow();
     expect(() => parseDecomposition({ ...document, units: [...document.units, ...document.units] })).toThrow('duplicate');
     expect(() => parseCheckTemplates({ ...templates, templates: [...templates.templates, ...templates.templates] })).toThrow('duplicate');

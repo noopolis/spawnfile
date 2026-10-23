@@ -6,7 +6,7 @@ import { createCalibrationIdentity } from '../identity.js';
 import { gradeOutput, decisionModelIdentities, createGradeResultSchema, type GradeOptions } from './index.js';
 
 async function fixture(): Promise<GradeOptions> {
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'g.yaml', calibration: 'c.json',
     teachers: [{ id: 't', provider: 'claude', model: 'opus' }],
     models: [{ id: 'first', backend: 'jev-http', endpoint: 'http://localhost:8000', name: 'm1' },
       { id: 'second', backend: 'jev-http', endpoint: 'http://localhost:8001', name: 'm2' }],
@@ -21,7 +21,7 @@ async function fixture(): Promise<GradeOptions> {
   const backends = { first: makeBackend('m1', 0.9), second: makeBackend('m2', 0.8) };
   const modelIdentities = await decisionModelIdentities(grader, backends);
   const goldenDigest = stableDigest('golden');
-  const calibration: GradeOptions['calibration'] = { schema: 'paideia.grader-calibration.v1',
+  const calibration: GradeOptions['calibration'] = { schema: 'spawnfile.training.grader-calibration.v1',
     identity: createCalibrationIdentity(grader, { backendModel: stableDigest(modelIdentities), modelIdentities,
       golden: goldenDigest, promptTemplateVersion: 'v1', seed: 's', exclusions: [] }),
     questions: Object.fromEntries(['a', 'b'].map((id, i) => [id, { model: i ? 'second' : 'first',

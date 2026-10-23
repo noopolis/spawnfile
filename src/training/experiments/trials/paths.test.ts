@@ -18,7 +18,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
 });
-async function root() { const value = await realpath(await mkdtemp(join(tmpdir(), 'paideia-paths-'))); roots.push(value); return value; }
+async function root() { const value = await realpath(await mkdtemp(join(tmpdir(), 'training-paths-'))); roots.push(value); return value; }
 
 it('preserves default paths and separates only subject scratch when explicitly selected', async () => {
   const base = await root();

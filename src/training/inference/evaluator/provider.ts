@@ -1,9 +1,10 @@
+import { trainingEnvironment } from '../../platform/index.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import { evaluatorRoute, readProtectedFile, type EvaluatorPurpose } from './policy.js';
 import { reserveEvaluatorRequest } from './ledger.js';
 
 export function budgetEvaluatorInference(provider: InferenceProvider, name: string, purpose: EvaluatorPurpose, model: string): InferenceProvider {
-  if (name === 'grok-broker' || process.env.PAIDEIA_MODEL_REQUEST_CAP !== 'broker' && process.env.PAIDEIA_EVALUATOR_ROUTES_FILE === undefined) return provider;
+  if (name === 'grok-broker' || trainingEnvironment('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP') !== 'broker' && trainingEnvironment('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE') === undefined) return provider;
   evaluatorRoute(name, purpose, model);
   return { ...provider, async generate(request) {
     if (request.model !== model) throw Error('Evaluator request model differs from declared model');
@@ -26,7 +27,7 @@ export function budgetEvaluatorInference(provider: InferenceProvider, name: stri
 }
 /** The leaf becomes an evaluator transport-local environment, never process.env. */
 export function typeSafeEvaluatorEnvironment(): Readonly<Record<string, string | undefined>> | undefined {
-  const file = process.env.PAIDEIA_TYPESAFE_SECRET_FILE;
+  const file = trainingEnvironment('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE');
   if (!file) return undefined;
   try {
     const key = readProtectedFile(file, 16 * 1024).trim();

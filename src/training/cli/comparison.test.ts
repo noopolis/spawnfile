@@ -15,7 +15,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 async function fixture() {
   const f = await cliFixture(); roots.push(f.root);
   await writeFile(join(f.root, 'variant.md'), 'IMPROVED\n');
-  await writeFile(join(f.root, 'train.paideia.yaml'), `${datasetText([{ id: 'train', group: 'a' }, { id: 'validation', group: 'b' }])}
+  await writeFile(join(f.root, 'train.spawnfile-training.yaml'), `${datasetText([{ id: 'train', group: 'a' }, { id: 'validation', group: 'b' }])}
 training:
   models:
     judge: { provider: grok-subscription, model: unused }
@@ -26,12 +26,12 @@ training:
         - { resource: AGENTS.md, source: variant.md }
   budget: { max_trials: 6, timeout_ms: 20000 }
   validation_groups: [b]
-  test: test.paideia.yaml
+  test: test.spawnfile-training.yaml
 `);
-  await writeFile(join(f.root, 'test.paideia.yaml'), datasetText([{ id: 'sealed', group: 'sealed' }]));
+  await writeFile(join(f.root, 'test.spawnfile-training.yaml'), datasetText([{ id: 'sealed', group: 'sealed' }]));
   f.dependencies.inference = () => { throw new Error('Comparison constructed an optimizer provider'); };
   f.dependencies.modelInference = () => { throw new Error('Mechanical cases need no inference'); };
-  return { ...f, argv: ['train', '--train', 'train.paideia.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md'] };
+  return { ...f, argv: ['train', '--train', 'train.spawnfile-training.yaml', ...f.nativeArgs, '--editable', 'AGENTS.md'] };
 }
 async function report(root: string) {
   const index = JSON.parse(await readFile(join(root, 'out/invocation.json'), 'utf8'));
@@ -52,7 +52,7 @@ it('runs authored YAML through the real CLI, records paired arms, streams and re
   expect(await main(argv, f.io, f.dependencies), f.stderr.join('')).toBe(0);
   expect(f.observedInstructions).toEqual(['BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n']);
   const first = await report(f.root);
-  expect(first.schema).toBe('paideia.comparison.v1');
+  expect(first.schema).toBe('spawnfile.training.comparison.v1');
   expect(identities[0]).toEqual({ candidateId: first.candidate.id, nativeCalls: 0 });
   expect(first.optimizer).toBeUndefined();
   expect(first.provenance).toEqual({ mode: 'authored-comparison', optimizerCalls: 0 });
@@ -76,7 +76,7 @@ it('runs authored YAML through the real CLI, records paired arms, streams and re
 
 it('completes a capped mechanical comparison serially without optimizer controls or providers', async () => {
   const f = await fixture();
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker');
   expect(await main(f.argv, f.io, f.dependencies), f.stderr.join('')).toBe(0);
   expect(f.observedInstructions).toEqual(['BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n', 'BASE\n', 'IMPROVED\n']);
   expect((await report(f.root)).provenance).toEqual({ mode: 'authored-comparison', optimizerCalls: 0 });
@@ -107,7 +107,7 @@ it('estimates exact paired calls without providers or output writes', async () =
 
 it.each(['missing', 'locked', 'unknown', 'noop', 'escape', 'escaping-link', 'budget', 'optimizer'])('rejects invalid comparison %s before native/inference/output', async mode => {
   const f = await fixture();
-  let yaml = await readFile(join(f.root, 'train.paideia.yaml'), 'utf8');
+  let yaml = await readFile(join(f.root, 'train.spawnfile-training.yaml'), 'utf8');
   let args = f.argv;
   if (mode === 'missing') yaml = yaml.replace('source: variant.md', 'source: absent.md');
   if (mode === 'locked') args = f.argv.slice(0, -2);
@@ -120,7 +120,7 @@ it.each(['missing', 'locked', 'unknown', 'noop', 'escape', 'escaping-link', 'bud
     await rm(join(f.root, 'variant.md')); await symlink(join(other.root, 'AGENTS.md'), join(f.root, 'variant.md'));
   }
   if (mode === 'escape') { await symlink(join(f.root, 'AGENTS.md'), join(f.root, 'outside.md')); yaml = yaml.replace('source: variant.md', 'source: ../outside.md'); }
-  await writeFile(join(f.root, 'train.paideia.yaml'), yaml);
+  await writeFile(join(f.root, 'train.spawnfile-training.yaml'), yaml);
   f.dependencies.adapter = () => { throw new Error('Invalid comparison constructed runtime'); };
   expect(await main(args, f.io, f.dependencies)).toBe(2);
   expect(f.stderr.join('')).not.toContain('constructed');

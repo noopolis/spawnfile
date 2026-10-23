@@ -15,7 +15,7 @@ test('adapter preserves terminal identity and actual usage while keeping unavail
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
     const events: Observation[] = [];
     fixture.input.onObservation = event => { events.push(event); };
-    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    docker.setTerminal({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'completed',
       completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ input: 100, output: 20, cache_read: 40 }] },
       coverage: [{ channel: 'output', completeness: 'absent', ordering: 'none' }, { channel: 'usage', completeness: 'partial', ordering: 'source' }] });
@@ -35,7 +35,7 @@ test('adapter rejects a terminal record from another trial and shuts down its ow
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: 'foreign' });
+    docker.setTerminal({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: 'foreign' });
     const session = await createDaimonNativeAdapter({ docker: docker.run, timeoutMs: 1000 }).start(fixture.input);
     const result = await session.run({ id: 'task', text: 'Assigned article' });
     assert.equal(result.status, 'failed');
@@ -49,7 +49,7 @@ test.each([7_200_000, 86_400_000])('forwards a %i ms trial through worker argume
   const previous = getGlobalDispatcher();
   const http = new MockAgent(); http.disableNetConnect(); setGlobalDispatcher(http);
   http.get('http://native-worker.test').intercept({ path: '/trial/run', method: 'POST' }).reply(() => {
-    const terminal: TerminalEvidence = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    const terminal: TerminalEvidence = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: fixture.launch.agent.id, model: fixture.launch.agent.model, configSha256: fixture.launch.configSha256,
       status: 'completed', scheduleOverride: 'disabled', startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
       native: { traces: [], toolReceipts: [], modelContexts: [], usage: [] }, coverage: [] };

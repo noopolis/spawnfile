@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../../../../training/contracts/index.js';
 import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { VerifiedNativeLaunch } from '../receipt/index.js';
@@ -15,7 +16,7 @@ export function containerSecurityOptions(launch: VerifiedNativeLaunch): readonly
   return codexSandboxContainerSecurity;
 }
 
-export const sandboxPreflightSchema = 'paideia.daimon-native.sandbox-preflight.v1';
+export const sandboxPreflightSchema = 'spawnfile.training.daimon-native.sandbox-preflight.v1';
 export const sandboxChecks = ['namespace', 'workspaceRead', 'workspaceWrite', 'runDenied', 'authDenied', 'ingressDenied', 'networkDenied'] as const;
 
 /** Shared verbatim by the emitted command and transition tests. A timeout proves nothing. */
@@ -36,7 +37,7 @@ import {join} from 'node:path';
 import {createServer} from 'node:net';
 const execute=promisify(execFile);
 const input=JSON.parse(await new Promise(resolve=>{let s='';process.stdin.setEncoding('utf8');process.stdin.on('data',v=>s+=v);process.stdin.on('end',()=>resolve(s));}));
-const scratch=await mkdtemp(join(input.workspace,'.paideia-sandbox-preflight-'));
+const scratch=await mkdtemp(join(input.workspace,'.spawnfile-training-sandbox-preflight-'));
 let controls; let server;
 try {
   controls=await mkdtemp(join(input.controlRoot,'.sandbox-preflight-'));
@@ -71,11 +72,11 @@ ${sandboxNetworkProbeScript}\`;
 export async function verifyNativeSandbox(run: DockerCommand, name: string, launch: VerifiedNativeLaunch,
   trialId: string, signal?: AbortSignal): Promise<void> {
   const result = await run(['exec', '-i', name, '/usr/local/bin/node', '--input-type=module', '-e', sandboxPreflightScript], {
-    signal, timeoutMs: 25_000, stdin: JSON.stringify({ path: 'sandbox-preflight', workspace: launch.workspace.target, controlRoot: '/run/paideia/control' }),
+    signal, timeoutMs: 25_000, stdin: JSON.stringify({ path: 'sandbox-preflight', workspace: launch.workspace.target, controlRoot: '/run/spawnfile-training/control' }),
   });
   if (result.code !== 0) throw new Error(`Native sandbox preflight failed before cognition: ${result.stderr.slice(-3000)}`);
   const proof = JSON.parse(result.stdout) as { schema?: string; modelCallsMade?: number; checks?: Record<string, unknown> };
-  if (proof.schema !== sandboxPreflightSchema || proof.modelCallsMade !== 0 || sandboxChecks.some(check => proof.checks?.[check] !== true)) {
+  if (canonicalWireId(proof.schema) !== sandboxPreflightSchema || proof.modelCallsMade !== 0 || sandboxChecks.some(check => proof.checks?.[check] !== true)) {
     throw new Error('Native sandbox preflight omitted substantive enforcement evidence');
   }
   const nativePolicy = await verifyPreparedNativeSandbox(run, name, launch, trialId, signal);

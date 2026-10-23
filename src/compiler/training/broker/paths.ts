@@ -19,7 +19,7 @@ import { DAIMON_WORKER_ROOT } from "../../containerDaimonGrokWorkerRender.js";
  * They are deterministic because three parties must agree on them
  * without talking to each other: the root entrypoint that provisions them, the
  * root slot supervisor that wipes and re-provisions them on recycle, and
- * Spawnfile's native training adapter, which writes them into `paideia.daimon-native.launch.v2`
+ * Spawnfile's native training adapter, which writes them into `spawnfile.training.daimon-native.launch.v2`
  * and has no way to ask the container what it chose. Daimon's projection never
  * resolves a path, so each one must also be canonical and never a symlink; the
  * provisioning program asserts that before a slot is used.
@@ -31,14 +31,14 @@ import { DAIMON_WORKER_ROOT } from "../../containerDaimonGrokWorkerRender.js";
  */
 export const TRAINING_RUN_ROOT = "/run/training/output";
 export const TRAINING_SEALED_INPUTS_ROOT = "/run/training/inputs";
-export const TRAINING_PAIDEIA_ROOT = "/run/paideia";
-export const TRAINING_CONTEXT_FILE = `${TRAINING_PAIDEIA_ROOT}/context.json`;
+export const TRAINING_ROOT = "/run/spawnfile-training";
+export const TRAINING_CONTEXT_FILE = `${TRAINING_ROOT}/context.json`;
 /** Host-written, read-only `spawnfile.training-broker.v2` declaration the root entrypoint reads. */
-export const TRAINING_BROKER_DECLARATION_FILE = `${TRAINING_PAIDEIA_ROOT}/training-broker.json`;
+export const TRAINING_BROKER_DECLARATION_FILE = `${TRAINING_ROOT}/training-broker.json`;
 
 export const TRAINING_INFERENCE_DIRECTORY = "/run/training/inference";
 export const TRAINING_INFERENCE_LEDGER = `${TRAINING_INFERENCE_DIRECTORY}/inference.jsonl`;
-/** Judge grant homes: `2000:2000 0700`, denied to every worker uid. Paideia reads it as `PAIDEIA_GROK_GRANT_HOME_ROOT`. */
+/** Judge grant homes: `2000:2000 0700`, denied to every worker uid. Training reads it as `SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT`. */
 export const TRAINING_GRANT_HOME_ROOT = "/run/training/grants";
 
 /**
@@ -61,40 +61,40 @@ export const TRAINING_SUPERVISOR_LOG = `${TRAINING_SUPERVISOR_DIRECTORY}/supervi
 
 export const TRAINING_WORKER_ROOT = DAIMON_WORKER_ROOT;
 /**
- * Paideia's own fixed container paths (`containerPaths` in its native launch
+ * Training's own fixed container paths (`containerPaths` in its native launch
  * schema). They are *not* individual deny entries: Grok 1.0.34 materializes
  * every `deny` target inside bubblewrap as the worker uid, and it cannot
- * create a file inside `/run/paideia`, which belongs to uid 2000 alone. The
- * single `/run/paideia` mask below covers all of them, which is also stronger
- * — a file Paideia adds later is covered without re-provisioning the slot.
+ * create a file inside `/run/spawnfile-training`, which belongs to uid 2000 alone. The
+ * single `/run/spawnfile-training` mask below covers all of them, which is also stronger
+ * — a file Training adds later is covered without re-provisioning the slot.
  */
 export const TRAINING_CALLER_PROTECTED_PATHS = [
-  `${TRAINING_PAIDEIA_ROOT}/config.json`,
-  `${TRAINING_PAIDEIA_ROOT}/control`,
-  `${TRAINING_PAIDEIA_ROOT}/launch.json`,
-  `${TRAINING_PAIDEIA_ROOT}/token`,
-  `${TRAINING_PAIDEIA_ROOT}/env`,
-  `${TRAINING_PAIDEIA_ROOT}/preparation.json`,
-  `${TRAINING_PAIDEIA_ROOT}/repair.json`
+  `${TRAINING_ROOT}/config.json`,
+  `${TRAINING_ROOT}/control`,
+  `${TRAINING_ROOT}/launch.json`,
+  `${TRAINING_ROOT}/token`,
+  `${TRAINING_ROOT}/env`,
+  `${TRAINING_ROOT}/preparation.json`,
+  `${TRAINING_ROOT}/repair.json`
 ] as const;
 
 /**
- * `paideia.daimon-native.launch.v2`'s `broker.evaluatorPaths`, in full.
+ * `spawnfile.training.daimon-native.launch.v2`'s `broker.evaluatorPaths`, in full.
  *
  * This is not a summary of the five roles — it is the **whole** set of deny
  * entries this container adds beyond Daimon's own protected paths, because
- * Paideia's worker resolves the projection from exactly
+ * Training's worker resolves the projection from exactly
  * `[...new Set(broker.evaluatorPaths.map(row => row.path))].sort()`. A launch
  * that carried only the five roles made Daimon hash a different deny list than
  * the one provisioning wrote, and a live run died on
  * `Grok broker projection digest differs from the launch receipt`.
  *
- * `role` is Paideia's closed five-value enum and may repeat; only `path` is
+ * `role` is Training's closed five-value enum and may repeat; only `path` is
  * unique. The four roles with a dedicated path keep it, and everything else is
  * tagged `context` — the caller-state role — since there is no other way to
  * carry a path through that contract.
  */
-export const TRAINING_SLOTS_FILE = `${TRAINING_PAIDEIA_ROOT}/slots.json`;
+export const TRAINING_SLOTS_FILE = `${TRAINING_ROOT}/slots.json`;
 export const TRAINING_SLOTS_VERSION = "spawnfile.training-slots.v1" as const;
 export const TRAINING_DEFAULT_SLOTS = 4;
 export const TRAINING_MAX_SLOTS = 8;
@@ -143,7 +143,7 @@ export const trainingEvaluatorPaths = (slot: number, slots: number): TrainingEva
     { role: "sealed-inputs", path: TRAINING_SEALED_INPUTS_ROOT },
     { role: "judge-home", path: TRAINING_GRANT_HOME_ROOT },
     { role: "slot-ledger", path: own.usageDirectory },
-    ...[TRAINING_PAIDEIA_ROOT, TRAINING_BROKER_TMPDIR, TRAINING_INFERENCE_DIRECTORY,
+    ...[TRAINING_ROOT, TRAINING_BROKER_TMPDIR, TRAINING_INFERENCE_DIRECTORY,
       TRAINING_TURN_STORE_ROOT, TRAINING_RUN_REQUEST_STORE, TRAINING_SUPERVISOR_DIRECTORY,
       ...TRAINING_BROKER_SOCKET_PATHS,
       path.posix.dirname(DAIMON_GROK_ENGINE_BROKER.registrationPath),
@@ -168,10 +168,10 @@ export const trainingSlotsDocument = (slots = TRAINING_DEFAULT_SLOTS): TrainingS
   schema: TRAINING_SLOTS_VERSION,
   slots: trainingSlotDescriptors(slots).map(p => ({
     index: p.slot, workerUid: p.workerUid,
-    // Paideia owns a runtime-neutral lease pool: its strict descriptor carries opaque named paths.
+    // Training owns a runtime-neutral lease pool: its strict descriptor carries opaque named paths.
     roots: {
       ...Object.fromEntries(Object.entries(p).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
-      home: p.runtimeHome, control: p.state, context: TRAINING_PAIDEIA_ROOT,
+      home: p.runtimeHome, control: p.state, context: TRAINING_ROOT,
       ...Object.fromEntries(p.evaluatorPaths.map((entry, index) => [`evaluator:${entry.role}:${index}`, entry.path])),
       ...Object.fromEntries(p.containerPaths.map((entry, index) => [`container:${index}`, entry.path]))
     },

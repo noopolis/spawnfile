@@ -27,14 +27,14 @@ function judgment(score = 1) {
     citations: [{ source: 'input', quote: article }] }), model: 'small-judge', route: 'test-local', usage };
 }
 function dataset(id: string) {
-  return resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id,
+  return resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id,
     checks: [{ id: 'prose', eval: 'llm-rubric', input: 'artifact:article', judge: 'editor',
       rubric: { prompt: 'Is the article direct?' }, minimum: 0.8 }],
     records: [{ id, group: id, input: { prompt: `Write the ${id} article.` }, outputs: { article: 'article.txt' } }],
   })), { registry: { judges: { editor: { version: 'fixture-route-v1' } } } });
 }
 async function fixture(judge: InferenceProvider) {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-route-training-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-route-training-')); roots.push(root);
   const source = join(root, 'source'); await mkdir(source);
   await writeFile(join(source, 'AGENTS.md'), 'Write the assigned article.');
   const baseline = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
@@ -79,7 +79,7 @@ function baselineOptimizer(onMetric?: (result: Awaited<ReturnType<optimization.D
       if (split === 'validation') validationScore = response.score;
       captures.push({ caseId: split, split, captureId: response.captureId });
     }
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 2, proposals: 0,
         selectedCandidateIndex: 0, candidates: [{ components: request.components, parents: [null], validationScore, discoveryEvaluations: 0 }],
         captures, generations: [] } };
@@ -114,7 +114,7 @@ it('recovers judge quota within each stored trial, without rewriting articles or
     expect(await readFile(join(trial.paths.workspace, 'article.txt'), 'utf8')).toBe(article);
     const replay = await options.native.store.readReplay(trial.id, { audience: 'operator', phase: 'replay', releaseTestResults: true, frozenCandidateIds: [report.selected.id] });
     expect(replay.evaluations).toHaveLength(1);
-    expect(replay.evaluations[0]!.report).toMatchObject({ schema: 'paideia.trial.v1', id: trial.id, status: 'pass' });
+    expect(replay.evaluations[0]!.report).toMatchObject({ schema: 'spawnfile.training.trial.v1', id: trial.id, status: 'pass' });
   }
   await expect(options.native.store.readReplay(report.trials[2]!.id, { audience: 'optimizer', phase: 'training' })).rejects.toThrow();
   const freeze = progress.findIndex(event => event.type === 'selection.frozen');
@@ -199,7 +199,7 @@ it.each(['quota', 'invalid-response'] as const)('resumes real DSPy after %s usin
     return judgment();
   });
   const { options, starts, writes } = await fixture(judge);
-  options.bridge = { command: join(process.cwd(), 'src/training/dspy/.venv/bin/paideia-dspy'),
+  options.bridge = { command: join(process.cwd(), 'src/training/dspy/.venv/bin/spawnfile-training-dspy'),
     cwd: process.cwd(), timeoutMs: 10_000 };
   options.budget = { maxMetricCalls: 3, maxProposals: 1 };
   options.checkpoint = { directory: `${options.native.storeRoot}-checkpoint`, resume: false, identity: 'real-training-fixture' };
@@ -213,7 +213,7 @@ it.each(['quota', 'invalid-response'] as const)('resumes real DSPy after %s usin
   expect(report.trials).toHaveLength(2);
   expect(report.rescores).toHaveLength(1);
   expect(report.trials[0]!.status).toBe('error');
-  expect(report.rescores![0]).toMatchObject({ schema: 'paideia.rescore.v1', runId: report.trials[0]!.id, status: 'pass' });
+  expect(report.rescores![0]).toMatchObject({ schema: 'spawnfile.training.rescore.v1', runId: report.trials[0]!.id, status: 'pass' });
   expect(report.optimizer.provenance.captures).toEqual([{ caseId: 'validation', split: 'validation', captureId: report.trials[0]!.id }]);
   expect(report.heldOut[0]!.meanScore).toBe(1);
   const { recoverMeasurement } = await import('./recovery.js');

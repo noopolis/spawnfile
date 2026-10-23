@@ -26,7 +26,7 @@ export function deriveCandidate(baseline: CandidateManifest, parent: CandidateMa
     if (typeof text !== 'string') throw new Error('Candidate replacement must be text');
   }
   const resources = parent.resources.map(resource => replaceResource(resource, replacements));
-  const body = { schema: parent.schema, parentId: parent.id, policyDigest: baseline.policyDigest, resources };
+  const body = { schema: 'spawnfile.training.candidate.v1' as const, parentId: parent.id, policyDigest: baseline.policyDigest, resources };
   const candidate = { ...body, baselineId: baseline.id, id: candidateIdentity(body, baseline.id) };
   assertOriginalPolicy(baseline, candidate);
   return freezeCandidate(candidate);

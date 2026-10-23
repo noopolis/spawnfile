@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../contracts/index.js';
 import path from 'node:path';
 import type { CheckNode } from '../contracts/dataset.js';
 import { allQuestions, parseCalibrationJson, parseGraderYaml, sha256, validateGrader } from '../graders/index.js';
@@ -63,7 +64,7 @@ function resolveGraderFile(node: CheckNode, context: PlanResolution, location: s
   };
   const source = read(filename);
   const parsed = parseYaml(source) as { schema?: string };
-  const atomic = parsed?.schema === 'paideia.atomic-grader.v1' ? parseAtomicGrader(parsed) : undefined;
+  const atomic = canonicalWireId(parsed?.schema) === 'spawnfile.training.atomic-grader.v1' ? parseAtomicGrader(parsed) : undefined;
   const legacy = atomic ? undefined : validateGrader(parseGraderYaml(source));
   const identityMode = legacy?.calibration === 'identity';
   const resourcePath = safePath(path.posix.join(path.posix.dirname(filename), atomic?.templates ?? legacy!.calibration), `${location}.resource`);

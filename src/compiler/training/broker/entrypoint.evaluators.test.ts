@@ -34,13 +34,13 @@ import { runTrainingBrokerEntrypoint } from "./entrypoint.js";
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 it("stages evaluator credentials before transferring tmpfs ownership or dropping to the evaluator", async () => {
   vi.spyOn(process as { getuid: () => number }, "getuid").mockReturnValue(0);
-  vi.stubEnv("PAIDEIA_TYPESAFE_SECRET_FILE", "/run/paideia/secrets/typesafe");
+  vi.stubEnv("SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE", "/run/spawnfile-training/secrets/typesafe");
   control.order.length = 0;
   const listeners = new Map((["SIGINT", "SIGTERM", "SIGHUP"] as const).map(signal => [signal, process.listeners(signal)]));
   try {
     expect(await runTrainingBrokerEntrypoint({ argv: [], log() {} })).toBe(0);
     expect(control.order, "evaluator secret staging order guarantee").toEqual(["secret", "provision", "broker", "evaluator"]);
-    expect(control.env.PAIDEIA_TYPESAFE_SECRET_FILE).toBe("/run/paideia/secrets/typesafe");
+    expect(control.env.SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE).toBe("/run/spawnfile-training/secrets/typesafe");
     expect(control.env.TYPESAFE_API_KEY).toBeUndefined();
   } finally {
     for (const [signal, previous] of listeners) {

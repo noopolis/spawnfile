@@ -10,7 +10,7 @@ import { runCli } from "./runCli.js";
 
 // Public dataset wire fixtures belong to this CLI integration test, not core imports.
 const datasetText = (records: { id: string; group: string }[]): string =>
-  `schema: paideia.dataset.v1\nid: example\nchecks:\n  - id: correct\n    eval: equals\n    input: output.text\n    value: OK\nrecords:\n${records.map(record => `  - id: ${record.id}\n    group: ${record.group}\n    input:\n      prompt: Reply OK.\n`).join("")}`;
+  `schema: spawnfile.training.dataset.v1\nid: example\nchecks:\n  - id: correct\n    eval: equals\n    input: output.text\n    value: OK\nrecords:\n${records.map(record => `  - id: ${record.id}\n    group: ${record.group}\n    input:\n      prompt: Reply OK.\n`).join("")}`;
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -18,7 +18,7 @@ it("runs cold, warm and exact-resume through the actual public command and exist
   const f = await preparationFixture(); roots.push(f.root); const docker = imageDocker(); let preparation = "";
   const calls: string[][] = [];
   const launcher = dockerFixture(async args => {
-    if (args[2] === "create") preparation = args.find(value => value.includes("dst=/run/paideia/preparation.json"))!.split(",").find(value => value.startsWith("src="))!.slice(4);
+    if (args[2] === "create") preparation = args.find(value => value.includes("dst=/run/spawnfile-training/preparation.json"))!.split(",").find(value => value.startsWith("src="))!.slice(4);
     if (args[2] === "start") await writeFile(path.join(launcher.output().live, "index.json"), "{}");
     return undefined;
   });

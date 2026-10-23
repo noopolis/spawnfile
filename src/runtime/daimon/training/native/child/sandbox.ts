@@ -1,3 +1,4 @@
+import { trainingEnvironment } from '../../../../../training/index.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { lstat, mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
@@ -17,12 +18,13 @@ export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: 
   const receipt = parseNativeSandboxReceipt(JSON.parse(await readPrivateFile(join(artifacts, 'sandbox-projection.json'), 262144)), {
     trialId, configSha256: launch.configSha256, agentId: launch.agent.id, workspacePath: launch.workspace.target, runtimeHomePath: home,
   });
-  const scratch = await mkdtemp(join(launch.workspace.target, '.paideia-native-policy-'));
+  const scratch = await mkdtemp(join(launch.workspace.target, '.spawnfile-training-native-policy-'));
   const owned: string[] = []; const denied: string[] = [];
   const server = createServer(socket => socket.destroy());
   try {
     // An absent configured secret has nothing to deny; the TypeSafe transport refuses it on use.
-    const evaluatorSecret = process.env.PAIDEIA_TYPESAFE_SECRET_FILE ? resolve(process.env.PAIDEIA_TYPESAFE_SECRET_FILE) : undefined;
+    const secretFile = trainingEnvironment('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE');
+    const evaluatorSecret = secretFile ? resolve(secretFile) : undefined;
     const secretPresent = evaluatorSecret !== undefined && await lstat(evaluatorSecret).then(() => true, (error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') return false; throw error;
     });
@@ -35,7 +37,7 @@ export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: 
     // Verify the declared auth/ingress rule with canaries only when no credential exists.
     await mkdir(join(home, '.codex'), { recursive: true, mode: 0o700 });
     await mkdir(join(home, '.daimon-inbound'), { recursive: true, mode: 0o700 });
-    for (const file of [join(home, '.codex/auth.json'), join(home, '.daimon-inbound/.paideia-canary')]) {
+    for (const file of [join(home, '.codex/auth.json'), join(home, '.daimon-inbound/.spawnfile-training-canary')]) {
       try { const handle = await open(file, 'wx', 0o600); await handle.writeFile('{}'); await handle.close(); owned.push(file); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
       denied.push(file);
@@ -48,7 +50,7 @@ export async function verifyChildSandbox(launch: VerifiedNativeLaunch, trialId: 
       cwd: launch.workspace.target, env: { PATH: process.env.PATH, HOME: home, CODEX_HOME: join(home, '.codex'), TMPDIR: '/tmp', LANG: 'C.UTF-8' }, signal, timeout: 15000, maxBuffer: 65536,
     });
     if (await readFile(complete, 'utf8') !== 'NATIVE_POLICY_COMPLETE') throw new Error('Native sandbox did not finish enforcement checks');
-    await writeFile(join(artifacts, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'paideia.daimon-native.child-sandbox-preflight.v1',
+    await writeFile(join(artifacts, 'child-sandbox-preflight.json'), JSON.stringify({ schema: 'spawnfile.training.daimon-native.child-sandbox-preflight.v1',
       trialId, configSha256: launch.configSha256, projectionSha256: receipt.projectionSha256, modelCallsMade: 0, workspaceReadWrite: true, protectedPathsDenied: true, networkDenied: true }), { flag: 'wx', mode: 0o600 });
   } catch (error) { throw new Error('Exact native child sandbox failed before cognition', { cause: error }); }
   finally { server.close(); await Promise.all([...owned, scratch].map(path => rm(path, { recursive: true, force: true }))); }

@@ -35,7 +35,7 @@ function fixture() {
       hypothesis: slot.hypothesis, expectedImpact: [{ criterion: 'quality', effect: 'improves' }] })),
   ].map(body => ({ model: 'fake', usage: null, route: 'fake', text: JSON.stringify(body) })));
   const result = resultSchema.parse({ schema: DSPY_SCHEMA, kind: 'result', id: start.id, components: candidates[1]!.components,
-    provenance: { optimizer: 'paideia.population', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
+    provenance: { optimizer: 'training.population', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
       evaluations: 12, changeEvidence: 'bridge-reported-v2', proposals: 4, selectedCandidateIndex: 1, candidates, rounds, editScope: { A: 'whole-file' }, stopReason: 'rounds',
       captures: host.completed.map(({ caseId, split, result }) => ({ caseId, split, captureId: result.captureId })),
       generations: host.generations.map(({ model, usage, text }) => ({ model, usage, text })) } });
@@ -97,7 +97,7 @@ it('rejects population mode forgery and per-case scores even when the mean still
   const signal = new AbortController().signal;
   result.provenance.optimizer = 'dspy.GEPA';
   await expect(verifyDspyResult(result, host, signal)).rejects.toThrow('mode');
-  result.provenance.optimizer = 'paideia.population';
+  result.provenance.optimizer = 'training.population';
   result.provenance.candidates[1]!.perCaseScores = { a: 0.8, b: 1 };
   await expect(verifyDspyResult(result, host, signal)).rejects.toThrow('per-case');
 });

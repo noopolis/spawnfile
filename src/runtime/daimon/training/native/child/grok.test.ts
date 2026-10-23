@@ -42,7 +42,7 @@ it('accepts only the fresh supervisor receipt that denies every evaluator and ca
   await f.write(); await f.verify();
   expect(execFile).not.toHaveBeenCalled();
   const receipt = JSON.parse(await readFile(preflight(await f.artifacts()), 'utf8'));
-  expect(receipt).toMatchObject({ schema: 'paideia.daimon-native.child-grok-slot-preflight.v1', trialId: f.input.trialId, modelCallsMade: 0,
+  expect(receipt).toMatchObject({ schema: 'spawnfile.training.daimon-native.child-grok-slot-preflight.v1', trialId: f.input.trialId, modelCallsMade: 0,
     localSandboxProbe: false, slotGeneration: 1, projectionSha256: f.launch.broker.projectionSha256 });
   // The two digest-bound subject roots are exempt; every other protected path is still required denied.
   expect(receipt.evaluatorPathsDenied).toEqual(expect.arrayContaining([...grokProtectedPaths(f.root), f.launch.controlRoot]));

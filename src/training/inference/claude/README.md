@@ -1,6 +1,6 @@
 # Claude subscription inference
 
-`InferenceRequest.responseSchema` is optional JSON Schema. Paideia validates it
+`InferenceRequest.responseSchema` is optional JSON Schema. Training validates it
 before any native work, passes it through `--json-schema`, and validates the
 terminal `structured_output` field. It preserves string values, including newlines
 and quoting, while serializing the native object to response text. Conversational

@@ -55,7 +55,7 @@ it("rejects exit zero without a final cost-plan receipt", async () => {
 
 it("rejects a dry-run receipt that reports model calls", async () => {
   core.mockImplementation(async (_argv, io) => {
-    io.stdout('{"schema":"paideia.training-cost-plan.v1","modelCallsMade":1}\n');
+    io.stdout('{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":1}\n');
     return 0;
   });
   await expect(runTraining(options())).rejects.toThrow("required final training receipt");
@@ -74,7 +74,7 @@ it("abandons a core that ignores cancellation at the command deadline", async ()
     await expect(runTraining({ ...options(), timeoutMs: 20, streams: { stdout, stderr } }))
       .rejects.toThrow("exceeded its command deadline");
     expect(lateIO?.signal?.aborted).toBe(true);
-    lateIO!.stdout('{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}\n');
+    lateIO!.stdout('{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}\n');
     lateIO!.stderr("late diagnostic\n");
     expect(stdout).not.toHaveBeenCalled(); expect(stderr).not.toHaveBeenCalled();
     expect(process.listenerCount("SIGINT")).toBe(interruptCount);
@@ -106,7 +106,7 @@ it("rejects an image override owned by a preparation declaration", async () => {
 it("enforces dry-run at the in-process boundary even if its caller omitted the flag", async () => {
   core.mockImplementation(async (argv, io) => {
     expect(argv).toEqual(["train", "--train", "dataset.yaml", "--dry-run"]);
-    io.stdout('{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}\n');
+    io.stdout('{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}\n');
     return 0;
   });
   expect(await runTraining({ ...options(), args: ["--train", "dataset.yaml"] })).toBe(0);
@@ -115,20 +115,20 @@ it("enforces dry-run at the in-process boundary even if its caller omitted the f
 it("preserves the line-oriented stream contract for multi-line diagnostics", async () => {
   const stdout = vi.fn(), stderr = vi.fn();
   core.mockImplementation(async (_argv, io) => {
-    io.stdout('\n{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}\r\n\n');
+    io.stdout('\n{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}\r\n\n');
     io.stderr("first\r\n\nsecond");
     return 0;
   });
   expect(await runTraining({ ...options(), streams: { stdout, stderr } })).toBe(0);
-  expect(stdout.mock.calls).toEqual([['{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}']]);
+  expect(stdout.mock.calls).toEqual([['{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}']]);
   expect(stderr.mock.calls).toEqual([["first"], ["second"]]);
 });
 
 it.each(['{}', 'null', '[]', '{"schema":"wrong","modelCallsMade":0}',
-  '{"schema":"paideia.training-cost-plan.v1"}', 'diagnostic'])
+  '{"schema":"spawnfile.training.training-cost-plan.v1"}', 'diagnostic'])
 ("requires the receipt to be the final stdout line: %s", async final => {
   core.mockImplementation(async (_argv, io) => {
-    io.stdout('{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}\n');
+    io.stdout('{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}\n');
     io.stdout(`${final}\n`);
     return 0;
   });
@@ -138,13 +138,13 @@ it.each(['{}', 'null', '[]', '{"schema":"wrong","modelCallsMade":0}',
 it("accepts a receipt split across writes without a trailing newline", async () => {
   const stdout = vi.fn(), stderr = vi.fn();
   core.mockImplementation(async (_argv, io) => {
-    io.stdout('diagnostic\n{"schema":"paideia.training-');
+    io.stdout('diagnostic\n{"schema":"spawnfile.training.training-');
     io.stdout('cost-plan.v1","modelCallsMade":0}');
     io.stderr('partial '); io.stderr('diagnostic\nlast diagnostic');
     return 0;
   });
   expect(await runTraining({ ...options(), streams: { stdout, stderr } })).toBe(0);
-  expect(stdout.mock.calls).toEqual([['diagnostic'], ['{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}']]);
+  expect(stdout.mock.calls).toEqual([['diagnostic'], ['{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}']]);
   expect(stderr.mock.calls).toEqual([['partial diagnostic'], ['last diagnostic']]);
 });
 
@@ -152,7 +152,7 @@ it("rejects completion after synchronous work delayed the deadline timer", async
   let now = 0;
   vi.spyOn(performance, "now").mockImplementation(() => now);
   core.mockImplementation(async (_argv, io) => {
-    io.stdout('{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}\n');
+    io.stdout('{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}\n');
     now = 5001;
     return 0;
   });
@@ -162,7 +162,7 @@ it("rejects completion after synchronous work delayed the deadline timer", async
 it("preserves cancellation while flushing a final unterminated receipt", async () => {
   const controller = new AbortController();
   core.mockImplementation(async (_argv, io) => {
-    io.stdout('{"schema":"paideia.training-cost-plan.v1","modelCallsMade":0}');
+    io.stdout('{"schema":"spawnfile.training.training-cost-plan.v1","modelCallsMade":0}');
     return 0;
   });
   expect(await runTraining({ ...options(), signal: controller.signal,

@@ -1,3 +1,4 @@
+import { GRADING_POLICY_VERSION, CALIBRATION_DIGEST_SCHEMA } from '../../contracts/index.js';
 import type { DecisionRequest, DecisionResult, DecisionRequestReceipt } from '../../contracts/grading.js';
 import { allQuestions, decisionModels, expectedOptions, optionsFor, stableDigest, type DecisionQuestion } from '../format/index.js';
 import { planCallAdmission } from '../admission.js';
@@ -139,8 +140,8 @@ function resultIdentity(options: GradeOptions, identity = options.calibration.id
   const billing = new Set(decisionModels(grader).filter(model => selected.has(model.id)).map(model => model.backend === 'teacher' ? 'subscription' : model.backend === 'typesafe' ? 'api' : 'local'));
   return {
     backendBilling: billing.size > 1 ? 'mixed' : billing.has('subscription') ? 'subscription' : billing.has('api') ? 'api' : 'local',
-    identity: { calibration: identity, calibrationDigest: stableDigest(calibration), escalation: stableDigest(grader.escalate),
+    identity: { calibration: identity, calibrationDigest: stableDigest({ ...calibration, schema: CALIBRATION_DIGEST_SCHEMA }), escalation: stableDigest(grader.escalate),
       teacherPolicy: stableDigest({ escalation: grader.calibration === 'identity' ? null : teacherPolicyDigest(grader.teachers.find(t => t.id === grader.escalate.to)!),
         uncalibrated: grader.uncalibrated }),
-      scoringPolicy: stableDigest({ version: 'paideia.grading.v1', questions: grader.questions, gates: grader.gates, score: grader.score }) } };
+      scoringPolicy: stableDigest({ version: GRADING_POLICY_VERSION, questions: grader.questions, gates: grader.gates, score: grader.score }) } };
 }

@@ -28,8 +28,8 @@ a threshold, missing evidence, or an LLM's prediction of future failure cannot d
 
 ## YAML beside the existing stages
 
-Both newsroom [training](../examples/newsroom-reporting/evals/train.paideia.yaml) and
-[test](../examples/newsroom-reporting/evals/test.paideia.yaml) declare this block, whose
+Both newsroom [training](../examples/newsroom-reporting/evals/train.spawnfile-training.yaml) and
+[test](../examples/newsroom-reporting/evals/test.spawnfile-training.yaml) declare this block, whose
 custom evaluator still requires a project integration:
 
 ```yaml

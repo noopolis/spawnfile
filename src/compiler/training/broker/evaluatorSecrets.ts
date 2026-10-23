@@ -1,3 +1,4 @@
+import { trainingEnvironment } from "../../../shared/index.js";
 import { constants } from "node:fs";
 import { chmod, chown, lstat, mkdir, open } from "node:fs/promises";
 import path from "node:path";
@@ -6,8 +7,9 @@ import { DAIMON_ORGANIZATION_UID } from "./paths.js";
 
 /** Root stages into tmpfs before provisioning drops directory ownership and evaluator capabilities. */
 export const stageTrainingEvaluatorSecret = async (env: NodeJS.ProcessEnv = process.env): Promise<void> => {
-  if (env.PAIDEIA_TYPESAFE_SECRET_FILE === undefined) return;
-  if (process.getuid?.() !== 0 || env.PAIDEIA_TYPESAFE_SECRET_FILE !== TRAINING_TYPESAFE_SECRET_FILE) {
+  const secretFile = trainingEnvironment("SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE", env);
+  if (secretFile === undefined) return;
+  if (process.getuid?.() !== 0 || secretFile !== TRAINING_TYPESAFE_SECRET_FILE) {
     throw Error("Invalid evaluator secret staging declaration");
   }
   try {

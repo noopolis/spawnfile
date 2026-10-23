@@ -19,13 +19,13 @@ afterEach(async () => { vi.unstubAllEnvs(); vi.restoreAllMocks(); await Promise.
 async function fixture() {
   vi.stubEnv('TYPESAFE_API_KEY', 'synthetic-offline-key');
   const root = await mkdtemp(join(tmpdir(), 'atomic-host-')); roots.push(root);
-  const grader = { schema: 'paideia.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
+  const grader = { schema: 'spawnfile.training.atomic-grader.v1', id: 'quality', templates: 'templates.yaml',
     extractor: { provider: 'codex', model: 'test-codex' }, decision: { backend: 'typesafe', model: 'jev-1.0.0', max_spend_usd: 1 }, missing: 'unknown',
     aggregation: { method: 'gates-times-coverage-times-quality', critical_pass_at: 0.8, pass_at: 0.1, obligation_kinds: ['obligation'],
       dimensions: { quality: { weight: 1, budget: 2 } }, penalties: { critical: 1, major: 0.5, minor: 0.1 } } };
   const template = { id: 'support', applies_to: 'claim', type: 'noul', instructions: 'Does {unit.text} hold?', criteria: { true: 'Supported', false: 'Unsupported' },
     expected: [true], state: ['unit', 'unit.cited_rows'], dimension: 'quality', severity: 'critical' };
-  const templates = { schema: 'paideia.check-templates.v1', templates: [template,
+  const templates = { schema: 'spawnfile.training.check-templates.v1', templates: [template,
     { ...template, id: 'covered', applies_to: 'obligation', state: ['unit', 'output.body'], severity: 'major' },
     { ...template, id: 'relation', applies_to: 'relation', state: ['unit', 'unit.pair.cited_rows'], severity: 'minor' }],
     context: { assignment: { role: 'assignment' }, evidence: { rows: { heading: '^## (R[0-9]+)$', cite: '\\[(R[0-9]+)\\]' } } } };
@@ -46,7 +46,7 @@ async function fixture() {
   await writeFile(file, stringify(grader)); await writeFile(join(root, 'templates.yaml'), stringify(templates));
   const check = { id: 'quality', eval: 'grader', grader: 'grader.yaml', input: 'artifact:article',
     context: { assignment: 'artifact:assignment', evidence: 'artifact:evidence' } };
-  const dataset = { schema: 'paideia.dataset.v1', id: 'train', checks: [check],
+  const dataset = { schema: 'spawnfile.training.dataset.v1', id: 'train', checks: [check],
     records: [{ id: 'one', group: 'lineage', input: { prompt: 'Write' }, outputs: { article: 'out.json' } }] };
   await writeFile(join(root, 'dataset.yaml'), stringify(dataset));
   return { root, grader, templates, inputs, generate, provider, atomicFetch, file, check, dataset,
@@ -74,7 +74,7 @@ it('executes protected grader files through CLI dataset routes and trial evaluat
   const sent = f.atomicFetch.mock.calls.map(([, init]) => JSON.parse(init!.body as string));
   expect(sent.find(payload => payload.state.includes('unit.pair.cited_rows')).state).toContain('Bob joined');
   expect(JSON.stringify(grade)).not.toContain('synthetic-offline-key');
-  expect((await readdir(tmpdir())).filter(name => name.startsWith('paideia-atomic-trial-'))).toEqual([]);
+  expect((await readdir(tmpdir())).filter(name => name.startsWith('training-atomic-trial-'))).toEqual([]);
   await writeFile(join(f.root, 'templates.yaml'), stringify({ ...f.templates, kinds: { claim: 'Changed' } }));
   await expect(loader.buildGraders(f.dependencies)).rejects.toThrow('changed after dataset resolution');
 });
@@ -238,8 +238,8 @@ it('executes broker-capped atomic grading only through declared extraction and d
     { purpose: 'extraction', provider: 'codex-subscription', model: 'test-codex', maxRequests: 2 },
     { purpose: 'decisions', provider: 'typesafe', model: 'jev-1.0.0', maxRequests: 10, maxSpendUsd: 1 },
   ];
-  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', routes, receiptPath }));
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', policy);
+  await writeFile(policy, JSON.stringify({ version: 'spawnfile.training.evaluator-routes.v1', routes, receiptPath }));
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', policy);
   const loader = new CliDatasets({}, f.root); loader.load('dataset.yaml', true);
   const runtime = (await loader.buildGraders(f.dependencies))[f.file] as AtomicRuntime;
   const grade = await gradeAtomic(runtime, f.inputs);
@@ -252,8 +252,8 @@ it('executes broker-capped atomic grading only through declared extraction and d
   expect((await gradeAtomic(await buildAtomicRuntime(f.file, f.dependencies), f.inputs)).status).toBe('error');
   expect(f.generate, 'extraction budget survives runtime reconstruction').not.toHaveBeenCalled();
   expect(f.atomicFetch).not.toHaveBeenCalled();
-  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', routes: routes.slice(1), receiptPath }));
+  await writeFile(policy, JSON.stringify({ version: 'spawnfile.training.evaluator-routes.v1', routes: routes.slice(1), receiptPath }));
   await expect(loader.buildGraders(f.dependencies), 'undeclared extraction refuses construction').rejects.toThrow('unsupported codex-subscription');
-  await writeFile(policy, JSON.stringify({ version: 'paideia.evaluator-routes.v1', routes: routes.slice(0, 1), receiptPath }));
+  await writeFile(policy, JSON.stringify({ version: 'spawnfile.training.evaluator-routes.v1', routes: routes.slice(0, 1), receiptPath }));
   await expect(loader.buildGraders(f.dependencies)).rejects.toThrow('unsupported typesafe');
 });

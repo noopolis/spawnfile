@@ -10,7 +10,7 @@ vi.mock('../../inference/index.js', async importOriginal => {
 
 it('passes independent YAML judge and optimizer efforts to the actual provider factory', () => {
   const dataset = parseDatasetYaml(`
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: efforts
 checks:
   - { id: check, eval: contains-any, input: output.text, values: [done] }
@@ -42,7 +42,7 @@ it('honors YAML timeout fallbacks through the training factory without a hidden 
   vi.useFakeTimers();
   try {
     const dataset = parseDatasetYaml(`
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: timeout-fallback
 checks:
   - { id: check, eval: contains-any, input: output.text, values: [done] }

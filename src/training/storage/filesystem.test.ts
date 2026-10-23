@@ -10,7 +10,7 @@ vi.mock('node:fs/promises', async importOriginal => {
   return { ...actual, open: vi.fn(actual.open) };
 });
 it('syncs published directory entries before returning success for artifacts and new journals', async () => {
-  const root = await filesystem.mkdtemp(join(tmpdir(), 'paideia-durable-'));
+  const root = await filesystem.mkdtemp(join(tmpdir(), 'training-durable-'));
   const original = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
   const syncedDirectories: string[] = [];
   vi.mocked(filesystem.open).mockImplementation(async (path, flags, mode) => {

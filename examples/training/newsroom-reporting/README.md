@@ -1,16 +1,16 @@
 # Newsroom reporting: an illustrative training example
 
 One [Spawnfile](Spawnfile) with its environment, plus two datasets:
-[train.paideia.yaml](evals/train.paideia.yaml) and [test.paideia.yaml](evals/test.paideia.yaml)
+[train.spawnfile-training.yaml](evals/train.spawnfile-training.yaml) and [test.spawnfile-training.yaml](evals/test.spawnfile-training.yaml)
 under `evals/`. Every record is inline and both files use the same
-[Paideia dataset definition](../../docs/authoring.md). See the
+[Training dataset definition](../../docs/authoring.md). See the
 [architectural view](../../docs/architecture.html) for how a full trial and training
 process fit together.
 
 **Everything here is synthetic.** The agent, its colleagues, the network, the story
 identifiers, the Git repositories, the pinned revisions and every SHA-256 selector are
 invented for this example. It exists to exercise the authoring surface for a realistic
-multi-step reporting task, not to describe a deployment. Paideia dataset resolution
+multi-step reporting task, not to describe a deployment. Training dataset resolution
 passes here (`src/cases/examples.test.ts` reads both files unchanged); the Spawnfile is
 a declaration in the native format and has not been re-validated by the Spawnfile
 compiler since these names became synthetic. The generic evaluators and the real DSPy optimizer
@@ -27,8 +27,8 @@ newsroom-reporting/
 │   ├── SOUL.md
 │   └── RUNBOOK.md
 ├── evals/
-│   ├── train.paideia.yaml
-│   └── test.paideia.yaml
+│   ├── train.spawnfile-training.yaml
+│   └── test.spawnfile-training.yaml
 └── README.md
 ```
 
@@ -38,20 +38,20 @@ The training invocation selects the Spawnfile, subject, train/test datasets, edi
 prompt sections, optimizer/judge subscription routes and budgets. Canonical Spawnfile
 extraction and the local `spawnfile train` delegation are implemented.
 
-Spawnfile supplies the canonical project through Paideia's public interface. Native
+Spawnfile supplies the canonical project through Spawnfile training's public interface. Native
 execution also requires an explicitly registered isolated preparation; the profiles and
-evaluators proposed here are not installed by that handoff. Paideia's standalone CLI
+evaluators proposed here are not installed by that handoff. Spawnfile training's standalone CLI
 also trains explicit Markdown resources through Codex or Daimon.
 
 ## Keep evaluation beside the native agent
 
 The agreed layout puts `evals/` beside the agent's native definition. In a real project,
-Paideia reads that canonical definition and prepares a candidate copy with explicit
+Training reads that canonical definition and prepares a candidate copy with explicit
 isolation overrides. Moving these datasets does not change their resource-relative
 selectors or the subject's native working directory. Select the parent Spawnfile as the
 native project.
 
-[.spawnignore](.spawnignore) declares that `evals/` and generated `.paideia/` artifacts
+[.spawnignore](.spawnignore) declares that `evals/` and generated `.spawnfile-training/` artifacts
 must stay out of packaged agent workspaces. These are packaging exclusions; datasets stay
 versioned in Git. **Spawnfile does not implement this file yet.** The policy is an agreed
 authoring convention, not an enforced protection or permission to launch. See the
@@ -73,7 +73,7 @@ answer supplied to the subject or a factual gold standard.
 
 Three records across two splits is a shape demonstration, not evidence of anything.
 The implemented runner withholds test inputs and feedback during optimization, but naming
-a file `test.paideia.yaml` does not by itself establish that its subject matter is unseen.
+a file `test.spawnfile-training.yaml` does not by itself establish that its subject matter is unseen.
 A real generalization claim needs independently selected record families, grouped so that
 related stories cannot straddle the split.
 
@@ -122,7 +122,7 @@ derivatives cannot silently remain visible. The `input-files` private view keeps
 selected evidence paths.
 
 Those view names are **proposed preparation profiles**, not features implemented by
-Spawnfile or Paideia today. A bare Spawnfile launch would expose full Git resources and
+Spawnfile or Training today. A bare Spawnfile launch would expose full Git resources and
 would not be a valid trial. Preparation must create filtered views and prove that no
 alternate path, Git history, cache, tool mount or memory leaks excluded data.
 

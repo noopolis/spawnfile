@@ -83,7 +83,7 @@ def test_optimizer_dispatch_overlaps_train_and_validation_and_preserves_scores()
     result = optimize(request, host)["provenance"]
     assert completed == ["v3", "v2", "v1", "v0", "t3", "t2", "t1", "t0",
                          "v3", "v2", "v1", "v0", "t3", "t2", "t1", "t0"]
-    assert result["optimizer"] == "paideia.population"
+    assert result["optimizer"] == "training.population"
     assert result["evaluations"] == 16
     assert result["proposals"] == 2
     assert len(result["candidates"]) == 2

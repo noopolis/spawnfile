@@ -15,7 +15,7 @@ test('existing receipts preserve their exact shape while direct/transport and a 
   try {
     const { receiptFile: _, ...codex } = f.launch;
     const { receiptFile: __, ...grok } = await grokLaunchFrom(f.launch, f.root);
-    for (const launch of [codex, { ...codex, schema: 'paideia.daimon-native.launch.v2' }, grok]) {
+    for (const launch of [codex, { ...codex, schema: 'spawnfile.training.daimon-native.launch.v2' }, grok]) {
       expect(parseNativeLaunch(launch)).toEqual(launch);
       expect(parseNativeLaunch(launch)).not.toHaveProperty('delivery');
       expect(parseNativeLaunch(launch)).not.toHaveProperty('taskClock');

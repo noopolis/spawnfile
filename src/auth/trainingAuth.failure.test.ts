@@ -6,7 +6,7 @@ const control = vi.hoisted(()=>({ failWrite:false, mutateSource:false, growSourc
 vi.mock("node:fs/promises",async(importOriginal)=>{
  const native=await importOriginal<typeof import("node:fs/promises")>();
  return {...native,realpath:async(...args:Parameters<typeof native.realpath>)=>{
-   if(String(args[0]).startsWith("/run/paideia-auth/")) throw Error("fixed ingress intercepted for test: "+args[0]);
+   if(String(args[0]).startsWith("/run/spawnfile-training-auth/")) throw Error("fixed ingress intercepted for test: "+args[0]);
    return native.realpath(...args);
  },open:async(...args:Parameters<typeof native.open>)=>{
    const file=await native.open(...args);
@@ -34,5 +34,5 @@ it("bounds an unexpectedly growing source to the preallocated limit",async()=>{
  const f=await setup();control.growSource=true;await expect(stageTrainingAuth(f)).rejects.toThrow("changed during staging");expect(await readdir(path.join(f.home,".daimon-inbound"))).toEqual([]);
 });
 it("selects the fixed default ingress without opening real credentials",async()=>{
- const f=await setup();await expect(stageTrainingAuth({home:f.home,provider:"codex"})).rejects.toThrow("fixed ingress intercepted for test: /run/paideia-auth/codex");
+ const f=await setup();await expect(stageTrainingAuth({home:f.home,provider:"codex"})).rejects.toThrow("fixed ingress intercepted for test: /run/spawnfile-training-auth/codex");
 });

@@ -3,7 +3,8 @@
 Owns the versioned JSONL endpoint, exact-text component representation and the
 released DSPy GEPA integration. Inherit the bridge guide.
 
-- `protocol.py` validates messages; `transport.py` serializes host callbacks.
+- `protocol.py` validates messages and canonicalizes legacy schema IDs through the
+  shared legacy-wire alias table linked as `legacy_wire_aliases.json`; `transport.py` serializes host callbacks.
 - `session.py` owns bridge-side attempt counts and latched host failures.
 - `native.py` exposes component predictors and authentic host trial results.
 - `reflection.py` uses a typed DSPy BaseLM backed only by the host callback. Its

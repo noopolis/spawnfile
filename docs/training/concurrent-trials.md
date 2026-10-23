@@ -2,7 +2,7 @@
 
 Implemented: `TrainingOptions.concurrency` and `train --concurrency` accept 1..8.
 The default is the provisioned descriptor count (Spawnfile defaults to 4),
-or the existing serial behavior when `/run/paideia/slots.json` is absent. Explicit
+or the existing serial behavior when `/run/spawnfile-training/slots.json` is absent. Explicit
 parallelism without descriptors fails before launching work. `slotsFile` /
 `--slots-file` select another read-only descriptor file; trusted integrations may
 supply `TrainingOptions.slots` directly. These are execution controls, not new YAML
@@ -13,7 +13,7 @@ Each descriptor carries `index`, `workerUid`, opaque `roots`, and `ports:{base,c
 Preparation receives it as `NativePreparationContext.slot`; subject start receives
 it as `SubjectStart.slot`. The integration's `SubjectProvisioner` (Spawnfile's
 training lease satisfies it structurally) still provisions and maps the isolated
-resources; Paideia owns the execution half through the `adapters/daimon-native`
+resources; Spawnfile training owns the execution half through the `adapters/daimon-native`
 subpath. `prepareNativeSubject` mints a broker slot's recycle nonce and generation
 floor before the provisioner runs and refuses its result unless the broker section
 parses as launch.v2 `broker`, echoes that freshness and passes the leased-slot
@@ -47,13 +47,13 @@ Model-free tests cover four simultaneous stored trials, a fifth blocked until
 closure and collection, out-of-order response correlation, quarantine, concurrent
 journal/checkpoint publication and atomic callback budget reservations.
 
-Paideia does not accept a runtime-neutral `maxRunRequests` option: post-hoc token
+Spawnfile training does not accept a runtime-neutral `maxRunRequests` option: post-hoc token
 accounting cannot enforce model admission. Brokered Spawnfile training configures
 `broker.maxRunRequests` (default 1000) in Daimon's shared proxy instead. That cap
 covers subject, judge and optimizer requests routed through the broker, including
 credential retries, and survives slot recycle and broker restart. Spawnfile retains
 the budget in a dedicated volume keyed by the run's output directory across container
-replacement. Capped containers set `PAIDEIA_MODEL_REQUEST_CAP=broker`; Paideia
+replacement. Capped containers set `SPAWNFILE_TRAINING_MODEL_REQUEST_CAP=broker`; Training
 rejects non-broker judge/optimizer routes, fallbacks and legacy defaults before
 provider construction. Native graders are also rejected because their model routes
 do not share broker admission. Uncapped runs retain the existing provider choices.

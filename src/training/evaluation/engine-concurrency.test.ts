@@ -193,7 +193,7 @@ describe('concurrent independent judges', () => {
     const embedding = { id: 'local', version: '1', embed: async () => ({ vectors: [[1, 0], [1, 0]], usage: null }) };
     const judge = deferredJudges(['editor']).judges.editor!;
     judge.provider.generate = async () => ({ text: JSON.stringify(good), model: 'm', route: 'r', usage: null });
-    const definition = parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'g', calibration: 'c',
+    const definition = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'g', calibration: 'c',
       teachers: [{ id: 't', provider: 'claude', model: 'm' }], model: { backend: 'teacher', teacher: 't' },
       escalate: { to: 't', between: [0.4, 0.6] }, score: { method: 'weighted' },
       questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }] });
@@ -203,7 +203,7 @@ describe('concurrent independent judges', () => {
     const identity = createCalibrationIdentity(definition, { backendModel: await decisionBackendIdentity(definition, backend),
       golden: digest, promptTemplateVersion: 'v1', seed: '', exclusions: [] });
     const grader: GradingRuntime = { grader: definition, backend, resource: {}, goldenDigest: digest, promptTemplateVersion: 'v1',
-      definitionDigest: digest, calibrationDigest: digest, calibration: { schema: 'paideia.grader-calibration.v1', identity,
+      definitionDigest: digest, calibrationDigest: digest, calibration: { schema: 'spawnfile.training.grader-calibration.v1', identity,
         questions: { q: { status: 'calibrated', failures: [],
       teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] }, metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } } };
     const cases: Record<string, CheckNode> = {

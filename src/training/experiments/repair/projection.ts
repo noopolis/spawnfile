@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { z } from 'zod';
@@ -13,7 +14,7 @@ export async function verifyRepairProjection(receipt: MeasurementRepairReceipt):
   if (!manifestStat.isFile() || manifestStat.isSymbolicLink() || manifestStat.size > 2_097_152) throw new Error('Unsafe parent projection manifest');
   const bytes = await readFile(join(root, 'projection-manifest.json'));
   if (bytes.length > 2_097_152 || repairDigest(bytes) !== receipt.parent.manifestDigest) throw new Error('Parent projection manifest changed');
-  const manifest = z.object({ version: z.literal('paideia.repair-parent.v1'),
+  const manifest = z.object({ version: compatibleWireLiteral('spawnfile.training.repair-parent.v1'),
     files: z.array(fileSchema).min(1).max(10000) }).strict().parse(JSON.parse(bytes.toString('utf8')));
   const paths = new Set<string>();
   let total = 0;

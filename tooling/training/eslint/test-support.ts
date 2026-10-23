@@ -10,7 +10,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 export async function lintFixture(options: { aliasedCwd?: boolean } = {}) {
-  const root = await mkdtemp(path.join(tmpdir(), 'paideia-eslint-'));
+  const root = await mkdtemp(path.join(tmpdir(), 'training-eslint-'));
   roots.push(root);
   async function file(relative: string, text = 'export const fixture = true;') {
     const filename = path.join(root, relative);

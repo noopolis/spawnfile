@@ -11,7 +11,7 @@ export interface ComparisonOptions extends Pick<TrainingOptions,
   maxTrials: number;
 }
 export interface ComparisonReport {
-  schema: 'paideia.comparison.v1';
+  schema: 'spawnfile.training.comparison.v1';
   id: string;
   baseline: CandidateManifest;
   candidate: CandidateManifest;

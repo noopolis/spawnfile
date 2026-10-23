@@ -34,7 +34,7 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
   if (!runtime || !subjects || !Object.hasOwn(subjects, runtime)) throw new Error(`Supported native runtimes: ${Object.keys(subjects ?? {}).join(', ') || 'none registered'}`);
   const model = one(args, 'model');
   const sourceRoot = resolve(io.cwd, one(args, 'source-root', io.cwd));
-  const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined));
+  const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/training' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
   const judges = pairs(args.flags.judge ?? []);
   const datasets = new CliDatasets(judges, io.cwd, { inferenceExecutionIdentity: executionIdentity }, judgeVersions(args.training, executionIdentity, Object.keys(judges)), args.frozenDataset);

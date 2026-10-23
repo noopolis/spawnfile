@@ -13,8 +13,8 @@ const instructions = 'Compiler-owned identity';
  * The broker-capable training container's own fixed slot paths, mirrored under a
  * test root: `<slot>/{workspace,runtime-home,state}` are siblings, the control
  * root is the lifted acceptance-store mask `projection_sha256` binds and already
- * holds Daimon's own store, and every Paideia control input lives in the denied
- * `/run/paideia` evaluator root. Nothing here is inside the trial runtime home,
+ * holds Daimon's own store, and every Training control input lives in the denied
+ * `/run/spawnfile-training` evaluator root. Nothing here is inside the trial runtime home,
  * which is exactly what the Codex rules require and the container cannot give.
  */
 async function slotFixture(workerConfigVariant: 'unclocked' | 'clocked' = 'unclocked') {
@@ -24,8 +24,8 @@ async function slotFixture(workerConfigVariant: 'unclocked' | 'clocked' = 'unclo
     workspace: join(slot, 'workspace'), runtimeHome: join(slot, 'runtime-home'), state: join(slot, 'state'),
     acceptance: join(slot, 'state/wake-acceptance'), turns: join(slot, 'turns'), usage: join(slot, 'usage'),
     runRoot: join(root, 'run/training/output'), sealed: join(root, 'run/training/inputs'),
-    grants: join(root, 'run/training/grants'), controls: join(root, 'run/paideia'),
-    worker: join(root, 'opt/paideia/native'),
+    grants: join(root, 'run/training/grants'), controls: join(root, 'run/spawnfile-training'),
+    worker: join(root, 'opt/training/native'),
   };
   for (const path of Object.values(paths)) await mkdir(path, { recursive: true, mode: 0o700 });
   await writeFile(join(paths.workspace, 'AGENTS.md'), instructions);
@@ -35,7 +35,7 @@ async function slotFixture(workerConfigVariant: 'unclocked' | 'clocked' = 'unclo
   await writeFile(files.token, 'unit-secret-that-is-not-a-login', { mode: 0o600 });
   await writeFile(files.env, 'TRIAL_FIXTURE=unit\n', { mode: 0o600 });
   const launch: GrokNativeLaunch = {
-    schema: 'paideia.daimon-native.launch.v2', image: `sha256:${'a'.repeat(64)}`,
+    schema: 'spawnfile.training.daimon-native.launch.v2', image: `sha256:${'a'.repeat(64)}`,
     ...(workerConfigVariant === 'clocked' ? { taskClock: { origin: '2024-02-29T00:00:00Z', anchorEpochMs: Date.now(),
       libfaketimePath: '/usr/local/lib/daimon/libfaketime.so.1' } } : {}),
     config: files.config, configSha256: sha256(config), sourceConfigSha256: sha256(config),

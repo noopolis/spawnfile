@@ -67,7 +67,7 @@ export interface DatasetRecord extends RecordFields {
   stages?: Stage[];
 }
 export interface Dataset {
-  schema: 'paideia.dataset.v1';
+  schema: 'spawnfile.training.dataset.v1';
   id: string;
   subject?: string;
   training?: TrainingConfiguration;
@@ -90,7 +90,7 @@ export interface ResolvedRecord extends Omit<DatasetRecord, 'use' | 'checks' | '
   live: { checks: LiveCheck[] };
 }
 export interface ResolvedDataset {
-  schema: 'paideia.dataset.v1';
+  schema: 'spawnfile.training.dataset.v1';
   id: string;
   subject?: string;
   training?: TrainingConfiguration;

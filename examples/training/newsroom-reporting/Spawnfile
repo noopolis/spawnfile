@@ -3,7 +3,7 @@
 # Dataset views must hide evaluation/future material; a bare spawnfile run is not a trial.
 spawnfile_version: "0.1"
 kind: team
-name: paideia-scribe
+name: training-scribe
 description: Illustrative newsroom reporting environment for isolated evaluation authoring;
   preparation still required
 mode: hierarchical
@@ -173,13 +173,13 @@ networks:
           token_id: operator
         tokens:
           - id: operator
-            secret: PAIDEIA_EXAMPLE_OPERATOR_TOKEN
+            secret: SPAWNFILE_TRAINING_EXAMPLE_OPERATOR_TOKEN
             scopes:
               - admin
               - observe
               - write
           - id: scribe
-            secret: PAIDEIA_EXAMPLE_SCRIBE_TOKEN
+            secret: SPAWNFILE_TRAINING_EXAMPLE_SCRIBE_TOKEN
             scopes:
               - attach
               - observe
@@ -187,7 +187,7 @@ networks:
             agents:
               - scribe
           - id: chief
-            secret: PAIDEIA_EXAMPLE_CHIEF_TOKEN
+            secret: SPAWNFILE_TRAINING_EXAMPLE_CHIEF_TOKEN
             scopes:
               - attach
               - observe
@@ -195,7 +195,7 @@ networks:
             agents:
               - chief
           - id: reviewer
-            secret: PAIDEIA_EXAMPLE_REVIEWER_TOKEN
+            secret: SPAWNFILE_TRAINING_EXAMPLE_REVIEWER_TOKEN
             scopes:
               - attach
               - observe
@@ -203,7 +203,7 @@ networks:
             agents:
               - reviewer
           - id: wire-sensor
-            secret: PAIDEIA_EXAMPLE_WIRE_SENSOR_TOKEN
+            secret: SPAWNFILE_TRAINING_EXAMPLE_WIRE_SENSOR_TOKEN
             scopes:
               - attach
               - observe

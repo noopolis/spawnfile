@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import { identifier, parseSchema, parseYaml, rowsSchema } from '../format/index.js';
 
@@ -23,7 +24,7 @@ export const unitSchema = z.strictObject({
 const extractor = z.strictObject({ provider: identifier, model: z.string().min(1),
   prompt_digest: z.string().regex(/^[a-f0-9]{64}$/), at: z.iso.datetime({ offset: true }) });
 export const decompositionSchema = z.strictObject({
-  schema: z.literal('paideia.decomposition.v1'), output: reference,
+  schema: compatibleWireLiteral('spawnfile.training.decomposition.v1'), output: reference,
   context: z.record(identifier, reference).default({}), units: z.array(unitSchema),
   extractors: z.array(extractor).min(1),
   rejected: z.array(z.strictObject({ id, reasons: z.array(z.string()).min(1), unit: unitSchema })).optional(),
@@ -50,7 +51,7 @@ const templateSchema = z.strictObject({
     z.strictObject({ answer, known_answer: z.boolean() })])).optional(),
 });
 export const checkTemplatesSchema = z.strictObject({
-  schema: z.literal('paideia.check-templates.v1'), templates: z.array(templateSchema).min(1),
+  schema: compatibleWireLiteral('spawnfile.training.check-templates.v1'), templates: z.array(templateSchema).min(1),
   kinds: z.record(identifier, z.string().min(1)).optional(),
   context: z.record(identifier, z.strictObject({ rows: rowsSchema.optional(),
     role: z.literal('assignment').optional(), description: z.string().optional() })).default({}),

@@ -7,7 +7,7 @@ import { canonicalProtectedPaths, prepareCodexEnvironment, savedCodexHome, withi
 const roots: string[] = [];
 afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 async function fixture(): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), 'paideia-auth-boundary-')); roots.push(root);
+  const root = await mkdtemp(path.join(tmpdir(), 'training-auth-boundary-')); roots.push(root);
   await mkdir(path.join(root, 'auth'));
   await writeFile(path.join(root, 'auth', 'auth.json'), '{}');
   return root;
@@ -17,13 +17,13 @@ it('selects saved external authentication and strips API/host environment secret
   const root = await fixture();
   vi.stubEnv('CODEX_HOME', path.join(root, 'auth'));
   vi.stubEnv('OPENAI_API_KEY', 'must-not-inherit');
-  vi.stubEnv('PAIDEIA_PRIVATE_LABEL', 'must-not-inherit');
+  vi.stubEnv('SPAWNFILE_TRAINING_PRIVATE_LABEL', 'must-not-inherit');
   expect(savedCodexHome()).toBe(path.join(root, 'auth'));
   expect(savedCodexHome('/explicit')).toBe('/explicit');
   const env = await prepareCodexEnvironment(path.join(root, 'workspace'), path.join(root, 'runtime'), savedCodexHome());
   expect(env['CODEX_HOME']).toBe(await import('node:fs/promises').then((fs) => fs.realpath(path.join(root, 'auth'))));
   expect(env['OPENAI_API_KEY']).toBeUndefined();
-  expect(env['PAIDEIA_PRIVATE_LABEL']).toBeUndefined();
+  expect(env['SPAWNFILE_TRAINING_PRIVATE_LABEL']).toBeUndefined();
   vi.stubEnv('CODEX_HOME', undefined);
   expect(savedCodexHome()).toMatch(/\.codex$/u);
 });

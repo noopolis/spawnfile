@@ -130,7 +130,7 @@ it('exports a real DSPy training command without a viewer or external reporting 
 
 it('exports rejected real GEPA proposals and preserves manifests/rounds on completed resume', async () => {
   const f = await cliFixture(); roots.push(f.root);
-  const data = (records: { id: string; group: string }[]) => JSON.stringify({ schema: 'paideia.dataset.v1', id: 'example',
+  const data = (records: { id: string; group: string }[]) => JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'example',
     stages: [{ id: 'quality', checks: [
       { id: 'correct', eval: 'equals', input: 'output.text', value: 'OK' },
       { id: 'ceiling', eval: 'equals', input: 'output.text', value: 'UNREACHABLE' }],

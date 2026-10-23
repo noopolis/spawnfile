@@ -1,3 +1,4 @@
+import { ADJUDICATION_SEED } from '../../contracts/index.js';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
@@ -43,7 +44,7 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
   }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    labels = { schema: 'paideia.labels.v1', grader: grader.id, labelers: {}, labels: [] };
+    labels = { schema: 'spawnfile.training.labels.v1', grader: grader.id, labelers: {}, labels: [] };
   }
   for (const teacher of teachers) {
     const previous = labels.labelers[teacher.id];
@@ -142,8 +143,8 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
   let adjudicationFile: string | undefined;
   if (options.adjudication !== undefined) {
     adjudicationFile = `${grader.golden}.adjudication.yaml`;
-    await writeFile(adjudicationFile, stringify({ schema: 'paideia.grader-adjudication.v1', grader: grader.id,
-      seed: 'paideia.adjudication.v1', items: adjudicationRows(labels, options.adjudication) }), { mode: 0o600 });
+    await writeFile(adjudicationFile, stringify({ schema: 'spawnfile.training.grader-adjudication.v1', grader: grader.id,
+      seed: ADJUDICATION_SEED, items: adjudicationRows(labels, options.adjudication) }), { mode: 0o600 });
   }
   return { labelsFile: grader.golden, ...(adjudicationFile ? { adjudicationFile } : {}), ...counts, failures, stopped };
 }

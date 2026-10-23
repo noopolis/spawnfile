@@ -77,7 +77,7 @@ it.each([false, true])('collect receives exactly adapter-admitted IDs; foreign f
     frame.native.traces = [traceFixture()];
     const docker = dockerFixture(f.launch, f.input.trialId); docker.setTerminal(frame);
     const native = createDaimonNativeAdapter({ docker: docker.run });
-    const record = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+    const record = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: outcome
 checks:
   - {id: empty, eval: equals, input: output.text, value: ""}
@@ -95,7 +95,7 @@ records:
     expect(collected.length).toBeGreaterThan(0);
     if (foreign) expect(collected.every(value => Array.isArray(value) && value.length === 1 && value[0] === undefined)).toBe(true);
     else expect(collected.at(-1)).toEqual([{ adapterId: 'daimon-native', payload: {
-      schema: 'paideia.daimon-native.evidence.v1', wakes: [{ wakeId: 'task', executionId: frame.executionId,
+      schema: 'spawnfile.training.daimon-native.evidence.v1', wakes: [{ wakeId: 'task', executionId: frame.executionId,
         executionIds: [frame.executionId], evidenceFile: `${f.launch.controlRoot}/evidence.1.json` }],
     } }]);
   } finally { await rm(f.root, { recursive: true, force: true }); }
@@ -127,7 +127,7 @@ it.each(['identity', 'sealed', 'missing-execution', 'missing-execution-foreign-a
       }, externalInputs: { maxDeliveries: 1,
         next: async () => { docker.setTerminal(next); return { id: 'answer', text: 'reply',
           source: { kind: 'transport', id: 'answer', sha256: `sha256:${createHash('sha256').update('reply').digest('hex')}` } }; } } });
-      const record = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+      const record = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: continuation
 checks:
   - {id: empty, eval: equals, input: output.text, value: ""}
@@ -146,7 +146,7 @@ records:
       expect(deliveries).toBe(2);
       expect(collected.length).toBeGreaterThan(0);
       const expected = kind === 'missing-execution' ? [{ adapterId: 'daimon-native', payload: {
-        schema: 'paideia.daimon-native.evidence.v1', wakes: [{ wakeId: 'task', executionId: first.executionId,
+        schema: 'spawnfile.training.daimon-native.evidence.v1', wakes: [{ wakeId: 'task', executionId: first.executionId,
           executionIds: [first.executionId], evidenceFile: `${f.launch.controlRoot}/evidence.1.json` }],
       } }] : [undefined];
       expect(collected).toEqual(collected.map(() => expected));

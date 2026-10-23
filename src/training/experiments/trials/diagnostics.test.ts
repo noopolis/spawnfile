@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const valid = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial', reason: 'worker exited',
+const valid = { schema: 'spawnfile.training.daimon-native.startup-diagnostic.v1', trialId: 'trial', reason: 'worker exited',
   exitCode: 1, exitSignal: null, redaction: 'applied' as const,
   streams: { stdout: '', stderr: 'boom', truncated: { stdout: false, stderr: false } }, protectedArtifact: '/run/x.json' };
 
@@ -48,7 +48,7 @@ it('requires a withheld stream to name the detector that fired', () => {
 });
 
 it('accepts published frames and refuses malformed ones', () => {
-  const frames = [{ stream: 'stderr', schema: 'example.paideia.bootstrap-failed.v1', message: 'rejected' },
+  const frames = [{ stream: 'stderr', schema: 'example.spawnfile.training.bootstrap-failed.v1', message: 'rejected' },
     { stream: 'stdout', schema: 'x.v1', withheldBy: ['bearer'] }, { stream: 'stderr', schema: 'y.v1' }];
   expect(subjectStartupDiagnostic(Object.assign(new Error('x'), { diagnostic: { ...valid, frames } }))?.frames).toHaveLength(3);
   for (const bad of [{}, [{ stream: 'stderr' }], [{ stream: 'other', schema: 'x' }], [{ stream: 'stderr', schema: '' }],
@@ -71,7 +71,7 @@ it('accepts an adapter capture only as a plain file name with content', () => {
 });
 
 it('writes the operator capture once, privately, and never overwrites an existing one', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-capture-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-capture-'));
   try {
     const capture = { basename: 'OPERATOR-ONLY.native-startup-capture.json', content: '{"stderr":"secret"}\n' };
     const file = await writeOperatorCapture(root, capture);

@@ -19,7 +19,7 @@ async function project(): Promise<string> {
   return root;
 }
 const container = ["--training-image", `sha256:${"a".repeat(64)}`, "--training-config", "/training.json"];
-const base = ["--train", "train.paideia.yaml", "--test", "test.paideia.yaml", "--out", "local output"];
+const base = ["--train", "train.spawnfile-training.yaml", "--test", "test.spawnfile-training.yaml", "--out", "local output"];
 const { version: packageVersion } = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
 const emptyPlan = (root: string): Awaited<ReturnType<CliHandlers["createTrainingPlan"]>> => ({
   agent: { id: "agent:author", name: "author" }, deadlines: { experiment_ms: 43_200_000 }, graders: [], optimizer: null,
@@ -139,6 +139,7 @@ describe("spawnfile train --materialize", () => {
     expect(help.match(/--out <value>/gu)).toHaveLength(1);
     expect(help).toContain("--materialize <example>");
     expect(help).toContain("--history <directory>");
+    expect(help).not.toContain("--training-command");
     expect(help).not.toContain("--paideia-command");
   });
 });
@@ -239,7 +240,7 @@ describe("spawnfile train", () => {
     const options = delegate.mock.calls[0]![0];
     expect(options.context.agent.id).toBe("agent:author");
     expect(options.dryRun).toBe(true); expect(options.timeoutMs).toBe(10_000);
-    expect(options.args).toEqual(["--train", "train.paideia.yaml", "--test", "test.paideia.yaml", "--editable", "a.md", "--editable", "b.md",
+    expect(options.args).toEqual(["--train", "train.spawnfile-training.yaml", "--test", "test.spawnfile-training.yaml", "--editable", "a.md", "--editable", "b.md",
       "--resource", "archive=/private/source", "--judge", "editor=fable", "--judge", "grounding=other-model",
       "--judge-citation-repairs", "editor=1", "--judge-citation-repairs", "grounding=0", "--validation-group", "previous",
       "--out", "local output", "--max-trials", "3", "--timeout-ms", "5000", "--cost-config", "prices.yaml", "--dry-run"]);
@@ -248,10 +249,10 @@ describe("spawnfile train", () => {
 
   it("delegates YAML-owned test selection and forwards the complete default experiment budget", async () => {
     const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
-    expect(await runCli(["train", await project(), "--train", "train.paideia.yaml", "--dry-run"], {
+    expect(await runCli(["train", await project(), "--train", "train.spawnfile-training.yaml", "--dry-run"], {
       handlers: { runTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(0);
-    expect(delegate.mock.calls[0]![0]).toMatchObject({ timeoutMs: 43_205_000, args: ["--train", "train.paideia.yaml", "--dry-run", "--experiment-timeout-ms", "43200000"] });
+    expect(delegate.mock.calls[0]![0]).toMatchObject({ timeoutMs: 43_205_000, args: ["--train", "train.spawnfile-training.yaml", "--dry-run", "--experiment-timeout-ms", "43200000"] });
   });
 
   it("forwards explicit resume to training core without changing canonical agent context", async () => {
@@ -284,7 +285,7 @@ describe("spawnfile train", () => {
 
   it("allows dry-run without output or optimizer bridge, but rejects an actual run without output", async () => {
     const root = await project(), delegated = vi.fn(async () => 0);
-    const args = ["train", root, "--train", "train.paideia.yaml", "--test", "test.paideia.yaml"];
+    const args = ["train", root, "--train", "train.spawnfile-training.yaml", "--test", "test.spawnfile-training.yaml"];
     const options = { handlers: { runTraining: delegated }, streams: { stdout: () => undefined, stderr: () => undefined } };
     expect(await runCli([...args, "--dry-run"], options)).toBe(0);
     expect(delegated).toHaveBeenCalledOnce();
@@ -300,9 +301,19 @@ describe("spawnfile train", () => {
     expect(code).toBe(2); expect(forbidden).not.toHaveBeenCalled();
   });
 
+  it.each(["--paideia-command", "--training-command"])("rejects removed executable flag %s as unknown", async flag => {
+    const forbidden = vi.fn(async () => { throw Error("must not start"); });
+    const stderr: string[] = [];
+    expect(await runCli(["train", "/missing", ...base, flag, "/removed"], {
+      handlers: { runTraining: forbidden }, streams: { stdout() {}, stderr: value => stderr.push(value) }
+    })).toBe(2);
+    expect(stderr.join("\n")).toContain(`unknown option '${flag}'`);
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+
   it("rejects generic runtime/instruction overrides and missing required datasets", async () => {
     const forbidden = vi.fn(async () => { throw Error("must not start"); });
-    for (const args of [["train", ...base, "--paideia-command", "/removed"], ["train", ...base, "--runtime", "pi"], ["train", ...base, "--instructions", "prompt.md"], ["train", "--dry-run"]]) {
+    for (const args of [["train", ...base, "--paideia-command", "/removed"], ["train", ...base, "--training-command", "/removed"], ["train", ...base, "--runtime", "pi"], ["train", ...base, "--instructions", "prompt.md"], ["train", "--dry-run"]]) {
       expect(await runCli(args, { handlers: { runTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined } })).toBe(2);
     }
     expect(forbidden).not.toHaveBeenCalled();
@@ -315,7 +326,7 @@ describe("spawnfile train", () => {
       "--judge-citation-repairs", literal, "--dry-run"], {
       handlers: { runTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);
-    expect(delegate.mock.calls[0]![0].args).toEqual(["--train", "train.paideia.yaml", "--test", "test.paideia.yaml",
+    expect(delegate.mock.calls[0]![0].args).toEqual(["--train", "train.spawnfile-training.yaml", "--test", "test.spawnfile-training.yaml",
       "--judge-citation-repairs", literal, "--judge-citation-repairs", literal, "--out", "local output", "--dry-run", "--experiment-timeout-ms", "43200000"]);
   });
 });

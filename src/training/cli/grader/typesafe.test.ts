@@ -16,13 +16,13 @@ afterEach(async () => {
 async function fixture(count: number) {
   const root = await mkdtemp(join(tmpdir(), 'typesafe-calibration-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml');
-  const grader = parseGrader({ schema: 'paideia.grader.v1', id: 'quality', golden: 'labels.yaml', calibration: 'calibration.json',
+  const grader = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'quality', golden: 'labels.yaml', calibration: 'calibration.json',
     teachers: [{ id: 'teacher', provider: 'claude', model: 'opus' }],
     model: { backend: 'typesafe', name: 'jev-1.13.0' },
     escalate: { to: 'teacher', between: [0.4, 0.6] },
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.good'], ask: 'Is it good?' },
       { id: 'q2', type: 'yes-no', expected: 'yes', reads: ['output.good'], ask: 'Is it accurate?' }], score: { method: 'weighted' } });
-  const labels = { schema: 'paideia.labels.v1', grader: 'quality', labelers: { human: { kind: 'human', name: 'Reader' } },
+  const labels = { schema: 'spawnfile.training.labels.v1', grader: 'quality', labelers: { human: { kind: 'human', name: 'Reader' } },
     labels: Array.from({ length: count }, (_, i) => ({ id: `o${i}`, lineage: `g${i}`, output: { good: i % 2 === 0 }, context: {},
       votes: { q: { human: i % 2 === 0 ? 'yes' : 'no' }, q2: { human: i % 2 === 0 ? 'yes' : 'no' } },
       provenance: { human: { votes: Object.fromEntries(allQuestions(grader).map(question => [question.id, {
@@ -49,7 +49,7 @@ it('batches TypeSafe calibration, reports paid totals, excludes cache hits and n
   const report = await readFile(first.reportFile, 'utf8');
   expect(report).toContain('decisionAccounting');
   const { readdir } = await import('node:fs/promises');
-  const cacheDirectory = join(f.root, '.paideia/grader-cache');
+  const cacheDirectory = join(f.root, '.spawnfile-training/grader-cache');
   const cache = await Promise.all((await readdir(cacheDirectory)).map(file => readFile(join(cacheDirectory, file), 'utf8')));
   expect(JSON.stringify(first) + report + cache.join('')).not.toContain(secret);
   const second = await runCalibrate(f);
@@ -126,7 +126,7 @@ it.each([1, 2])('emits completed and failed API receipts after %i successful cal
     cwd: f.root, stdout: text => stdout.push(text), stderr: text => stderr.push(text),
   })).toBe(2);
   const result = JSON.parse(stdout[0]!) as { decisionAccounting: { receipts: { status: number; inputTokens: number | null }[] } };
-  expect(result).toMatchObject({ schema: 'paideia.grader-failure.v1', command: 'calibrate', status: 'failed' });
+  expect(result).toMatchObject({ schema: 'spawnfile.training.grader-failure.v1', command: 'calibrate', status: 'failed' });
   expect(result.decisionAccounting.receipts.filter(receipt => receipt.status === 200)).toHaveLength(completed);
   expect(result.decisionAccounting.receipts.filter(receipt => receipt.status === 529).length).toBeGreaterThanOrEqual(3);
   expect(result.decisionAccounting.receipts.slice(0, completed).map(receipt => receipt.inputTokens)).toEqual(Array(completed).fill(100));
@@ -157,7 +157,7 @@ it.each([false, true])('owns exactly its requests across overlapping gradeOutput
     } });
   const options = { grader: f.grader, backend, resource: {}, output: { good: true },
     goldenDigest: stableDigest('golden'), promptTemplateVersion: DECISION_PROMPT_VERSION,
-    calibration: { schema: 'paideia.grader-calibration.v1' as const,
+    calibration: { schema: 'spawnfile.training.grader-calibration.v1' as const,
       identity: createCalibrationIdentity(f.grader, { backendModel: await decisionBackendIdentity(f.grader, backend),
         golden: stableDigest('golden'), promptTemplateVersion: DECISION_PROMPT_VERSION, seed: '0', exclusions: [] }),
       questions: Object.fromEntries(['q', 'q2'].map(id => [id, { status: 'calibrated' as const, failures: [],

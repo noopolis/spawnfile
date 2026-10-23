@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { expect, it } from 'vitest';
 const run = promisify(execFile);
 const mutations = [
-  { file: 'src/training/cli/training/inference.ts', before: " || process.env.PAIDEIA_EVALUATOR_ROUTES_FILE !== undefined",
+  { file: 'src/training/cli/training/inference.ts', before: " || trainingEnvironment('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE') !== undefined",
     after: '', test: 'src/training/cli/training/request-cap.test.ts', title: 'budgets proposals with a shared judge model' },
   { file: 'src/training/inference/evaluator/policy.ts', before: 'value.provider === provider && value.purpose === purpose && value.model === model',
     after: 'value.provider === provider', test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'admits only exact explicitly' },
@@ -32,6 +32,7 @@ it('kills each evaluator admission, request, spend, receipt and secret-isolation
   try {
     await cp(join(source, 'src/training'), join(root, 'src/training'), { recursive: true,
       filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
+    await cp(join(source, 'src/shared'), join(root, 'src/shared'), { recursive: true });
     await cp(join(source, 'src/runtime/daimon/training'), join(root, 'src/runtime/daimon/training'), { recursive: true });
     for (const file of ['package.json', 'tsconfig.json']) await cp(join(source, file), join(root, file));
     await writeFile(join(root, 'vitest.config.mjs'), 'export default {test:{include:["src/**/*.test.ts"]}};');

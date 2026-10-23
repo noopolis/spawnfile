@@ -1,3 +1,5 @@
+import { trainingEnvironment } from '../../platform/index.js';
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { constants, closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { z } from 'zod';
@@ -14,7 +16,7 @@ const route = z.object({
     ctx.addIssue({ code: 'custom', message: 'Evaluator purpose requires an explicit supported budgeted provider' });
   }
 });
-const schema = z.object({ version: z.literal('paideia.evaluator-routes.v1'), routes: z.array(route).min(1).max(64),
+const schema = z.object({ version: compatibleWireLiteral('spawnfile.training.evaluator-routes.v1'), routes: z.array(route).min(1).max(64),
   receiptPath: z.string().min(1).refine(isAbsolute),
 }).strict().superRefine((value, ctx) => {
   const keys = value.routes.map(routeKey);
@@ -36,7 +38,7 @@ export function readProtectedFile(file: string, maximum: number): string {
   } finally { closeSync(fd); }
 }
 export function evaluatorPolicy() {
-  const file = process.env.PAIDEIA_EVALUATOR_ROUTES_FILE;
+  const file = trainingEnvironment('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE');
   if (!file) return undefined;
   try { return schema.parse(JSON.parse(readProtectedFile(file, 64 * 1024))); }
   catch { throw Error('Invalid evaluator route policy'); }

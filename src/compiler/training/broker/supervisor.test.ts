@@ -11,7 +11,7 @@ const stubRuntime = (overrides: Partial<TrainingSlotRuntime> = {}) => {
     reset: async () => { order.push("drain"); },
     wipe: async () => { order.push("wipe"); state.leftovers = []; },
     provision: async () => { order.push("provision"); },
-    canaries: async () => { order.push("canaries"); return [{ path: "/run/paideia/context.json", method: "sandboxed-read" as const, result: "denied" as const }]; },
+    canaries: async () => { order.push("canaries"); return [{ path: "/run/spawnfile-training/context.json", method: "sandboxed-read" as const, result: "denied" as const }]; },
     nextGeneration: async () => { order.push("generation"); state.generation += 1; return state.generation; },
     publishReceipt: async () => { order.push("receipt"); return "/run/training/slots/0/preflight.json"; },
     log: () => undefined,

@@ -16,7 +16,7 @@ const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const digest = 'a'.repeat(64);
 function grading(id: string, size: number): AtomicGradeResult {
-  return { schema: 'paideia.atomic-grade.v1', status: 'pass', score: 1, coverage: 1, criticalGate: 1,
+  return { schema: 'spawnfile.training.atomic-grade.v1', status: 'pass', score: 1, coverage: 1, criticalGate: 1,
     obligationCoverage: 1, quality: 1, identity: { definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest },
     checks: Array.from({ length: 378 }, (_, index) => ({
       check: { id: `${id}-${index}`, template_id: 'support', unit_id: `unit-${index}`, type: 'noul',
@@ -30,7 +30,7 @@ function grading(id: string, size: number): AtomicGradeResult {
 function trial(id: string, phase: TrialReport['phase'], candidateId: string, size: number): TrialReport {
   const check = { id: 'writing', status: 'pass' as const, finality: 'final' as const, score: 1,
     reason: 'All checks passed', evidence: [], atomicGrading: grading(id, size) };
-  return { schema: 'paideia.trial.v1', id, phase, candidateId, recordId: phase, datasetDigest: digest, planDigest: digest,
+  return { schema: 'spawnfile.training.trial.v1', id, phase, candidateId, recordId: phase, datasetDigest: digest, planDigest: digest,
     paths: { root: '/fixture', workspace: '/fixture/workspace', control: '/fixture/control', runtimeHome: '/fixture/runtime' },
     status: 'pass', execution: 'completed', hostWork: 'settled',
     stop: { state: 'acknowledged', scope: 'native-handle', quiescence: 'confirmed', remoteWork: 'unknown', reason: 'completed', detail: 'fixture' },
@@ -45,7 +45,7 @@ async function fixture() {
   const baseline = await snapshotCandidate({ sourceRoot: root, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
     destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' }] });
   const store = await openExperimentStore(root);
-  const dataset = (id: string) => resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1\nid: ${id}\nchecks: [{id: writing, eval: contains-any, input: output.text, values: [Finished]}]\nrecords: [{id: ${id}, group: ${id}, input: {prompt: Task ${id}}}]\n`));
+  const dataset = (id: string) => resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1\nid: ${id}\nchecks: [{id: writing, eval: contains-any, input: output.text, values: [Finished]}]\nrecords: [{id: ${id}, group: ${id}, input: {prompt: Task ${id}}}]\n`));
   const options: TrainingOptions = { id: 'experiment', concurrency: 1, baseline, train: dataset('train'), validation: dataset('validation'), test: dataset('test'),
     native: { store, storeRoot: root, root, model: 'fixture', timeoutMs: 1000,
       registry: createEvaluationRegistry(), evaluation: { judges: {}, embeddings: {}, readText: async () => '' },
@@ -56,7 +56,7 @@ async function fixture() {
       async generate() { throw new Error('Frozen optimizer must not generate'); } } },
     bridge: { command: 'unused', cwd: root, timeoutMs: 1000 }, budget: { maxMetricCalls: 100, maxProposals: 1 },
     checkpoint: { directory: join(root, 'checkpoint'), identity: 'fixture', resume: false } };
-  const createRun = async (report: TrialReport) => store.createRun({ schema: 'paideia.run.v1', id: report.id, datasetId: report.phase,
+  const createRun = async (report: TrialReport) => store.createRun({ schema: 'spawnfile.training.run.v1', id: report.id, datasetId: report.phase,
     datasetRole: report.phase, candidateId: baseline.id, planDigest: digest, recordId: report.recordId });
   return { root, options, store, createRun };
 }
@@ -89,7 +89,7 @@ it('loads a completed legacy inline checkpoint, resumes to a training report and
     await store.appendEvaluation(report.id, { id: 'original', report });
     await checkpoint.complete(report.phase === 'test' ? `test:${options.baseline.id}:test` : report.phase, report);
   }
-  const optimizer: optimization.DspyResult = { schema: 'paideia.dspy.v2', kind: 'result', id: options.id,
+  const optimizer: optimization.DspyResult = { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: options.id,
     components: Object.fromEntries(candidateComponents(options.baseline).map(component => [component.id, component.text])),
     provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 2, proposals: 0,
       selectedCandidateIndex: 0, generations: [], captures: [], candidates: [] } };

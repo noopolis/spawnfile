@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import { resolveCostAssumptions } from './assumptions.js';
 import { standardPrices } from './catalog.js';
@@ -9,7 +10,7 @@ const price = z.object({ model: z.string().min(1), vendor: z.string().min(1), cu
   source: z.string().min(1), checkedAt: z.iso.date(), scope: z.string().min(1),
   longContext: z.object({ aboveInputTokens: z.number().int().positive(), inputMultiplier: z.number().min(1), outputMultiplier: z.number().min(1) }).strict().optional(),
 }).strict();
-const schema = z.object({ schema: z.literal('paideia.cost-config.v1'), assumptions: z.unknown().optional(),
+const schema = z.object({ schema: compatibleWireLiteral('spawnfile.training.cost-config.v1'), assumptions: z.unknown().optional(),
   prices: z.array(price).optional() }).strict();
 
 /** Explicit per-model overrides; no alias guessing and no network price refresh. */

@@ -32,6 +32,7 @@ it("kills native slot mutants through behavioral assertions in isolated copies",
   const sandbox = await mkdtemp(join(tmpdir(), "native-slot-mutations-"));
   try {
     await cp(join(root, "src/training"), join(sandbox, "src/training"), { recursive: true, filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
+    await cp(join(root, 'src/shared'), join(sandbox, 'src/shared'), { recursive: true });
     await cp(join(root, 'src/runtime/daimon/training'), join(sandbox, 'src/runtime/daimon/training'), { recursive: true });
     await cp(join(root, "package.json"), join(sandbox, "package.json"));
     await symlink(join(root, "node_modules"), join(sandbox, "node_modules"));

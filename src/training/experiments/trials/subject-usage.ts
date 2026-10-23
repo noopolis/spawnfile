@@ -30,7 +30,7 @@ export function subjectUsageSnapshot(turns: readonly SubjectTurnResult[], option
   let usage: Usage;
   if (totals.length === 1) usage = structuredClone(totals[0]!);
   else {
-    usage = { inputTokens: null, cachedInputTokens: null, outputTokens: null, reasoningTokens: null, source: 'paideia.subject.returned-turn-totals.v1' };
+    usage = { inputTokens: null, cachedInputTokens: null, outputTokens: null, reasoningTokens: null, source: 'spawnfile.training.subject.returned-turn-totals.v1' };
     for (const key of [...required, ...optional]) {
       if (optional.includes(key as (typeof optional)[number]) && totals.every(row => row[key] === undefined)) continue;
       if (totals.some(row => row[key] == null)) { usage[key] = null; continue; }

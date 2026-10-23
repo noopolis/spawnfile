@@ -1,16 +1,16 @@
 # Fixed questions and deterministic text checks
 
-Use the existing `paideia.grader.v1` format when humans have already written the
+Use the existing `spawnfile.training.grader.v1` format when humans have already written the
 questions. It expands fixed questions, binds only declared reads, and sends them
 to the existing decision backend. There is no decomposition or LLM extraction.
 `llm-rubric` remains the separate free-form semantic evaluator. See the complete
-[three-family dataset](../examples/fixed-questions/evals/delivery.paideia.yaml)
+[three-family dataset](../examples/fixed-questions/evals/delivery.spawnfile-training.yaml)
 and [six-question grader](../examples/fixed-questions/evals/item.grader.yaml).
 
 ## Explicit identity calibration
 
 ```yaml
-schema: paideia.grader.v1
+schema: spawnfile.training.grader.v1
 id: fixed-reader
 calibration: identity
 context:
@@ -70,7 +70,7 @@ both protected-file and scoring identity; rescoring is not a new subject trial.
 ## Per-case data and private hooks
 
 ```yaml
-schema: paideia.dataset.v1
+schema: spawnfile.training.dataset.v1
 id: fixed-cases
 records:
   - id: delivery

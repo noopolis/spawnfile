@@ -9,7 +9,7 @@ import { DSPY_SCHEMA, startSchema, type DspyRequest } from './protocol.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-async function directory() { const root = await mkdtemp(join(tmpdir(), 'paideia-resume-')); roots.push(root); return root; }
+async function directory() { const root = await mkdtemp(join(tmpdir(), 'training-resume-')); roots.push(root); return root; }
 
 it('restores actual GEPA state after interruption without repeating settled subject or generation callbacks', async () => {
   const { options, evaluations, generations } = simulatedOptions();

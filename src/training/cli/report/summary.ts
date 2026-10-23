@@ -160,7 +160,7 @@ export function summarizeTraining(report: TrainingReport) {
           } };
       }),
   }));
-  return { schema: 'paideia.training-export.v1' as const, id: report.id, selectedCandidateId: report.selected.id,
+  return { schema: 'spawnfile.training.training-export.v1' as const, id: report.id, selectedCandidateId: report.selected.id,
     ...(report.retries?.length ? { retries: report.retries } : {}),
     baselineCandidateId: report.baseline.id, candidates: entries, rounds: report.optimizer.provenance.rounds ?? [], roundScores,
     unattributedSearchTrialIds: report.trials.filter(trial => trial.phase !== 'test' && trial.round === undefined).map(trial => trial.id),

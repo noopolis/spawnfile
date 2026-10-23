@@ -9,7 +9,7 @@ it('accepts the actual DSPy proposal schema and preserves its closed impact arra
   // Exercise the bridge producer itself so a copied fixture cannot hide schema drift.
   const { stdout } = await promisify(execFile)(resolve('src/training/dspy/.venv/bin/python'), ['-c', [
     'import json',
-    'from paideia_dspy.reflection import proposal_schema',
+    'from spawnfile_training_dspy.reflection import proposal_schema',
     'components = {"type": "object", "properties": {"AGENTS.md": {"type": "string"}},',
     '              "required": ["AGENTS.md"], "additionalProperties": False}',
     'print(json.dumps(proposal_schema(components)))',

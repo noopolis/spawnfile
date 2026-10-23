@@ -2,23 +2,28 @@ import { mkdir, readFile, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stableDigest } from '../../graders/index.js';
 import type { DecisionBackend, DecisionRequestReceipt, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
-import { DECISION_PROMPT_VERSION } from '../../inference/decision/index.js';
+import { GRADER_CACHE_PROMPT_DOMAIN, GRADER_CACHE_LEGACY_DIRECTORY } from '../../contracts/index.js';
 
 export async function cachedScores(directory: string, backend: DecisionBackend, identity: string,
   requests: readonly DecisionRequest[], concurrency: number, signal?: AbortSignal, receipts?: DecisionRequestReceipt[]): Promise<DecisionResult[]> {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error('concurrency must be a positive integer');
   signal?.throwIfAborted();
-  const root = join(directory, '.paideia', 'grader-cache');
+  const root = join(directory, '.spawnfile-training', 'grader-cache');
   await mkdir(root, { recursive: true });
   const file = join(root, `${identity}.jsonl`);
   const cache = new Map<string, DecisionResult>();
-  let source = '';
-  try { source = await readFile(file, 'utf8'); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-  for (const line of source.split('\n').filter(Boolean)) {
-    const row = JSON.parse(line) as { digest: string; result: DecisionResult };
-    if (typeof row.digest !== 'string' || !row.result || !['ok', 'missing'].includes(row.result.status)) throw new Error('Invalid grader cache entry');
-    cache.set(row.digest, row.result);
+  // Load historical entries first; a current entry wins per digest, even when
+  // the current file exists but contains only some of the requested scores.
+  for (const candidate of [join(directory, GRADER_CACHE_LEGACY_DIRECTORY, 'grader-cache', `${identity}.jsonl`), file]) {
+    let source = '';
+    try { source = await readFile(candidate, 'utf8'); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    for (const line of source.split('\n').filter(Boolean)) {
+      const row = JSON.parse(line) as { digest: string; result: DecisionResult };
+      if (typeof row.digest !== 'string' || !row.result || !['ok', 'missing'].includes(row.result.status)) throw new Error('Invalid grader cache entry');
+      // Missing scores are retryable, including historical stored entries.
+      if (row.result.status === 'ok') cache.set(row.digest, row.result);
+    }
   }
   const results: DecisionResult[] = new Array(requests.length);
   let next = 0;
@@ -35,7 +40,7 @@ export async function cachedScores(directory: string, backend: DecisionBackend, 
         const entries = indices.map(index => {
           const request = requests[index]!;
           const { key: _key, ...content } = request;
-          const digest = stableDigest({ content, identity, prompt: DECISION_PROMPT_VERSION });
+          const digest = stableDigest({ content, identity, prompt: GRADER_CACHE_PROMPT_DOMAIN });
           return { index, request, digest, cached: cache.get(digest) };
         });
         const pending = entries.filter(entry => !entry.cached);

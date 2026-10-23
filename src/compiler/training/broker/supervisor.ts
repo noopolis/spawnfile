@@ -57,7 +57,7 @@ export const startTrainingSlot = async (runtime: TrainingSlotRuntime, nonce: str
 
 export interface TrainingSlotSupervisorOptions {
   runtimes: readonly TrainingSlotRuntime[];
-  /** Only this uid may recycle. Paideia, DSPy and the judges all run as it; every worker uid is refused. */
+  /** Only this uid may recycle. Training, DSPy and the judges all run as it; every worker uid is refused. */
   organizationUid?: number;
   drainTimeoutMs?: number;
   now?: () => number;

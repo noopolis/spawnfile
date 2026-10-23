@@ -151,5 +151,9 @@ jobs:
           env -u TYPESAFE_API_KEY python -m venv src/training/dspy/.venv
           env -u TYPESAFE_API_KEY src/training/dspy/.venv/bin/python -m pip install -r src/training/dspy/requirements.lock
           env -u TYPESAFE_API_KEY src/training/dspy/.venv/bin/python -m pip install --no-deps -e src/training/dspy
+      - name: Verify renamed DSPy package and console script
+        run: |
+          env -u TYPESAFE_API_KEY src/training/dspy/.venv/bin/python -c 'import importlib.metadata, spawnfile_training_dspy; assert importlib.metadata.distribution("spawnfile-training-dspy-bridge").entry_points["spawnfile-training-dspy"].value == "spawnfile_training_dspy.main:cli"'
+          env -u TYPESAFE_API_KEY src/training/dspy/.venv/bin/python -c 'import json, subprocess; result=subprocess.run(["src/training/dspy/.venv/bin/spawnfile-training-dspy"], input="{}\n", capture_output=True, text=True, check=False); terminal=json.loads(result.stdout); assert result.returncode == 1 and terminal["schema"] == "spawnfile.training.dspy.v2" and terminal["error"]["code"] == "invalid_request"'
       - name: Test the bridge and enforce per-module Python coverage
         run: env -u TYPESAFE_API_KEY npm run test:training-python

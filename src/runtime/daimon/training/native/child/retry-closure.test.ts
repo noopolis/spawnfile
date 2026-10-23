@@ -33,7 +33,7 @@ async function fixture() {
 const fs=require('node:fs');
 fs.writeFileSync(${JSON.stringify(join(f.launch.controlRoot, 'child-env.json'))},JSON.stringify({pid:process.pid}));
 process.on('SIGTERM',()=>process.exit(0));
-console.log(${JSON.stringify(JSON.stringify({ schema: 'paideia.daimon-native.ready.v1', trialId: f.input.trialId,
+console.log(${JSON.stringify(JSON.stringify({ schema: 'spawnfile.training.daimon-native.ready.v1', trialId: f.input.trialId,
     configSha256: f.launch.configSha256, agentId: f.launch.agent.id, model: f.launch.agent.model, port: f.launch.host.port }))});
 setInterval(()=>{},100);
 `);

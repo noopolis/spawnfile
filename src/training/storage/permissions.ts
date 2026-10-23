@@ -1,8 +1,9 @@
+import { canonicalWireId } from '../contracts/index.js';
 import type { ReadAccess, RunManifest, Visibility } from './types.js';
 import { assertIdentity } from './content.js';
 
 export function validateManifest(manifest: RunManifest): void {
-  if (manifest.schema !== 'paideia.run.v1') throw new Error('Unsupported stored run schema');
+  if (canonicalWireId(manifest.schema) !== 'spawnfile.training.run.v1') throw new Error('Unsupported stored run schema');
   for (const value of [manifest.id, manifest.datasetId, manifest.candidateId, manifest.planDigest]) assertIdentity(value);
   if (!['train', 'validation', 'test'].includes(manifest.datasetRole)) throw new Error('Invalid dataset role');
   for (const key of Object.keys(manifest)) if (!['schema', 'id', 'datasetId', 'datasetRole', 'candidateId', 'planDigest', 'recordId', 'metadata'].includes(key)) throw new Error(`Unknown manifest field: ${key}`);

@@ -1,7 +1,7 @@
 import { grokGrantEnvKey, type GrokGrantModel, type GrokGrantReasoningEffort } from '../../../../../training/contracts/inference-grants.js';
 
 /**
- * Paideia's pin of Daimon's evaluator inference client contract
+ * Training's pin of Daimon's evaluator inference client contract
  * (`GROK_ENGINE_BROKER.inferenceGrants` in runtime-contract-manifest v4, Grok CLI 1.0.34).
  * These inference-only bytes are unchanged by the clocked subject worker config.
  * Independent of the installed Daimon so drift in either side fails closed.

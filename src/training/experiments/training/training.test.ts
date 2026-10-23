@@ -15,14 +15,14 @@ import { trainAgent, type TrainingOptions } from './training.js';
 const cleanup: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(cleanup.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 function dataset(id: string, tokens: [string, string][]) {
-  return resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id,
+  return resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id,
     checks: [{ id: 'shape', eval: 'contains-any', input: 'output.text', values: ['ack:'] }],
     records: tokens.map(([token, group]) => ({ id: token, group, input: { prompt: JSON.stringify({ token }) },
       checks: [{ id: 'answer', eval: 'equals', input: 'output.text', value: `ack:${token.toLowerCase()}` }] })),
   })));
 }
 async function fixture(editable = true): Promise<{ options: TrainingOptions; events: { type: string; payload: unknown }[]; source: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-train-test-')); cleanup.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-train-test-')); cleanup.push(root);
   const source = join(root, 'source'); await mkdir(source);
   await writeFile(join(source, 'AGENTS.md'), 'Copy the input token unchanged.');
   const baseline = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
@@ -70,7 +70,7 @@ it('runs fixed partitions, freezes selection, then compares fresh sealed baselin
     const improved = await request.evaluate({ caseId: 'Beta', split: 'validation', components }, signal);
     expect(improved.score).toBe(1); expect(improved.feedback).toBe('');
     expect((await request.generate({ purpose: 'reflection', messages: [{ role: 'system', content: 'Optimize declared instructions.' }, { role: 'user', content: 'reflect' }], options: {} }, signal)).text).toBe('reflection');
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 3, proposals: 1,
         selectedCandidateIndex: 1, candidates: [
           { components: { ...request.components }, parents: [null], validationScore: 0, discoveryEvaluations: 0 },
@@ -188,7 +188,7 @@ it('overlaps four stored trials, holds a fifth through closure and collection, a
     gates[4]!.resolve(); gates[3]!.resolve(); gates[1]!.resolve(); gates[0]!.resolve();
     const results = await Promise.all(calls);
     expect(new Set(results.map(result => result.captureId)).size).toBe(5);
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: { ...request.components },
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components: { ...request.components },
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
         evaluations: 5, proposals: 0, selectedCandidateIndex: 0, candidates: [], captures: [], generations: [] } };
   });
@@ -236,7 +236,8 @@ it('keeps the pre-population training checkpoint identity when search is absent'
   await TrainingCheckpoint.open(options, datasets);
   const saved = JSON.parse(await readFile(join(options.checkpoint.directory, 'training.json'), 'utf8'));
   const legacyIdentity = trainingDigest({
-    execution: options.checkpoint.identity, id: options.id, baseline: options.baseline, datasets,
+    execution: options.checkpoint.identity, id: options.id, baseline: { ...options.baseline, schema: 'paideia.candidate.v1' },
+    datasets: datasets.map(dataset => ({ ...dataset, schema: 'paideia.dataset.v1' })),
     adapter: options.native.adapter.id, model: options.native.model, resources: options.native.resources,
     optimizer: { provider: options.inference.provider.id, model: options.inference.model },
     seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, maxRecoveryAttempts: 2,
@@ -282,7 +283,7 @@ it('leases four slots for fresh sealed pairs only after selection freezes and ne
       const result = await request.evaluate({ caseId: 'Beta', split: 'validation', components: current }, signal);
       expect(result.feedback).toBe(''); expect(result.output).toBe('');
     }
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
         evaluations: 4, proposals: 1, selectedCandidateIndex: 1, candidates: [], captures: [], generations: [] } };
   });
@@ -317,7 +318,7 @@ it('binds opt-in deferred rewards into checkpoint identity while zero retains th
 
 it.each([false, true])('recovers a persisted deferral-only stage score from a populated checkpoint (cached report: %s)', async cached => {
   const { options, events } = await fixture();
-  options.train = resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id: 'deferred',
+  options.train = resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id: 'deferred',
     stages: [{ id: 'quality', checks: [
       { id: 'ready', eval: 'equals', input: 'output.text', value: 'ready' },
       { id: 'perfect', eval: 'equals', input: 'output.text', value: 'perfect' },

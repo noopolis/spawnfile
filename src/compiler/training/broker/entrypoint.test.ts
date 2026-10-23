@@ -41,7 +41,7 @@ describe("training Grok credential authority", () => {
 
 describe("training container privilege model", () => {
   it("runs train as the organization uid and refuses to exec with any capability left", () => {
-    const argv = trainingChildArgv(["--spawnfile-context", "/run/paideia/context.json"]);
+    const argv = trainingChildArgv(["--spawnfile-context", "/run/spawnfile-training/context.json"]);
     expect(argv.slice(0, 8)).toEqual(["setpriv", "--clear-groups", "--reuid=2000", "--regid=2000", "--inh-caps=-all", "--ambient-caps=-all", "--bounding-set=-all", "--"]);
     const guard = argv[10]!;
     expect(guard).toContain('test "$(sed -n "s/^CapBnd:[[:space:]]*//p" /proc/self/status)" = 0000000000000000');
@@ -69,12 +69,12 @@ describe("training container privilege model", () => {
     const mounts = trainingBrokerMounts({ realmVolume: "training-realm", bootstrap: "/host/auth.json", declaration: "/host/training-broker.json" });
     expect(mounts[0]).toBe(`type=volume,src=training-realm,dst=${TRAINING_REALM_MOUNT}`);
     expect(mounts[1]).toContain("readonly");
-    expect(mounts[2]).toContain("dst=/run/paideia/training-broker.json,readonly");
+    expect(mounts[2]).toContain("dst=/run/spawnfile-training/training-broker.json,readonly");
   });
 
   it("exports the broker control socket and a private grant home root to the evaluator", () => {
-    expect(TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV).toBe("PAIDEIA_GROK_BROKER_CONTROL_SOCKET");
-    expect(TRAINING_GROK_GRANT_HOME_ROOT_ENV).toBe("PAIDEIA_GROK_GRANT_HOME_ROOT");
+    expect(TRAINING_GROK_BROKER_CONTROL_SOCKET_ENV).toBe("SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET");
+    expect(TRAINING_GROK_GRANT_HOME_ROOT_ENV).toBe("SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT");
   });
 });
 

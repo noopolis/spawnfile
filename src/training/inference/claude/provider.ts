@@ -24,7 +24,7 @@ export function createClaudeInference(options: ClaudeInferenceOptions = {}): Inf
       validateInferenceSchema(request.responseSchema);
       const responseSchema = request.responseSchema === undefined ? undefined : structuredClone(request.responseSchema);
       validateRequest(request);
-      const cwd = await mkdtemp(path.join(tmpdir(), 'paideia-inference-'));
+      const cwd = await mkdtemp(path.join(tmpdir(), 'training-inference-'));
       const env = claudeEnvironment();
       let result: Record<string, unknown> | undefined;
       let reportedModel: string | undefined;

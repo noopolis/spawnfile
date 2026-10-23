@@ -75,7 +75,7 @@ export async function repairMeasurement(input: RecoveryInput, receiptDigest: str
   const retainedCallIds = (measured.judgeCalls ?? []).filter(call =>
     baseline.judgeCalls?.some(previousCall => previousCall.id === call.id)).map(call => call.id);
   const repaired: RepairedMeasurement = {
-    schema: 'paideia.rescore.v1', id, runId: report.id, scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
+    schema: 'spawnfile.training.rescore.v1', id, runId: report.id, scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
     original: { evaluationId: source.id, digest: source.digest, candidateId: original.candidateId,
       datasetDigest: original.datasetDigest, planDigest: original.planDigest, recordId: original.recordId, phase: original.phase, status: original.status },
     criteria: { datasetId: input.dataset.id, datasetDigest: input.dataset.sourceDigest, sharedPlanDigest: input.dataset.sharedPlanDigest,

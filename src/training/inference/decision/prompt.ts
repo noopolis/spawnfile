@@ -1,8 +1,10 @@
+import { GRADER_CACHE_PROMPT_DOMAIN } from '../../contracts/index.js';
 import type { DecisionRequest } from '../../contracts/grading.js';
 
 // v4 fingerprints Jev input preparation. Regenerate calibration; earlier scores
 // cannot distinguish servers that truncate inputs from servers that refuse them.
-export const DECISION_PROMPT_VERSION = 'paideia.grader-prompt.v4';
+// The actual model prompt and cache domain share the historical protocol version.
+export const DECISION_PROMPT_VERSION = GRADER_CACHE_PROMPT_DOMAIN;
 export const DECISION_LETTERS = 'ABCDEFGHIJKLMNOP';
 
 export function validateDecisionRequest(request: DecisionRequest): void {

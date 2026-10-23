@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { decodeGrok, grokFailureEvidence, validateGrokInitialization, type GrokAuthMode, type GrokFrames } from './protocol.js';
 
 const grant: GrokAuthMode = { auth: 'broker-grant', clientModelId: 'daimon-inference-grok', grantModel: 'grok-4.6' };
-/** Frames captured from Grok 1.0.34 running the Paideia judge argv through a real Daimon broker grant (P2c live, stub upstream). */
+/** Frames captured from Grok 1.0.34 running the Training judge argv through a real Daimon broker grant (P2c live, stub upstream). */
 const captured = (): GrokFrames => ({
   init: { type: 'system', subtype: 'init', model: 'daimon-inference-grok', tools: [], mcp_servers: [], apiKeySource: 'user' },
   assistant: { type: 'assistant', session_id: 's', message: { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"score":1}' }] } },

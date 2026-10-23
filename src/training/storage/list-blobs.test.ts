@@ -7,9 +7,9 @@ import { contentDigest, digestName } from './content.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture(role: 'train' | 'validation' | 'test' = 'train') {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-blob-list-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-blob-list-')); roots.push(root);
   const store = await openExperimentStore(root);
-  await store.createRun({ schema: 'paideia.run.v1', id: 'run', datasetId: 'data', datasetRole: role,
+  await store.createRun({ schema: 'spawnfile.training.run.v1', id: 'run', datasetId: 'data', datasetRole: role,
     candidateId: 'candidate', planDigest: 'plan' });
   return { root, store };
 }

@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { builtinEvaluatorDefinitions, compileJsonSchema, parseDatasetYaml, resolveDataset } from './index.js';
 
 function document(schema: unknown, extraChecks: unknown[] = []) {
-  return parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id: 'shape',
+  return parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'shape',
     checks: [...extraChecks, { id: 'valid', eval: 'json-schema', input: 'output.text', schema }],
     records: [{ id: 'one', input: { prompt: 'A response' } }, { id: 'two', input: { prompt: 'Another response' } }] }));
 }

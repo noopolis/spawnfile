@@ -32,7 +32,7 @@ it('resolves dataset-relative test and YAML budgets before starting and permits 
   const f = await fixture();
   const args = authoredArguments(parseArguments(f.args), f.io);
   expect(args.flags).toMatchObject({ test: [join(f.root, 'evals/test.yaml')], 'timeout-ms': ['600000'], 'max-trials': ['8'],
-    'max-proposals': ['2'], seed: ['7'], 'optimizer-model': ['opus'], 'bridge-command': ['paideia-dspy'], judge: ['prose=small'], 'judge-citation-repairs': ['prose=1'] });
+    'max-proposals': ['2'], seed: ['7'], 'optimizer-model': ['opus'], 'bridge-command': ['spawnfile-training-dspy'], judge: ['prose=small'], 'judge-citation-repairs': ['prose=1'] });
   expect(authoredArguments(parseArguments([...f.args, '--max-trials', '9']), f.io).flags['max-trials']).toEqual(['9']);
   const forbidden = vi.fn(() => { throw new Error('Models must remain unopened'); });
   expect(await main(f.args, f.io, { ...f.dependencies, adapter: forbidden, inference: forbidden, modelInference: forbidden })).toBe(0);
@@ -95,7 +95,7 @@ it('covers sparse authored controls, default local endpoint and repeated named p
 it('runs an actual stored CLI evaluation using YAML judge fallbacks and template', async () => {
   const f = await fixture();
   const check = { id: 'prose', eval: 'llm-rubric', judge: 'prose', input: 'output.text', minimum: 0.8, rubric: { prompt: 'Clear prose.' } };
-  await writeFile(join(f.root, 'evaluation.yaml'), JSON.stringify({ schema: 'paideia.dataset.v1', id: 'authored', training: configuration,
+  await writeFile(join(f.root, 'evaluation.yaml'), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'authored', training: configuration,
     checks: [check], records: [{ id: 'a', input: { prompt: 'Write.' } }] }));
   const attempted: string[] = [];
   const code = await main(['evaluate', 'evaluation.yaml', ...f.nativeArgs], f.io, { ...f.dependencies,

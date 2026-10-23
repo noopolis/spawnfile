@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import type { DatabaseSync } from 'node:sqlite';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
@@ -17,7 +18,7 @@ export interface PersistentJudgeCacheOptions {
 }
 
 const ceiling = 32 * 1024 * 1024;
-const format = 'paideia.judgment-cache.v1';
+const format = 'spawnfile.training.judgment-cache.v1';
 
 /** Transactional exact cache. Opening/closing each operation releases all locks. */
 export async function openJudgeCache(options: PersistentJudgeCacheOptions): Promise<JudgeCache> {
@@ -74,7 +75,7 @@ export async function openJudgeCache(options: PersistentJudgeCacheOptions): Prom
     let envelope: { schema: string; namespace: string; key: string; value: unknown };
     try { envelope = JSON.parse(row.body) as typeof envelope; }
     catch { throw new Error('Invalid judge cache envelope'); }
-    if (!envelope || envelope.schema !== format || envelope.namespace !== namespace || envelope.key !== key) {
+    if (!envelope || canonicalWireId(envelope.schema) !== format || envelope.namespace !== namespace || envelope.key !== key) {
       throw new Error('Judge cache scope mismatch');
     }
     return validateCachedJudgment(envelope.value);

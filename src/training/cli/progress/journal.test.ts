@@ -10,7 +10,7 @@ import { createProgressJournal } from './journal.js';
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-progress-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-progress-')); roots.push(root);
   const store = await openExperimentStore(root), stdout: string[] = [];
   const journal = await createProgressJournal({ id: 'experiment', datasetId: 'development', planDigest: 'plan',
     candidateId: 'baseline', model: 'gpt-5.5', prices: standardPrices, store, storeRoot: root,
@@ -19,7 +19,7 @@ async function fixture() {
 }
 function trial(): TrialReport {
   const coverage = [{ channel: 'usage' as const, completeness: 'complete' as const, ordering: 'source' as const }];
-  return { schema: 'paideia.trial.v1', id: 'trial', phase: 'test', recordId: 'SEALED CASE', candidateId: 'candidate',
+  return { schema: 'spawnfile.training.trial.v1', id: 'trial', phase: 'test', recordId: 'SEALED CASE', candidateId: 'candidate',
     datasetDigest: 'digest', planDigest: 'plan', paths: { root: '', workspace: '', control: '', runtimeHome: '' },
     status: 'pass', execution: 'completed', hostWork: 'settled',
     snapshot: { trialId: 'trial', recordId: 'SEALED CASE', closed: true, events: [], coverage, artifacts: {},
@@ -107,7 +107,7 @@ it('restores native, rescore and optimizer receipts once and retains their cumul
   const call = { id: 'judge-one', judge: 'prose', providerId: 'subscription', requestedModel: 'gpt-5.5',
     responseModel: 'gpt-5.5', responseRoute: 'subscription', outcome: 'completed' as const, usage: native.turns[0]!.native.usage };
   native.evaluation.judgeCalls = [call];
-  const rescore: RescoreReport = { schema: 'paideia.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
+  const rescore: RescoreReport = { schema: 'spawnfile.training.rescore.v1', id: 'rescore', runId: native.id, scope: 'final-stages',
     notReevaluated: ['live', 'per-turn'], original: { evaluationId: 'old', digest: 'old', candidateId: native.candidateId,
       datasetDigest: 'old', planDigest: 'old', recordId: native.recordId, phase: native.phase, status: native.status },
     criteria: { datasetId: 'dataset', datasetDigest: 'digest', sharedPlanDigest: 'plan', stages: [], registryVersions: {},
@@ -131,10 +131,10 @@ it('restores native, rescore and optimizer receipts once and retains their cumul
 
 it('publishes the adapter-stated startup reason and a durable path for the redacted record', async () => {
   const f = await fixture();
-  const diagnostic = { schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: 'trial',
+  const diagnostic = { schema: 'spawnfile.training.daimon-native.startup-diagnostic.v1', trialId: 'trial',
     reason: 'installed Daimon lacks the Grok broker projection capability', exitCode: 1, exitSignal: null,
     redaction: 'applied' as const, streams: { stdout: '', stderr: 'boom', truncated: { stdout: false, stderr: false } },
-    protectedArtifact: '/run/training/slot/state/paideia-trials/trial-x/child-diagnostics.json',
+    protectedArtifact: '/run/training/slot/state/training-trials/trial-x/child-diagnostics.json',
     operatorCapture: '/out/trial-x/OPERATOR-ONLY.native-startup-capture.json' };
   await f.journal.observe({ type: 'trial.finished', payload: { ...trial(), execution: 'failed', diagnostic } });
   await f.journal.failed(new Error('Experiment failed while evaluating SEALED CASE'));
@@ -148,7 +148,7 @@ it('publishes the adapter-stated startup reason and a durable path for the redac
   expect(failure.startupDiagnostics).toBeDefined();
   expect(failure.startupDiagnostics!.startsWith(join(f.root, 'blobs'))).toBe(true);
   expect(JSON.parse(await readFile(failure.startupDiagnostics!, 'utf8'))).toMatchObject({
-    schema: 'paideia.startup-diagnostics.v1', diagnostics: [diagnostic] });
+    schema: 'spawnfile.training.startup-diagnostics.v1', diagnostics: [diagnostic] });
   // The last account of a failure whose bytes were withheld is named where the operator can open it.
   expect((failure as { operatorCapture?: string }).operatorCapture).toBe(diagnostic.operatorCapture);
   expect(f.stdout.join('')).not.toContain('SEALED CASE');

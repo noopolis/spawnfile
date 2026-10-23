@@ -34,7 +34,7 @@ async function race(kind: string, initial: string, permanent = false) {
         if (!permanent) publishing = new Promise<void>(resolve => setTimeout(resolve, 75)).then(() => writeFile(selected.file, bytes));
         return { state: 'accepted', acceptance_id: receipt.acceptance_id };
       },
-      // These reads model the native host's own JSON.parse, beyond Paideia's file readers.
+      // These reads model the native host's own JSON.parse, beyond Training's file readers.
       wakeReceipt: async () => JSON.parse(await readFile(rows.receipt!.file, 'utf8')),
       activityV2: async () => JSON.parse(await readFile(rows.activity!.file, 'utf8')),
       availability: async () => JSON.parse(await readFile(rows.availability!.file, 'utf8')),

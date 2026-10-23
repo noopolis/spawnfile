@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { createAtomicGradeResultSchema } from '../../graders/atomic/index.js';
 import { validateCandidate, type CandidateManifest } from '../../candidates/index.js';
 import { z } from 'zod';
@@ -84,7 +85,7 @@ const snapshot = z.object({ trialId: identity, recordId: identity, closed: z.lit
 /** Version-one reports contain only a final snapshot; turn results do not imply turn snapshots. */
 const declaredLimit = z.enum(['tokens', 'requests', 'timeout']);
 export const trialReportSchema = z.object({
-  schema: z.literal('paideia.trial.v1'), id: identity, phase: z.enum(['train', 'validation', 'test']), candidateId: identity,
+  schema: compatibleWireLiteral('spawnfile.training.trial.v1'), id: identity, phase: z.enum(['train', 'validation', 'test']), candidateId: identity,
   datasetDigest: identity, planDigest: identity, recordId: identity,
   candidate: z.custom<CandidateManifest>(value => {
     try { validateCandidate(value as CandidateManifest); return true; } catch { return false; }

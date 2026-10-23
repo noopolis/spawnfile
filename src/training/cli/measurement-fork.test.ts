@@ -15,7 +15,7 @@ async function project() {
   const stdout: string[] = [], stderr: string[] = [], native: string[] = [];
   const io = { cwd: f.root, stdout(text: string) { stdout.push(text); }, stderr(text: string) { stderr.push(text); } };
   const check = (id: string) => ({ id, eval: 'llm-rubric', input: 'output.text', judge: id, minimum: 0.8, rubric: { prompt: `Measure ${id}.` } });
-  const dataset = { schema: 'paideia.dataset.v1', id: 'development', stages: [{ id: 'writing',
+  const dataset = { schema: 'spawnfile.training.dataset.v1', id: 'development', stages: [{ id: 'writing',
     checks: [check('grounding'), check('prose')], score: { linear: { grounding: 2, prose: 1 } },
     gate: { all: [{ passed: 'grounding' }, { passed: 'prose' }] } }] };
   const record = (id: string) => ({ id, group: id, input: { prompt: 'Write using evidence.' } });
@@ -63,7 +63,7 @@ async function project() {
       } }; },
   };
   const args = ['train', '--train', 'train.yaml', '--spawnfile-context', f.path, '--editable', 'AGENTS.md',
-    '--bridge-command', resolve('src/training/dspy/.venv/bin/paideia-dspy')];
+    '--bridge-command', resolve('src/training/dspy/.venv/bin/spawnfile-training-dspy')];
   return { ...f, args, dependencies, io, stdout, stderr, calls, native, recover() { failure = false; image = newImage; } };
 }
 
@@ -85,11 +85,11 @@ async function projection(f: Awaited<ReturnType<typeof project>>) {
     }
   };
   await walk(copied);
-  const manifest = JSON.stringify({ version: 'paideia.repair-parent.v1', files });
+  const manifest = JSON.stringify({ version: 'spawnfile.training.repair-parent.v1', files });
   await writeFile(join(copied, 'projection-manifest.json'), manifest);
   const command = JSON.parse(await readFile(join(copied, 'checkpoint/command.json'), 'utf8'));
   const training = JSON.parse(await readFile(join(copied, 'checkpoint/training.json'), 'utf8'));
-  const receipt: MeasurementRepairReceipt = { version: 'paideia.measurement-repair.v1',
+  const receipt: MeasurementRepairReceipt = { version: 'spawnfile.training.measurement-repair.v1',
     parent: { root: copied, imageId: oldImage, experimentId: command.id, executionIdentity: command.identity,
       manifestDigest: repairDigest(manifest), checkpoints, trainingIdentity: training.state.identity },
     current: { imageId: newImage, canonicalSourceDigest: f.context.project.sourceDigest, adapterId: 'daimon-native' },

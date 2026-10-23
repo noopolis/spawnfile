@@ -89,8 +89,8 @@ export function codexArguments(input: SubjectStart, authHome: string, model?: st
   return ['exec', '--ignore-user-config', '--ignore-rules', '--strict-config', '--disable', 'memories',
     '--skip-git-repo-check', '--json', '-C', input.workspacePath,
     '-c', 'approval_policy="never"', '-c', 'web_search="disabled"', '-c', 'project_doc_max_bytes=0',
-    '-c', 'mcp_servers={}', '-c', 'default_permissions="paideia"',
-    '-c', `permissions={paideia={extends=":workspace",filesystem={${filesystem}},network={enabled=false}}}`,
+    '-c', 'mcp_servers={}', '-c', 'default_permissions="training"',
+    '-c', `permissions={training={extends=":workspace",filesystem={${filesystem}},network={enabled=false}}}`,
     '-c', `developer_instructions=${JSON.stringify(input.instructions)}`,
     ...(model === undefined ? [] : ['--model', model]),
     ...(threadId === undefined ? ['-'] : ['resume', threadId, '-'])];

@@ -1,3 +1,5 @@
+import { OPTIMIZER_ROUTE_PREFIX } from '../../contracts/index.js';
+import { trainingEnvironment } from '../../platform/index.js';
 import { trainingRoutePolicies, trainingInferencePolicies } from '../../contracts/inference-policy.js';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
 import { createHash } from 'node:crypto';
@@ -31,7 +33,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   function provider(name: string, purpose: 'judge' | 'optimizer', routeTimeoutMs: number): InferenceProvider {
     const model = config!.models[name]!;
     // Broker grants and evaluator budgets attach to purpose-specific providers; each route timeout gets its own provider.
-    const purposeKeyed = model.provider === 'grok-broker' || process.env.PAIDEIA_MODEL_REQUEST_CAP === 'broker' || process.env.PAIDEIA_EVALUATOR_ROUTES_FILE !== undefined;
+    const purposeKeyed = model.provider === 'grok-broker' || trainingEnvironment('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP') === 'broker' || trainingEnvironment('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE') !== undefined;
     const key = `${name}\0${purposeKeyed ? purpose : ''}\0${routeTimeoutMs}`;
     if (providers.has(key)) return providers.get(key)!;
     const timeoutMs = routeTimeoutMs;
@@ -72,7 +74,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   }));
   const optimizer = config?.optimizer;
   const identity = optimizer === undefined ? undefined : createHash('sha256').update(JSON.stringify({ optimizer, models: config!.models, providerPolicies: trainingRoutePolicies(config!, optimizer, executionIdentity) })).digest('hex');
-  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `paideia.optimizer:${identity}`, 'optimizer');
+  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `${OPTIMIZER_ROUTE_PREFIX}${identity}`, 'optimizer');
   return { get inference() {
     if (inference === undefined) throw new Error('Authored comparison has no optimizer inference');
     return inference;
@@ -87,11 +89,11 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
  * broker-grant call closed instead of reaching a desktop Grok login.
  */
 function grokGrantPool(dependencies: CliDependencies): GrokGrantPool {
-  const socket = process.env[grokBrokerControlSocketEnv];
+  const socket = trainingEnvironment(grokBrokerControlSocketEnv);
   return new GrokGrantPool({ id: socket ?? 'unconfigured',
     authority: dependencies.grokGrantAuthority ?? (async () => subjectHostInference(dependencies.subjects).grantAuthority(socket)) });
 }
-const brokerHomeRoot = (): string | undefined => process.env[grokGrantHomeRootEnv] || undefined;
+const brokerHomeRoot = (): string | undefined => trainingEnvironment(grokGrantHomeRootEnv) || undefined;
 
 /** Plain data only: dry-run must never construct a provider. */
 export function configuredCostRoutes(args: CliArguments, judges: Record<string, string>, repairs: Record<string, 0 | 1>) {

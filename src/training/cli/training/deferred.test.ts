@@ -13,7 +13,7 @@ afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).
 
 it.each([undefined, 'zero', 'stage-score'] as const)('threads YAML deferred scoring through callbacks, held-out and export (%s)', async deferred => {
   const f = await cliFixture(); roots.push(f.root);
-  const dataset = (id: string, records: string[]) => ({ schema: 'paideia.dataset.v1', id,
+  const dataset = (id: string, records: string[]) => ({ schema: 'spawnfile.training.dataset.v1', id,
     stages: [{ id: 'article', checks: [{ id: 'filed', eval: 'equals', input: 'output.text', value: 'BAD' }],
       gate: { passed: 'filed' }, score: { linear: { filed: 1 } } }],
     records: records.map(id => ({ id, group: id, input: { prompt: 'Write' } })),
@@ -32,7 +32,7 @@ it.each([undefined, 'zero', 'stage-score'] as const)('threads YAML deferred scor
       expect(measured.score).toBe(expected);
       captures.push({ caseId, split, captureId: measured.captureId });
     }
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 2, proposals: 0,
         selectedCandidateIndex: 0, candidates: [{ components: request.components, parents: [null], validationScore: expected, discoveryEvaluations: 0 }],
         captures, generations: [] } };
@@ -65,14 +65,14 @@ it.each([undefined, 'zero', 'stage-score'] as const)('threads YAML deferred scor
 
 it('preserves stage rewards in the failed invocation viewer after concurrent metric callbacks', async () => {
   const f = await cliFixture(); roots.push(f.root);
-  await writeFile(join(f.root, 'train.yaml'), JSON.stringify({ schema: 'paideia.dataset.v1', id: 'train',
+  await writeFile(join(f.root, 'train.yaml'), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'train',
     stages: [{ id: 'filed', checks: [{ id: 'article', eval: 'equals', input: 'output.text', value: 'BAD' }],
       gate: { passed: 'article' }, score: { linear: { article: 1 } } }],
     records: ['a', 'b'].map(id => ({ id, group: id, input: { prompt: 'Write' } })),
     training: { models: { reflect: { provider: 'ollama', model: 'offline' } }, optimizer: { model: 'reflect' },
       scoring: { deferred: 'stage-score' } },
   }));
-  await writeFile(join(f.root, 'test.yaml'), JSON.stringify({ schema: 'paideia.dataset.v1', id: 'test',
+  await writeFile(join(f.root, 'test.yaml'), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'test',
     stages: [{ id: 'filed', checks: [{ id: 'article', eval: 'equals', input: 'output.text', value: 'BAD' }],
       gate: { passed: 'article' }, score: { linear: { article: 1 } } }], records: [{ id: 'c', group: 'c', input: { prompt: 'Write' } }],
   }));

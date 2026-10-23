@@ -16,7 +16,7 @@ export interface RescoreOptions {
 }
 
 export interface RescoreReport {
-  schema: 'paideia.rescore.v1';
+  schema: 'spawnfile.training.rescore.v1';
   id: string;
   runId: string;
   scope: 'final-stages';

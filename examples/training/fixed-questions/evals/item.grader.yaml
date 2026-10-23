@@ -1,4 +1,4 @@
-schema: paideia.grader.v1
+schema: spawnfile.training.grader.v1
 id: item-reader
 calibration: identity
 context:

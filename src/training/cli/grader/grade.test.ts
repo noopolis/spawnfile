@@ -20,7 +20,7 @@ afterEach(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); await Promise
 async function fixture(checkGate = false) {
   const root = await mkdtemp(join(tmpdir(), 'grader-grade-')); roots.push(root);
   const graderFile = join(root, 'grader.yaml'), outputFile = join(root, 'output.json');
-  const source = parseGrader({ schema: 'paideia.grader.v1', id: 'report', golden: 'labels.yaml', calibration: 'calibration.json',
+  const source = parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'report', golden: 'labels.yaml', calibration: 'calibration.json',
     context: { evidence: { description: 'Sources' }, policy: { description: 'Rules' } },
     teachers: [{ id: 'teacher', provider: 'claude', model: 'opus' }],
     model: { backend: 'jev-http', endpoint: 'http://localhost:8080', name: 'decision' },
@@ -29,7 +29,7 @@ async function fixture(checkGate = false) {
     questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body', 'context.evidence', 'context.policy'] }],
     score: { method: 'weighted', pass_at: 0.8 } });
   await writeFile(graderFile, stringify(source));
-  await writeFile(join(root, 'labels.yaml'), stringify({ schema: 'paideia.labels.v1', grader: 'report', labelers: {}, labels: [] }));
+  await writeFile(join(root, 'labels.yaml'), stringify({ schema: 'spawnfile.training.labels.v1', grader: 'report', labelers: {}, labels: [] }));
   await writeFile(outputFile, JSON.stringify({ body: ['Report text.'] }));
   await writeFile(join(root, 'evidence.json'), JSON.stringify({ fact: true }));
   await writeFile(join(root, 'policy.md'), 'Exact rules\n');
@@ -37,7 +37,7 @@ async function fixture(checkGate = false) {
     status: 'ok' as const, probabilities: { yes: 0.99, no: 0.01 } })));
   const backend: DecisionBackend = { identity: async () => ({ backend: 'jev-http', model: 'decision' }), score };
   const grader = await loadGrader(graderFile), golden = await loadLabels(grader.golden, grader);
-  const calibration = { schema: 'paideia.grader-calibration.v1', identity: createCalibrationIdentity(grader, {
+  const calibration = { schema: 'spawnfile.training.grader-calibration.v1', identity: createCalibrationIdentity(grader, {
     backendModel: await backendIdentity(grader, backend), golden: golden.goldenDigest,
     promptTemplateVersion: DECISION_PROMPT_VERSION, seed: '0', exclusions: [] }),
     questions: { q: { status: 'calibrated', failures: [], params: { a: 1, b: 0 }, band: [0.4, 0.6],
@@ -250,7 +250,7 @@ it('emits sanitized accounting for paid grading failure before returning nonzero
     '--context', `evidence=${f.contextFiles.evidence}`, '--context', `policy=${f.contextFiles.policy}`], {
     cwd: f.root, stdout: text => stdout.push(text), stderr: text => stderr.push(text),
   }, { grader: f.dependencies })).toBe(2);
-  expect(JSON.parse(stdout[0]!)).toMatchObject({ schema: 'paideia.grader-failure.v1', status: 'failed', command: 'grade',
+  expect(JSON.parse(stdout[0]!)).toMatchObject({ schema: 'spawnfile.training.grader-failure.v1', status: 'failed', command: 'grade',
     decisionAccounting: { requests: 1, inputTokens: 100, usd: 0.1, receipts: [{ status: 200 }] } });
   expect(stderr.join('')).toContain('infrastructure unavailable');
 });
@@ -258,7 +258,7 @@ it('emits sanitized accounting for paid grading failure before returning nonzero
 async function identityFixture() {
   const root = await mkdtemp(join(tmpdir(), 'fixed-questions-')); roots.push(root);
   const graderFile = join(root, 'fixed.yaml'), outputFile = join(root, 'article.json'), groundingFile = join(root, 'grounding.md');
-  await writeFile(graderFile, stringify({ schema: 'paideia.grader.v1', id: 'fixed', calibration: 'identity',
+  await writeFile(graderFile, stringify({ schema: 'spawnfile.training.grader.v1', id: 'fixed', calibration: 'identity',
     context: { grounding: { description: 'Frozen human facts' } }, model: { backend: 'typesafe', name: 'jev-1.13.0' }, max_spend_usd: 0.5,
     questions: Array.from({ length: 6 }, (_, i) => ({ id: `q${i}`, ask: `Reader question ${i}?`,
       type: 'yes-no', expected: i % 2 ? 'no' : 'yes', reads: ['output.body', 'context.grounding'] })),
@@ -295,7 +295,7 @@ it('grades captured files through the real TypeSafe transport with six fixed que
 it('resolves per-record grading, freezes source files, and evaluates grounding without exposing it as subject input', async () => {
   const f = await identityFixture();
   await writeFile(join(f.root, 'facts.md'), 'There are 10 items.');
-  await writeFile(join(f.root, 'data.yaml'), stringify({ schema: 'paideia.dataset.v1', id: 'cases',
+  await writeFile(join(f.root, 'data.yaml'), stringify({ schema: 'spawnfile.training.dataset.v1', id: 'cases',
     records: [{ id: 'r', input: { prompt: 'Write.' }, outputs: { article: 'article.json' }, context: { grounding: 'Exactly 10 items.' }, checks: [
       { id: 'length', eval: 'word-count', input: 'artifact:article#/body', min: 4, max: 4 },
       { id: 'values', eval: 'values-in-source', input: 'artifact:article#/body', source: ['context:grounding', 'facts.md'] },

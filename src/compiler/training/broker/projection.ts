@@ -47,10 +47,10 @@ export const loadDaimonProjectionModule = async (load: () => Promise<unknown> = 
  * resolved from.
  *
  * It is a projection *input*, never a runtime config Daimon hosts: the trial's
- * real config is Paideia's. Only `agents[].id`, `workspacePath`,
+ * real config is Training's. Only `agents[].id`, `workspacePath`,
  * `runtimeHomePath`, the engine's declared model and effort, and the *absence*
  * of peers reach `resolveOrganizationGrokBrokerProjection`, so this minimal
- * config and Paideia's fuller one compute the same projection digest. A peer
+ * config and Training's fuller one compute the same projection digest. A peer
  * agent would change Daimon's protected set and the digest with it, which is
  * why each slot resolves its own one-agent projection with explicit sibling deny paths.
  */
@@ -127,7 +127,7 @@ export const resolveTrainingGrokProjection = async (
 /**
  * One slot's registration and projection, exactly as the root entrypoint binds
  * them into that slot's preflight receipt. The entrypoint and the public lease
- * both call this, so the digest a lease hands Paideia cannot drift from the
+ * both call this, so the digest a lease hands Training cannot drift from the
  * one the supervisor certified.
  */
 export const resolveTrainingSlotProjection = async (

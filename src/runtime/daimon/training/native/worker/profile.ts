@@ -116,7 +116,7 @@ export async function verifyWorkerPaths(config: NativeConfig, options: WorkerOpt
  * compiled-config digest, the launch receipt, the profile agreement and the
  * control path rules — instead of reaching past the package export for the
  * pieces. Daimon's own `parseOrganizationRuntimeConfig` is the single step left
- * out: it needs the installed runtime peer, so this validates Paideia's side of
+ * out: it needs the installed runtime peer, so this validates Training's side of
  * startup and never claims to have validated Daimon's.
  *
  * It composes the same exported functions the worker calls, in the worker's

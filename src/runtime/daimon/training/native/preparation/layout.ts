@@ -82,14 +82,14 @@ export function nativeTrialInputsRoot(subject: NativeSubjectLayout, trialId: str
  * Where a subject's private memory or local transport scratch lives.
  *
  * Grok declares exactly one projection, so scratch sits inside that single home
- * projection under `paideia/<name>`; the next recycle wipes it with the home.
+ * projection under `training/<name>`; the next recycle wipes it with the home.
  * Codex keeps its own fresh `memory` / `transport` projections.
  */
 export function nativeSubjectScratch(subject: NativeSubjectLayout, name: NativeScratchName): string {
   if (subject.agent.engine === 'grok') {
     const homes = subject.projections.filter(row => row.role === 'home');
     if (homes.length !== 1 || subject.projections.length !== 1) throw new Error('A Grok subject projects exactly its slot runtime home');
-    return join(homes[0]!.source, 'paideia', name);
+    return join(homes[0]!.source, 'training', name);
   }
   const rows = subject.projections.filter(row => row.role === name);
   if (rows.length !== 1) throw new Error(`A Codex subject must declare exactly one ${name} projection`);

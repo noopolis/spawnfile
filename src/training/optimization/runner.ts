@@ -54,7 +54,7 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
   try {
     await host.validate(start.components, signal);
     signal.throwIfAborted();
-    home = await realpath(await mkdtemp(join(options.checkpoint?.directory ?? tmpdir(), '.paideia-dspy-home-')));
+    home = await realpath(await mkdtemp(join(options.checkpoint?.directory ?? tmpdir(), '.spawnfile-training-dspy-home-')));
     await chmod(home, 0o700);
     signal.throwIfAborted();
     running = runProcess({ command: options.bridge.command, args: options.bridge.args ?? [],

@@ -42,7 +42,7 @@ export function authoredArguments(args: CliArguments, io: CliIO): CliArguments {
       for (const flag of ['optimizer-model', 'bridge-command', 'max-proposals', 'repair-measurements', 'repair-context']) {
         if (flags[flag]) throw new Error(`Comparison cannot use --${flag}`);
       }
-    } else fallback('bridge-command', 'paideia-dspy');
+    } else fallback('bridge-command', 'spawnfile-training-dspy');
     if (flags['validation-group'] === undefined && training.validation_groups !== undefined) flags['validation-group'] = training.validation_groups;
   }
   if (flags.validation && flags['validation-group']) throw new Error('Explicit validation and validation groups are mutually exclusive');

@@ -45,7 +45,7 @@ test('preflight requires explicit zero-call enforcement evidence and saves a bou
       assert.deepEqual(args.slice(0, 4), ['exec', '-i', 'container', '/usr/local/bin/node']);
       assert.equal(options?.signal, signal);
       const request = JSON.parse(options!.stdin!);
-      if (request.path === 'native-policy-preflight') return { code: 0, stdout: JSON.stringify({ schema: 'paideia.daimon-native.policy-preflight.v1',
+      if (request.path === 'native-policy-preflight') return { code: 0, stdout: JSON.stringify({ schema: 'spawnfile.training.daimon-native.policy-preflight.v1',
         projectionSha256: request.projectionSha256, modelCallsMade: 0, workspaceReadWrite: true }), stderr: '' };
       assert.equal(options?.timeoutMs, 25_000);
       assert.equal(request.workspace, f.launch.workspace.target);

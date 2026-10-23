@@ -123,7 +123,7 @@ runtime reclaimed it — "while the runtime kept running" or "by a stopping runt
 different clock from the dispatcher's write, and it never reflected the
 dispatcher's own halting latch at all. So the distinction was not evidence, it was
 an inference dressed as one, and it sent a whole round of investigation at
-Paideia's stop ordering. The claim is dropped rather than re-derived: the wake's
+Spawnfile training's stop ordering. The claim is dropped rather than re-derived: the wake's
 own code is what this process witnessed, and it is the whole of what the sentence
 may assert. Daimon no longer keys the reclaim on its dispatcher's `stopping` latch
 either, so a completed wake under a halting host is a scorable deferral and never

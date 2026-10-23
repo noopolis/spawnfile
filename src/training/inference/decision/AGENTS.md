@@ -25,7 +25,7 @@ probability jitter within the same decision does not affect identity. Scoring
 checks declared revisions and model; observed drift permanently refuses scoring
 and identity reuse. Servers SHOULD declare a fingerprint that changes with their
 input preparation. Unreported changes cannot be detected by cached identity.
-Endpoint must serve raw temperature=1 probabilities; Paideia does not claim to
+Endpoint must serve raw temperature=1 probabilities; Spawnfile training does not claim to
 inspect operator model configuration.
 Scoring HTTP 4xx responses mark exactly that request's instances missing, with a
 sanitized status/detail reason capped at 200 characters. Canary 4xx enters identity (at least one canary must succeed);

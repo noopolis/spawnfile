@@ -59,7 +59,7 @@ export function createCodexInference(options: CodexInferenceOptions = {}): Infer
         throw new InferenceFailure('unsupported', 'Invalid Codex inference controls');
       }
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', 'Codex cancelled before launch');
-      const root = await mkdtemp(path.join(tmpdir(), 'paideia-codex-inference-'));
+      const root = await mkdtemp(path.join(tmpdir(), 'training-codex-inference-'));
       const cwd = path.join(root, 'workspace'), home = path.join(root, 'home');
       const env = codexEnvironment(home);
       const execute = options.process ?? runProcess;

@@ -10,7 +10,7 @@ describe('metrics derived from a bounded valid viewer projection', () => {
       import { projectViewerData } from ${JSON.stringify(projection)};
       import { buildCockpitMetrics } from ${JSON.stringify(metrics)};
       const check = id => ({ id, label:id, status:'pass', score:0.5, evidenceIds:[], children:[] });
-      const data = { schema:'paideia.viewer.v1', experiment:{ id:'bounds', title:'Synthetic bound',
+      const data = { schema:'spawnfile.training.viewer.v1', experiment:{ id:'bounds', title:'Synthetic bound',
         status:'completed', phase:'replay', updatedAt:'recorded' },
         cases:[{ id:'case', split:'train' }], candidates:[], trials:[], usage:[] };
       for (let i=0; i<1000; i++) {

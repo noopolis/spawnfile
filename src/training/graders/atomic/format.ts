@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import { checkBinding, identifier, parseSchema, parseYaml, probability } from '../format/index.js';
 import type { CheckTemplates } from '../decomposition/index.js';
@@ -5,7 +6,7 @@ import type { CheckTemplates } from '../decomposition/index.js';
 const relativeFile = z.string().min(1).refine(value => !value.startsWith('/') &&
   !value.includes('\\') && !value.split('/').some(part => part === '..' || part === '.' || part === '') && !value.includes('\0') && !/^[A-Za-z]:/.test(value), 'contained relative file required');
 export const atomicGraderSchema = z.strictObject({
-  schema: z.literal('paideia.atomic-grader.v1'), id: identifier, templates: relativeFile,
+  schema: compatibleWireLiteral('spawnfile.training.atomic-grader.v1'), id: identifier, templates: relativeFile,
   extractor: z.strictObject({ id: identifier.default('extractor'), provider: z.literal('codex'),
     model: z.string().min(1), effort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
     deadline_ms: z.number().int().positive().max(2_147_483_647).default(900_000) }),

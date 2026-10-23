@@ -5,11 +5,11 @@ import type { SubjectAdapter } from '../contracts/index.js';
 import type { CliDependencies, CliIO } from './types.js';
 
 export function datasetText(records = [{ id: 'case', group: 'case-family' }]): string {
-  return `schema: paideia.dataset.v1\nid: example\nchecks:\n  - id: correct\n    eval: equals\n    input: output.text\n    value: OK\nrecords:\n${records.map((record) => `  - id: ${record.id}\n    group: ${record.group}\n    input:\n      prompt: Reply OK.\n`).join('')}`;
+  return `schema: spawnfile.training.dataset.v1\nid: example\nchecks:\n  - id: correct\n    eval: equals\n    input: output.text\n    value: OK\nrecords:\n${records.map((record) => `  - id: ${record.id}\n    group: ${record.group}\n    input:\n      prompt: Reply OK.\n`).join('')}`;
 }
 
 export async function cliFixture() {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-cli-test-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-cli-test-'));
   await writeFile(join(root, 'AGENTS.md'), 'BASE\n');
   await writeFile(join(root, 'support.md'), 'Supporting facts.\n');
   await writeFile(join(root, 'data.yaml'), datasetText());
@@ -28,7 +28,7 @@ export async function cliFixture() {
   };
   const nativeArgs = ['--runtime', 'codex', '--model', 'explicit-fixture', '--instructions', 'AGENTS.md', '--out', 'out'];
   return { root, io, stdout, stderr, dependencies, observedInstructions, nativeArgs,
-    bridge: resolve('src/training/dspy/.venv/bin/paideia-dspy') };
+    bridge: resolve('src/training/dspy/.venv/bin/spawnfile-training-dspy') };
 }
 
 export function fixtureAdapter(id: string, observedInstructions: string[], mode: 'candidate' | 'pass' | 'failed' | 'stalled' = 'candidate'): SubjectAdapter {

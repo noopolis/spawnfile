@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../../../../training/contracts/index.js';
 import { grokClockedWorkerConfigPins } from './grok-clocked-pins.js';
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
@@ -77,8 +78,8 @@ export const grokSlotPreflightSchema = z.strictObject({
 });
 export type GrokSlotPreflight = z.infer<typeof grokSlotPreflightSchema>;
 
-export const grokBrokerReceiptSchema = 'paideia.daimon-native.grok-broker-projection.v1';
-const receiptSchema = z.strictObject({ schema: z.literal(grokBrokerReceiptSchema), trialId: z.string().min(1), configSha256: sha,
+export const grokBrokerReceiptSchema = 'spawnfile.training.daimon-native.grok-broker-projection.v1';
+const receiptSchema = z.strictObject({ schema: compatibleWireLiteral(grokBrokerReceiptSchema), trialId: z.string().min(1), configSha256: sha,
   projectionSha256: sha, projection: grokBrokerProjectionSchema, slotPreflight: grokSlotPreflightSchema });
 export type GrokBrokerReceipt = z.infer<typeof receiptSchema>;
 

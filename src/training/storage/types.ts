@@ -8,7 +8,7 @@ export interface ReadAccess {
   releaseTestResults?: boolean;
 }
 export interface RunManifest {
-  schema: 'paideia.run.v1';
+  schema: 'spawnfile.training.run.v1';
   id: string;
   datasetId: string;
   datasetRole: DatasetRole;

@@ -16,7 +16,7 @@ const mapping: ResourceMapping[] = [
   { id: 'soul', sourcePath: 'SOUL.md', destinations: [{ kind: 'supporting-files', path: 'SOUL.md' }], edit: 'locked' },
 ];
 async function fixture(): Promise<{ root: string; baseline: CandidateManifest }> {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-candidate-')); temporary.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-candidate-')); temporary.push(root);
   await mkdir(join(root, 'skills'));
   await writeFile(join(root, 'AGENTS.md'), instructions);
   await writeFile(join(root, 'skills/write.md'), '# Writing\nUse [policy](../AGENTS.md).\n');

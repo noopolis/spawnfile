@@ -21,7 +21,7 @@ export function recordedGrade(): GradeResult {
 
 /** Synthetic capture evidence for adjacent export tests, never a native fidelity claim. */
 export async function reportFixture() {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-report-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-report-'));
   await mkdir(join(root, 'notes'));
   await writeFile(join(root, 'AGENTS.md'), 'Keep the contract.\n');
   await writeFile(join(root, 'notes', 'reference.md'), 'Locked reference.\n');
@@ -35,7 +35,7 @@ export async function reportFixture() {
     { ...seed, [components[0]!.id]: 'Keep the contract.\nCheck receipts.\n' }];
   const candidates = [baseline, ...proposed.slice(1).map(value => deriveCandidate(baseline, baseline, value))];
   const trial = (candidateId: string, phase: TrialReport['phase'], recordId: string, score: number): TrialReport => ({
-    schema: 'paideia.trial.v1', id: `trial-${phase}-${recordId}-${candidates.findIndex(value => value.id === candidateId)}`,
+    schema: 'spawnfile.training.trial.v1', id: `trial-${phase}-${recordId}-${candidates.findIndex(value => value.id === candidateId)}`,
     candidateId, phase, recordId, datasetDigest: 'dataset', planDigest: 'plan', paths: { root, workspace: root, control: root, runtimeHome: root },
     durationMs: 250, subject: { adapterId: 'test-fixture', requestedModel: 'test-model', isolation: 'synthetic fixture' },
     status: 'pass', execution: 'completed', hostWork: 'settled',
@@ -50,10 +50,10 @@ export async function reportFixture() {
     trial(candidate.id, 'validation', 'validation-example', index / 2)]);
   trials.push(trial(baseline.id, 'test', 'test-a', 0.2), trial(baseline.id, 'test', 'test-b', 0.6),
     trial(candidates[1]!.id, 'test', 'test-a', 0.7), trial(candidates[1]!.id, 'test', 'test-b', 0.7));
-  const report: TrainingReport = { schema: 'paideia.training.v1', id: 'completed', baseline, selected: candidates[1]!, durationMs: 1000,
+  const report: TrainingReport = { schema: 'spawnfile.training.training.v1', id: 'completed', baseline, selected: candidates[1]!, durationMs: 1000,
     partitions: { train: ['train-example'], validation: ['validation-example'], test: ['test-a', 'test-b'] }, trials,
-    heldOut: [], optimizer: { schema: 'paideia.dspy.v2', id: 'optimizer', kind: 'result', components: proposed[1]!,
-      provenance: { optimizer: 'paideia.population', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
+    heldOut: [], optimizer: { schema: 'spawnfile.training.dspy.v2', id: 'optimizer', kind: 'result', components: proposed[1]!,
+      provenance: { optimizer: 'training.population', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
         evaluations: 6, proposals: 2, selectedCandidateIndex: 1, generations: [], captures: [],
         candidates: proposed.map((value, index) => ({ components: value, parents: [index === 0 ? null : 0],
           validationScore: index / 2, discoveryEvaluations: index * 2 })),

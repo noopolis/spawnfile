@@ -209,7 +209,7 @@ test.each(['measured', 'payment-error'] as const)('stored replay preserves atomi
   else await scoring;
   expect(receipts[0]!.requestId).toEqual(expect.any(String));
   const atomicGrading: import('../../graders/atomic/index.js').AtomicGradeResult = {
-    schema: 'paideia.atomic-grade.v1', status: mode === 'payment-error' ? 'error' : 'unknown', score: mode === 'payment-error' ? null : 0, coverage: 0, criticalGate: 0, obligationCoverage: 0, quality: 0,
+    schema: 'spawnfile.training.atomic-grade.v1', status: mode === 'payment-error' ? 'error' : 'unknown', score: mode === 'payment-error' ? null : 0, coverage: 0, criticalGate: 0, obligationCoverage: 0, quality: 0,
     identity: { definitionDigest: digest, templatesDigest: digest, outputDigest: digest, contextDigest: digest },
     checks: [], extraction: { receipts: [{ failure: 'malformed', response_text: 'raw protected extraction' }], judgeCalls: [call] },
     receipts,

@@ -1,3 +1,4 @@
+import { AUTHORED_JUDGE_VERSION_PREFIX } from '../../contracts/index.js';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { parseDatasetYaml, resolveDataset } from '../index.js';
@@ -9,9 +10,9 @@ const config = {
   judges: { prose: { model: 'cheap', fallbacks: ['local'], attempts: 2, timeout_ms: 1000,
     citation_repairs: 1, template: { language: 'jinja', text: 'Check {{ rubric }}.' } } },
   optimizer: { model: 'cheap' }, budget: { max_trials: 12, max_proposals: 3, timeout_ms: 10000 },
-  cache: { mode: 'exact', max_entries: 100 }, test: 'test.paideia.yaml', validation_groups: ['validation'], seed: 0,
+  cache: { mode: 'exact', max_entries: 100 }, test: 'test.spawnfile-training.yaml', validation_groups: ['validation'], seed: 0,
 };
-const dataset = (training?: unknown) => ({ schema: 'paideia.dataset.v1', id: 'example',
+const dataset = (training?: unknown) => ({ schema: 'spawnfile.training.dataset.v1', id: 'example',
   ...(training ? { training } : {}), checks: [{ id: 'prose', eval: 'llm-rubric', input: 'output.text',
     judge: 'prose', rubric: { prompt: 'No repetition.' }, minimum: 0.8 }],
   records: [{ id: 'one', input: { prompt: 'Write.' } }] });
@@ -74,7 +75,7 @@ describe('dataset-authored training configuration', () => {
     expect(trainingJudgeVersions(budgetOnly)).toEqual(identity);
     expect(trainingJudgeVersions({ models: initial.models })).toEqual({});
     expect(trainingJudgeVersions({ models: initial.models, judges: { simple: { model: 'cheap' } } }).simple!.version)
-      .toMatch(/^paideia.authored-judge.v1:sha256:/);
+      .toMatch(new RegExp(`^${AUTHORED_JUDGE_VERSION_PREFIX.replaceAll('.', '\\.')}`));
     initial.models.cheap!.model = 'changed';
     const resolve = (training: unknown) => resolveDataset(parseDatasetYaml(stringify(dataset(training))), {
       registry: { judges: trainingJudgeVersions(validateTrainingConfiguration(training)) },
@@ -143,7 +144,7 @@ describe('dataset-authored training configuration', () => {
 
 it('accepts a separate dataset-relative validation input and rejects ambiguous or escaping inputs', () => {
   const models = { local: { provider: 'ollama', model: 'local' } };
-  expect(validateTrainingConfiguration({ models, validation: 'validation.paideia.yaml' }).validation).toBe('validation.paideia.yaml');
+  expect(validateTrainingConfiguration({ models, validation: 'validation.spawnfile-training.yaml' }).validation).toBe('validation.spawnfile-training.yaml');
   for (const config of [{ validation: '../secret.yaml' }, { validation: 'validation.yaml', validation_groups: ['a'] }]) {
     expect(() => validateTrainingConfiguration({ models, ...config })).toThrow();
   }

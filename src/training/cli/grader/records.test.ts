@@ -4,7 +4,7 @@ import type { DecisionResult } from '../../contracts/grading.js';
 import { goldenInstances, indexDecisionResults, independentConsensus, rawGood, calibrationRecord, cascadeRecord } from './records.js';
 
 function grader(teacher = false) {
-  return parseGrader({ schema: 'paideia.grader.v1', id: 'g', golden: 'l', calibration: 'c',
+  return parseGrader({ schema: 'spawnfile.training.grader.v1', id: 'g', golden: 'l', calibration: 'c',
     teachers: [{ id: 'a', provider: 'claude', model: 'm' }],
     model: teacher ? { backend: 'teacher', teacher: 'a' } : { backend: 'ollama-logprobs', endpoint: 'http://localhost:11434', name: 'm' },
     escalate: { to: 'a', between: [0.4, 0.6] }, score: { method: 'weighted' },
@@ -20,7 +20,7 @@ function label(): Label {
     votes: { q: { a: 'yes', b: 'no', human: 'yes' }, choice: { a: 'a', b: 'a' } }, provenance: {} };
 }
 function labels(): Labels {
-  return { schema: 'paideia.labels.v1', grader: 'g', labels: [label()], labelers: {
+  return { schema: 'spawnfile.training.labels.v1', grader: 'g', labels: [label()], labelers: {
     a: { kind: 'model', provider: 'claude', model: 'm' }, b: { kind: 'model', provider: 'grok', model: 'm' },
     human: { kind: 'human', name: 'H' },
   } };

@@ -165,7 +165,7 @@ export interface NativeEvidence {
 /** Where native evidence lives for the selected engine. */
 export type NativeEvidenceSource = { engine: 'codex' } | { engine: 'grok'; requestsFile: string };
 export interface TerminalEvidence {
-  schema: 'paideia.daimon-native.trial.v1';
+  schema: 'spawnfile.training.daimon-native.trial.v1';
   trialId: string;
   wakeId: string;
   agentId: string;

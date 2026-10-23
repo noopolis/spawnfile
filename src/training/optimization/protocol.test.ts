@@ -1,3 +1,4 @@
+import { legacyWireAliases } from '../contracts/index.js';
 import { describe, expect, it } from 'vitest';
 import { DSPY_FRAME_BYTES, DSPY_SCHEMA, decodeMessage, encodeMessage, inferenceSchema, sameComponents, startSchema } from './protocol.js';
 
@@ -35,7 +36,7 @@ describe('strict DSPy protocol', () => {
   ])('rejects invalid start: %j', (patch) => { expect(() => startSchema.parse(start(patch))).toThrow(); });
 
   it('rejects duplicate keys before JSON.parse can hide their conflicting values', () => {
-    const line = '{"schema":"paideia.dspy.v2","kind":"error","id":"x","id":"y","error":{"code":"bad","message":"x"}}';
+    const line = '{"schema":"spawnfile.training.dspy.v2","kind":"error","id":"x","id":"y","error":{"code":"bad","message":"x"}}';
     expect(() => decodeMessage(line)).toThrow('duplicate');
     expect(() => decodeMessage(line.replace('"id":"y"', '"\\u0069d":"y"'))).toThrow('duplicate');
   });
@@ -89,4 +90,19 @@ it('mirrors strict population search defaults, constraints and complete edit sco
   for (const editScope of [{}, { B: 'whole-file' }, { A: [] }]) {
     expect(() => startSchema.parse(start({ search, budget, editScope }))).toThrow();
   }
+});
+
+it('reads the historical population discriminator without accepting unknown optimizer modes', () => {
+  const legacy = Object.entries(legacyWireAliases).find(([, current]) => current === 'training.population')![0];
+  const wire = { schema: DSPY_SCHEMA, kind: 'result', id: 'old-population', components: { A: 'original' }, provenance: {
+    optimizer: legacy, dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 1, proposals: 0,
+    selectedCandidateIndex: 0, candidates: [{ components: { A: 'original' }, parents: [null], validationScore: 1, discoveryEvaluations: 0 }],
+    captures: [], generations: [],
+  } };
+  const result = decodeMessage(JSON.stringify(wire));
+  expect(result.kind).toBe('result');
+  if (result.kind !== 'result') throw Error('Expected optimizer result');
+  expect(result.provenance.optimizer).toBe('training.population');
+  expect(JSON.stringify(result)).not.toContain(legacy);
+  expect(() => decodeMessage(JSON.stringify({ ...wire, provenance: { ...wire.provenance, optimizer: `${legacy}.unknown` } }))).toThrow();
 });

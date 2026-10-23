@@ -12,7 +12,7 @@ export interface SubjectProvisionInput {
   engine: NativeSubjectEngine;
   agentId: string;
   /**
-   * This trial's recycle nonce and generation floor, minted by Paideia before the
+   * This trial's recycle nonce and generation floor, minted by Training before the
    * provisioner runs. Present for every broker (non-shared-uid) slot: the provisioner
    * sends the nonce with its recycle request and echoes both into `broker`.
    */
@@ -24,7 +24,7 @@ export interface SubjectProvisionInput {
 /**
  * Everything the provisioner resolved for one leased slot, before any trial bytes
  * are written. The fields are launch receipt fields; nothing here is recomputed
- * by Paideia, which only validates them against the lease and its freshness.
+ * by Training, which only validates them against the lease and its freshness.
  */
 export interface ProvisionedSubject {
   agent: NativeLaunch['agent'];

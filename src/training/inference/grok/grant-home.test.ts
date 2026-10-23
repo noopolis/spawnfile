@@ -14,7 +14,7 @@ import { fakeGrantAuthority } from './grant-fixtures.js';
 import { prepareGrokGrantCall } from './grant-home.js';
 
 let root: string;
-beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), 'paideia-grant-home-')); await chmod(root, 0o700); });
+beforeEach(async () => { root = await mkdtemp(path.join(tmpdir(), 'training-grant-home-')); await chmod(root, 0o700); });
 afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 const grant = async () => { const fake = fakeGrantAuthority(); return { fake, grant: await fake.authority.request({ model: 'grok-4.5', reasoningEffort: 'high', purpose: 'optimizer' }) }; };
 

@@ -7,7 +7,7 @@ import { daimonGrokInferenceClientPin } from '../grants/index.js';
 import { daimonProjectionGolden, daimonProjectionGoldenSha256, daimonClockedProjectionGolden, daimonClockedProjectionGoldenSha256,
   fixtureNonce, slotPreflightFor } from '../grok-fixtures.js';
 
-/** Pins Paideia's Daimon-free mirrors to the built registry checkout; mandatory in CI, opt-in locally. */
+/** Pins Training's Daimon-free mirrors to the built registry checkout; mandatory in CI, opt-in locally. */
 interface DaimonGrokContract {
   resolveOrganizationGrokBrokerProjection(config: unknown, agentId: string, options: unknown): unknown;
   grokBrokerProjectionSha256(value: unknown): string;
@@ -34,7 +34,7 @@ const input = {
     agents: [{ id: 'foreman', name: 'Foreman', instructions: 'Fixture agent.', workspacePath: '/var/lib/spawnfile/instance/workspace/agents/foreman',
       runtimeHomePath: '/var/lib/spawnfile/instance/homes/foreman', schedule: { kind: 'disabled' }, engine: { kind: 'grok', model: 'grok-4.6', reasoningEffort: 'low' } }] },
   options: { slot: 0, workerUid: 2200, workerHomePath: '/var/lib/daimon-workers/2200', architecture: 'arm64', usageLedgerPath: '/run/daimon-slots/0/usage/usage.jsonl',
-    limits: { maxRequests: 24, maxTokens: 400000, timeoutMs: 480000 }, acceptanceStorePath: '/run/paideia/control', denyPaths: ['/run/paideia', '/run/training/inputs'],
+    limits: { maxRequests: 24, maxTokens: 400000, timeoutMs: 480000 }, acceptanceStorePath: '/run/spawnfile-training/control', denyPaths: ['/run/spawnfile-training', '/run/training/inputs'],
     seccompProfileSha256: '7'.repeat(64) },
 };
 
@@ -54,7 +54,7 @@ describe.skipIf(!daimon)('Daimon Grok contract parity (requires SPAWNFILE_DAIMON
     }
   });
 
-  it.each(variants)('resolves the $variant fixture projection that Paideia mirrors and hashes byte-equally', ({ variant, golden, sha256 }) => {
+  it.each(variants)('resolves the $variant fixture projection that Training mirrors and hashes byte-equally', ({ variant, golden, sha256 }) => {
     const projection = contract().resolveOrganizationGrokBrokerProjection(input.config, 'foreman', { ...input.options, workerConfigVariant: variant });
     expect(grokBrokerProjectionSchema.parse(projection)).toEqual(projection);
     expect(projection).toEqual(golden);

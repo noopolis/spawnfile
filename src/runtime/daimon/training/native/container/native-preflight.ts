@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../../../../training/contracts/index.js';
 import { join } from 'node:path';
 import { parseNativeSandboxReceipt, readPrivateFile, type VerifiedNativeLaunch } from '../receipt/index.js';
 import type { DockerCommand } from './docker.js';
@@ -10,7 +11,7 @@ import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 const input=JSON.parse(await new Promise(resolve=>{let s='';process.stdin.setEncoding('utf8');process.stdin.on('data',v=>s+=v);process.stdin.on('end',()=>resolve(s));}));
 const projection=input.projection;
-const scratch=await mkdtemp(join(projection.workspacePath,'.paideia-native-policy-'));
+const scratch=await mkdtemp(join(projection.workspacePath,'.spawnfile-training-native-policy-'));
 try {
   const home=join(scratch,'home'), code=join(home,'.codex'), source=join(scratch,'input'), output=join(scratch,'complete');
   await mkdir(code,{recursive:true,mode:448});
@@ -19,7 +20,7 @@ try {
   await promisify(execFile)(projection.executablePath,[...projection.sandboxArgs,'--','/usr/local/bin/node','-e',command],{
     cwd:projection.workspacePath,env:{PATH:process.env.PATH,HOME:home,CODEX_HOME:code,TMPDIR:'/tmp',LANG:'C.UTF-8'},timeout:12000,maxBuffer:65536});
   if(await readFile(output,'utf8')!=='NATIVE_POLICY_EXECUTED')throw Error('Native sandbox command did not complete');
-  process.stdout.write(JSON.stringify({schema:'paideia.daimon-native.policy-preflight.v1',projectionSha256:input.projectionSha256,modelCallsMade:0,workspaceReadWrite:true}));
+  process.stdout.write(JSON.stringify({schema:'spawnfile.training.daimon-native.policy-preflight.v1',projectionSha256:input.projectionSha256,modelCallsMade:0,workspaceReadWrite:true}));
 } finally {await rm(scratch,{recursive:true,force:true});}
 `;
 
@@ -34,7 +35,7 @@ export async function verifyPreparedNativeSandbox(run: DockerCommand, name: stri
   });
   if (result.code !== 0) throw new Error(`Exact native sandbox policy failed before cognition: ${result.stderr.slice(-3000)}`);
   const proof = JSON.parse(result.stdout) as Record<string, unknown>;
-  if (proof.schema !== 'paideia.daimon-native.policy-preflight.v1' || proof.projectionSha256 !== receipt.projectionSha256 ||
+  if (canonicalWireId(proof.schema) !== 'spawnfile.training.daimon-native.policy-preflight.v1' || proof.projectionSha256 !== receipt.projectionSha256 ||
     proof.modelCallsMade !== 0 || proof.workspaceReadWrite !== true) throw new Error('Exact native sandbox probe omitted bound workspace execution evidence');
   return { projectionSha256: receipt.projectionSha256, workspaceReadWrite: true };
 }

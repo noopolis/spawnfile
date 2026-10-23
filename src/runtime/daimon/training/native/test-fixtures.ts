@@ -38,7 +38,7 @@ export function activityFixture(active = false): NativeActivity {
 export function unadmittedFixture(trialId = 'trial', wakeId = 'task'): TerminalEvidence {
   const receipt = { ...receiptFixture(), delivery_id: `${trialId}:${wakeId}`, state: 'accepted' as const };
   delete receipt.execution_id;
-  return { schema: 'paideia.daimon-native.trial.v1', trialId, wakeId, agentId: 'agent:writer', model: 'test-model-v1',
+  return { schema: 'spawnfile.training.daimon-native.trial.v1', trialId, wakeId, agentId: 'agent:writer', model: 'test-model-v1',
     configSha256: 'a'.repeat(64), scheduleOverride: 'disabled', status: 'failed',
     startedAt: receipt.accepted_at, completedAt: receipt.updated_at, receipt,
     activity: { version: 'noopolis.daimon.organization-runtime-activity.v2', items: [{ ...receipt, active: false }], executions: [] },
@@ -80,7 +80,7 @@ export async function launchFixture(): Promise<{ root: string; input: SubjectSta
   await writeFile(join(inputs, 'token'), 'unit-secret-that-is-not-a-login', { mode: 0o600 });
   await writeFile(join(inputs, 'environment'), 'TRIAL_FIXTURE=unit\n');
   const launch: VerifiedNativeLaunch = {
-    schema: 'paideia.daimon-native.launch.v1', receiptFile: join(runtime, 'native-launch.json'),
+    schema: 'spawnfile.training.daimon-native.launch.v1', receiptFile: join(runtime, 'native-launch.json'),
     image: `sha256:${'a'.repeat(64)}`, config: join(inputs, 'config.json'), configSha256: sha256(bytes), sourceConfigSha256: sha256(bytes),
     tokenFile: join(inputs, 'token'), envFile: join(inputs, 'environment'), controlRoot: join(native, 'acceptance'), workerRoot: join(root, 'worker'),
     bootstrap: { root: join(root, 'bootstrap'), entrypoint: 'bootstrap.js' }, host: { bindHost: '127.0.0.1', port: 19700 },
@@ -113,12 +113,12 @@ export function dockerFixture(launch: VerifiedNativeLaunch, trialId: string) {
     if (args[0] === 'inspect') return exists ? response({ Id: 'b'.repeat(64), State: { Running: running, Status: running ? 'running' : 'exited', ExitCode: 0 }, Config: { Labels: { [ownerLabel]: forged ? 'foreign' : owner }, Image: launch.image } })
       : { code: 1, stdout: '', stderr: 'Error: No such object' };
     if (args[0] === 'start') { await writeSandboxProjectionFixture(launch, trialId); running = true; return response('started'); }
-    if (args[0] === 'logs') return response({ schema: 'paideia.daimon-native.ready.v1', trialId, configSha256: launch.configSha256 });
+    if (args[0] === 'logs') return response({ schema: 'spawnfile.training.daimon-native.ready.v1', trialId, configSha256: launch.configSha256 });
     if (args[0] === 'exec') {
       const request = JSON.parse(options?.stdin ?? '{}') as { path: string; projectionSha256?: string };
-      if (request.path === 'sandbox-preflight') return response({ schema: 'paideia.daimon-native.sandbox-preflight.v1', modelCallsMade: 0,
+      if (request.path === 'sandbox-preflight') return response({ schema: 'spawnfile.training.daimon-native.sandbox-preflight.v1', modelCallsMade: 0,
         checks: { namespace: true, workspaceRead: true, workspaceWrite: true, runDenied: true, authDenied: true, ingressDenied: true, networkDenied: true } });
-      if (request.path === 'native-policy-preflight') return response({ schema: 'paideia.daimon-native.policy-preflight.v1',
+      if (request.path === 'native-policy-preflight') return response({ schema: 'spawnfile.training.daimon-native.policy-preflight.v1',
         projectionSha256: request.projectionSha256, modelCallsMade: 0, workspaceReadWrite: true });
       if (request.path === '/trial/health') return response({ version: 'noopolis.daimon.organization-runtime-health.v1', state: 'running', agents: [{ agentId: launch.agent.id }] });
       if (request.path === '/trial/stop') return response({ state: 'acknowledged' });

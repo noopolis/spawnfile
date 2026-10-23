@@ -12,6 +12,7 @@ src/shared/
 ├── daimonCodexDocker.ts # Shared Daimon Docker posture and strict Codex policy parser
 ├── errors.ts        # Typed error helpers and guards
 ├── types.ts         # Cross-cutting shared types
+├── trainingLegacy/ # Neutral historical training readers and frozen hash domains
 └── errors.test.ts   # Shared error tests
 ```
 

@@ -21,7 +21,7 @@ it('sums only native returned input/output totals; cached and reasoning tokens r
   expect(capture([native()])).toEqual({ status: 'complete', settled: true, usage });
   expect(capture([native(), native()])).toEqual({ status: 'complete', settled: true, usage: {
     inputTokens: 200, cachedInputTokens: 80, cacheWriteInputTokens: 40, cacheWrite5mInputTokens: 20,
-    cacheWrite1hInputTokens: 20, outputTokens: 40, reasoningTokens: 10, source: 'paideia.subject.returned-turn-totals.v1' } });
+    cacheWrite1hInputTokens: 20, outputTokens: 40, reasoningTokens: 10, source: 'spawnfile.training.subject.returned-turn-totals.v1' } });
   expect(capture([native()], false).status).toBe('incomplete');
   expect(capture([native()], true, 2).status).toBe('incomplete');
   expect(capture([native()], true, 1.5).status).toBe('incomplete');
@@ -33,7 +33,7 @@ it('unknown native totals remain unknown and absent cache fields never become ze
   expect(capture([native({ usage: partial })])).toEqual({ status: 'incomplete', settled: true, usage: partial });
   const known = { ...partial, outputTokens: 5 };
   expect(capture([native({ usage: known }), native({ usage: known })])).toEqual({ status: 'complete', settled: true, usage: {
-    ...known, inputTokens: 200, outputTokens: 10, source: 'paideia.subject.returned-turn-totals.v1' } });
+    ...known, inputTokens: 200, outputTokens: 10, source: 'spawnfile.training.subject.returned-turn-totals.v1' } });
   expect(capture([native({ usage: partial }), native()]).usage).toMatchObject({ outputTokens: null, cachedInputTokens: null, cacheWriteInputTokens: null });
   expect(capture([native(), native({ usage: null })])).toEqual({ status: 'incomplete', usage: null });
 });
@@ -111,10 +111,10 @@ it('a real terminal judge outage preserves native totals for exact rescore witho
   expect(report.status).toBe('error'); expect(report.execution).toBe('completed');
   expect(report.snapshot.subjectUsage).toEqual({ status: 'complete', settled: true, usage });
   const store = await openExperimentStore(task.options.root + '/capture');
-  await store.createRun({ schema: 'paideia.run.v1', id: report.id, datasetId: 'suite', datasetRole: report.phase,
+  await store.createRun({ schema: 'spawnfile.training.run.v1', id: report.id, datasetId: 'suite', datasetRole: report.phase,
     candidateId: report.candidateId, planDigest: report.planDigest, recordId: report.recordId });
   await store.appendEvaluation(report.id, { id: 'original', report });
-  const dataset = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  const dataset = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: revised
 checks: [{id: usage-observed, eval: equals, input: output.text, value: DONE}]
 records: [{id: record, input: {prompt: must never execute}}]
@@ -160,7 +160,7 @@ function limited(limit?: SubjectTurnResult['limit']): SubjectTurnResult {
     usage: { inputTokens: 1_110_819, cachedInputTokens: 792_704, outputTokens: 80_322, reasoningTokens: null, source: 'fixture' } };
 }
 function filing() {
-  return resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  return resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: filing
 stages:
   - id: accepted-filing

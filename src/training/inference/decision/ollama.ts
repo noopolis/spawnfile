@@ -1,8 +1,9 @@
+import { GRADER_CACHE_PROMPT_DOMAIN } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import { ollamaContextSupport } from '../ollama/index.js';
 import type { DecisionBackend, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { decisionHttp, DecisionRequestRejected, type DecisionHttpOptions } from './http.js';
-import { DECISION_LETTERS, DECISION_PROMPT_VERSION, decisionPrompt, validateDecisionRequest } from './prompt.js';
+import { DECISION_LETTERS, decisionPrompt, validateDecisionRequest } from './prompt.js';
 
 export interface OllamaDecisionOptions extends DecisionHttpOptions { model: string; contextTokens?: number }
 
@@ -26,7 +27,7 @@ export function createOllamaDecision(options: OllamaDecisionOptions): DecisionBa
     const timeout = AbortSignal.timeout(options.timeoutMs ?? 180_000);
     await verifyContext(signal === undefined ? timeout : AbortSignal.any([signal, timeout]));
     const digest = createHash('sha256').update(JSON.stringify({ modelDigest: installed.digest,
-      contextTokens, truncate: false, shift: false, protocol: DECISION_PROMPT_VERSION })).digest('hex');
+      contextTokens, truncate: false, shift: false, protocol: GRADER_CACHE_PROMPT_DOMAIN })).digest('hex');
     return { backend: 'ollama-logprobs', model: options.model, digest };
   }
   return {

@@ -119,7 +119,7 @@ export type StopUnconfirmed =
  * for that same id, so nothing here can say which one the frame accounts for. A
  * trial that legitimately ran several wakes resolves the one its frame names and
  * is scored; two traces answering to one name is a runtime defect and fails
- * closed under its own word, because the fix it calls for is not in Paideia.
+ * closed under its own word, because the fix it calls for is not in Training.
  */
 export type TerminalEvidenceMissing = 'terminal-absent' | 'terminal-unbound' | 'terminal-ambiguous';
 

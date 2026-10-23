@@ -44,7 +44,7 @@ export async function loadDaimonGrokGrantAuthority(socketPath: string | undefine
   if (daimon.GROK_INFERENCE_CLIENT_MODEL_ID !== PIN.modelId || daimon.GROK_INFERENCE_GRANT_ENV !== PIN.envKey || daimon.GROK_INFERENCE_PROXY_BASE_URL !== PIN.proxyBaseUrl ||
     grants.maxLiveGrants !== PIN.maxLiveGrants || !isDeepStrictEqual([...grants.failureCodes], PIN.failureCodes) || grants.client.modelId !== PIN.modelId ||
     grants.client.envKey !== PIN.envKey || !isDeepStrictEqual(grants.client.configSha256, PIN.configSha256)) {
-    throw new Error('Installed Daimon inference client contract differs from the Paideia pin');
+    throw new Error('Installed Daimon inference client contract differs from the Training pin');
   }
   const client = new daimon.EngineBrokerControlClient(socketPath);
   const refusal = (error: unknown): unknown => error instanceof daimon.EngineBrokerInferenceGrantRefused && (grokGrantRefusalCodes as readonly string[]).includes(error.code)

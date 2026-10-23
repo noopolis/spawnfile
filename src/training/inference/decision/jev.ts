@@ -1,7 +1,9 @@
+import { JEV_IDENTITY_KEY, JEV_IDENTITY_LONG_KEY, JEV_CANARY_MARKER, JEV_CANARY_QUESTION } from '../../contracts/index.js';
+import { GRADER_CACHE_PROMPT_DOMAIN } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import type { DecisionBackend, DecisionIdentity, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { decisionHttp, DecisionRequestRejected, type DecisionHttpOptions } from './http.js';
-import { DECISION_PROMPT_VERSION, validateDecisionRequest } from './prompt.js';
+import { validateDecisionRequest } from './prompt.js';
 
 type JevEnvelope = { model?: unknown; fingerprint?: unknown; system_fingerprint?: unknown; answers?: Record<string, { probabilities?: unknown }> };
 
@@ -62,7 +64,7 @@ export function createJevDecision(options: DecisionHttpOptions): DecisionBackend
       }
     }
     if (!accepted) throw rejection!;
-    const fingerprint = createHash('sha256').update(JSON.stringify({ protocol: DECISION_PROMPT_VERSION,
+    const fingerprint = createHash('sha256').update(JSON.stringify({ protocol: GRADER_CACHE_PROMPT_DOMAIN,
       model: reportedModel, outcomes })).digest('hex');
     return { backend: 'jev-http', model: reportedModel!, fingerprint };
   }
@@ -119,11 +121,11 @@ function declaredRevisions(response: JevEnvelope): Record<string, string> {
 /** Keep both payloads deterministic; the long state exposes input-size preparation. */
 function identityCanaries(): DecisionRequest[] {
   return [
-    { key: 'paideia_identity', type: 'yes-no', optionLabels: ['yes', 'no'],
+    { key: JEV_IDENTITY_KEY, type: 'yes-no', optionLabels: ['yes', 'no'],
       instructions: 'Is the supplied JSON object empty?', projection: {} },
-    { key: 'paideia_identity_long', type: 'yes-no', optionLabels: ['yes', 'no'],
-      instructions: 'Does the supplied text end with PAIDEIA_CANARY_END?',
-      projection: { text: `${'0123456789 abcdefghijklmnopqrstuvwxyz. '.repeat(1100).slice(0, 39_982)}PAIDEIA_CANARY_END` } },
+    { key: JEV_IDENTITY_LONG_KEY, type: 'yes-no', optionLabels: ['yes', 'no'],
+      instructions: JEV_CANARY_QUESTION,
+      projection: { text: `${'0123456789 abcdefghijklmnopqrstuvwxyz. '.repeat(1100).slice(0, 39_982)}${JEV_CANARY_MARKER}` } },
   ];
 }
 

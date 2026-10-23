@@ -55,7 +55,7 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
     ...await Promise.all(["runtimes.yaml", "moltnet-releases.json"].map(name =>
       sealFile(path.join(build.compiler ? resolve(build.compiler) : ownRoot, name), `compiler/${name}`)))
   ];
-  for (const required of [`integration/${build.integration.entry}`, "spawnfile/dist/training/dspy/pyproject.toml", "spawnfile/dist/training/dspy/requirements.lock", "spawnfile/dist/training/dspy/paideia_dspy/__init__.py", "spawnfile/dist/runtime/trainingCli.js", "spawnfile/dist/runtime/trainingSubjects.js", "spawnfile/dist/runtime/daimon/training/native/worker/cli.js", "spawnfile/dist/training/cli/index.js", "spawnfile/dist/cli/index.js", "compiler/dist/cli/index.js"]) {
+  for (const required of [`integration/${build.integration.entry}`, "spawnfile/dist/training/dspy/pyproject.toml", "spawnfile/dist/training/dspy/requirements.lock", "spawnfile/dist/training/dspy/spawnfile_training_dspy/__init__.py", "spawnfile/dist/runtime/trainingCli.js", "spawnfile/dist/runtime/trainingSubjects.js", "spawnfile/dist/runtime/daimon/training/native/worker/cli.js", "spawnfile/dist/training/cli/index.js", "spawnfile/dist/cli/index.js", "compiler/dist/cli/index.js"]) {
     if (!files.some(file => file.destination === required)) throw Error(`Training distribution is missing ${required}`);
   }
   const entry = `#!/bin/sh\nexec /usr/local/bin/node --experimental-strip-types ${JSON.stringify(`/opt/training/integration/${build.integration.entry}`)} "$@"\n`;

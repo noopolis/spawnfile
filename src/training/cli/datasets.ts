@@ -1,4 +1,5 @@
-import { constants, closeSync, fstatSync, openSync, readFileSync, realpathSync } from 'node:fs';
+import { readTrainingBytes } from '../platform/index.js';
+import { realpathSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { parseDatasetYaml, resolveDataset, resolveDatasetForCost } from '../cases/index.js';
 import type { CostDataset } from '../cases/index.js';
@@ -25,14 +26,7 @@ function graderChecks(dataset: ResolvedDataset): CheckNode[] {
 }
 
 export function readCliBytes(path: string, maximum: number): Buffer {
-  const file = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  try {
-    const stat = fstatSync(file);
-    if (!stat.isFile() || stat.size > maximum) throw new Error('CLI input must be a bounded regular text file');
-    const bytes = readFileSync(file);
-    if (bytes.length > maximum) throw new Error('CLI input grew beyond its byte bound');
-    return bytes;
-  } finally { closeSync(file); }
+  return readTrainingBytes(path, maximum);
 }
 
 export function readCliText(path: string, maximum: number): string {

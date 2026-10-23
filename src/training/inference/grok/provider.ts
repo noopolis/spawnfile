@@ -29,7 +29,7 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
       if (!request.prompt.trim() || !request.model.trim() || request.model.startsWith('-') ||
         request.temperature !== undefined || request.seed !== undefined) throw new InferenceFailure('unsupported', 'Invalid Grok inference controls');
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', 'Grok cancelled before launch');
-      const cwd = await mkdtemp(path.join(tmpdir(), 'paideia-grok-'));
+      const cwd = await mkdtemp(path.join(tmpdir(), 'training-grok-'));
       try {
         const promptFile = path.join(cwd, 'prompt.txt');
         await writeFile(promptFile, request.prompt, { mode: 0o600 });

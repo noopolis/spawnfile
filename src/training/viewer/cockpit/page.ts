@@ -25,8 +25,8 @@ export function renderCockpit(data: ViewerData, nonce: string, metricIndex = 0):
     return `${split} ${split === 'test' && count === 0 ? '—' : count}`;
   }).join(' · ');
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${e(data.experiment.title)} · Paideia</title><style nonce="${e(nonce)}">${cockpitStyles}</style></head>
-<body><div class="shell"><header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true">◈</span> PAIDEIA <span class="top-title" title="${e(data.experiment.title)}">${e(data.experiment.title)}</span></div>
+<title>${e(data.experiment.title)} · Training</title><style nonce="${e(nonce)}">${cockpitStyles}</style></head>
+<body><div class="shell"><header class="topbar"><div class="brand"><span class="brand-mark" aria-hidden="true">◈</span> TRAINING <span class="top-title" title="${e(data.experiment.title)}">${e(data.experiment.title)}</span></div>
 <div class="header-actions"><span class="badge ${failed ? 'bad' : 'good'}"><span class="dot"></span>${e(badge)}</span><button id="refresh" class="refresh-button">↻ Refresh</button><label><input id="poll" type="checkbox"${replay ? '' : ' checked'}> Live</label></div></header>
 <div class="workspace"><aside class="sidebar"><section class="panel"><h2 class="panel-title">Experiment</h2><div class="panel-body"><p class="experiment-label">${e(data.experiment.title.split(' — ')[0]!)}</p><p class="muted">${e(data.optimizer?.name ?? 'Evaluation')}</p><p class="mono-id">run ${e(shortId(data.experiment.id))}</p></div><div class="panel-footer">${e(phaseCounts)}<br>Selected: ${e(model.candidates.find(candidate => candidate.selected)?.label ?? 'pending')}</div></section>
 <nav class="panel" aria-label="Experiment views"><h2 class="panel-title">Console</h2><div class="panel-body">${navigation(model, data)}</div></nav>

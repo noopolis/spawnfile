@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../contracts/index.js';
 import type { CandidateManifest, CandidateResource, ResourceMapping } from './types.js';
 import { candidateIdentity, canonicalCandidate, digestBytes, policyIdentity } from './identity.js';
 import { relativeResourcePath } from './filesystem.js';
@@ -28,7 +29,7 @@ export function validateMappings(resources: ResourceMapping[]): void {
   }
 }
 export function validateCandidate(candidate: CandidateManifest): void {
-  if (candidate.schema !== 'paideia.candidate.v1') throw new Error('Unsupported candidate schema');
+  if (canonicalWireId(candidate.schema) !== 'spawnfile.training.candidate.v1') throw new Error('Unsupported candidate schema');
   validateMappings(candidate.resources);
   let bytes = 0;
   for (const resource of candidate.resources) {

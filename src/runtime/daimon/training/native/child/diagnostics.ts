@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../../../../training/contracts/index.js';
 import { lstat, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SubjectStartupCapture, SubjectStartupDiagnostic } from '../../../../../training/contracts/execution.js';
@@ -90,7 +91,7 @@ const lineCount = (text: string): number => text ? text.split(/\r?\n/u).length :
 /** The worker's own stated failure is the best reason; a frame from any layer beats an exit status. */
 function classify(frames: SubjectStartupDiagnostic['frames'], exitCode: number | null, exitSignal: string | null, fallback: string): string {
   const stated = frames?.filter(frame => frame.message !== undefined) ?? [];
-  const worker = stated.find(frame => frame.schema === 'paideia.daimon-native.start-failed.v1');
+  const worker = stated.find(frame => canonicalWireId(frame.schema) === 'spawnfile.training.daimon-native.start-failed.v1');
   // Any layer's own account — the worker's, or a caller bootstrap's — outranks an exit code.
   const frame = worker ?? stated.at(-1);
   if (frame) return `${frame.schema}: ${frame.message!}`;
@@ -134,7 +135,7 @@ export async function childDiagnostics(root: string, trialId: string, configSha2
     },
     save(exitCode: number | null, exitSignal: NodeJS.Signals | null): Promise<void> {
       status = { exitCode, exitSignal };
-      return saved ??= writeFile(file, JSON.stringify({ schema: 'paideia.daimon-native.child-diagnostics.v1', trialId, configSha256,
+      return saved ??= writeFile(file, JSON.stringify({ schema: 'spawnfile.training.daimon-native.child-diagnostics.v1', trialId, configSha256,
         exitCode, exitSignal, limitBytesPerStream: limit,
         stdout: streams.stdout.bytes.toString('utf8'), stderr: streams.stderr.bytes.toString('utf8'),
         truncated: { stdout: streams.stdout.truncated, stderr: streams.stderr.truncated },
@@ -164,7 +165,7 @@ export async function childDiagnostics(root: string, trialId: string, configSha2
       const diagnostic = build(caught);
       const raw = { stdout: streams.stdout.bytes.toString('utf8'), stderr: streams.stderr.bytes.toString('utf8') };
       const capture: SubjectStartupCapture = { basename: 'OPERATOR-ONLY.native-startup-capture.json',
-        content: `${JSON.stringify({ schema: 'paideia.daimon-native.operator-capture.v1', trialId, configSha256,
+        content: `${JSON.stringify({ schema: 'spawnfile.training.daimon-native.operator-capture.v1', trialId, configSha256,
           exitCode: status.exitCode, exitSignal: status.exitSignal, protectedArtifact: file,
           limitBytesPerStream: limit, stdout: raw.stdout, stderr: raw.stderr,
           truncated: { stdout: streams.stdout.truncated, stderr: streams.stderr.truncated } }, null, 2)}\n` };
@@ -185,7 +186,7 @@ export async function childDiagnostics(root: string, trialId: string, configSha2
         .map(([stream, text, result]) => ({ stream, bytes: Buffer.byteLength(text), lines: lineCount(text),
           frame: frames.find(row => row.stream === stream)?.schema ?? null, detectors: result.detectors }));
       const diagnostic: SubjectStartupDiagnostic = {
-        schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId,
+        schema: 'spawnfile.training.daimon-native.startup-diagnostic.v1', trialId,
         // A withheld stream still leaves the class identified, so the reason is kept whenever it is itself clean.
         reason: reason.clean ? truncate(reason.text) : 'Native worker failed before readiness; its stated reason could not be published safely',
         exitCode: status.exitCode, exitSignal: status.exitSignal,

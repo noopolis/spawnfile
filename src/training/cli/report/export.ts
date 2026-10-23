@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import { randomUUID } from 'node:crypto';
 import { open, mkdir, mkdtemp, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -8,7 +9,7 @@ import { summarizeTraining } from './summary.js';
 
 /** Export only a completed training envelope; legacy/failed reports keep their protected blobs. */
 export function isTrainingReport(value: unknown): value is TrainingReport {
-  return typeof value === 'object' && value !== null && 'schema' in value && value.schema === 'paideia.training.v1';
+  return typeof value === 'object' && value !== null && 'schema' in value && canonicalWireId(value.schema) === 'spawnfile.training.training.v1';
 }
 
 async function writeVerified(path: string, bytes: string) {

@@ -70,7 +70,7 @@ export async function readSealedBrokerUsage(launch: NativeLaunch, options: Seale
   return nothing;
 }
 
-export const BROKER_REQUESTS_SCHEMA = 'paideia.daimon-native.broker-requests.v1';
+export const BROKER_REQUESTS_SCHEMA = 'spawnfile.training.daimon-native.broker-requests.v1';
 /** Published rows per failed turn. A hung turn is read from its requests, not archived as a corpus. */
 const publishedRows = 256;
 
@@ -193,7 +193,7 @@ export async function readSealedBrokerRequests(launch: NativeLaunch, options: Se
   return undefined;
 }
 
-export const BROKER_SEAL_SCHEMA = 'paideia.daimon-native.broker-seal.v1';
+export const BROKER_SEAL_SCHEMA = 'spawnfile.training.daimon-native.broker-seal.v1';
 
 /** One outstanding MCP tool call: a name and how long it had been unanswered when the turn died. */
 export interface BrokerSealOutstandingCall { name: string; outstandingMs: number }

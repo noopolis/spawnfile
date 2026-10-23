@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
@@ -5,7 +6,7 @@ import { identifier, parseSchema, parseYaml } from '../../graders/format/index.j
 import { sha256, type Grader, type Label, type Labels } from '../../graders/index.js';
 
 const reference = z.strictObject({ from: z.string().min(1) });
-const manifestSchema = z.strictObject({ schema: z.literal('paideia.grader-inputs.v1'), items: z.array(z.strictObject({
+const manifestSchema = z.strictObject({ schema: compatibleWireLiteral('spawnfile.training.grader-inputs.v1'), items: z.array(z.strictObject({
   id: identifier, lineage: identifier, example: z.strictObject({ dataset: identifier, id: identifier }).optional(),
   output: reference, context: z.record(identifier, reference).default({}),
 })) });

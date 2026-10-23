@@ -52,7 +52,7 @@ export interface TrainingOptions {
 }
 export interface TrainingReport {
   scoring?: TrainingScoring;
-  schema: 'paideia.training.v1';
+  schema: 'spawnfile.training.training.v1';
   id: string;
   baseline: CandidateManifest;
   selected: CandidateManifest;
@@ -224,7 +224,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     trial: (candidate, caseId, repeat) => trial(options.test, caseId, 'test', candidate, undefined,
       repeat === 0 ? undefined : `test-repeat:${JSON.stringify([candidate.id, caseId, repeat])}`),
     measurement: report => ({ id: measured(report).id, score: trialScore(measured(report), options.scoring) }) });
-  const report: TrainingReport = { schema: 'paideia.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer,
+  const report: TrainingReport = { schema: 'spawnfile.training.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer,
     ...(options.scoring?.deferred === 'stage-score' ? { scoring: { ...options.scoring } } : {}),
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
       test: options.test.records.map(record => record.id) }, trials, heldOut, ...(retries.size ? { retries: [...retries.values()] } : {}), ...(rescores.length ? { rescores } : {}),

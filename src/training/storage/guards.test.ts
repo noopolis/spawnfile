@@ -10,8 +10,8 @@ import type { ReadAccess, RunManifest, Visibility } from './types.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
-async function temporary(): Promise<string> { const root = await mkdtemp(join(tmpdir(), 'paideia-guards-')); roots.push(root); return root; }
-const manifest: RunManifest = { schema: 'paideia.run.v1', id: 'run', datasetId: 'd', datasetRole: 'train', candidateId: 'c', planDigest: 'p' };
+async function temporary(): Promise<string> { const root = await mkdtemp(join(tmpdir(), 'training-guards-')); roots.push(root); return root; }
+const manifest: RunManifest = { schema: 'spawnfile.training.run.v1', id: 'run', datasetId: 'd', datasetRole: 'train', candidateId: 'c', planDigest: 'p' };
 describe('storage data and authorization guards', () => {
   it('only serializes finite, acyclic plain JSON with deterministic keys', () => {
     expect(jsonBytes({ z: undefined, b: [true, null, 1], A: 'text' })).toBe('{"A":"text","b":[true,null,1]}');

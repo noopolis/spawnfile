@@ -1,6 +1,6 @@
 # Training Core
 
-This is the training core (from Paideia), runtime-neutral; must not import
+This is Spawnfile’s runtime-neutral training core; must not import
 ../runtime, ../compiler. Its structural rules run through Vitest and its imported
 per-file coverage floor remains 90%. Runtime adapters live under their runtime owners and enter through subjects/registry.ts.
 

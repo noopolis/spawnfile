@@ -1,3 +1,4 @@
+import { checkTrainingFilename } from '../../../platform/index.js';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -21,8 +22,11 @@ function resource(key: string): object {
 }
 
 export async function buildAtomicRuntime(file: string, dependencies: GraderDependencies = {}): Promise<AtomicRuntime> {
+  checkTrainingFilename(file);
   const source = await readFile(file, 'utf8'), grader = parseAtomicGraderYaml(source);
-  const templateSource = await readFile(resolve(dirname(file), grader.templates), 'utf8');
+  const templateFile = resolve(dirname(file), grader.templates);
+  checkTrainingFilename(templateFile);
+  const templateSource = await readFile(templateFile, 'utf8');
   const templates = parseCheckTemplatesYaml(templateSource);
   validateAtomicTemplates(grader, templates);
   assertModelRequestAdmission(grader.extractor.provider === 'codex' ? 'codex-subscription' : grader.extractor.provider, 'atomic extraction',
@@ -39,7 +43,7 @@ export async function buildAtomicRuntime(file: string, dependencies: GraderDepen
   return { kind: 'atomic', grader, templates, backend, definitionDigest: sha256(source), templatesDigest: sha256(templateSource),
     resource: resource('typesafe'), resources: [resource('typesafe'), resource(`extractor:${grader.extractor.model}`)],
     async extract(inputs, signal) {
-      const directory = await mkdtemp(join(tmpdir(), 'paideia-atomic-trial-'));
+      const directory = await mkdtemp(join(tmpdir(), 'training-atomic-trial-'));
       const out = join(directory, 'decomposition');
       const receipts: AtomicExtraction['receipts'] = [];
       const judgeCalls: JudgeCall[] = [];
@@ -49,7 +53,7 @@ export async function buildAtomicRuntime(file: string, dependencies: GraderDepen
         await atomicWrite(join(directory, 'output.json'), JSON.stringify(inputs.output));
         const context = Object.fromEntries(Object.entries(inputs.context).map(([name]) => [name, { from: `${sha256(name)}.json` }]));
         for (const [name, value] of Object.entries(inputs.context)) await atomicWrite(join(directory, `${sha256(name)}.json`), JSON.stringify(value));
-        await atomicWrite(join(directory, 'inputs.json'), { schema: 'paideia.grader-inputs.v1', items: [{
+        await atomicWrite(join(directory, 'inputs.json'), { schema: 'spawnfile.training.grader-inputs.v1', items: [{
           id: 'trial', lineage: 'trial', output: { from: 'output.json' }, context,
         }] });
         const deadline = AbortSignal.timeout(grader.extractor.deadline_ms);

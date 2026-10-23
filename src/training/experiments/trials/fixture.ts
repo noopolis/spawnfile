@@ -14,14 +14,14 @@ export const capabilities: SubjectAdapter['capabilities'] = { toolTrace: 'comple
 export const complete: SubjectTurnResult = { status: 'completed', text: 'DONE', usage: null,
   coverage: [{ channel: 'tools', completeness: 'complete', ordering: 'source' }, { channel: 'output', completeness: 'complete', ordering: 'source' }] };
 export async function setup(run?: (input: SubjectStart, turn: { id: string; text: string }) => Promise<SubjectTurnResult>) {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-trial-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-trial-')); roots.push(root);
   const journal: TrialEvent[] = []; let stops = 0; let starts = 0;
   const adapter: SubjectAdapter = { id: 'fixture', capabilities,
     async start(input) { starts++; return {
       async run(turn) { return run ? run(input, turn) : complete; },
       async stop(reason) { stops++; return { state: 'acknowledged', scope: 'native-handle', quiescence: 'confirmed', remoteWork: 'unknown', reason, detail: 'fixture ended' }; },
     }; } };
-  const record = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+  const record = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: suite
 checks:
   - {id: done, eval: equals, input: output.text, value: DONE}

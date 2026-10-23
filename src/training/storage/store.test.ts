@@ -8,11 +8,11 @@ import { contentDigest, digestName, identity, jsonBytes } from './content.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
-const manifest: RunManifest = { schema: 'paideia.run.v1', id: 'run', datasetId: 'data', datasetRole: 'train', candidateId: 'candidate', planDigest: 'plan', recordId: 'record' };
+const manifest: RunManifest = { schema: 'spawnfile.training.run.v1', id: 'run', datasetId: 'data', datasetRole: 'train', candidateId: 'candidate', planDigest: 'plan', recordId: 'record' };
 const evaluator: ReadAccess = { audience: 'evaluator', phase: 'training' };
 const operator: ReadAccess = { audience: 'operator', phase: 'replay' };
 async function fixture(record = manifest) {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-store-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-store-')); roots.push(root);
   const store = await openExperimentStore(root);
   await store.createRun(record);
   const runRoot = join(root, 'runs', digestName(contentDigest(record.id)));

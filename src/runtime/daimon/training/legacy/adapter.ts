@@ -96,7 +96,7 @@ export function createDaimonAdapter(options: DaimonOptions = {}): SubjectAdapter
         model: { provider: 'openai', name: model, auth: { method: 'codex' } },
         sessionFactory, toolNames: [], productionTools: tools,
       });
-      const handle = await harness.startAgent({ id: input.trialId, name: 'Paideia subject', instructions: input.instructions,
+      const handle = await harness.startAgent({ id: input.trialId, name: 'Training subject', instructions: input.instructions,
         causalRunId: input.trialId,
         workspacePath: input.workspacePath, runtimeHomePath: input.runtimeHomePath, tools: [] });
       const stop = (reason: string): Promise<StopReceipt> => {
@@ -110,7 +110,7 @@ export function createDaimonAdapter(options: DaimonOptions = {}): SubjectAdapter
             if (!acknowledged) throw new Error('Native stop acknowledgement deadline exceeded');
             return { state: handle.status().state === 'stopped' ? 'acknowledged' as const : 'unknown' as const,
               scope: 'native-handle' as const, quiescence: 'unknown' as const, remoteWork: 'unknown' as const, reason,
-              detail: 'Daimon stop returned; Paideia cannot independently inspect its owned process groups or remote fixture effects.' };
+              detail: 'Daimon stop returned; Training cannot independently inspect its owned process groups or remote fixture effects.' };
           } catch (error) {
             return { state: 'unknown' as const, scope: 'native-handle' as const, quiescence: 'unknown' as const,
               remoteWork: 'unknown' as const, reason, detail: `Native stop failed: ${String(error)}` };

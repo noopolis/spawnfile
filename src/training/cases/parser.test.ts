@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseDatasetYaml, resolveDataset } from './index.js';
 import { canonical, json, number, safePath, sequence, uniqueStrings } from './validation.js';
 
-const minimal = `schema: paideia.dataset.v1
+const minimal = `schema: spawnfile.training.dataset.v1
 id: arithmetic
 records:
   - id: addition
@@ -16,7 +16,7 @@ records:
 `;
 describe('strict YAML authoring', () => {
   it('preserves exact authored task bytes and source identity', () => {
-    const parsed = parseDatasetYaml(minimal, { sourceName: 'train.paideia.yaml' });
+    const parsed = parseDatasetYaml(minimal, { sourceName: 'train.spawnfile-training.yaml' });
     expect(parsed.dataset.records[0]!.input!.prompt).toBe('Reply with 4.\n');
     expect(parsed.locations['$.records[0].input.prompt']!.line).toBe(6);
     expect(parsed.sourceDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
@@ -30,7 +30,7 @@ describe('strict YAML authoring', () => {
     [minimal.replace('id: arithmetic', 'true: arithmetic'), /keys must be strings/],
     [minimal.replace('id: arithmetic', '__proto__: evil'), /unsupported key/],
     [minimal.replace('id: arithmetic', 'id: arithmetic\nlegacy: true'), /unknown field/],
-    [minimal.replace('paideia.dataset.v1', 'paideia.dataset.v2'), /expected one/],
+    [minimal.replace('spawnfile.training.dataset.v1', 'spawnfile.training.dataset.v2'), /expected one/],
     [minimal.replace('records:', 'records: []\nunused:'), /unknown field/],
     [minimal.replace('eval: equals', 'eval: equals\n        not: {eval: equals}'), /exactly one/],
     ['---\nid: a\n---\nid: b', /multiple documents/],
@@ -59,10 +59,10 @@ describe('strict YAML authoring', () => {
     ['checks: [{id: a, not: {passed: x, extra: 1}}]\nrecords: [{id: x}]', /unknown field/],
     ['stages: [{id: a, checks: [{id: x, passed: y}], score: {linear: {x: 0}}}]\nrecords: [{id: x}]', /positive total/],
   ])('rejects invalid declared structures', (body, message) => {
-    expect(() => parseDatasetYaml(`schema: paideia.dataset.v1\nid: invalid\n${body}`)).toThrow(message);
+    expect(() => parseDatasetYaml(`schema: spawnfile.training.dataset.v1\nid: invalid\n${body}`)).toThrow(message);
   });
   it('accepts explicit data, references, outputs and ordered external messages', () => {
-    const yaml = `schema: paideia.dataset.v1
+    const yaml = `schema: spawnfile.training.dataset.v1
 id: messages
 subject: agent
 records:
@@ -102,7 +102,7 @@ describe('shared scalar guards', () => {
 });
 
 it('resolves only earlier trusted observation bindings within a multi-wake record', () => {
-  const yaml = `schema: paideia.dataset.v1
+  const yaml = `schema: spawnfile.training.dataset.v1
 id: multi
 checks: [{id: complete, eval: equals, input: output.text, value: done}]
 records:

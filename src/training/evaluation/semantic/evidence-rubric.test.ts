@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { expect, it, vi } from 'vitest';
 import type { InferenceRequest } from '../../contracts/execution.js';
 import { artifact, evaluationContext, snapshot } from '../../testing/index.js';
@@ -43,4 +44,34 @@ it('fails before cognition on unsupported protocol/repair and oversized evidence
   expect((await evaluateRubric(check, f.context)).reason).toContain('Unsupported');
   route.protocol = 'evidence-ids'; f.context.snapshot = snapshot({ artifacts: { article: artifact('🙂'.repeat(65536)) } });
   expect((await evaluateRubric(check, f.context)).reason).toContain('bounded packet'); expect(f.generate).not.toHaveBeenCalled();
+});
+
+it('hits a pre-rename evidence-ID judgment without changing current request or source bytes', async () => {
+  const f = fixture();
+  await evaluateRubric(check, f.context);
+  const request = f.generate.mock.calls[0]![0];
+  const [prefix, data] = request.prompt.split('SOURCE DATA\n');
+  const packet = JSON.parse(data!);
+  expect(packet.schema).toBe('spawnfile.training.evidence-units.v1');
+  const oldPrompt = `${prefix}SOURCE DATA\n${JSON.stringify({ ...packet, schema: 'paideia.evidence-units.v1' })}`;
+  // Exact pre-rename key formula from origin/main, independent of frozen constants.
+  const oldKey = `sha256:${createHash('sha256').update(JSON.stringify([
+    'paideia.judgment-cache.v3', '', 'fixed', request.system, oldPrompt, check.minimum,
+  ])).digest('hex')}`;
+  const cache = createJudgeCache({ maxEntries: 5 });
+  // Executed origin/main's evidenceUnits + judgmentCacheKey at 624a972.
+  const historicalKey = 'sha256:daacdecf332c8e67cf5ca8451e19f31fd7aee3086b57c102087cd5f4228f0f9d';
+  expect(oldKey).toBe(historicalKey);
+  cache.put(historicalKey, { response: JSON.stringify({ score: 0.8, verdict: 'pass',
+    reasons: ['A quantity lacks support.'], evidenceIds: ['e-26706cfb1408de22a65e'] }), sourceCallId: 'pre-rename-paid' });
+  f.context.judges.narrow!.cache = cache;
+  f.generate.mockClear();
+  expect(await evaluateRubric(check, f.context)).toMatchObject({ status: 'fail', cache: { sourceCallId: 'pre-rename-paid' } });
+  expect(f.generate).not.toHaveBeenCalled();
+  f.context.snapshot = snapshot({ artifacts: { article: artifact({ body: 'spawnfile.training.evidence-units.v1' }) } });
+  await evaluateRubric(check, f.context);
+  expect(f.generate).toHaveBeenCalledTimes(1);
+  const changed = JSON.parse(f.generate.mock.calls[0]![0].prompt.split('SOURCE DATA\n')[1]!);
+  expect(changed.schema).toBe('spawnfile.training.evidence-units.v1');
+  expect(changed.units.some((unit: { value: unknown }) => unit.value === 'spawnfile.training.evidence-units.v1')).toBe(true);
 });

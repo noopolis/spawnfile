@@ -68,7 +68,7 @@ async function comparisonFixture(judge?: InferenceProvider) {
   await writeFile(join(source, 'AGENTS.md'), 'Baseline.');
   const baseline = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
     destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' }] });
-  const dataset = (id: string) => resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id,
+  const dataset = (id: string) => resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id,
     checks: judge ? [{ id:'quality', eval:'llm-rubric', input:'output.text', judge:'quality', minimum:0.8, rubric:{prompt:'Is it OK?'} }]
       : [{ id:'quality', eval:'equals', input:'output.text', value:'OK' }],
     records: [{ id, group:id, input:{ prompt:`Reply OK for ${id}.` } }] })), judge ? { registry:{judges:{quality:{version:'fixture'}}} } : {});

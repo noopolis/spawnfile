@@ -12,9 +12,9 @@ const slot = () => resolveTrainingGrokRegistration({ agentId: "agent:author", mo
 const TRAINING_ADDED_DENY_PATHS = trainingEvaluatorPaths(0, 1).map(p => p.path).sort();
 const TRAINING_EVALUATOR_ROOTS = trainingEvaluatorPaths(0, 1).filter((p, i, rows) => rows.findIndex(q => q.role === p.role) === i);
 describe("training Grok slot registration", () => {
-  it("denies every evaluator root, the caller's whole /run/paideia, the control root and the judge grant home", () => {
+  it("denies every evaluator root, the caller's whole /run/spawnfile-training, the control root and the judge grant home", () => {
     const denied = slot().denyPaths;
-    // Every caller-protected path is covered by the single `/run/paideia` mask rather than listed itself:
+    // Every caller-protected path is covered by the single `/run/spawnfile-training` mask rather than listed itself:
     // Grok materializes each deny target inside bubblewrap and cannot create one there as the worker uid.
     for (const covered of TRAINING_CALLER_PROTECTED_PATHS) {
       expect(denied.some((entry) => covered === entry || covered.startsWith(`${entry}/`)), covered).toBe(true);

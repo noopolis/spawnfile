@@ -38,8 +38,8 @@ const args=Object.fromEntries(process.argv.slice(2).reduce((rows,v,i,all)=>i%2?r
 const launch=JSON.parse(fs.readFileSync(args.launch)),token=fs.readFileSync(args['token-file'],'utf8').trim(),trial=args['trial-id'],mode=process.env.UNIT_CHILD_MODE;
 fs.writeFileSync(path.join(launch.controlRoot,'child-env.json'),JSON.stringify({fresh:!process.env.UNIT_PARENT_SECRET,home:process.env.HOME,transport:process.env.NATIVE_TRANSPORT_TOKEN,pid:process.pid}));
 if(mode==='noisy'){console.log('Bootstrap progress');process.stderr.write('Unit diagnostic');}
-if(mode==='leak'){process.stderr.write('upstream refused: Bearer sk-unit-'+'A1b2C3d4'.repeat(6)+'\\n');process.stderr.write(JSON.stringify({schema:'paideia.daimon-native.start-failed.v1',error:'unit missing native library'})+'\\n');process.exit(1);}
-if(mode==='exit'){process.stderr.write(JSON.stringify({schema:'paideia.daimon-native.start-failed.v1',error:'unit missing native library'})+'\\n');process.exit(1);}if(mode==='overflow'){process.stdout.write('X'.repeat(1100000));setInterval(()=>{},1000);return;}
+if(mode==='leak'){process.stderr.write('upstream refused: Bearer sk-unit-'+'A1b2C3d4'.repeat(6)+'\\n');process.stderr.write(JSON.stringify({schema:'spawnfile.training.daimon-native.start-failed.v1',error:'unit missing native library'})+'\\n');process.exit(1);}
+if(mode==='exit'){process.stderr.write(JSON.stringify({schema:'spawnfile.training.daimon-native.start-failed.v1',error:'unit missing native library'})+'\\n');process.exit(1);}if(mode==='overflow'){process.stdout.write('X'.repeat(1100000));setInterval(()=>{},1000);return;}
 let terminal;const replay=process.env.UNIT_CHILD_FRAMES?JSON.parse(fs.readFileSync(process.env.UNIT_CHILD_FRAMES,'utf8')):undefined;const health={version:'noopolis.daimon.organization-runtime-health.v1',state:'running',agents:[{agentId:mode==='bad-health'?'foreign':launch.agent.id}]};
 // The real worker stops its own Daimon host as soon as a delivery closes its execution and
 // stays deferred with no continuation left, so the caller's closure query lands on a stopped
@@ -64,8 +64,8 @@ executions:hostStopped&&mode.endsWith('-busy-seal')?[{agent_id:launch.agent.id,e
 // same value, including an internal stop that did not acknowledge: control.ts races
 // host.stop() against a 5s deadline and memoizes whatever it got.
 const settleStop=()=>{hostStopped=true;stopOutcome=stopOutcome??(mode==='bad-stop'||mode.endsWith('-stop-unknown')
-?{schema:'paideia.daimon-native.stop.v1',state:'unknown',quiescence:'unknown',error:'unit native shutdown deadline exceeded'}
-:{schema:'paideia.daimon-native.stop.v1',state:'acknowledged',quiescence:'unknown',containmentVerification:'parent-container-owner'});return stopOutcome;};
+?{schema:'spawnfile.training.daimon-native.stop.v1',state:'unknown',quiescence:'unknown',error:'unit native shutdown deadline exceeded'}
+:{schema:'spawnfile.training.daimon-native.stop.v1',state:'acknowledged',quiescence:'unknown',containmentVerification:'parent-container-owner'});return stopOutcome;};
 const server=http.createServer(async(req,res)=>{if(req.headers.authorization!=='Bearer '+token){res.writeHead(401);res.end();return;}
 if(req.url==='/v2/activity'&&hostStopped&&mode.endsWith('-unanswerable')){res.writeHead(503,{'content-type':'application/json'});res.end(JSON.stringify({error:'native_host_unavailable'}));return;}
 res.writeHead(200,{'content-type':'application/json'});
@@ -99,7 +99,7 @@ const history=mode.includes('-history')?closed.map(row=>({...row})):[closedTrace
 // mistaken for the arity: the first wake of each mode publishes a clean single trace.
 if(history.length>1&&mode.endsWith('-foreign'))history[0]={...history[0],agent_id:'another-agent'};
 if(history.length>1&&mode.endsWith('-ambiguous'))history.push({...closedTrace});
-terminal={schema:'paideia.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:history,usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
+terminal={schema:'spawnfile.training.daimon-native.trial.v1',trialId:trial,wakeId:input.wakeId,agentId:launch.agent.id,model:launch.agent.model,configSha256:launch.configSha256,status:'completed',startedAt:at,completedAt:at,executionId:id,receipt,activity:{version:'noopolis.daimon.organization-runtime-activity.v2',items:[{...receipt,active:false}],executions:[]},native:{traces:history,usage:[{v:'noopolis.daimon.turn-usage.v1',agent:launch.agent.id,wake:id,engine:'codex',input:100,output:20,cache_read:40,total:120,complete:true}],toolReceipts:[],modelContexts:[{model:launch.agent.model}]},coverage:[{channel:'usage',completeness:'complete',ordering:'source'}]};
 // Daimon CLEARS the receipt's execution id when the subject defers the delivery,
 // so a deferred wake's frame names an execution its own receipt no longer does.
 // A fixture that kept it made every reader test bind through a field production
@@ -146,6 +146,6 @@ if(mode==='foreign-delivery')receipt.delivery_id='other-trial:'+input.wakeId;
 res.end(JSON.stringify(terminal));return;}
 res.end('{}');});
 const engine=launch.agent.engine==='grok'?{engine:'grok',reasoningEffort:mode==='bad-effort'?'high':launch.agent.reasoningEffort}:{};
-server.listen(launch.host.port,'127.0.0.1',()=>console.log(JSON.stringify({schema:'paideia.daimon-native.ready.v1',trialId:mode==='bad-ready'?'foreign':trial,configSha256:launch.configSha256,agentId:launch.agent.id,model:mode==='bad-model'?'grok-4.5':launch.agent.model,port:launch.host.port,...engine})));
+server.listen(launch.host.port,'127.0.0.1',()=>console.log(JSON.stringify({schema:'spawnfile.training.daimon-native.ready.v1',trialId:mode==='bad-ready'?'foreign':trial,configSha256:launch.configSha256,agentId:launch.agent.id,model:mode==='bad-model'?'grok-4.5':launch.agent.model,port:launch.host.port,...engine})));
 process.on('SIGTERM',()=>{if(mode==='ignore-term')return;server.closeAllConnections();server.close(()=>process.exit(0));});
 `;

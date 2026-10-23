@@ -1,3 +1,4 @@
+import { trainingEnvironment } from '../../../platform/index.js';
 import { assertModelRequestAdmission } from '../../request-cap.js';
 import { reserveEvaluatorRequest, typeSafeEvaluatorEnvironment } from '../../evaluator/index.js';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -32,7 +33,7 @@ export function typeSafeTransport(options: TypeSafeTransportOptions) {
   let endpoint: URL;
   try { endpoint = new URL(options.endpoint ?? TYPESAFE_ENDPOINT); }
   catch { throw new Error('Invalid TypeSafe endpoint'); }
-  const evaluatorCapped = process.env.PAIDEIA_MODEL_REQUEST_CAP === 'broker' || process.env.PAIDEIA_EVALUATOR_ROUTES_FILE !== undefined;
+  const evaluatorCapped = trainingEnvironment('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP') === 'broker' || trainingEnvironment('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE') !== undefined;
   if (evaluatorCapped && endpoint.href !== TYPESAFE_ENDPOINT) {
     throw new Error('Capped TypeSafe evaluator requires the declared hosted endpoint');
   }

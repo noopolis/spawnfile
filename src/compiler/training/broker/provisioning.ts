@@ -15,7 +15,7 @@ import {
   TRAINING_INFERENCE_DIRECTORY,
   TRAINING_INFERENCE_LEDGER,
   TRAINING_OPTIONAL_DENY_DIRECTORIES,
-  TRAINING_PAIDEIA_ROOT,
+  TRAINING_ROOT,
   TRAINING_SEALED_INPUTS_IDENTITY,
   TRAINING_SEALED_INPUTS_ROOT,
   TRAINING_SUPERVISOR_DIRECTORY,
@@ -45,14 +45,14 @@ const PROVISION_DIRECTORY_HELPER = [
  *
  * The two ledger directories are setgid to the organization group on purpose:
  * the broker writes its rows `0640` owned by the broker group, so without
- * `2100:2000 2750` uid 2000 — Paideia, DSPy and every judge — cannot read a
+ * `2100:2000 2750` uid 2000 — Training, DSPy and every judge — cannot read a
  * single subject usage row or inference row it paid for.
  */
 export const trainingSlotDirectories = (slot = 0): readonly { path: string; mode: string; uid: number; gid: number }[] => [
   // `/run/training` itself is deliberately absent: it is a mount-point parent on the read-only
   // image root, and every writable child below it is its own tmpfs or bind.
   { path: trainingSlotPaths(slot).root, mode: "0711", uid: 0, gid: 0 },
-  { path: TRAINING_PAIDEIA_ROOT, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
+  { path: TRAINING_ROOT, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: "/home/training", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: "/work", mode: "0700", uid: DAIMON_ORGANIZATION_UID, gid: DAIMON_ORGANIZATION_UID },
   { path: trainingSlotPaths(slot).workspace, mode: "0750", uid: DAIMON_ORGANIZATION_UID, gid: trainingSlotPaths(slot).workerUid },

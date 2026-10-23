@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../../shared/index.js';
 import path from "node:path";
 import { z } from "zod";
 import { trainingContextSchema } from "../contract.js";
@@ -23,7 +24,7 @@ export const witnessSchema = z.object({
 export type TrainingWitness = z.infer<typeof witnessSchema>;
 export const witnessEnvelopeSchema = z.object({ manifest: witnessSchema, digest: sha }).strict();
 export const repairReceiptSchema = z.object({
-  version: z.literal("paideia.measurement-repair.v1"),
+  version: compatibleWireLiteral("spawnfile.training.measurement-repair.v1"),
   parent: z.object({ root: z.literal("/run/training/inputs/repair-parent"), imageId: sha,
     experimentId: z.string().uuid(), executionIdentity: z.string().regex(/^[a-f0-9]{64}$/u), manifestDigest: sha,
     checkpoints: z.object({ command: sha, training: sha, host: sha, optimizer: sha }).strict(),

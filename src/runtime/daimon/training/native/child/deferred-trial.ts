@@ -7,7 +7,7 @@ import { createDaimonNativeAdapter } from '../index.js';
 import type { SubjectAdapter, SubjectSession, SubjectTurnResult } from '../../../../../training/contracts/execution.js';
 
 /** One required artifact the filing would produce, so the verdict is exactly the subject's. */
-export const filing = () => resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+export const filing = () => resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: newsroom
 stages:
   - id: accepted-article

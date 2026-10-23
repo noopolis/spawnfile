@@ -47,7 +47,7 @@ test('worker checks real receipt bytes before boot and serves native authenticat
     for (const reason of ['start', 'health', 'activity']) { failure = reason; await expect(runDaimonNativeWorker(args)).rejects.toThrow(); }
     failure = ''; await runDaimonNativeWorker(args);
     expect((await fetch('http://127.0.0.1:19783/trial/health', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
-    expect(stdout.mock.calls.some(([value]) => String(value).includes('paideia.daimon-native.ready.v1'))).toBe(true);
+    expect(stdout.mock.calls.some(([value]) => String(value).includes('spawnfile.training.daimon-native.ready.v1'))).toBe(true);
     signalHandlers[0]!(); signalHandlers[0]!();
     await vi.waitFor(async () => { await expect(fetch('http://127.0.0.1:19783/trial/health')).rejects.toThrow(); });
     expect(stops).toBeGreaterThanOrEqual(4);
@@ -103,9 +103,9 @@ test('Grok worker loads the Grok runtime capability, sets engine-neutral limits 
     expect(process.env['DAIMON_CODEX_WAKE_TOKEN_CEILING']).toBe(process.env['DAIMON_ENGINE_WAKE_TOKEN_CEILING']);
     expect(process.env['DAIMON_TURN_USAGE_LEDGER_PATH']).toBe(launch.broker.usageLedgerPath);
     expect(process.env['DAIMON_TURN_REQUESTS_LEDGER_PATH']).toBe(join(dirname(launch.broker.usageLedgerPath), 'requests.jsonl'));
-    const ready = stdout.mock.calls.map(([value]) => String(value)).find(value => value.includes('paideia.daimon-native.ready.v1'))!;
+    const ready = stdout.mock.calls.map(([value]) => String(value)).find(value => value.includes('spawnfile.training.daimon-native.ready.v1'))!;
     expect(JSON.parse(ready)).toMatchObject({ model: 'grok-4.6', engine: 'grok', reasoningEffort: 'low', trialId: 'unit-grok' });
-    expect(JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8')).schema).toBe('paideia.daimon-native.grok-broker-projection.v1');
+    expect(JSON.parse(await readFile(join(artifacts, 'sandbox-projection.json'), 'utf8')).schema).toBe('spawnfile.training.daimon-native.grok-broker-projection.v1');
     expect(process.env['DAIMON_RUNTIME_ACCEPTANCE_STORE']).toBe(artifacts);
     expect((await fetch('http://127.0.0.1:19784/trial/health', { headers: { authorization: `Bearer ${token}` } })).status).toBe(200);
     handlers[0]!();

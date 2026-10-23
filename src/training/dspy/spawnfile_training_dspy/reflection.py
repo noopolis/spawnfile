@@ -20,7 +20,7 @@ class SubscriptionLM(dspy.BaseLM):
     forward_contract = "typed_lm"
 
     def __init__(self, session: Session):
-        super().__init__("paideia/subscription-host", cache=False, num_retries=0)
+        super().__init__("training/subscription-host", cache=False, num_retries=0)
         self.session = session
 
     def forward(self, request: dspy.LMRequest) -> dspy.LMResponse:

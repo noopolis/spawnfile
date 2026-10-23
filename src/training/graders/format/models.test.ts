@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { decisionModels, graderForModel, parseGrader } from './index.js';
 
 const base = {
-  schema: 'paideia.grader.v1', id: 'writing', golden: 'labels.yaml', calibration: 'calibration.json',
+  schema: 'spawnfile.training.grader.v1', id: 'writing', golden: 'labels.yaml', calibration: 'calibration.json',
   teachers: [{ id: 'c', provider: 'claude', model: 'teacher-model' }],
   model: { backend: 'teacher', teacher: 'c' }, escalate: { to: 'c', between: [0.3, 0.7] },
   questions: [{ id: 'q', type: 'yes-no', expected: 'yes', reads: ['output.body'] }], score: { method: 'weighted' },

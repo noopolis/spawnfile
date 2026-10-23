@@ -57,4 +57,4 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
   `packagePaths.training` and `nativeWorker` point into the Spawnfile build.
 - The declared integration entry may supply project hooks through
   `spawnfile/dist/runtime/trainingCli.js`; keep it executable inside the image.
-  Legacy `/run/paideia/*` handoff and credential mounts remain wire-compatible.
+  Handoff and credential mounts use `/run/spawnfile-training/*` and `/run/spawnfile-training-auth/*`; host and container recipes change together.

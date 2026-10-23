@@ -18,7 +18,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 async function fixture() {
   const f = await contextFixture(); roots.push(f.root);
   const candidate = await snapshotCandidate({ sourceRoot: f.root, resources: [{ id: 'instruction', sourcePath: 'AGENTS.md', edit: 'whole-file', destinations: [{ kind: 'instructions', path: 'AGENTS.md' }] }] });
-  const record = resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id: 'cases', checks: [{ id: 'yes', eval: 'equals', input: 'output.text', value: 'OK' }],
+  const record = resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'cases', checks: [{ id: 'yes', eval: 'equals', input: 'output.text', value: 'OK' }],
     records: [{ id: 'original', group: 'family', lineage: ['ancestor'], input: { prompt: 'Wake.' } }] }))).records[0]!;
   const moment: TrainingMomentCase = { version: 'spawnfile.training-moment-case.v1', projectRoot: f.root, agent: f.context.agent.id,
     example: 'train:original', role: 'train', dataset: 'declared', at: '2026-01-01T12:00:00Z', effectiveAt: '2026-01-01T12:00:01Z',
@@ -29,7 +29,7 @@ async function fixture() {
     await writeFile(join(momentRoot, 'moment.json'), JSON.stringify({ version: 'spawnfile.materialized-moment.v1', status: 'materialized', agent: moment.agent,
       example: { id: trial.record.id, role: moment.role, dataset: moment.dataset }, at: moment.at, effectiveAt: moment.effectiveAt, leakCheck: { ok: true } }));
     await writeFile(join(momentRoot, 'leak-check.json'), JSON.stringify({ ok: true }));
-    return { momentReceipt: { version: 'paideia.training-moment-prepared.v1', trialId: trial.id, example: moment.example, momentRoot, at: moment.effectiveAt } };
+    return { momentReceipt: { version: 'spawnfile.training.training-moment-prepared.v1', trialId: trial.id, example: moment.example, momentRoot, at: moment.effectiveAt } };
   });
   const integration: SpawnfileCliIntegration = { id: 'fixture', version: '1', createAdapter: vi.fn(), prepareEnvironment: vi.fn(async () => ({})), momentPreparations: { 'fixture/rewind': prepare } };
   async function paths() {
@@ -129,7 +129,7 @@ it.each(['explicit', 'automatic', 'group'] as const)('executes %s validation thr
       authored.set(moment.example, moment);
       return { id, group: id, lineage: [id], setup: { trainingMoment: moment }, input: { prompt: moment.wake.text } };
     });
-    await writeFile(join(f.root, `${role}.yaml`), JSON.stringify({ schema: 'paideia.dataset.v1', id: role,
+    await writeFile(join(f.root, `${role}.yaml`), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: role,
       setup: { profile: 'fixture/rewind' }, checks: [{ id: 'yes', eval: 'equals', input: 'output.text', value: 'OK' }],
       ...(role === 'train' ? { training: { models: { unused: { provider: 'ollama', model: 'unused' } },
         ...(mode === 'explicit' ? { validation: 'validation.yaml' } : {}), test: 'test.yaml',

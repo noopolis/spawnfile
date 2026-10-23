@@ -20,7 +20,7 @@ afterEach(async()=>{reads.forbidden='';await Promise.all(roots.splice(0).map(roo
 async function fixture(){
   const root=await realpath(await mkdtemp(join(tmpdir(),'repair-projection-')));roots.push(root);
   await mkdir(join(root,'blobs'));await writeFile(join(root,'blobs/article'),'captured');
-  const manifest={version:'paideia.repair-parent.v1',files:[{path:'blobs/article',sha256:repairDigest('captured'),size:8}]};
+  const manifest={version:'spawnfile.training.repair-parent.v1',files:[{path:'blobs/article',sha256:repairDigest('captured'),size:8}]};
   const receipt={parent:{root,manifestDigest:''}} as MeasurementRepairReceipt;
   const save=async()=>{const bytes=JSON.stringify(manifest);await writeFile(join(root,'projection-manifest.json'),bytes);receipt.parent.manifestDigest=repairDigest(bytes);};
   await save();return{root,manifest,receipt,save};

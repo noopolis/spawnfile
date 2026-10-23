@@ -1,3 +1,5 @@
+import { LABELS_DIGEST_SCHEMA } from '../contracts/index.js';
+import { compatibleWireLiteral } from '../contracts/index.js';
 import { z } from 'zod';
 import { teacherAccuracyFailures } from './calibration/index.js';
 import { teacherPolicyDigest } from './labeling/index.js';
@@ -26,7 +28,7 @@ export const calibrationIdentitySchema = z.strictObject({
 export type CalibrationIdentity = z.infer<typeof calibrationIdentitySchema>;
 
 export const calibrationFileSchema = z.strictObject({
-  schema: z.literal('paideia.grader-calibration.v1'),
+  schema: compatibleWireLiteral('spawnfile.training.grader-calibration.v1'),
   identity: calibrationIdentitySchema,
   questions: z.record(identifier, z.strictObject({
     model: identifier.optional(),
@@ -76,7 +78,7 @@ export function createCalibrationIdentity(grader: Grader, supplied: Omit<Calibra
   });
 }
 
-export function goldenIdentity(labels: Labels): string { return stableDigest(labels); }
+export function goldenIdentity(labels: Labels): string { return stableDigest({ ...labels, schema: LABELS_DIGEST_SCHEMA }); }
 
 export interface CalibrationCheck {
   ok: boolean;
@@ -119,6 +121,9 @@ export function checkCalibration(grader: Grader, calibration: CalibrationFile, i
         : ['teacher.accuracy missing; re-run grader calibrate (agreement >= 0.85; groups >= 15; instances >= 30; good >= 5; bad >= 5)'];
       for (const failure of failures) refusals.push(`question ${id}: ${failure}`);
     }
+  }
+  if (refusals.some(refusal => refusal.startsWith('calibration identity mismatch:') || refusal === 'calibration mode mismatch')) {
+    refusals.push('Re-prepare with Spawnfile and re-run grader calibrate before using this calibration');
   }
   return { ok: refusals.length === 0, refusals, notCalibrated };
 }

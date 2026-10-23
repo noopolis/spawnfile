@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { lstat, readFile, readdir, readlink, realpath } from 'node:fs/promises';
 import { join, isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
@@ -10,7 +10,7 @@ export interface BridgeIdentityContext { bridge?: Readonly<{ command: string; cw
 // Exact supported installed entry points. Arbitrary wrappers are not declared pinned.
 const bridgeLauncherBody = `# -*- coding: utf-8 -*-
 import sys
-from paideia_dspy.main import cli
+from spawnfile_training_dspy.main import cli
 if __name__ == "__main__":
     if sys.argv[0].endswith("-script.pyw"):
         sys.argv[0] = sys.argv[0][:-11]
@@ -19,15 +19,15 @@ if __name__ == "__main__":
     sys.exit(cli())
 `;
 const pipBridgeLauncherBody = `import sys
-from paideia_dspy.main import cli
+from spawnfile_training_dspy.main import cli
 if __name__ == '__main__':
     sys.argv[0] = sys.argv[0].removesuffix('.exe')
     sys.exit(cli())
 `;
 const probe = `import importlib.util, importlib.metadata, json, pathlib, sys, tomllib
 root = pathlib.Path(sys.argv[1]).resolve()
-spec = importlib.util.find_spec('paideia_dspy')
-dist = importlib.metadata.distribution('paideia-dspy-bridge')
+spec = importlib.util.find_spec('spawnfile_training_dspy')
+dist = importlib.metadata.distribution('spawnfile-training-dspy-bridge')
 project = tomllib.loads((root / 'pyproject.toml').read_text())['project']
 print(json.dumps({'origin': spec.origin, 'search': list(spec.submodule_search_locations),
  'prefix': str(pathlib.Path(sys.prefix).resolve()), 'python': sys.version,
@@ -38,10 +38,10 @@ print(json.dumps({'origin': spec.origin, 'search': list(spec.submodule_search_lo
 /** Bind the actual supported editable bridge, not an unrelated bundled source tree. */
 export async function bridgeExecutionIdentity(root: string | undefined, context: BridgeIdentityContext): Promise<string> {
   if (!root || !isAbsolute(root) || !context.bridge || await realpath(root) !== root) throw new Error('Explicit canonical bridge root and actual bridge launch are required');
-  const command = join(root, '.venv/bin/paideia-dspy');
+  const command = join(root, '.venv/bin/spawnfile-training-dspy');
   if (context.bridge.command !== command || await realpath(command) !== command) throw new Error('Unsupported or mismatched training bridge command');
   if (process.env.PYTHONPATH || process.env.PYTHONHOME) throw new Error('Python import overrides are unsupported for a pinned bridge');
-  const digest = createHash('sha256').update('clank.paideia.python-bridge.v1\n');
+  const digest = createHash('sha256').update('spawnfile.training.python-bridge.v1\n');
   let files = 0, bytes = 0;
   const bind = async (path: string, label: string) => {
     const stat = await lstat(path);
@@ -58,19 +58,27 @@ export async function bridgeExecutionIdentity(root: string | undefined, context:
   if (!supported) throw new Error('Unsupported bridge launcher or interpreter binding');
   const { python } = supported;
   for (const file of ['pyproject.toml', 'requirements.lock']) await bind(join(root, file), file);
+  let wireAliasesBound = false;
   const visit = async (directory: string, relative = '', depth = 0): Promise<void> => {
     if (depth > 8) throw new Error('Bridge source depth exceeds its bound');
     const stat = await lstat(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Bridge package must be a real directory');
     for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name.startsWith('.') || entry.name === '__pycache__' || entry.name.endsWith('_test.py') || entry.name.endsWith('.md')) continue;
-      if (entry.isSymbolicLink()) throw new Error('Bridge source package symlinks are unsupported');
       const path = join(directory, entry.name), label = `${relative}/${entry.name}`;
+      if (relative === '' && entry.name === 'legacy_wire_aliases.json') {
+        if (entry.isSymbolicLink() && await readlink(path) !== '../../../shared/trainingLegacy/trainingLegacyWireAliases.json') throw new Error('Unsupported bridge wire alias resource');
+        await bind(await realpath(path), `package${label}`);
+        wireAliasesBound = true;
+        continue;
+      }
+      if (entry.isSymbolicLink()) throw new Error('Bridge source package symlinks are unsupported');
       if (entry.isDirectory()) await visit(path, label, depth + 1);
       else if (entry.name.endsWith('.py')) await bind(path, `package${label}`);
     }
   };
-  await visit(join(root, 'paideia_dspy'));
+  await visit(join(root, 'spawnfile_training_dspy'));
+  if (!wireAliasesBound) throw new Error('Bridge wire alias resource is missing');
   // Inspection imports no bridge module or cognition, and does not read auth.
   // The supported console launcher has this directory as its import search root.
   const { stdout } = await promisify(execFile)(python, ['-c', probe, root], {
@@ -79,12 +87,12 @@ export async function bridgeExecutionIdentity(root: string | undefined, context:
   const actual = JSON.parse(stdout) as { origin: string; search: string[]; prefix: string; interpreter: string;
     python: string; version: string; direct: { url: string; dir_info?: { editable?: boolean } };
     project: { name: string; version: string; scripts: Record<string, string> } };
-  if (actual.origin !== join(root, 'paideia_dspy/__init__.py') || JSON.stringify(actual.search) !== JSON.stringify([join(root, 'paideia_dspy')]) ||
+  if (actual.origin !== join(root, 'spawnfile_training_dspy/__init__.py') || JSON.stringify(actual.search) !== JSON.stringify([join(root, 'spawnfile_training_dspy')]) ||
       actual.prefix !== await realpath(join(root, '.venv')) || actual.interpreter !== await realpath(python) ||
       actual.direct.url !== pathToFileURL(root).href || actual.direct.dir_info?.editable !== true ||
-      actual.project.name !== 'paideia-dspy-bridge' || actual.version !== actual.project.version || actual.project.scripts['paideia-dspy'] !== 'paideia_dspy.main:cli') {
+      actual.project.name !== 'spawnfile-training-dspy-bridge' || actual.version !== actual.project.version || actual.project.scripts['spawnfile-training-dspy'] !== 'spawnfile_training_dspy.main:cli') {
     throw new Error('Installed bridge package, metadata or interpreter differs from its declared source');
   }
   digest.update(JSON.stringify(actual));
-  return `clank.paideia.python-bridge.v1:sha256:${digest.digest('hex')}`;
+  return `spawnfile.training.python-bridge.v1:sha256:${digest.digest('hex')}`;
 }

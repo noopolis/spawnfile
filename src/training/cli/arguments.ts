@@ -25,7 +25,7 @@ const flags: Record<string, readonly string[]> = {
   train: [...common, 'experiment-timeout-ms', 'trial-timeout-ms', 'concurrency', 'slots-file', 'train', 'validation', 'test', 'editable', 'validation-group', 'optimizer-model', 'bridge-command', 'max-proposals', 'seed', 'dry-run', 'resume', 'repair-measurements', 'repair-context'],
 };
 
-export const helpText = `Paideia — explicit local native-agent experiments
+export const helpText = `Training — explicit local native-agent experiments
 
 grader decompose --templates FILE --inputs FILE --extractors codex[,claude] --out DIR [--timeout-ms N]
 grader traps --templates FILE --decompositions DIR --out DIR [--references FILE] [--allow-rejections] [--seed S] [--timeout-ms N]
@@ -52,17 +52,17 @@ This never retries valid quality failures, authentication/quota failures or malf
 Dataset training controls declare named models, focused judges, fallbacks, templates, cache, optimizer, test and budgets.
 YAML test paths are relative to the training dataset; scalar CLI flags override authored defaults.
 Configured judge policies cannot be replaced by --judge or conflicting citation repair flags.
-The optimizer bridge defaults to the installed paideia-dspy executable for YAML-configured training.
+The optimizer bridge defaults to the installed spawnfile-training-dspy executable for YAML-configured training.
 Train accepts --validation DATASET, or repeated --validation-group GROUP, or freezes an internal group partition.
 Explicit validation and validation groups are mutually exclusive.
 --max-trials N (default 20, ceiling 10000) includes conservative reserved sealed-test trials.
---concurrency N (1..8; defaults to provisioned slot count, otherwise 1); --slots-file FILE overrides /run/paideia/slots.json.
+--concurrency N (1..8; defaults to provisioned slot count, otherwise 1); --slots-file FILE overrides /run/spawnfile-training/slots.json.
 --max-proposals N (default 3, ceiling 1000), --seed N (GEPA sampling only).
 train --dry-run resolves local inputs and prints an API-equivalent cost plan without launching any runtime or model.
 train --resume reopens the same --out with unchanged execution inputs and cumulative optimizer budgets.
 train --repair-measurements PARENT --out FRESH forks verified development evidence using a launcher-produced --repair-context receipt.
 Repair preserves valid grades and native work; its dry-run conservatively estimates a full run without importing evidence.
---cost-config FILE selects a paideia.cost-config.v1 YAML with token assumptions and explicit model prices.
+--cost-config FILE selects a spawnfile.training.cost-config.v1 YAML with token assumptions and explicit model prices.
 Dry-run requires no --out or --bridge-command. Unknown costs are reported, never priced at zero.
 train --experiment-timeout-ms N (default 43200000 / 12h, ceiling 604800000 / 7d) is the whole-command deadline for the experiment.
 train --timeout-ms N is a legacy experiment deadline alias; --experiment-timeout-ms takes precedence.

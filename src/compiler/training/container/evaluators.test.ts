@@ -25,7 +25,7 @@ it("binds evaluator receipts to each mapped run output and retains the path on r
     let observed = false;
     const docker = dockerFixture(async args => {
       if (args[2] === "create") {
-        const mount = args.find(arg => arg.includes("dst=/run/paideia/evaluator-routes.json"))!;
+        const mount = args.find(arg => arg.includes("dst=/run/spawnfile-training/evaluator-routes.json"))!;
         const declaration = JSON.parse(await readFile(mount.split("src=")[1]!.split(",")[0]!, "utf8"));
         receipts.push(declaration.receiptPath);
         observed = true;
@@ -88,19 +88,19 @@ it("mounts protected evaluator declaration and secret references while retaining
     }
     if (args[2] === "create") {
       try {
-      const mount = args.find(arg => arg.includes("dst=/run/paideia/evaluator-routes.json"))!;
+      const mount = args.find(arg => arg.includes("dst=/run/spawnfile-training/evaluator-routes.json"))!;
       expect(mount, "evaluator receipt mount guarantee").toBeTruthy();
       expect(mount).toMatch(/,readonly$/u);
       const source = mount.split("src=")[1]!.split(",")[0]!;
       expect(JSON.parse(await readFile(source, "utf8")), "evaluator declaration guarantee").toEqual({
-        version: "paideia.evaluator-routes.v1", routes, receiptPath: "/run/training/output/evaluator-requests.jsonl" });
+        version: "spawnfile.training.evaluator-routes.v1", routes, receiptPath: "/run/training/output/evaluator-requests.jsonl" });
       expect((await stat(source)).mode & 0o777).toBe(0o444);
-      expect(args, "subject broker cap guarantee").toContain("PAIDEIA_MODEL_REQUEST_CAP=broker");
-      expect(args, "evaluator env handoff guarantee").toContain("PAIDEIA_EVALUATOR_ROUTES_FILE=/run/paideia/evaluator-routes.json");
-      expect(args, "secret reference guarantee").toContain(`type=bind,src=${secret},dst=/run/paideia/secret-ingress/typesafe,readonly`);
-      expect(args).toContain("PAIDEIA_TYPESAFE_SECRET_FILE=/run/paideia/secrets/typesafe");
+      expect(args, "subject broker cap guarantee").toContain("SPAWNFILE_TRAINING_MODEL_REQUEST_CAP=broker");
+      expect(args, "evaluator env handoff guarantee").toContain("SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE=/run/spawnfile-training/evaluator-routes.json");
+      expect(args, "secret reference guarantee").toContain(`type=bind,src=${secret},dst=/run/spawnfile-training/secret-ingress/typesafe,readonly`);
+      expect(args).toContain("SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE=/run/spawnfile-training/secrets/typesafe");
       expect(args.some(arg => arg.startsWith("TYPESAFE_API_KEY="))).toBe(false);
-      for (const file of ["/run/paideia/evaluator-routes.json", "/run/paideia/secrets/typesafe", "/run/paideia/secret-ingress/typesafe"]) {
+      for (const file of ["/run/spawnfile-training/evaluator-routes.json", "/run/spawnfile-training/secrets/typesafe", "/run/spawnfile-training/secret-ingress/typesafe"]) {
         expect(resolveTrainingGrokDenyPaths().some(deny => file === deny || file.startsWith(deny + "/")),
           "subject secret deny guarantee").toBe(true);
       }

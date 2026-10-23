@@ -8,8 +8,8 @@ export interface SubjectAdapterRegistration {
 }
 export type SubjectAdapterRegistry = Readonly<Record<string, SubjectAdapterRegistration>>;
 
-export const grokBrokerControlSocketEnv = 'PAIDEIA_GROK_BROKER_CONTROL_SOCKET';
-export const grokGrantHomeRootEnv = 'PAIDEIA_GROK_GRANT_HOME_ROOT';
+export const grokBrokerControlSocketEnv = 'SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET';
+export const grokGrantHomeRootEnv = 'SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT';
 
 export function resolveSubjectAdapter(registry: SubjectAdapterRegistry | undefined, id: string, options: SubjectAdapterOptions): SubjectAdapter {
   const registration = registry && Object.hasOwn(registry, id) ? registry[id] : undefined;

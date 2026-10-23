@@ -5,7 +5,7 @@ import { createGrokSlotFreshnessStore, type GrokSlotFreshnessOptions, type GrokS
 export const experimentSlotFreshnessFile = 'grok-slot-freshness.json';
 
 /**
- * The one Paideia-owned slot freshness store for an experiment.
+ * The one Training-owned slot freshness store for an experiment.
  *
  * The experiment runner creates it inside its own durable state root and passes
  * the same store to subject preparation (`prepareNativeSubject` mints from it)

@@ -191,7 +191,7 @@ class Population:
                 break
         winner = max(range(len(self.candidates)), key=lambda index: (self.candidates[index]["validationScore"], -index))
         return {"components": self.candidates[winner]["components"], "provenance": {
-            "optimizer": "paideia.population", "dspyVersion": "3.3.1", "gepaVersion": "0.1.4",
+            "optimizer": "training.population", "dspyVersion": "3.3.1", "gepaVersion": "0.1.4",
             "seed": self.request.seed, "evaluations": self.session.evaluations, "proposals": self.session.proposals,
             "selectedCandidateIndex": winner, "candidates": self.candidates, "rounds": self.rounds,
             "stopReason": reason, "editScope": self.request.editScope or {path: "whole-file" for path in self.request.components},

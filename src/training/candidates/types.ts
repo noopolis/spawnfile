@@ -15,7 +15,7 @@ export interface CandidateResource extends ResourceMapping {
   digest: string;
 }
 export interface CandidateManifest {
-  schema: 'paideia.candidate.v1';
+  schema: 'spawnfile.training.candidate.v1';
   id: string;
   baselineId: string;
   parentId: string | null;

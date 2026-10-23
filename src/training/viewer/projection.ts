@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../contracts/index.js';
 import { z } from 'zod';
 import { judgeFailureCauses } from '../contracts/index.js';
 import type { ViewerCheck, ViewerData } from './types.js';
@@ -43,7 +44,7 @@ const check: z.ZodType<ViewerCheck> = z.lazy(() => z.object({
   evidenceIds: strings, children: z.array(check).max(1000),
 }));
 const schema = z.object({
-  schema: z.literal('paideia.viewer.v1'),
+  schema: compatibleWireLiteral('spawnfile.training.viewer.v1'),
   experiment: z.object({ id, title: text, status: id,
     phase: z.enum(['evaluation', 'train', 'validation', 'final-test', 'replay']), updatedAt: text }),
   cases: z.array(z.object({ id, split: z.enum(['train', 'validation', 'test']), label: text.optional() })).max(1000),

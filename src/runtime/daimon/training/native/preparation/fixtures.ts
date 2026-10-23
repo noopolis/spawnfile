@@ -5,7 +5,7 @@ import type { NativeTrialRoots, ProvisionedSubject, SubjectProvisionInput, Subje
 
 /** Test-only shapes of a Spawnfile-style training slot; never provisioning evidence. */
 export const grokSlotRoot = '/run/training/slots/1';
-export const grokContextRoot = '/run/paideia';
+export const grokContextRoot = '/run/spawnfile-training';
 
 export function grokLease(): TrialSlot {
   return { index: 1, workerUid: 2201, ports: { base: 20100, count: 100 }, roots: {
@@ -46,7 +46,7 @@ export function codexSubject(roots: NativeTrialRoots): ProvisionedSubject {
     projections: [{ role: 'home', source: home, target: home },
       { role: 'memory', source: `${roots.root}/memory`, target: `${roots.root}/memory` },
       { role: 'transport', source: `${roots.runtimeHome}/native/moltnet`, target: `${roots.runtimeHome}/native/moltnet` }],
-    credentials: [{ source: '/run/paideia-auth/codex', target: `${home}/.daimon-inbound/codex-auth` }],
+    credentials: [{ source: '/run/spawnfile-training-auth/codex', target: `${home}/.daimon-inbound/codex-auth` }],
     roots: { workspace: roots.workspace, home, control: `${roots.runtimeHome}/native/root-control/acceptance` },
     ports: { control: 20201, moltnet: 20200 }, env: {} };
 }

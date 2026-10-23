@@ -16,9 +16,9 @@ const decisions: EvaluatorRoute = { purpose: 'decisions', provider: 'typesafe', 
 async function fixture(routes = [extraction, decisions]) {
   const root = await mkdtemp(join(tmpdir(), 'evaluator-')); roots.push(root);
   const policy = join(root, 'policy.json'), receiptPath = join(root, 'receipts.jsonl');
-  const document = { version: 'paideia.evaluator-routes.v1', routes, receiptPath };
+  const document = { version: 'spawnfile.training.evaluator-routes.v1', routes, receiptPath };
   await writeFile(policy, JSON.stringify(document));
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', policy);
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker'); vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', policy);
   const receipts = async () => (await readFile(receiptPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
   return { root, policy, receiptPath, document, receipts };
 }
@@ -32,17 +32,17 @@ it('keeps separate run ledgers independent while preserving exhaustion and polic
   reserveEvaluatorRequest(extraction.provider, 'extraction', extraction.model).finish('completed');
   expect(await a.receipts()).toHaveLength(2);
   expect(await b.receipts()).toHaveLength(2);
-  vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', a.policy);
+  vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', a.policy);
   expect(() => reserveEvaluatorRequest(extraction.provider, 'extraction', extraction.model)).toThrow('request cap');
   await writeFile(a.policy, JSON.stringify({ ...a.document, routes: [{ ...extraction, maxRequests: 2 }] }));
   expect(() => reserveEvaluatorRequest(extraction.provider, 'extraction', extraction.model)).toThrow('changed on resume');
-  vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', b.policy);
+  vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', b.policy);
   reserveEvaluatorRequest(extraction.provider, 'extraction', extraction.model).finish('completed');
   expect(() => reserveEvaluatorRequest(extraction.provider, 'extraction', extraction.model)).toThrow('request cap');
 });
 
 it('admits only exact explicitly budgeted purposes, providers and models; broker remains independent', async () => {
-  vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', undefined); expect(evaluatorPolicy()).toBeUndefined();
+  vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', undefined); expect(evaluatorPolicy()).toBeUndefined();
   await fixture();
   expect(() => assertModelRequestAdmission('codex-subscription', 'extract', { purpose: 'extraction', model: extraction.model })).not.toThrow();
   expect(() => assertModelRequestAdmission('typesafe', 'decide', { purpose: 'decisions', model: decisions.model })).not.toThrow();
@@ -74,11 +74,11 @@ it('rejects duplicate routes, missing/oversized/malformed policy and unsafe secr
   const alias = join(f.root, 'hardlink'); await link(secret, alias);
   expect(() => readProtectedFile(secret, 16384)).toThrow('Invalid evaluator leaf file'); await rm(alias);
   const linkPath = join(f.root, 'link'); await symlink(secret, linkPath);
-  vi.stubEnv('PAIDEIA_TYPESAFE_SECRET_FILE', linkPath); expect(typeSafeEvaluatorEnvironment).toThrow('Invalid evaluator TypeSafe secret file');
-  vi.stubEnv('PAIDEIA_TYPESAFE_SECRET_FILE', secret);
+  vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', linkPath); expect(typeSafeEvaluatorEnvironment).toThrow('Invalid evaluator TypeSafe secret file');
+  vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', secret);
   for (const bad of ['', 'PRIVATE\nMARKER', '\0PRIVATE']) { await writeFile(secret, bad); expect(typeSafeEvaluatorEnvironment).toThrow('Invalid evaluator TypeSafe secret file'); }
   await writeFile(secret, 'x'.repeat(16385)); expect(typeSafeEvaluatorEnvironment).toThrow('Invalid evaluator TypeSafe secret file');
-  vi.stubEnv('PAIDEIA_TYPESAFE_SECRET_FILE', undefined); expect(typeSafeEvaluatorEnvironment()).toBeUndefined();
+  vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', undefined); expect(typeSafeEvaluatorEnvironment()).toBeUndefined();
 });
 
 it('charges before dispatch; concurrent, failed and interrupted attempts survive fresh construction and resume', async () => {
@@ -126,15 +126,15 @@ it('enforces independent spend ceilings, conservative unknown usage, and zero bu
   const zero = await fixture([{ ...decisions, maxSpendUsd: 0 }]);
   expect(() => reserveEvaluatorRequest('typesafe', 'decisions', decisions.model, 0)).toThrow('spend cap');
   expect(await readFile(zero.receiptPath, 'utf8')).toBe('');
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', undefined); vi.stubEnv('PAIDEIA_EVALUATOR_ROUTES_FILE', undefined); const provider = fake();
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', undefined); vi.stubEnv('SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE', undefined); const provider = fake();
   expect(budgetEvaluatorInference(provider, 'ollama', 'proposals', 'x')).toBe(provider);
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', 'broker');
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', 'broker');
   expect(budgetEvaluatorInference(provider, 'grok-broker', 'proposals', 'x')).toBe(provider);
 });
 
 it('loads the key only into evaluator transport and budgets every retry without raw key/payload/error receipts', async () => {
   const f = await fixture([decisions]); const secret = join(f.root, 'secret');
-  await writeFile(secret, ' PRIVATE_MARKER \n'); vi.stubEnv('PAIDEIA_TYPESAFE_SECRET_FILE', secret);
+  await writeFile(secret, ' PRIVATE_MARKER \n'); vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', secret);
   vi.stubEnv('TYPESAFE_API_KEY', undefined);
   const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
     expect(init!.headers).toMatchObject({ Authorization: 'Bearer PRIVATE_MARKER' });
@@ -167,7 +167,7 @@ it('retains allowlisted failed-provider usage and propagates completion-write fa
     return { text: 'x', model: request.model, route: 'subscription', usage: null };
   });
   await expect(wrapped.generate({ model: extraction.model, prompt: 'x' })).rejects.toThrow();
-  expect(JSON.parse(await readFile(f.policy, 'utf8')).version).toBe('paideia.evaluator-routes.v1');
+  expect(JSON.parse(await readFile(f.policy, 'utf8')).version).toBe('spawnfile.training.evaluator-routes.v1');
 });
 
 
@@ -184,7 +184,7 @@ it('serializes concurrent evaluator admission against one shared request budget'
 
 it('enforces an explicitly supplied evaluator policy even without a subject broker cap', async () => {
   await fixture([{ ...extraction, maxRequests: 1 }, { ...decisions, maxRequests: 1 }]);
-  vi.stubEnv('PAIDEIA_MODEL_REQUEST_CAP', undefined);
+  vi.stubEnv('SPAWNFILE_TRAINING_MODEL_REQUEST_CAP', undefined);
   expect(() => assertModelRequestAdmission('codex-subscription', 'extract', { purpose: 'extraction', model: 'other' })).toThrow('undeclared evaluator');
   const provider = fake(), route = budgetEvaluatorInference(provider, extraction.provider, 'extraction', extraction.model);
   await route.generate({ model: extraction.model, prompt: 'x' });

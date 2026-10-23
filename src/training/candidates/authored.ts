@@ -18,7 +18,7 @@ export function deriveAuthoredCandidate(baseline: CandidateManifest, replacement
   if (resources.every((resource, index) => resource.content === baseline.resources[index]!.content)) {
     throw new Error('Authored candidate must differ from the baseline');
   }
-  const body = { schema: baseline.schema, parentId: baseline.id, policyDigest: baseline.policyDigest, resources };
+  const body = { schema: 'spawnfile.training.candidate.v1' as const, parentId: baseline.id, policyDigest: baseline.policyDigest, resources };
   const candidate = { ...body, baselineId: baseline.id, id: candidateIdentity(body, baseline.id) };
   assertOriginalPolicy(baseline, candidate);
   return freezeCandidate(candidate);

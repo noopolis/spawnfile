@@ -9,7 +9,7 @@ export function inventoryDigest(context: SpawnfileTrainingContext): string {
 }
 
 export async function contextFixture() {
-  const root = await realpath(await mkdtemp(join(tmpdir(), 'paideia-context-')));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'training-context-')));
   const files = { 'AGENTS.md': 'Write clearly.\n', 'SKILL.md': 'Check the evidence.\n', 'SOUL.md': 'An independent writer.\n', Spawnfile: 'agent: writer\n' };
   const sources = [];
   for (const [destinationPath, content] of Object.entries(files)) {

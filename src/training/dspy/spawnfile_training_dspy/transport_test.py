@@ -20,7 +20,7 @@ def test_json_rejects_duplicate_nonfinite_or_malformed_content(text):
     (b"\xff\n", "invalid_json"), (b'"abcdefghijklmnop"\n', "invalid_frame"),
 ])
 def test_bounded_strict_utf8_framing(frame, code, monkeypatch):
-    monkeypatch.setattr("paideia_dspy.transport.MAX_LINE_BYTES", 16)
+    monkeypatch.setattr("spawnfile_training_dspy.transport.MAX_LINE_BYTES", 16)
     with pytest.raises(BridgeError) as error:
         read_message(io.BytesIO(frame))
     assert error.value.code == code
@@ -31,7 +31,7 @@ def test_writer_encodes_newlines_and_unicode_in_one_protocol_line(monkeypatch):
     write_message(writer, {"text": "你好\nnext"})
     assert writer.getvalue().count("\n") == 1
     assert read_message(io.BytesIO(writer.getvalue().encode())) == {"text": "你好\nnext"}
-    monkeypatch.setattr("paideia_dspy.transport.MAX_LINE_BYTES", 4)
+    monkeypatch.setattr("spawnfile_training_dspy.transport.MAX_LINE_BYTES", 4)
     with pytest.raises(BridgeError, match="size limit"):
         write_message(writer, {"a": "large"})
 

@@ -196,15 +196,15 @@ it('persists the actual pre-readiness stderr failure and publishes a redacted ac
   const f = await fixture('exit');
   const caught = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000).then(() => new Error('startup unexpectedly succeeded'), (error: unknown) => error as Error);
   // The operator-facing error names the worker's own reason, never the runtime-local capture path.
-  expect(caught.message).toBe('Native worker failed before readiness: paideia.daimon-native.start-failed.v1: unit missing native library');
+  expect(caught.message).toBe('Native worker failed before readiness: spawnfile.training.daimon-native.start-failed.v1: unit missing native library');
   expect(caught.message).not.toContain(f.launch.controlRoot);
   const diagnostic = subjectStartupDiagnostic(caught)!;
-  expect(diagnostic).toMatchObject({ schema: 'paideia.daimon-native.startup-diagnostic.v1', trialId: f.input.trialId,
-    reason: 'paideia.daimon-native.start-failed.v1: unit missing native library', exitCode: 1, exitSignal: null, redaction: 'applied',
+  expect(diagnostic).toMatchObject({ schema: 'spawnfile.training.daimon-native.startup-diagnostic.v1', trialId: f.input.trialId,
+    reason: 'spawnfile.training.daimon-native.start-failed.v1: unit missing native library', exitCode: 1, exitSignal: null, redaction: 'applied',
     protectedArtifact: join(f.launch.controlRoot, 'child-diagnostics.json') });
   const saved = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-diagnostics.json'), 'utf8'));
   expect(saved).toMatchObject({ trialId: f.input.trialId, configSha256: f.launch.configSha256, exitCode: 1 });
-  expect(JSON.parse(saved.stderr)).toMatchObject({ schema: 'paideia.daimon-native.start-failed.v1', error: 'unit missing native library' });
+  expect(JSON.parse(saved.stderr)).toMatchObject({ schema: 'spawnfile.training.daimon-native.start-failed.v1', error: 'unit missing native library' });
   // The protected capture keeps the declared transport secret; the published streams never do.
   expect(saved.stdout + saved.stderr).not.toContain('unit-transport-value');
   expect(JSON.stringify(diagnostic)).not.toContain('unit-transport-value');
@@ -218,11 +218,11 @@ it('withholds published streams that carry a credential nobody declared, keeping
   expect(diagnostic.redaction).toBe('withheld');
   expect(diagnostic.streams).toBeUndefined();
   // The class survives even though the bytes cannot: the worker's own frame still states the reason.
-  expect(diagnostic.reason).toBe('paideia.daimon-native.start-failed.v1: unit missing native library');
+  expect(diagnostic.reason).toBe('spawnfile.training.daimon-native.start-failed.v1: unit missing native library');
   expect(diagnostic.frames).toEqual(expect.arrayContaining([
-    { stream: 'stderr', schema: 'paideia.daimon-native.start-failed.v1', message: 'unit missing native library' }]));
+    { stream: 'stderr', schema: 'spawnfile.training.daimon-native.start-failed.v1', message: 'unit missing native library' }]));
   expect(diagnostic.withheld).toEqual([{ stream: 'stderr', bytes: expect.any(Number), lines: expect.any(Number),
-    frame: 'paideia.daimon-native.start-failed.v1', detectors: ['bearer', 'opaque-run'] }]);
+    frame: 'spawnfile.training.daimon-native.start-failed.v1', detectors: ['bearer', 'opaque-run'] }]);
   expect(JSON.stringify(diagnostic)).not.toContain('sk-unit-');
   const saved = JSON.parse(await readFile(join(f.launch.controlRoot, 'child-diagnostics.json'), 'utf8'));
   expect(saved.stderr).toContain('sk-unit-');

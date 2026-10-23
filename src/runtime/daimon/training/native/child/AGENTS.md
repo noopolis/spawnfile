@@ -197,7 +197,7 @@ container user has no passwd entry. Explicit env files cannot override HOME; nev
 inherit the coordinator or host home to repair native startup.
 
 Codex pre-cognition probes require denied reads of the evaluator secret leaf named
-by PAIDEIA_TYPESAFE_SECRET_FILE when configured. Probe by opening only, never read
+by SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE when configured. Probe by opening only, never read
 or publish secret bytes. Verify the leaf-only permission failure in sandbox-secret.test.ts.
 
 Grok children never run a local `codex sandbox` probe. The parent re-binds the

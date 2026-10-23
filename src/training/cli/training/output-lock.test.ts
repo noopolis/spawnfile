@@ -13,7 +13,7 @@ vi.mock('node:fs/promises', async importOriginal => {
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
-async function fixture() { const root = await mkdtemp(join(tmpdir(), 'paideia-lock-')); roots.push(root); return root; }
+async function fixture() { const root = await mkdtemp(join(tmpdir(), 'training-lock-')); roots.push(root); return root; }
 
 it('excludes another owner and releases on completion without stale lock files', async () => {
   const root = await fixture();

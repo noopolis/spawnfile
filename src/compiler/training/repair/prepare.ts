@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../../shared/index.js';
 import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -9,7 +10,7 @@ import { readTrainingWitness } from "./witness.js";
 import { verifyTrainingCompatibility } from "./compatibility.js";
 import { repairEnvelopeSchema } from "./contract.js";
 
-const commandSchema = z.object({ schema: z.literal("paideia.command-checkpoint.v1"), id: z.string().uuid(),
+const commandSchema = z.object({ schema: compatibleWireLiteral("spawnfile.training.command-checkpoint.v1"), id: z.string().uuid(),
   identity: z.string().regex(/^[a-f0-9]{64}$/u),
   lineage: z.object({ parentId: z.string().uuid(), parentIdentity: z.string().regex(/^[a-f0-9]{64}$/u),
     receiptDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/u) }).strict().optional() }).strict();
@@ -42,7 +43,7 @@ export async function planMeasurementRepair(options: { parent: string; witness?:
   const command = commandSchema.parse(JSON.parse(await readFile(path.join(parent, "checkpoint/command.json"), "utf8")));
   const training = JSON.parse(await readFile(path.join(parent, "checkpoint/training.json"), "utf8")) as { state?: { identity?: unknown } };
   const trainingIdentity = z.string().regex(/^[a-f0-9]{64}$/u).parse(training.state?.identity);
-  const manifest = { version: "paideia.repair-parent.v1", files: files.map(file => ({ path: file.destination, sha256: file.sha256, size: file.size })) };
+  const manifest = { version: "spawnfile.training.repair-parent.v1", files: files.map(file => ({ path: file.destination, sha256: file.sha256, size: file.size })) };
   return { parent, witness, compatibility, files, command, trainingIdentity, checkpoints,
     manifest, manifestDigest: hashJson(manifest) };
 }
@@ -53,7 +54,7 @@ export async function stageMeasurementRepair(plan: MeasurementRepairPlan, stagin
   const root = path.join(staging, "repair-parent"), repairPath = path.join(staging, "repair.json");
   const compatibility = { version: "spawnfile.daimon-dspy-compatibility.v1", ...plan.compatibility,
     digest: hashJson(plan.compatibility) };
-  const receipt = repairEnvelopeSchema.shape.receipt.parse({ version: "paideia.measurement-repair.v1",
+  const receipt = repairEnvelopeSchema.shape.receipt.parse({ version: "spawnfile.training.measurement-repair.v1",
     parent: { root: "/run/training/inputs/repair-parent", imageId: plan.witness.manifest.parentImage,
       experimentId: plan.command.id, executionIdentity: plan.command.identity, manifestDigest: plan.manifestDigest,
       checkpoints: plan.checkpoints, trainingIdentity: plan.trainingIdentity },

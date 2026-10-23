@@ -10,14 +10,14 @@ import type { SubjectAdapter } from '../../contracts/execution.js';
 import { runStoredTrial, type StoredTrialOptions } from './stored.js';
 
 it('runs candidate bytes in a native workspace and persists a protected replayable report', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-stored-'));
+  const root = await mkdtemp(join(tmpdir(), 'training-stored-'));
   try {
     const source = join(root, 'source'); await mkdir(source);
     await writeFile(join(source, 'AGENTS.md'), 'Write DONE.');
     const candidate = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
       destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'whole-file' }] });
     const storeRoot = join(root, 'store'); const store = await openExperimentStore(storeRoot);
-    const record = resolveDataset(parseDatasetYaml(`schema: paideia.dataset.v1
+    const record = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: suite
 checks: [{id: complete, eval: equals, input: output.text, value: DONE}]
 records: [{id: case, group: evidence, input: {prompt: complete it}}]
@@ -35,7 +35,7 @@ records: [{id: case, group: evidence, input: {prompt: complete it}}]
     const options: StoredTrialOptions = { id: 'run', phase: 'train', round: 3, datasetId: 'suite', record, candidate, store, storeRoot,
       datasetDigest: 'digest', planDigest: 'plan', adapter, model: 'model', root: join(root, 'trials'), timeoutMs: 2_000,
       registry: createEvaluationRegistry(), evaluation: { judges: {}, embeddings: {}, readText: async () => '' } };
-    const costRecord = resolveDatasetForCost(parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id: 'cost',
+    const costRecord = resolveDatasetForCost(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'cost',
       checks: [{ id: 'ok', eval: 'equals', input: 'output.text', value: 'DONE' }],
       records: [{ id: 'estimate', input: { prompt: 'Never execute an estimate' } }] }))).records[0]!;
     const createRun = vi.spyOn(store, 'createRun');

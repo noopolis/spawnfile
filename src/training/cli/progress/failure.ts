@@ -1,3 +1,4 @@
+import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import type { CandidateManifest } from '../../candidates/index.js';
 import type { CostReport, TrainingCostPlan, TrainingReport, TrialReport } from '../../experiments/index.js';
@@ -7,7 +8,7 @@ import type { InvocationIndex } from '../types.js';
 import type { RescoreReport } from '../../experiments/replay/index.js';
 
 export interface CliFailureReport {
-  schema: 'paideia.cli-failure.v1';
+  schema: 'spawnfile.training.cli-failure.v1';
   id: string;
   command: 'train' | 'evaluate';
   candidateId: string;
@@ -35,14 +36,14 @@ export function createFailureReport(options: {
   // The cost projection keeps every observed call, including sealed work, while
   // omitting call/trial identities and provider text. Do not expose usage sources.
   view.usage = [];
-  return { schema: 'paideia.cli-failure.v1', id: options.id, command: options.command,
+  return { schema: 'spawnfile.training.cli-failure.v1', id: options.id, command: options.command,
     candidateId: options.baseline.id, status: 'failed',
     ...(options.comparison ? {comparison:{candidateId:options.comparison.candidate.id,name:options.comparison.name}} : {}), progressRunId: options.progressRunId,
     diagnosticId: options.diagnosticId, view: projectViewerData(view) };
 }
 
 const id = z.string().min(1).max(16384);
-const failureSchema = z.object({ schema: z.literal('paideia.cli-failure.v1'), id,
+const failureSchema = z.object({ schema: compatibleWireLiteral('spawnfile.training.cli-failure.v1'), id,
   command: z.enum(['train', 'evaluate']), candidateId: id, status: z.literal('failed'),
   comparison: z.object({candidateId:id,name:id}).strict().optional(),
   progressRunId: id, diagnosticId: id, view: z.unknown() }).strict();

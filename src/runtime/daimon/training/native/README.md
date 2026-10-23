@@ -2,7 +2,7 @@
 
 `createDaimonNativeAdapter()` runs one selected Codex attention agent through
 Daimon's public organization control host in a fresh local Linux container. This
-is separate from the existing Pi/session adapter. Paideia does not compile the
+is separate from the existing Pi/session adapter. Spawnfile training does not compile the
 organization, rebuild the identity envelope, substitute fixture tools or implement
 Mneme. Caller preparation supplies canonical native config and immutable code.
 
@@ -28,7 +28,7 @@ resolves that directory before deriving the receipt path, so a runner that reach
 a fixed container slot through a symlinked trial path still hands the worker a real
 `--launch` path. Every other control path must be canonical in its own right: the
 worker refuses a config, token file or control root whose path traverses a link. The strict
-`paideia.daimon-native.launch.v1` schema requires:
+`spawnfile.training.daimon-native.launch.v1` schema requires:
 
 - Exact compiled-config and source-config SHA-256, immutable container image,
   selected agent ID, Codex model and loopback host endpoint.
@@ -45,11 +45,11 @@ worker refuses a config, token file or control root whose path traverses a link.
   built worker directory and optional trusted project bootstrap.
 
 The container needs Node at `/usr/local/bin/node`, the public Daimon runtime,
-Paideia's dependencies, and the caller's canonical native engine/backend programs.
+Spawnfile training's dependencies, and the caller's canonical native engine/backend programs.
 The adapter mounts the built native adapter directory at `/opt/training/native`.
 An optional bootstrap mounts at `/opt/training/bootstrap` and receives the worker
 arguments. That trusted caller code owns local transport startup; it must call
-the public worker afterward. Controls and bearer token stay under `/run/paideia`.
+the public worker afterward. Controls and bearer token stay under `/run/spawnfile-training`.
 The optional Daimon dependency is loaded only by the native worker.
 
 ## Production transport delivery and task time
@@ -111,7 +111,7 @@ observation fails closed. `renderedAllowances: "unavailable-public-api"` is
 deliberate: the inspected runtime computes allowances when the model calls
 `daimon_inbox`; its public control API has no retained copy of that response.
 Polling availability cannot establish what the engine saw. Exact rendered-budget
-capture requires a public Daimon evidence export; Paideia does not recreate it.
+capture requires a public Daimon evidence export; Spawnfile training does not recreate it.
 
 `POST /v2/wakes` uses Daimon's 1,048,576-byte body limit. The worker decodes JSON
 objects and applies the authenticated control token; `host.accept` owns schema
@@ -137,12 +137,12 @@ unchanged from the caller's clock contract, and supplies `LD_PRELOAD` for Daimon
 child gate before creating the host. Never preload the worker through its launch
 environment. Daimon and engines stay on real time; Daimon applies the advancing
 offset only to supported tool/MCP children. Ready and per-wake frames record the
-origin and anchor; every Paideia timeout remains real. Omission unsets the clock
+origin and anchor; every Training timeout remains real. Omission unsets the clock
 environment. Supply a clock-capable Daimon runtime and, for brokered Grok, its
 attested clocked worker configuration. No generic public runtime capability marker
 currently proves clock support; live container verification remains required.
 The inspected Daimon package does not publicly export its
-`realTimeProcessEnvironment` stripping helper. Paideia's startup tests therefore
+`realTimeProcessEnvironment` stripping helper. Spawnfile training's startup tests therefore
 verify the installed contract and retained anchor, not downstream engine clock
 stripping; that private behavior needs Daimon's own tests and live verification.
 
@@ -214,7 +214,7 @@ marker establishes success. This preserves native path protection, without
 claiming a fresh per-agent container or general process separation.
 
 The optional `execution.prepare({ launch, trialId, signal })` callback delegates
-credential ingress staging to the caller's public owner API. Paideia validates
+credential ingress staging to the caller's public owner API. Training validates
 staged leaf modes and paths; it never imports subscription credentials. Worker
 arguments are exposed by `nativeChildArguments`; each uses the actual private
 launch/config/control/token paths. The child's environment contains the declared
@@ -240,7 +240,7 @@ zero-model native-image probe verified the actual protected-path policy; neither
 is an authenticated model optimization run.
 
 
-## Brokered Grok trials (`paideia.daimon-native.launch.v2`)
+## Brokered Grok trials (`spawnfile.training.daimon-native.launch.v2`)
 
 Status: implemented and unit-tested against Daimon's public contract; not yet
 exercised in a live broker-capable training container (the slot supervisor that
@@ -260,7 +260,7 @@ records the declared `model` (`grok-4.6`, `grok-4.5`, `grok-build`) and
 | `slot`, `workerUid`, `workerHomePath`, `architecture`, `usageLedgerPath`, `seccompProfileSha256`, `limits` | Passed verbatim to Daimon's `resolveOrganizationGrokBrokerProjection` |
 | `evaluatorPaths[]` | `{role, path}` for `run-root`, `context`, `sealed-inputs`, `judge-home`, `slot-ledger` (the usage ledger directory); passed as the projection's `denyPaths` |
 | `slotPreflightReceipt` | Input path contract: the root slot supervisor writes `noopolis.daimon.grok-slot-preflight.v2` here after provisioning or recycling the slot |
-| `expectedNonce`, `minGeneration` | This trial's recycle freshness: the nonce Paideia sent with the recycle request and one above the last generation it accepted for the slot |
+| `expectedNonce`, `minGeneration` | This trial's recycle freshness: the nonce Training sent with the recycle request and one above the last generation it accepted for the slot |
 
 ### Slot path contract (what preparation must produce)
 
@@ -275,13 +275,13 @@ preparation must produce exactly this shape:
 | `workspace.source` | the trial workspace the evaluator passed as `workspacePath` (`/run/training/slot/workspace`) |
 | `projections` | exactly one entry, role `home`, whose source is the trial runtime home the evaluator passed as `runtimeHomePath` (`/run/training/slot/runtime-home`) |
 | `controlRoot` | a slot directory the supervisor's receipt denies to the worker uid, private (no group/other bits), outside the workspace (`/run/training/slot/state`) |
-| `config`, `tokenFile`, `envFile` | canonical private files inside some denied slot root (`/run/paideia/...`), never inside the workspace |
+| `config`, `tokenFile`, `envFile` | canonical private files inside some denied slot root (`/run/spawnfile-training/...`), never inside the workspace |
 | `native-launch.json` | written `0600` in the trial runtime home; for Grok that directory is the subject's own home |
 | `slotPreflightReceipt` | a canonical `0640`-or-tighter file owned by the container root, whose `projection_sha256` equals `broker.projectionSha256` |
 
 A declared Mneme root is admitted by containment, not by its own projection: a
 Grok launch projects one root, so preparation materializes the store inside the
-runtime home (`<slot runtime home>/paideia/memory`) and the profile check accepts
+runtime home (`<slot runtime home>/training/memory`) and the profile check accepts
 any root strictly inside `runtimeHomePath`. A root equal to the runtime home, or
 outside it, is still refused, and Codex keeps its separate fresh `memory`
 projection unchanged. Containment is safe here because the home is already wholly
@@ -315,13 +315,13 @@ the Codex runtime-home anchor provides.
 The slot control root is fixed, shared between trials and already holds Daimon's
 wake-acceptance store, so it is never empty and the supervisor's recycle — which
 wipes that store, the worker home, the slot workspace, the turn store and the
-per-slot ledger — deliberately does not clear it. Paideia owns exactly one
+per-slot ledger — deliberately does not clear it. Spawnfile training owns exactly one
 subtree of it and separates trials there itself:
 
 ```
 /run/training/slot/state/
 ├── wake-acceptance/                     Daimon's, wiped by every recycle
-└── paideia-trials/trial-<sha256(trialId)[0:32]>/
+└── training-trials/trial-<sha256(trialId)[0:32]>/
     ├── sandbox-projection.json          Daimon's runtime acceptance store,
     ├── child-sandbox-preflight.json     the wake fuse directory and the
     ├── child-diagnostics.json           `--evidence` file also live here
@@ -347,7 +347,7 @@ control roots are already per trial and are used unchanged.
 A trial's Daimon runtime acceptance store and wake fuse directory are that same
 per-trial directory, so an acceptance from trial N cannot be replayed into trial
 N+1 whatever a recycle does. The container's provisioned `<state>/wake-acceptance`
-stays the supervisor's own store and recycle target; it is not where a Paideia
+stays the supervisor's own store and recycle target; it is not where a Training
 trial accepts, and the wipe target does not need to widen to the state root. If it
 ever did widen, it would have to stay between trials, never during one.
 
@@ -365,7 +365,7 @@ Startup, in order, with no model call and no `codex sandbox` process:
    operation still requires the provisioner's native container verification.
 3. The slot receipt must exist and pass Daimon's verifier (exact deny-path canaries,
    profile, seccomp, executable, and freshness: the launch nonce and a generation
-   of at least `minGeneration`; v1 receipts are refused). Paideia then requires the control root and every
+   of at least `minGeneration`; v1 receipts are refused). Training then requires the control root and every
    evaluator root to be an exact denied canary and the config/token/env files to
    sit inside a denied root, and persists `sandbox-projection.json`.
 4. The ready line adds `engine` and `reasoningEffort`; the parent requires them to
@@ -397,7 +397,7 @@ stays on the usage row and makes usage coverage partial. Normalized usage has
 `cacheWriteInputTokens = cache_write` and `notionalUsd`. A row whose `notional_usd` exceeds
 $100 for one turn is malformed and rejected. Cost reports prefer a
 runtime-reported `notionalUsd` (labelled with its source) over catalog rates; there
-is no built-in Grok rate card, but `paideia.cost-config.v1` `prices` can add one.
+is no built-in Grok rate card, but `spawnfile.training.cost-config.v1` `prices` can add one.
 A broker limit failure is reported only as its closed `limit_reason`.
 When the failed, closed execution's own sealed usage row carries a `limit_reason`
 of `tokens`, `requests` or `timeout`, the terminal frame and turn carry `limit` and
@@ -411,7 +411,7 @@ most 5s): Daimon seals its idle watchdog as the same `timeout` without recording
 which ended the turn, and a turn that stopped short of the ceiling is a hang.
 
 Request budget: `broker.limits.maxRequests` is enforced per broker turn by Daimon
-and is the only request cap. Paideia adds no trial-level request limit; a trial's
+and is the only request cap. Training adds no trial-level request limit; a trial's
 upper bound is `(1 + external deliveries) × maxRequests`, with at most three
 external deliveries. Token and time budgets remain bounded by the launch limits.
 

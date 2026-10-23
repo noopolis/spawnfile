@@ -10,13 +10,13 @@ it('has independent explicit defaults and exact model overrides', () => {
   expect(resolveCostConfig().assumptions.subject.inputTokens.high).toBe(250000);
   expect(standardPrices[0]!.perMillion.input).toBe(5);
   const override = { ...standardPrices[0]!, perMillion: { input: 7, cacheRead: 0.7, output: 10 }, source: 'operator calibration' };
-  expect(resolveCostConfig({ schema: 'paideia.cost-config.v1', prices: [override] }).prices.filter(p => p.model === 'gpt-5.5')).toEqual([override]);
-  expect(resolveCostConfig({ schema: 'paideia.cost-config.v1' }).prices).toEqual(standardPrices);
+  expect(resolveCostConfig({ schema: 'spawnfile.training.cost-config.v1', prices: [override] }).prices.filter(p => p.model === 'gpt-5.5')).toEqual([override]);
+  expect(resolveCostConfig({ schema: 'spawnfile.training.cost-config.v1' }).prices).toEqual(standardPrices);
 });
 
 it('rejects unknown fields, duplicate prices and inverted or invalid assumptions', () => {
-  for (const value of [{}, { schema: 'paideia.cost-config.v1', mystery: true },
-    { schema: 'paideia.cost-config.v1', prices: [standardPrices[0], standardPrices[0]] }]) expect(() => resolveCostConfig(value)).toThrow();
+  for (const value of [{}, { schema: 'spawnfile.training.cost-config.v1', mystery: true },
+    { schema: 'spawnfile.training.cost-config.v1', prices: [standardPrices[0], standardPrices[0]] }]) expect(() => resolveCostConfig(value)).toThrow();
   const tokens = resolveCostAssumptions().judge;
   for (const patch of [{ inputTokens: { low: 100, high: 10 } }, { outputTokens: { low: 0.5, high: 2 } },
     { cacheReadFraction: { low: 0.8, high: 0.2 } }, { cacheReadFraction: { low: 0, high: 2 } }]) {

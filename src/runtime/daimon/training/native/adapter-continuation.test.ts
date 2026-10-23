@@ -11,7 +11,7 @@ test('adapter resumes only sourced deferred work and captures all usage once wit
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
     const events: Observation[] = [];
     fixture.input.onObservation = event => { events.push(event); };
-    const terminal = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    const terminal = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed', blocked: 'awaiting-external-input',
       completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ engine: 'codex', wake: 'execution-task', input: 100, output: 20, cache_read: 40 }] },
       coverage: [{ channel: 'output', completeness: 'absent', ordering: 'none' }, { channel: 'usage', completeness: 'partial', ordering: 'source' }] };
@@ -41,7 +41,7 @@ test('a stop that races a verified deferred wake reports cancellation without th
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    docker.setTerminal({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed',
       blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
       native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ engine: 'codex', wake: 'execution-task', input: 100, output: 20, cache_read: 40 }] },
@@ -65,7 +65,7 @@ for (const mode of ['absent', 'duplicate', 'failure', 'cancelled'] as const) tes
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    docker.setTerminal({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256, status: 'failed', blocked: 'awaiting-external-input',
       completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [{ engine: 'codex', wake: 'execution-task', input: 100, output: 20, cache_read: 40 }] },
       coverage: [{ channel: 'usage', completeness: 'partial', ordering: 'source' },
@@ -99,7 +99,7 @@ for (const defect of ['identity', 'observer'] as const) test(`never releases ext
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId,
+    docker.setTerminal({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId,
       wakeId: defect === 'identity' ? 'wrong' : 'task', agentId: 'agent:writer', model: 'test-model-v1',
       configSha256: fixture.launch.configSha256, status: 'failed', blocked: 'awaiting-external-input',
       completedAt: new Date().toISOString(), native: { traces: [], toolReceipts: [], modelContexts: [], usage: [] }, coverage: [] });
@@ -118,7 +118,7 @@ test('three sourced deliveries exhaust the budget as failed with confirmed clean
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    const terminal = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    const terminal = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256,
       status: 'failed', blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
       native: { traces: [], toolReceipts: [], modelContexts: [], usage: [] }, coverage: [] };
@@ -139,7 +139,7 @@ for (const enabled of [false, true]) test(`contradictory blocked completion is r
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    docker.setTerminal({ schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    docker.setTerminal({ schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256,
       status: 'completed', blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
       native: { traces: [], toolReceipts: [], modelContexts: [], usage: [] }, coverage: [] });
@@ -156,7 +156,7 @@ test('a raised wake budget buys no extra wall clock: the shared deadline ends a 
   const fixture = await launchFixture();
   try {
     const docker = dockerFixture(fixture.launch, fixture.input.trialId);
-    const terminal = { schema: 'paideia.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
+    const terminal = { schema: 'spawnfile.training.daimon-native.trial.v1', trialId: fixture.input.trialId, wakeId: 'task',
       agentId: 'agent:writer', model: 'test-model-v1', configSha256: fixture.launch.configSha256,
       status: 'failed', blocked: 'awaiting-external-input', completedAt: new Date().toISOString(),
       native: { traces: [], toolReceipts: [], modelContexts: [], usage: [] }, coverage: [] };

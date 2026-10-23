@@ -40,7 +40,7 @@ export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, inte
   return { runtime: context.agent.runtime, model, candidate, judges,
     citationRepairs: judgeCitationRepairs(args, judges),
     sourceRoot: context.project.root,
-    out: resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/paideia' : undefined)),
+    out: resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/training' : undefined)),
     resources: Object.fromEntries(Object.entries(pairs(args.flags.resource ?? [])).map(([name, path]) => [name, resolve(io.cwd, path)])),
     datasets: new CliDatasets(judges, io.cwd, { subject: context.agent.name, inferenceExecutionIdentity: integration?.inferenceExecutionIdentity,
       registry: { preparations: integration?.preparations }, unlockedSetupPaths: integration?.unlockedSetupPaths }, judgeVersions(args.training, integration?.inferenceExecutionIdentity, Object.keys(judges)), args.frozenDataset),

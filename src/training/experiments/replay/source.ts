@@ -1,3 +1,4 @@
+import { canonicalWireId } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import { captureObservation } from '../../capture/index.js';
 import type { TrialReport } from '../trials/index.js';
@@ -7,7 +8,7 @@ import { trialReportSchema } from './schema.js';
 export function capturedTrial(replay: Replay): { report: TrialReport; source: StoredEvaluation } {
   if (replay.completeness !== 'complete' || replay.ignoredTailBytes !== 0) throw new Error('Cannot rescore a capture with a truncated journal tail');
   const sources = replay.evaluations.filter(entry => entry.report !== null && typeof entry.report === 'object' &&
-    'schema' in entry.report && entry.report.schema === 'paideia.trial.v1');
+    'schema' in entry.report && canonicalWireId(entry.report.schema) === 'spawnfile.training.trial.v1');
   if (sources.length !== 1) throw new Error('Rescore requires exactly one accessible original trial report');
   const source = sources[0]!;
   const report = trialReportSchema.parse(source.report);

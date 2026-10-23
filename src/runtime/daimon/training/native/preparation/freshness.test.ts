@@ -11,7 +11,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 const stateRoot = async () => { const root = await realpath(await mkdtemp(join(tmpdir(), 'experiment-state-'))); roots.push(root); return root; };
 const signal = new AbortController().signal;
 
-/** One trial: Paideia mints through preparation, the slot recycle publishes `generation`, the child accepts. */
+/** One trial: Training mints through preparation, the slot recycle publishes `generation`, the child accepts. */
 async function trial(state: string, index: number, publish = (minimum: number) => minimum) {
   const freshness = createExperimentSlotFreshness(state);
   const slot = { ...grokLease(), index };
@@ -32,7 +32,7 @@ describe('createExperimentSlotFreshness', () => {
     await expect(lstat(join(state, experimentSlotFreshnessFile))).rejects.toMatchObject({ code: 'ENOENT' });
     await trial(state, 1);
     const saved = JSON.parse(await readFile(join(state, experimentSlotFreshnessFile), 'utf8'));
-    expect(saved).toEqual({ schema: 'paideia.daimon-native.grok-slot-freshness.v1', slots: { 1: { lastGeneration: 1 } } });
+    expect(saved).toEqual({ schema: 'spawnfile.training.daimon-native.grok-slot-freshness.v1', slots: { 1: { lastGeneration: 1 } } });
     expect(() => createExperimentSlotFreshness('relative')).toThrow('absolute');
   });
 

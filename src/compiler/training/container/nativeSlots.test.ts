@@ -14,7 +14,7 @@ it.each([1, 2, 4, 8])("mounts %i native descriptors read-only with host uid and 
   let observed = false;
   const docker = dockerFixture(async args => {
     if (args[2] !== "create") return undefined;
-    const mounts = args.filter(arg => arg.includes("dst=/run/paideia/slots.json"));
+    const mounts = args.filter(arg => arg.includes("dst=/run/spawnfile-training/slots.json"));
     expect(mounts).toHaveLength(1);
     expect(mounts[0]).toMatch(/,readonly$/u);
     const file = mounts[0]!.split("src=")[1]!.split(",")[0]!;
@@ -29,7 +29,7 @@ it.each([1, 2, 4, 8])("mounts %i native descriptors read-only with host uid and 
       expect(args).toContain(`${target}:rw,nosuid,nodev,size=${size}g,uid=${process.getuid!()},gid=${process.getgid!()},mode=${mode}`);
     }
     expect(args[args.indexOf("--pids-limit") + 1]).toBe(String(512 * slots));
-    expect(args).not.toContain("PAIDEIA_MODEL_REQUEST_CAP=broker");
+    expect(args).not.toContain("SPAWNFILE_TRAINING_MODEL_REQUEST_CAP=broker");
     expect(args.some(arg => arg.includes("request-budget"))).toBe(false);
     observed = true;
     return undefined;

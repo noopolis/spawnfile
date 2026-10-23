@@ -13,7 +13,7 @@ afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).
 /** The run52 abort: a candidate that runs out of its own declared timeout is graded, fed back and the run goes on. */
 it('trains through a declared-limit stop with a zero score and budget feedback instead of an infrastructure abort', async () => {
   const f = await cliFixture(); roots.push(f.root);
-  const dataset = (id: string, records: string[]) => ({ schema: 'paideia.dataset.v1', id,
+  const dataset = (id: string, records: string[]) => ({ schema: 'spawnfile.training.dataset.v1', id,
     stages: [{ id: 'article', checks: [{ id: 'filed', eval: 'equals', input: 'output.text', value: 'DONE' }],
       gate: { passed: 'filed' }, score: { linear: { filed: 1 } } }],
     records: records.map(id => ({ id, group: id, input: { prompt: 'Write' } })),
@@ -30,7 +30,7 @@ it('trains through a declared-limit stop with a zero score and budget feedback i
       if (split === 'train') expect(JSON.parse(measured.feedback).execution).toMatchObject({ status: 'limit-exceeded', limit: 'timeout' });
       captures.push({ caseId, split, captureId: measured.captureId });
     }
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0, evaluations: 2, proposals: 0,
         selectedCandidateIndex: 0, candidates: [{ components: request.components, parents: [null], validationScore: 0, discoveryEvaluations: 0 }],
         captures, generations: [] } };

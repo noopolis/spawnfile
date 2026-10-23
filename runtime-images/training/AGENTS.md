@@ -66,5 +66,5 @@ The image uses Spawnfile's own `dist/training` and `dist/training/dspy`; the
 bridge venv is built beside that bridge. The declared integration entry imports
 `spawnfile/dist/runtime/trainingCli.js` to retain project hooks and the runtime
 subject registry. No external training package, binary, source tree or symlink
-is installed. Context, preparation, repair, slots and secrets retain the legacy
-`/run/paideia/*` mount names until the wire-name migration.
+is installed. Context, preparation, repair, slots and secrets use
+`/run/spawnfile-training/*`; auth ingress uses `/run/spawnfile-training-auth/*`.

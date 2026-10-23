@@ -6,7 +6,7 @@ import { resolveCostAssumptions } from './assumptions.js';
 
 const rubric: CheckNode = { eval: 'llm-rubric', input: 'output.text', judge: 'prose', minimum: 0.8, rubric: { prompt: 'Clear prose.' } };
 function dataset(name: string, groups: string[]): ResolvedDataset {
-  return resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'paideia.dataset.v1', id: name,
+  return resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: name,
     checks: [{ id: 'ok', eval: 'equals', input: 'output.text', value: 'OK' }],
     records: groups.map(group => ({ id: `${name}-${group}`, group, input: { prompt: 'Reply OK.' } })) })), { requireGroups: true });
 }
@@ -19,7 +19,7 @@ function options(): TrainingCostOptions {
 describe('pure training cost plan', () => {
   it('reserves baseline and selected held-out trials and budgets reflection separately', () => {
     const plan = planTrainingCost(options());
-    expect(plan).toMatchObject({ schema: 'paideia.training-cost-plan.v1', modelCallsMade: 0, coverage: 'estimated',
+    expect(plan).toMatchObject({ schema: 'spawnfile.training.training-cost-plan.v1', modelCallsMade: 0, coverage: 'estimated',
       budget: { maxTrials: 10, reservedTestTrials: 4, metricCalls: 6, maxProposals: 2 } });
     expect(plan.lines.map(line => [line.role, line.phase, line.plannedCalls])).toEqual([
       ['subject', 'development', 6], ['subject', 'held-out', 4], ['optimizer', 'optimization', 2],

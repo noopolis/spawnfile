@@ -10,7 +10,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, {
 
 it('public Spawnfile dry-run estimates an unavailable preparation without invoking plugin, native or inference code', async () => {
   const f = await contextFixture(); roots.push(f.root);
-  const dataset = (groups: string[]) => ({ schema: 'paideia.dataset.v1', id: groups.join('-'), subject: 'writer',
+  const dataset = (groups: string[]) => ({ schema: 'spawnfile.training.dataset.v1', id: groups.join('-'), subject: 'writer',
     setup: { profile: 'fixture/custom', artifacts: { article: { kind: 'trusted' } } },
     fixtures: { task: { setup: { date: { context: 'date' } }, input: { prompt: 'Write.' } } },
     checks: [{ id: 'quality', eval: 'llm-rubric', judge: 'quality', input: 'artifact:article', minimum: 0.8, rubric: { file: 'rubric.md' } }],

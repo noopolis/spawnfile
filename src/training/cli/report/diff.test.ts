@@ -18,7 +18,7 @@ it.each([
   ['end insertion', 'a\nb\nc\nd\ne\nf\ng\n', 'a\nb\nc\nd\ne\nf\ng\nnew\n'],
   ['trailing context', 'a\nb\nc\nd\ne\nf\ng\n', 'a\nB\nc\nd\ne\nf\ng\n'],
 ])('emits an applicable byte-faithful unified patch: %s', async (_name, before, after) => {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-diff-')); roots.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-diff-')); roots.push(root);
   const path = 'file with "quotes"\tand-é.md';
   await writeFile(join(root, path), before!);
   const patch = join(root, 'candidate.diff');

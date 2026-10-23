@@ -16,14 +16,14 @@ import { trainAgent, type TrainingOptions } from './training.js';
 const cleanup: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(cleanup.splice(0).map(path => rm(path, { recursive: true, force: true }))); });
 function dataset(id: string, tokens: [string, string][]) {
-  return resolveDataset(parseDatasetYaml(stringify({ schema: 'paideia.dataset.v1', id,
+  return resolveDataset(parseDatasetYaml(stringify({ schema: 'spawnfile.training.dataset.v1', id,
     checks: [{ id: 'shape', eval: 'contains-any', input: 'output.text', values: ['ack:'] }],
     records: tokens.map(([token, group]) => ({ id: token, group, input: { prompt: JSON.stringify({ token }) },
       checks: [{ id: 'answer', eval: 'equals', input: 'output.text', value: `ack:${token.toLowerCase()}` }] })),
   })));
 }
 async function fixture(editable = true): Promise<{ options: TrainingOptions; events: { type: string; payload: unknown }[]; source: string }> {
-  const root = await mkdtemp(join(tmpdir(), 'paideia-train-test-')); cleanup.push(root);
+  const root = await mkdtemp(join(tmpdir(), 'training-train-test-')); cleanup.push(root);
   const source = join(root, 'source'); await mkdir(source);
   await writeFile(join(source, 'AGENTS.md'), 'Copy the input token unchanged.');
   const baseline = await snapshotCandidate({ sourceRoot: source, resources: [{ id: 'instructions', sourcePath: 'AGENTS.md',
@@ -57,7 +57,7 @@ function optimizer(caseId = 'Alpha', split: 'train' | 'validation' = 'train') {
   vi.spyOn(optimization, 'readDspyCheckpointEvidence').mockResolvedValue({ generations: [], failedAttempts: [], reservations: [] });
   return vi.spyOn(optimization, 'runDspyOptimization').mockImplementation(async request => {
     await request.evaluate({ caseId, split, components: request.components, round: 2 }, new AbortController().signal, 'callback');
-    return { schema: 'paideia.dspy.v2', kind: 'result', id: request.id, components: request.components,
+    return { schema: 'spawnfile.training.dspy.v2', kind: 'result', id: request.id, components: request.components,
       provenance: { optimizer: 'dspy.GEPA', dspyVersion: '3.3.1', gepaVersion: '0.1.4', seed: 0,
         evaluations: 1, proposals: 0, selectedCandidateIndex: 0,
         candidates: [{ components: request.components, parents: [null], validationScore: 1, discoveryEvaluations: 0 }], captures: [], generations: [] } };

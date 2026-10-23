@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -5,7 +6,7 @@ import pytest
 from .checkpoint import Checkpoint
 from .fixtures_test import SimulatedHost, request
 from .optimizer import optimize
-from .protocol import BridgeError
+from .protocol import BridgeError, SCHEMA, WIRE_ALIASES
 from .session import Session
 
 
@@ -122,3 +123,28 @@ def test_legacy_checkpoint_identity_excludes_absent_population_fields(tmp_path):
     expected = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"),
                                          ensure_ascii=True).encode()).hexdigest()
     assert checkpoint.identity == expected
+
+
+def test_pre_rename_checkpoint_verifies_its_bytes_but_requires_reprepare_before_callbacks(tmp_path):
+    host = JournalHost()
+    original = request(checkpoint={"directory": str(tmp_path), "identity": "execution"})
+    with pytest.raises(BridgeError, match="deliberate"):
+        optimize(original, host)
+    path = tmp_path / "optimizer.json"
+    envelope = json.loads(path.read_text())
+    legacy_request = original.model_dump(exclude={"checkpoint", "recovery"})
+    del legacy_request["search"], legacy_request["editScope"]
+    legacy_request["schema_version"] = next(key for key, canonical in WIRE_ALIASES.items() if canonical == SCHEMA)
+
+    def digest(value):
+        return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    envelope["payload"]["identity"] = digest({
+        "request": legacy_request, "execution": "execution", "versions": ["dspy3.3.1", "gepa0.1.4"],
+    })
+    envelope["digest"] = digest(envelope["payload"])
+    path.write_text(json.dumps(envelope))
+    before = len(host.subject.calls)
+    with pytest.raises(BridgeError, match="re-prepare"):
+        optimize(original, host)
+    assert len(host.subject.calls) == before

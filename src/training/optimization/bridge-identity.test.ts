@@ -4,8 +4,8 @@ import { mkdir, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promi
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { bridgeExecutionIdentity } from './index.js';
-const bridgeLauncherBody = `# -*- coding: utf-8 -*-\nimport sys\nfrom paideia_dspy.main import cli\nif __name__ == "__main__":\n    if sys.argv[0].endswith("-script.pyw"):\n        sys.argv[0] = sys.argv[0][:-11]\n    elif sys.argv[0].endswith(".exe"):\n        sys.argv[0] = sys.argv[0][:-4]\n    sys.exit(cli())\n`;
-const pipBridgeLauncherBody = `import sys\nfrom paideia_dspy.main import cli\nif __name__ == '__main__':\n    sys.argv[0] = sys.argv[0].removesuffix('.exe')\n    sys.exit(cli())\n`;
+const bridgeLauncherBody = `# -*- coding: utf-8 -*-\nimport sys\nfrom spawnfile_training_dspy.main import cli\nif __name__ == "__main__":\n    if sys.argv[0].endswith("-script.pyw"):\n        sys.argv[0] = sys.argv[0][:-11]\n    elif sys.argv[0].endswith(".exe"):\n        sys.argv[0] = sys.argv[0][:-4]\n    sys.exit(cli())\n`;
+const pipBridgeLauncherBody = `import sys\nfrom spawnfile_training_dspy.main import cli\nif __name__ == '__main__':\n    sys.argv[0] = sys.argv[0].removesuffix('.exe')\n    sys.exit(cli())\n`;
 import { bridgeFixture as fixture } from './bridge-fixtures.js';
 
 
@@ -13,14 +13,18 @@ test('hashes actual installed bridge source and lock, excluding tests, cache and
   const f = await fixture();
   try {
     const first = await bridgeExecutionIdentity(f.root, f.context);
-    const source = join(f.root, 'paideia_dspy/main.py');
+    const source = join(f.root, 'spawnfile_training_dspy/main.py');
     await writeFile(source, 'def cli(): return 1\n');
     const changed = await bridgeExecutionIdentity(f.root, f.context); assert.notEqual(changed, first);
     await writeFile(join(f.root, 'requirements.lock'), 'dspy==3.3.1\ngepa==0.1.4\n# revised pin metadata\n');
     const locked = await bridgeExecutionIdentity(f.root, f.context); assert.notEqual(locked, changed);
-    await writeFile(join(f.root, 'paideia_dspy/main_test.py'), 'test source');
-    await mkdir(join(f.root, 'paideia_dspy/__pycache__'), { recursive: true });
-    await writeFile(join(f.root, 'paideia_dspy/__pycache__/generated.py'), 'generated cache');
+    const aliases = join(f.root, 'spawnfile_training_dspy/legacy_wire_aliases.json');
+    await writeFile(aliases, '{"old":"canonical"}');
+    const readerChanged = await bridgeExecutionIdentity(f.root, f.context); assert.notEqual(readerChanged, locked);
+    await writeFile(aliases, '{}\n');
+    await writeFile(join(f.root, 'spawnfile_training_dspy/main_test.py'), 'test source');
+    await mkdir(join(f.root, 'spawnfile_training_dspy/__pycache__'), { recursive: true });
+    await writeFile(join(f.root, 'spawnfile_training_dspy/__pycache__/generated.py'), 'generated cache');
     await symlink('/absent/auth', join(f.root, 'auth.json'));
     await writeFile(join(f.root, '.venv/ignored-generated.py'), 'generated');
     assert.equal(await bridgeExecutionIdentity(f.root, f.context), locked);
@@ -40,8 +44,8 @@ test('refuses unrelated commands, wrapper changes and actual installed source mi
     const metadata = join(f.metadata, 'direct_url.json'); const saved = await readFile(metadata);
     await writeFile(metadata, JSON.stringify({ url: 'file:///unrelated', dir_info: { editable: true } }));
     await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /differs/); await writeFile(metadata, saved);
-    const other = join(f.root, 'unrelated'); await mkdir(join(other, 'paideia_dspy'), { recursive: true });
-    await writeFile(join(other, 'paideia_dspy/__init__.py'), ''); await writeFile(join(f.site, 'bridge.pth'), other + '\n');
+    const other = join(f.root, 'unrelated'); await mkdir(join(other, 'spawnfile_training_dspy'), { recursive: true });
+    await writeFile(join(other, 'spawnfile_training_dspy/__init__.py'), ''); await writeFile(join(f.site, 'bridge.pth'), other + '\n');
     await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /differs/);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
@@ -52,13 +56,13 @@ test('refuses Python overrides and unbounded or linked executable package source
     const previous = process.env.PYTHONPATH; process.env.PYTHONPATH = '/unrelated';
     try { await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /overrides/); }
     finally { if (previous === undefined) delete process.env.PYTHONPATH; else process.env.PYTHONPATH = previous; }
-    await symlink('/absent', join(f.root, 'paideia_dspy/linked.py'));
-    await assert.rejects(bridgeExecutionIdentity(f.root, f.context)); await rm(join(f.root, 'paideia_dspy/linked.py'));
-    await symlink(f.root, join(f.root, 'paideia_dspy/linked_package'));
-    await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /symlinks/); await rm(join(f.root, 'paideia_dspy/linked_package'));
-    const large = join(f.root, 'paideia_dspy/large.py'); await writeFile(large, ''); await truncate(large, 2 * 1024 * 1024 + 1);
+    await symlink('/absent', join(f.root, 'spawnfile_training_dspy/linked.py'));
+    await assert.rejects(bridgeExecutionIdentity(f.root, f.context)); await rm(join(f.root, 'spawnfile_training_dspy/linked.py'));
+    await symlink(f.root, join(f.root, 'spawnfile_training_dspy/linked_package'));
+    await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /symlinks/); await rm(join(f.root, 'spawnfile_training_dspy/linked_package'));
+    const large = join(f.root, 'spawnfile_training_dspy/large.py'); await writeFile(large, ''); await truncate(large, 2 * 1024 * 1024 + 1);
     await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /bounded/); await rm(large);
-    await mkdir(join(f.root, 'paideia_dspy', ...Array.from({ length: 9 }, () => 'nested')), { recursive: true });
+    await mkdir(join(f.root, 'spawnfile_training_dspy', ...Array.from({ length: 9 }, () => 'nested')), { recursive: true });
     await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /depth/);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
@@ -95,7 +99,7 @@ test('every independently reported interpreter and package identity must agree w
       (value: { origin: string; search: string[]; prefix: string; interpreter: string; direct: { dir_info: { editable?: boolean } }; project: { name: string; scripts: Record<string, string> }; version: string }) => { value.direct.dir_info = {}; },
       (value: { origin: string; search: string[]; prefix: string; interpreter: string; direct: { dir_info: { editable?: boolean } }; project: { name: string; scripts: Record<string, string> }; version: string }) => { value.project.name = 'other-package'; },
       (value: { origin: string; search: string[]; prefix: string; interpreter: string; direct: { dir_info: { editable?: boolean } }; project: { name: string; scripts: Record<string, string> }; version: string }) => { value.version = '99'; },
-      (value: { origin: string; search: string[]; prefix: string; interpreter: string; direct: { dir_info: { editable?: boolean } }; project: { name: string; scripts: Record<string, string> }; version: string }) => { value.project.scripts['paideia-dspy'] = 'other:main'; },
+      (value: { origin: string; search: string[]; prefix: string; interpreter: string; direct: { dir_info: { editable?: boolean } }; project: { name: string; scripts: Record<string, string> }; version: string }) => { value.project.scripts['spawnfile-training-dspy'] = 'other:main'; },
     ];
     for (const corrupt of corruptions) {
       const replacement = (() => { throw Error('Only the bounded promisified probe is expected'); }) as unknown as typeof original;
@@ -119,12 +123,24 @@ test('bounded bridge closure refuses aggregate oversize, excessive files and lin
     const saved = await readFile(f.command); await rm(f.command); await symlink(f.python, f.command);
     await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /mismatched/);
     await rm(f.command); await writeFile(f.command, saved);
-    const pkg = join(f.root, 'paideia_dspy');
+    const pkg = join(f.root, 'spawnfile_training_dspy');
     await writeFile(join(pkg, 'ignored.json'), '{}');
     for (let i = 0; i < 4; i++) await writeFile(join(pkg, `large${i}.py`), Buffer.alloc(2 * 1024 * 1024));
     await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /byte bound/);
     for (let i = 0; i < 4; i++) await rm(join(pkg, `large${i}.py`));
     await Promise.all(Array.from({ length: 257 }, (_, i) => writeFile(join(pkg, `file${i}.py`), '')));
     await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /bounded/);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+
+test('wire alias resource accepts only its declared shared-table symlink and hashes the target bytes', async () => {
+  const f = await fixture();
+  const resource = join(f.root, 'spawnfile_training_dspy/legacy_wire_aliases.json');
+  try {
+    await rm(resource);
+    await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /wire alias resource is missing/);
+    await symlink('/absent', resource);
+    await assert.rejects(bridgeExecutionIdentity(f.root, f.context), /wire alias resource/);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

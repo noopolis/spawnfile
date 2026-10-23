@@ -1,3 +1,5 @@
+import { canonicalWireId } from '../contracts/index.js';
+import { compatibleWireLiteral } from '../contracts/index.js';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -14,7 +16,7 @@ import { loadFailureView, createActivityTracker, createGenerationTracker } from 
 
 const id = z.string().min(1);
 const reference = z.object({ runId: id, id, digest: id, size: z.number().int().nonnegative() }).strict();
-const indexSchema = z.object({ schema: z.literal('paideia.invocation.v1'), command: z.enum(['evaluate', 'train']),
+const indexSchema = z.object({ schema: compatibleWireLiteral('spawnfile.training.invocation.v1'), command: z.enum(['evaluate', 'train']),
   outcome: z.literal('failed').optional(),
   summaryRunId: id, phase: z.enum(['train', 'test']), candidateId: id, trialIds: z.array(id),
   report: reference, candidate: reference,
@@ -38,17 +40,17 @@ export async function loadInvocationViewer(root: string): Promise<() => Promise<
     const report = await hydrateEvaluationJson(store, JSON.parse((await store.readBlob(index.report, access)).toString()), access);
     if (index.outcome === 'failed') return loadFailureView(report, index, store);
     if (index.command === 'train') {
-      if (report.schema === 'paideia.comparison.v1') {
+      if (canonicalWireId(report.schema) === 'spawnfile.training.comparison.v1') {
         if (report.id !== index.summaryRunId || report.candidate.id !== candidate.id) throw new Error('Stored comparison does not match its invocation');
         assertOriginalPolicy(report.baseline, report.candidate);
         return projectComparisonReport(report);
       }
-      if (report.schema !== 'paideia.training.v1' || report.id !== index.summaryRunId || report.selected.id !== candidate.id) throw new Error('Stored training report does not match its invocation');
+      if (canonicalWireId(report.schema) !== 'spawnfile.training.training.v1' || report.id !== index.summaryRunId || report.selected.id !== candidate.id) throw new Error('Stored training report does not match its invocation');
       const metadata = replay.manifest.metadata as { optimizerBudget?: unknown } | undefined;
       const budget = metadata?.optimizerBudget === undefined ? undefined : budgetSchema.parse(metadata.optimizerBudget);
       return projectTrainingReport(report as TrainingReport, budget);
     }
-    if (report.schema !== 'paideia.cli-evaluation.v1' || report.candidateId !== candidate.id) throw new Error('Stored evaluation report does not match its invocation');
+    if (canonicalWireId(report.schema) !== 'spawnfile.training.cli-evaluation.v1' || report.candidateId !== candidate.id) throw new Error('Stored evaluation report does not match its invocation');
     const trials = report.trials as TrialReport[];
     return projectTrials({ id: index.summaryRunId, title: 'Completed evaluation experiment', phase: 'replay',
       status: replay.completeness, updatedAt: 'Recorded completion', baseline: candidate, trials,
@@ -81,7 +83,7 @@ export async function startLiveViewer(options: {
   costs?: { subjectModel: string; prices?: readonly ModelPrice[]; costPlan?: TrainingCostPlan };
 }) {
   const runId = `viewer-${options.id}`;
-  await options.store.createRun({ schema: 'paideia.run.v1', id: runId, datasetId: options.datasetId,
+  await options.store.createRun({ schema: 'spawnfile.training.run.v1', id: runId, datasetId: options.datasetId,
     datasetRole: 'train', candidateId: options.baseline.id, planDigest: options.planDigest });
   let frozen = false, unavailable = false;
   let optimizer: DspyResult | undefined;
