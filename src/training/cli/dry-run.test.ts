@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { access, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main } from './commands.js';
-import { cliFixture, datasetText } from './fixture.js';
+import { cliFixture, datasetText } from '../../../fixtures/support/training/cli-fixture.js';
 import { readCostConfig } from './dry-run.js';
 import { parseArguments } from './arguments.js';
 import type { SubjectAdapterRegistry } from '../subjects/index.js';

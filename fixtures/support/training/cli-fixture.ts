@@ -1,8 +1,9 @@
+import { createTrainingProviderRegistry } from '../../../src/runtime/trainingProviders.js';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { SubjectAdapter } from '../contracts/index.js';
-import type { CliDependencies, CliIO } from './types.js';
+import type { SubjectAdapter } from '../../../src/training/contracts/index.js';
+import type { CliDependencies, CliIO } from '../../../src/training/cli/types.js';
 
 export function datasetText(records = [{ id: 'case', group: 'case-family' }]): string {
   return `schema: spawnfile.training.dataset.v1\nid: example\nchecks:\n  - id: correct\n    eval: equals\n    input: output.text\n    value: OK\nrecords:\n${records.map((record) => `  - id: ${record.id}\n    group: ${record.group}\n    input:\n      prompt: Reply OK.\n`).join('')}`;
@@ -16,6 +17,7 @@ export async function cliFixture() {
   const stdout: string[] = [], stderr: string[] = [], observedInstructions: string[] = [];
   const io: CliIO = { cwd: root, stdout: (text) => { stdout.push(text); }, stderr: (text) => { stderr.push(text); } };
   const dependencies: CliDependencies = {
+    inferenceProviders: createTrainingProviderRegistry(),
     subjects: { codex: { create: () => fixtureAdapter('codex', observedInstructions) } },
     adapter: (runtime) => fixtureAdapter(runtime, observedInstructions),
     inference: () => ({ id: 'test-subscription', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },

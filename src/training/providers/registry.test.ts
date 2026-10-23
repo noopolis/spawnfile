@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import type { InferenceProviderDescriptor, InferenceProviderRegistry } from '../contracts/index.js';
 import { inferenceProviderDescriptor, trainingInferencePolicies } from '../contracts/index.js';
 import { parseDatasetYaml, resolveDataset, trainingJudgeVersions, validateTrainingConfiguration } from '../cases/index.js';
-import { createTrainingInference, configuredCostRoutes } from '../cli/training/inference.js';
+import { createTrainingInference, configuredCostRoutes } from '../cli/training/index.js';
 import { defaultInferenceProviders } from './index.js';
 
 const provider = { id: 'registered', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const, temperature: false, seed: false },

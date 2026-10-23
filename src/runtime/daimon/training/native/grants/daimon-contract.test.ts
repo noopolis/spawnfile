@@ -4,7 +4,7 @@ import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { grokGrantModels, grokGrantReasoningEfforts } from '../../providers/grok-broker/grants.js';
+import { grokGrantModels, grokGrantReasoningEfforts } from '../../providers/grok-broker/index.js';
 import { createGrokBrokerInference, GrokGrantPool } from '../../providers/grok-broker/index.js';
 import type { ProcessOptions, RunningProcess } from '../../../../../training/index.js';
 import { loadDaimonGrokGrantAuthority } from './authority.js';

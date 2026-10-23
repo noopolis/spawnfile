@@ -3,7 +3,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import type { ProcessOptions, RunningProcess } from '../../../platform/process/index.js';
-import { createCodexInference } from '../../../../runtime/codex-exec/training/providers/codex-subscription/index.js';
+import { createCodexInference } from '../../../../../fixtures/support/training/providers.js';
 import { createClaudeInference } from '../../../inference/claude/index.js';
 import { runDecompose } from './decompose.js';
 import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';

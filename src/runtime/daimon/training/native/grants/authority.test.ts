@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { createConnection } from 'node:net';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { GrokGrantRefusal } from '../../providers/grok-broker/grants.js';
+import { GrokGrantRefusal } from '../../providers/grok-broker/index.js';
 import { loadDaimonGrokGrantAuthority, type DaimonGrantModule } from './authority.js';
 import { daimonGrokInferenceClientPin as PIN } from './pins.js';
 import { scriptedBrokerSocket } from './test-socket.js';

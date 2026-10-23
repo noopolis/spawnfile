@@ -17,3 +17,5 @@ mutation-tested. No model calls or project scripts belong here.
   trial execution and DSPy optimizer. Exclude training modules from the compiler
   closure so evaluator/checkpoint transport fixes can form compatible repairs.
   Old external-distribution witnesses and component receipts require re-preparation.
+
+Repair adapter IDs are strings. Preparation derives the ID from runtime registration and launch validates it against the selected runtime before container operations. Preserve receipt envelopes and old string values.

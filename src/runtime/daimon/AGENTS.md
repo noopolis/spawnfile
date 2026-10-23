@@ -217,3 +217,5 @@ agent while `runtimes.yaml` pins Daimon < 0.2.2 (from its
 `preflightAgent` (`spawnfile validate`), as a compile error diagnostic and in
 `createDaimonContainerTargets`. The local runtime identity carries no version,
 so it does not lift the guard.
+
+`engines.ts` owns the pinned engine vocabulary shared by compilation and runtime training registration. Training providers own subscription transport and engine-broker grants; training/services owns durable slot freshness. Keep adapter-specific launch constraints even when an engine is present in the broader runtime vocabulary.

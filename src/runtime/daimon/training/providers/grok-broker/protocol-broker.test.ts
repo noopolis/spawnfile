@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { decodeGrok, grokFailureEvidence, validateGrokInitialization, type GrokAuthMode, type GrokFrames } from '../grok-subscription/protocol.js';
+import { decodeGrok, grokFailureEvidence, validateGrokInitialization, type GrokAuthMode, type GrokFrames } from '../grok-subscription/index.js';
 
 const grant: GrokAuthMode = { auth: 'broker-grant', clientModelId: 'daimon-inference-grok', grantModel: 'grok-4.6' };
 /** Frames captured from Grok 1.0.34 running the Training judge argv through a real Daimon broker grant (P2c live, stub upstream). */

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main, type InvocationIndex } from './index.js';
-import { cliFixture, fixtureAdapter } from './fixture.js';
+import { cliFixture, fixtureAdapter } from '../../../fixtures/support/training/cli-fixture.js';
 import { loadInvocationViewer, startLiveViewer } from './viewer.js';
 import { openExperimentStore } from '../storage/index.js';
 import { deriveCandidate, type CandidateManifest } from '../candidates/index.js';

@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main } from './commands.js';
-import { cliFixture, fixtureAdapter } from './fixture.js';
+import { cliFixture, fixtureAdapter } from '../../../fixtures/support/training/cli-fixture.js';
 
 const roots: string[] = [];
 afterEach(async () => {

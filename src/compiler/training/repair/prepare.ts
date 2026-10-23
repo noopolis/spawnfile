@@ -1,3 +1,4 @@
+import { getRegisteredRuntime } from '../../../runtime/registry.js';
 import { compatibleWireLiteral } from '../../../shared/index.js';
 import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -54,11 +55,14 @@ export async function stageMeasurementRepair(plan: MeasurementRepairPlan, stagin
   const root = path.join(staging, "repair-parent"), repairPath = path.join(staging, "repair.json");
   const compatibility = { version: "spawnfile.daimon-dspy-compatibility.v1", ...plan.compatibility,
     digest: hashJson(plan.compatibility) };
+  const registered = await getRegisteredRuntime(plan.witness.manifest.context.agent.runtime);
+  const adapterId = registered?.training?.adapterId;
+  if (!adapterId) throw Error("Repair runtime has no registered training adapter");
   const receipt = repairEnvelopeSchema.shape.receipt.parse({ version: "spawnfile.training.measurement-repair.v1",
     parent: { root: "/run/training/inputs/repair-parent", imageId: plan.witness.manifest.parentImage,
       experimentId: plan.command.id, executionIdentity: plan.command.identity, manifestDigest: plan.manifestDigest,
       checkpoints: plan.checkpoints, trainingIdentity: plan.trainingIdentity },
-    current: { imageId: image, canonicalSourceDigest, adapterId: "daimon-native" }, compatibility });
+    current: { imageId: image, canonicalSourceDigest, adapterId }, compatibility });
   const envelope = { receipt, digest: hashJson(receipt) };
   if (resume) {
     if (await exactPath(repairPath) !== repairPath || hashJson(JSON.parse(await readFile(repairPath, "utf8"))) !== hashJson(envelope)) throw Error("Saved measurement repair receipt changed");

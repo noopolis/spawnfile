@@ -1,4 +1,4 @@
-import { prepareCodexEnvironment, savedCodexHome } from '../../../codex-exec/training/environment.js';
+import { prepareCodexEnvironment, savedCodexHome } from '../../../codex-exec/training/index.js';
 import path from 'node:path';
 import type { Observation, StopReceipt, SubjectAdapter, Usage } from '../../../../training/index.js';
 import { canonicalProtectedPaths } from '../../../../training/index.js';

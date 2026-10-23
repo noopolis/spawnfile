@@ -1,4 +1,4 @@
-import type { ViewerData } from './types.js';
+import type { ViewerData } from '../../../src/training/viewer/types.js';
 
 /** Public synthetic display fixture; no native observations or private text. */
 export function viewerFixture(): ViewerData {

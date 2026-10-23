@@ -2,11 +2,11 @@ import { link, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promise
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, expect, it, vi } from 'vitest';
-import { evaluatorPolicy, evaluatorRoute, readProtectedFile, type EvaluatorRoute } from './policy.js';
-import { reserveEvaluatorRequest } from './ledger.js';
-import { budgetEvaluatorInference, typeSafeEvaluatorEnvironment } from './provider.js';
-import { assertModelRequestAdmission } from '../request-cap.js';
-import { createTypeSafeDecision } from '../decision/index.js';
+import { evaluatorPolicy, evaluatorRoute, readProtectedFile, type EvaluatorRoute } from '../../../../fixtures/support/training/evaluator.js';
+import { reserveEvaluatorRequest } from '../../../../fixtures/support/training/evaluator.js';
+import { budgetEvaluatorInference, typeSafeEvaluatorEnvironment } from '../../../../fixtures/support/training/evaluator.js';
+import { assertModelRequestAdmission } from '../../../../fixtures/support/training/evaluator.js';
+import { createTypeSafeDecision } from '../../../../fixtures/support/training/evaluator.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 
 const roots: string[] = [];

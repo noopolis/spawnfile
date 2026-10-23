@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SpawnfileTrainingContext } from './context.js';
+import type { SpawnfileTrainingContext } from '../../../src/training/cli/spawnfile/context.js';
 
 export function inventoryDigest(context: SpawnfileTrainingContext): string {
   return `sha256:${createHash('sha256').update(JSON.stringify(context.sources.map(({ destinationPath, sha256 }) => ({ destinationPath, sha256 })))).digest('hex')}`;

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';
 import { afterEach, expect, it, vi } from 'vitest';
 import { streamSnapshots } from './stream.js';
-import { viewerFixture } from './fixture.js';
+import { viewerFixture } from '../../../fixtures/support/training/viewer-fixture.js';
 
 afterEach(()=>vi.useRealTimers());
 function fixture() {

@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { startViewer } from '../index.js';
-import { viewerFixture } from '../fixture.js';
+import { viewerFixture } from '../../../../fixtures/support/training/viewer-fixture.js';
 
 it('a real SSE revision refreshes trial SVG geometry even when candidate identity stays unchanged', async () => {
   const data = viewerFixture();

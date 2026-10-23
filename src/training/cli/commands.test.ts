@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { main, type InvocationIndex } from './index.js';
 import { openExperimentStore } from '../storage/index.js';
 import type { TrainingReport } from '../experiments/index.js';
-import { cliFixture, datasetText, fixtureAdapter } from './fixture.js';
+import { cliFixture, datasetText, fixtureAdapter } from '../../../fixtures/support/training/cli-fixture.js';
 import { loadInvocationViewer } from './viewer.js';
 
 const roots: string[] = [];

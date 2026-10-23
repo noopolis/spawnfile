@@ -6,5 +6,13 @@ export * from './storage/index.js';
 export * from './optimization/index.js';
 export * from './subjects/index.js';
 export * from './inference/index.js';
-export type * from './contracts/index.js';
+export * from './contracts/index.js';
 export { trainingEnvironment, normalizedTrainingEnvironment, checkTrainingFilename } from './platform/index.js';
+
+export * from './platform/process/index.js';
+export * from './capture/index.js';
+export * from './testing/index.js';
+export * from './providers/index.js';
+export { parseCheckTemplates, parseDecomposition, trapKinds } from './graders/decomposition/index.js';
+export type { CheckTemplates, Decomposition, DecompositionInputs } from './graders/decomposition/index.js';
+export type { CliDependencies } from './cli/index.js';

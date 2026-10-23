@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readSpawnfileContext, validateSpawnfileContext, resolveSpawnfileContext } from './context.js';
-import { contextFixture, inventoryDigest } from './fixture.js';
+import { contextFixture, inventoryDigest } from '../../../../fixtures/support/training/spawnfile-fixture.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

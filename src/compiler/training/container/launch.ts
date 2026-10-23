@@ -1,3 +1,4 @@
+import { getRegisteredRuntime } from '../../../runtime/registry.js';
 import { randomUUID } from "node:crypto";
 import { chmod, mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -73,6 +74,10 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     const envelope = repairEnvelopeSchema.parse(raw);
     if (["native", "trials", "optimizer"].some(name => name in envelope.receipt.compatibility.components)) {
       throw Error("Repair receipt references external training components; re-prepare with Spawnfile before repairing measurements");
+    }
+    const registered = await getRegisteredRuntime(options.context.agent.runtime);
+    if (!registered?.training?.adapterId || envelope.receipt.current.adapterId !== registered.training.adapterId) {
+      throw Error("Repair receipt adapter is not registered for the selected runtime");
     }
     if (hashJson(raw.receipt) !== envelope.digest || envelope.receipt.current.imageId !== image ||
       !prepared.config.inputs.some(input => input.destination === envelope.receipt.parent.root)) throw Error("Repair receipt launch identity mismatch");

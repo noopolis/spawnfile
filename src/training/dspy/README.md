@@ -106,7 +106,7 @@ legacy exact resource-map response; authored policy requests a structured
 `effect` fields. Criterion IDs must be distinct nonblank strings; effects must be
 nonblank strings of at most 1000 characters. The bridge enforces these bounds
 after parsing and converts the array to the internal criterion-to-effect map
-used by proposal history. This closed item schema supports Codex strict mode.
+used by proposal history. This closed item schema supports strict structured-output providers.
 Expected impacts are the optimizer's predictions, never measured grades. Rewrite
 permits reorganizing only already-editable text; all locked resource policies
 still apply.

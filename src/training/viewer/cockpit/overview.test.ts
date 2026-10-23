@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { viewerFixture } from '../fixture.js';
+import { viewerFixture } from '../../../../fixtures/support/training/viewer-fixture.js';
 import { buildCockpitMetrics, type MetricDefinition } from '../metrics/index.js';
 import { costOverview, metricOverview } from './overview.js';
 

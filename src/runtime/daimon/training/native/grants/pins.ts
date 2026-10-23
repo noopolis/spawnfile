@@ -1,4 +1,4 @@
-import { grokGrantEnvKey, type GrokGrantModel, type GrokGrantReasoningEffort } from '../../providers/grok-broker/grants.js';
+import { grokGrantEnvKey, type GrokGrantModel, type GrokGrantReasoningEffort } from '../../providers/grok-broker/index.js';
 
 /**
  * Training's pin of Daimon's evaluator inference client contract

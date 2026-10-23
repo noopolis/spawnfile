@@ -4,7 +4,7 @@ export { validateDatasetSplit, validateCostDatasetSplit, selectedFiles } from '.
 export { normalizeStages } from './plans.js';
 export { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
 export { compileJsonSchema } from './json-schema.js';
-export { DatasetError } from './validation.js';
+export { DatasetError, fail, fields, number, string } from './validation.js';
 export { validateTrainingConfiguration, trainingJudgeVersions } from './training/index.js';
 export { projectDatasetCost } from './cost-projection.js';
 export type { CostDataset, CostRecord } from './cost-projection.js';

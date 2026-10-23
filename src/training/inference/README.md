@@ -35,13 +35,11 @@ Each listed route is tried at most once; explicitly repeat a route to budget a r
 Routed providers reject sampling overrides; native Ollama controls are available
 when using its provider directly.
 
-`createGrokInference` uses saved OAuth and requires native acknowledgement of an
-empty tool set. `createOllamaInference` uses an explicitly configured native
-`/api/chat` endpoint, supports temperature/seed and never treats reasoning-only
-output as an answer. Neither route downloads models or manages authentication.
-The common provider interface also accepts explicitly installed API providers;
-there is no implicit paid fallback. These transport adapters have deterministic
-protocol tests; live availability remains a separate environment preflight.
+`createOllamaInference` uses an explicitly configured native `/api/chat` endpoint,
+supports temperature/seed and never treats reasoning-only output as an answer.
+It does not download models or manage authentication. Runtime composition supplies
+engine-backed inference through provider descriptors; the core validates and routes
+through those descriptors. There is no implicit paid fallback.
 
 Cache identities belong to the evaluation configuration: include the exact
 rendered prompt, criterion, model, route policy and provider endpoint. An attempt
@@ -66,10 +64,10 @@ and `createTeacherDecision`. These return option probabilities and truthful mode
 identity; neutral grader rules own calibration, escalation and aggregation.
 Ollama requires observable option logprobs; Jev requires a complete normalized
 probability vector. Missing scores stay missing. Teacher mode uses the same
-subscription providers (Claude/Grok empty-tool attestation or Codex containment) and never claims local-model ECE.
+registered subscription providers with empty-tool attestation or containment and never claims local-model ECE.
 No adapter installs models, starts servers or silently changes billing routes.
 See the [grader guide](../../docs/graders.md) for wire contracts, calibration bars,
-CLI commands and Codex containment.
+CLI commands and containment.
 
 ## Container training
 
@@ -103,19 +101,12 @@ these diagnostics through a non-enumerable getter only; serialized results,
 attempts and checkpoints never include them. Semantic judges persist them as
 evaluator-only events. Native thinking, stderr and unsafe envelopes supply no text.
 
-## Contained Codex teachers
+## Registered subscription teachers
 
-`createCodexInference` checks `codex login status` for a ChatGPT subscription.
-It excludes API keys and ambient provider overrides, links only the selected auth
-file into a clean `CODEX_HOME`, and executes in an empty disposable workspace.
-Native controls use read-only sandboxing, approvals never, ephemeral sessions,
-memories disabled, no MCP, web search disabled and no sandbox network enablement.
-The requested model and effort are explicit; reported model and usage remain
-unknown when the native stream omits them. Strict JSONL completion supplies the
-final agent message. Any item other than an agent message or reasoning refuses
-the attempt as `tool-call`, without retry. The capability is `contained`, distinct
-from `disabled`; graders accept this containment contract. Fake-binary and event
-stream tests verify the adapter contract; they do not establish live model quality.
+Runtime-owned providers attest their tool isolation through capabilities. The
+teacher backend accepts only registered subscription teachers and preserves native
+model/usage uncertainty. Engine-specific authentication, containment and protocol
+requirements are documented beside each runtime provider.
 
 `createTypeSafeDecision` is a separate, explicitly selected **paid API** decision
 route (`billing: api`), never an implicit fallback. It reads `TYPESAFE_API_KEY`

@@ -4,7 +4,7 @@ import type { InferenceProvider, InferenceResult, Usage } from '../../../../../t
 import type { runProcess } from '../../../../../training/index.js';
 import { InferenceFailure } from '../../../../../training/index.js';
 import { validateInferenceSchema } from '../../../../../training/index.js';
-import { runGrokCli } from '../grok-subscription/cli.js';
+import { runGrokCli } from '../grok-subscription/index.js';
 import { prepareGrokGrantCall } from './grant-home.js';
 import type { GrokGrantPool } from './grant-pool.js';
 

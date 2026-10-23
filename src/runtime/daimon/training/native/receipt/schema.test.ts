@@ -75,3 +75,11 @@ test('launch v2 selects Codex or Grok and v1 receipts still parse as Codex', asy
     expect(parseNativeLaunch({ ...clocked, broker: { ...broker, workerConfigVariant: 'clocked' } }).taskClock).toEqual(clocked.taskClock);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
+
+
+test('launch engine vocabulary consumes the runtime declaration', async () => {
+  const { daimonTrainingDeclaration } = await import('../../../index.js');
+  const { nativeEngines } = await import('./schema.js');
+  expect(nativeEngines.options).toEqual(daimonTrainingDeclaration.engines);
+  expect(nativeEngines.safeParse('unknown').success).toBe(false);
+});

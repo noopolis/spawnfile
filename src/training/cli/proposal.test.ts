@@ -3,7 +3,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { main } from './index.js';
 import type { CliDependencies } from './types.js';
-import { cliFixture, datasetText } from './fixture.js';
+import { cliFixture, datasetText } from '../../../fixtures/support/training/cli-fixture.js';
 
 it('passes the authored rewrite policy through the CLI into real GEPA reflection', async () => {
   const fixture = await cliFixture();

@@ -1,4 +1,5 @@
-import { compatibleWireLiteral } from '../../../../../training/contracts/index.js';
+import { daimonTrainingDeclaration } from '../../../index.js';
+import { compatibleWireLiteral } from '../../../../../training/index.js';
 import { isAbsolute, posix } from 'node:path';
 import { z } from 'zod';
 import { nativeTaskClockSchema } from './task-clock.js';
@@ -13,7 +14,7 @@ const reason = z.string().trim().min(1).max(2048);
 const positive = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
 /** Engines a launch receipt can select. v1 receipts are always Codex. */
-export const nativeEngines = z.enum(['codex', 'grok']);
+export const nativeEngines = z.enum(daimonTrainingDeclaration.engines);
 /** Daimon's closed Grok broker lists; the launch records the declaration, never a default. */
 export const grokModels = ['grok-4.6', 'grok-4.5', 'grok-build'] as const;
 export const grokReasoningEfforts = ['low', 'medium', 'high'] as const;

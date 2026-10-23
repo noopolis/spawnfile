@@ -3,7 +3,7 @@ import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { snapshotCandidate } from '../candidates/index.js';
 import { openExperimentStore } from '../storage/index.js';
-import { cliFixture } from './fixture.js';
+import { cliFixture } from '../../../fixtures/support/training/cli-fixture.js';
 import { persistResult, withOutput } from './output.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {

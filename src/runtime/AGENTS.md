@@ -98,3 +98,5 @@ typecheck/build also covers the moved adapters and supplies their strict checks.
 `trainingCli.ts` is the import-safe training composition and executable container entry.
 Host consumers pass canonical context directly; container consumers retain the context-file flag. `codex-exec/` is a standalone subject, not a compiled
 runtime. `trainingSubjects.test.ts` owns default factory composition coverage.
+
+Training provider composition lives in trainingProviders.ts; trainingGraderProviders.ts installs immutable grader policy. Engine inference providers live under their runtime's training/providers, while neutral built-ins remain in the core. Training implementations import contracts or the public core barrel, never private helpers. Registry training declarations include adapterId and engine vocabulary; repair admission checks the selected registration.

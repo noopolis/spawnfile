@@ -1,3 +1,4 @@
+import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import { appendFileSync, constants, closeSync, fstatSync, fsyncSync, openSync, readFileSync } from 'node:fs';
 import { randomUUID, createHash } from 'node:crypto';
@@ -11,8 +12,8 @@ const receipt = z.object({ version: compatibleWireLiteral('spawnfile.training.ev
   inputTokens: z.number().int().nonnegative().nullable(), outputTokens: z.number().int().nonnegative().nullable(),
 }).strict();
 export type EvaluatorReceipt = z.infer<typeof receipt>;
-export function reserveEvaluatorRequest(provider: string, purpose: EvaluatorPurpose, model: string, estimatedUsd = 0) {
-  const selected = evaluatorRoute(provider, purpose, model), route = routeKey(selected.route);
+export function reserveEvaluatorRequest(provider: string, purpose: EvaluatorPurpose, model: string, estimatedUsd = 0, registry?: InferenceProviderRegistry) {
+  const selected = evaluatorRoute(provider, purpose, model, registry), route = routeKey(selected.route);
   const policy = createHash('sha256').update(JSON.stringify(selected.route)).digest('hex');
   if (!Number.isFinite(estimatedUsd) || estimatedUsd < 0) throw Error('Invalid evaluator spend estimate');
   // Synchronous append and fsync serialize concurrent admission in the single evaluator process.
