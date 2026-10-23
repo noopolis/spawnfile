@@ -21,7 +21,7 @@ schema failures, retaining typed failure classes, protected diagnostics and earl
 failure accounting. Persist rejected units; downstream commands require explicit
 --allow-rejections and count these units as missing checks. Defect traps require
 a completed base reference with expected good finals. Request
-strict JSON schemas on Codex/Claude extraction and retain dropped field and citation
+strict JSON schemas on subscription-backed extraction and retain dropped field and citation
 disagreement diagnostics. Pass kind descriptions to extractors and persist a local
 instantiation report with declared location exclusions.
 

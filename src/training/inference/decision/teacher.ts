@@ -1,3 +1,4 @@
+import { graderProviderRegistry } from '../../contracts/index.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
 import type { JudgeCall } from '../../contracts/evaluation.js';
 import { randomUUID } from 'node:crypto';
@@ -9,8 +10,9 @@ import { DECISION_PROMPT_VERSION, validateDecisionRequest } from './prompt.js';
 export interface TeacherDecisionOptions { provider: InferenceProvider; model: string }
 
 export function createTeacherDecision({ provider, model }: TeacherDecisionOptions): DecisionBackend {
-  if (!['claude-subscription', 'grok-subscription', 'codex-subscription'].includes(provider.id) || provider.capabilities.billing !== 'subscription' || provider.capabilities.tools !== (provider.id === 'codex-subscription' ? 'contained' : 'disabled')) {
-    throw new Error('Decision teacher requires subscription with native empty-tool attestation or Codex containment');
+  const descriptor = graderProviderRegistry().providers.find(entry => entry.inferenceProviderId === provider.id);
+  if (!descriptor || provider.capabilities.billing !== 'subscription' || provider.capabilities.tools !== descriptor.decisionTools) {
+    throw new Error('Decision teacher requires a subscription provider with tool-isolation attestation');
   }
   if (!model.trim() || model.startsWith('-')) throw new Error('Invalid teacher model');
   return {

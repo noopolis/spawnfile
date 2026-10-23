@@ -49,3 +49,7 @@ resolved rulesets must also pass its accepted-call/argument-binding guards.
 calibration: identity explicitly selects raw probabilities for one non-teacher model;
 normalize unused legacy fields only in that mode. Reject labels, teacher escalation
 and missing TypeSafe spend caps. The reserved literal is never resolved as a path.
+
+Provider IDs, teacher factories, extraction roles, provenance policies and council
+availability enter through the contracts grader-provider registry. Composition installs
+its immutable descriptors before parsing; graders never select engine implementations.

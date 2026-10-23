@@ -1,3 +1,4 @@
+import { graderProvider } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import { isAlias, isMap, isScalar, isSeq, parseDocument, type Node } from 'yaml';
 import { z } from 'zod';
@@ -7,7 +8,9 @@ export const identifier = z.string().min(1).refine(value =>
   !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value), 'control characters in identifier').refine(value =>
   !value.split(/[.@]/).some(part => unsafeKeys.has(part)), 'unsafe identifier');
 export const probability = z.number().min(0).max(1);
-export const provider = z.enum(['claude', 'grok', 'codex']);
+export const provider = z.string().min(1).refine(value => {
+  try { graderProvider(value); return true; } catch { return false; }
+}, 'Unsupported grader provider');
 
 export function rejectUnsafeKeys(value: unknown, path = '$'): void {
   if (value === null || typeof value !== 'object') return;

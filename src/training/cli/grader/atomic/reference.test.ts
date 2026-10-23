@@ -1,8 +1,9 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, writeFile, readdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { runDecompose, runReference, runTraps } from './index.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 
 async function prepared() {
   const f = await fixture();

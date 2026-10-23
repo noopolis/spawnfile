@@ -1,6 +1,7 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { instantiateChecksReport, locateUnit, parseCheckTemplates, validateDecomposition } from './index.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../fixtures/support/training/graderDecompositionFixtures.js';
 
 it('resolves raw character offsets through whitespace and literal punctuation without hiding overlaps', () => {
   const { templates, inputs } = fixture();

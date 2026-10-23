@@ -20,3 +20,7 @@ and teacher-policy provenance. Human/editor IDs cannot impersonate teachers.
 
 Weak signals retain import provenance but do not participate in consensus or freshness
 gates for truth; importing still validates current questions and evidence projections.
+
+Provider IDs, teacher factories, extraction roles, provenance policies and council
+availability enter through the contracts grader-provider registry. Composition installs
+its immutable descriptors before parsing; graders never select engine implementations.

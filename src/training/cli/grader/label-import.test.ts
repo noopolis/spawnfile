@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';

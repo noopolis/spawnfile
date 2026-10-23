@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { createCalibrationIdentity, parseGrader, type CalibrationFile } from '../../graders/index.js';
 import { calibrationReport, type QuestionDiagnostics } from './report.js';

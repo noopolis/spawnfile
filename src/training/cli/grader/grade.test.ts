@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { CliDatasets } from '../datasets.js';
 import { runValidate } from './validate.js';
 import { runCalibrate } from './calibrate.js';

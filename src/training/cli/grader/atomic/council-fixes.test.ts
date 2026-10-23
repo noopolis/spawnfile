@@ -1,9 +1,10 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { InferenceFailure } from '../../../inference/index.js';
 import { stableDigest } from '../../../graders/index.js';
-import { fixture, redundancyFixture } from './fixtures.js';
+import { fixture, redundancyFixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 import { runDecompose, runReference, runTraps } from './index.js';
 
 async function load(directory: string, suffix: string) {

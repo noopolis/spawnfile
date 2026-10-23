@@ -1,5 +1,5 @@
-import { parseCheckTemplates, parseDecomposition } from './index.js';
-import type { CheckTemplates, Decomposition, DecompositionInputs } from './index.js';
+import { parseCheckTemplates, parseDecomposition } from '../../../src/training/index.js';
+import type { CheckTemplates, Decomposition, DecompositionInputs } from '../../../src/training/index.js';
 
 export const receipt = { provider: 'codex', model: 'test', prompt_digest: 'a'.repeat(64), at: '2026-10-11T12:00:00Z' };
 export function fixture(): { templates: CheckTemplates; document: Decomposition; inputs: DecompositionInputs } {

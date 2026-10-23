@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { expect, it, vi } from 'vitest';
 import type { DecisionBackend, DecisionRequest } from '../contracts/grading.js';
 import { parseGrader } from './format/index.js';

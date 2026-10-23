@@ -29,3 +29,7 @@ Calibrated legacy grading remains separate; atomic probabilities are uncalibrate
 
 Export the strict decision-accounting schema for replay of both grades and
 failed evaluator results, keeping originating request identities intact.
+
+Provider IDs, teacher factories, extraction roles, provenance policies and council
+availability enter through the contracts grader-provider registry. Composition installs
+its immutable descriptors before parsing; graders never select engine implementations.

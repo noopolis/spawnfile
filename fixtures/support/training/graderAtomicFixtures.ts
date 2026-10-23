@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, vi } from 'vitest';
 import { stringify } from 'yaml';
-import type { InferenceProvider } from '../../../contracts/execution.js';
+import type { InferenceProvider } from '../../../src/training/contracts/index.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

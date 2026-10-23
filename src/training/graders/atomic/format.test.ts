@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { parseAtomicGrader, parseAtomicGraderYaml, validateAtomicTemplates } from './format.js';
 import { parseCheckTemplates } from '../decomposition/index.js';

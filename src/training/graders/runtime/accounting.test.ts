@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { summarizeDecisionAccounting } from './accounting.js';
 import type { DecisionRequestReceipt } from '../../contracts/grading.js';

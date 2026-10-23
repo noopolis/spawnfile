@@ -1,5 +1,7 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
-import { averageAnswers, councilContentDigest, grokWindowOpen, reusableCouncil } from './policy.js';
+import { averageAnswers, councilContentDigest, reusableCouncil } from './policy.js';
+import { grokWindowOpen } from '../../../../fixtures/support/training/graderProviders.js';
 import type { CouncilOutput } from './types.js';
 
 describe('reference policy', () => {

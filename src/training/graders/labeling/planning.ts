@@ -1,4 +1,4 @@
-import { LABEL_PROMPT_VERSION, ADJUDICATION_SEED } from '../../contracts/index.js';
+import { LABEL_PROMPT_VERSION, ADJUDICATION_SEED, graderProvider } from '../../contracts/index.js';
 import { parseDocument } from 'yaml';
 import { questionDefinitionDigest, allQuestions, optionsFor, stableDigest, type Grader, type DecisionQuestion, type Labels, type Label, type Option } from '../format/index.js';
 import { expandInstances, type QuestionInstance } from '../instances.js';
@@ -59,8 +59,7 @@ export function decodeLabelVotes(text: string, group: LabelGroup): Record<string
 }
 
 export function teacherPolicyDigest(teacher: Grader['teachers'][number]): string {
-  const policy = teacher.provider === 'codex' ? 'subscription-codex-containment-one-schema-repair.v1'
-    : 'subscription-empty-tools-one-schema-repair.v1';
+  const policy = graderProvider(teacher.provider).teacherPolicy;
   return stableDigest({ teacher, prompt: labelPromptVersion, policy });
 }
 

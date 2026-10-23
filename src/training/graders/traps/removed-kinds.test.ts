@@ -1,6 +1,7 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
 import { parseCheckTemplates, trapKinds, type TrapKind } from '../decomposition/index.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../fixtures/support/training/graderTrapFixtures.js';
 import { generateTraps, validateTrap } from './index.js';
 import { mutationFor } from './mutations.js';
 

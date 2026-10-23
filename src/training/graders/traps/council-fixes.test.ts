@@ -1,5 +1,6 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../fixtures/support/training/graderTrapFixtures.js';
 import { generateTraps } from './index.js';
 
 const baseFinals = { 'supported@c1': 'supported', 'supported@c2': 'supported' };

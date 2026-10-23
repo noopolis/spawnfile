@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { DecisionBackend, DecisionRequest } from '../../contracts/grading.js';

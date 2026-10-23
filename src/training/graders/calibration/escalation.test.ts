@@ -1,3 +1,4 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { describe, expect, it } from 'vitest';
 import { inEscalationBand, planEscalation, escalationTeacherReport } from './index.js';
 import type { CascadeRecord } from './index.js';

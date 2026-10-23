@@ -1,11 +1,12 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import type { ProcessOptions, RunningProcess } from '../../../platform/process/index.js';
-import { createCodexInference } from '../../../inference/codex/index.js';
+import { createCodexInference } from '../../../../runtime/codex-exec/training/providers/codex-subscription/index.js';
 import { createClaudeInference } from '../../../inference/claude/index.js';
 import { runDecompose } from './decompose.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 
 it.each([['codex', false], ['claude', false], ['codex', true], ['claude', true]] as const)(
   'runs actual %s schema validation and resumes a malformed first response (%s)', async (vendor, malformed) => {

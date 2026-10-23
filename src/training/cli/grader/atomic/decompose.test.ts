@@ -1,3 +1,4 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, writeFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -5,7 +6,7 @@ import { stringify } from 'yaml';
 import { stableDigest } from '../../../graders/index.js';
 import { runDecompose, selectTeachers } from './decompose.js';
 import { readTemplates, readInputs, readDecompositions, readOptional, workers } from './files.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 
 it('extracts, audits, pins bytes, stores receipt accounting and resumes without calls', async () => {
   const f = await fixture();

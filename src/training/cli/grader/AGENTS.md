@@ -58,3 +58,7 @@ Explicit identity-mode grading builds no teacher/extractor or labels/calibration
 Persist the mode in result identity, reuse decision spend/accounting, and refuse
 calibrate rather than writing a file named identity. Offline check gates still need
 a real trial snapshot; a loose output file cannot establish trial evidence.
+
+Provider IDs, teacher factories, extraction roles, provenance policies and council
+availability enter through the contracts grader-provider registry. Composition installs
+its immutable descriptors before parsing; graders never select engine implementations.

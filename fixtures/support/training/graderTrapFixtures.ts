@@ -1,5 +1,5 @@
-import { parseCheckTemplates, parseDecomposition, trapKinds } from '../decomposition/index.js';
-import type { CheckTemplates, Decomposition, DecompositionInputs } from '../decomposition/index.js';
+import { parseCheckTemplates, parseDecomposition, trapKinds } from '../../../src/training/index.js';
+import type { CheckTemplates, Decomposition, DecompositionInputs } from '../../../src/training/index.js';
 
 export function fixture(): { templates: CheckTemplates; document: Decomposition; inputs: DecompositionInputs } {
   const templates = parseCheckTemplates({ schema: 'spawnfile.training.check-templates.v1', context: {

@@ -1,3 +1,4 @@
+import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -5,7 +6,7 @@ import { stringify } from 'yaml';
 import { stableDigest } from '../../../graders/index.js';
 import { runDecompose, selectTeachers } from './decompose.js';
 import { readInputs, readTemplates } from './files.js';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
 
 async function checkpoint(f: Awaited<ReturnType<typeof fixture>>) {
   const file = join(f.decompose.out, (await readdir(f.decompose.out)).find(name => name.endsWith('.checkpoint.json'))!);

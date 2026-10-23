@@ -1,5 +1,6 @@
+import '../../../../fixtures/support/training/graderProviders.js';
 import { expect, it } from 'vitest';
-import { fixture } from './fixtures.js';
+import { fixture } from '../../../../fixtures/support/training/graderTrapFixtures.js';
 import { generateTraps } from './index.js';
 
 it('gives repetition a defect answer and harmless controls the unchanged baseline answer', () => {
