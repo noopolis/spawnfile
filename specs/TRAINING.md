@@ -1021,13 +1021,12 @@ and reserves both judge attempts without adding subject trials or optimizer prop
 
 Exit 0 requires the mode's final receipt. Completed actual runs also require
 `status: completed` and a nonempty `index` path; exit 1 preserves completed failed checks.
-Receiver error exits are propagated; empty success is a runtime failure. A supervisor
-retains the owned POSIX process-group identity after the native child exits. Cancellation
-forwards SIGTERM and escalates after one second; completion also removes group stragglers.
-The parent verifies group/output quiescence before returning 0 or cancellation 130/143;
-unknown cleanup is a runtime error. No signal uses an identity after its supervisor is reaped.
-This delegation requires POSIX process groups; escaped processes and remote effects are not observed.
-The child deadline is Paideia's declared deadline plus five seconds for cleanup.
+Training-core errors return exit 2. The in-process host path forwards cancellation
+through an AbortSignal and removes its signal handlers on completion. SIGINT and
+SIGTERM retain exit 130 and 143. The core owns experiment and per-trial deadlines;
+the container launcher retains its Docker lifecycle and final-receipt validation.
+No external training process, process-group supervisor or temporary host context
+file is involved.
 
 The training plan declares `deadlines.experiment_ms`, defaulting to 43200000
 (12 hours). Author `training.deadlines.experiment_ms` (1..604800000, up to seven
@@ -1035,8 +1034,8 @@ days) and optional `training.deadlines.trial_ms` (1..86400000, up to 24 hours).
 Deadlines inherit through direct membership with local fields overriding inherited
 fields. `--experiment-timeout-ms` overrides the plan, followed by the legacy
 `--timeout-ms` alias; `--trial-timeout-ms` overrides the authored trial deadline.
-The outer experiment default is always forwarded to Paideia, and its supervisor
-gets that same duration plus the cleanup allowance. Paideia defaults each trial
+The outer experiment default is always passed to the training core; the container
+launcher gets that duration plus five seconds for cleanup. The core defaults each trial
 to one hour when no trial deadline is supplied. Experiment duration never changes
 broker turn limits (1800000 for a declared production-length 30-minute turn),
 judge/optimizer route deadlines or atomic extraction deadlines.

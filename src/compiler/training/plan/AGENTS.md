@@ -13,7 +13,7 @@
 - `index.ts` exports the public plan API; adjacent tests use temporary real projects.
 - `fixtures.test-helper.ts` builds and cleans temporary test projects; it is excluded from package emission.
 
-Keep runtime execution, source rewriting, recording, and Paideia delegation outside this folder.
+Keep runtime execution, source rewriting, recording, and training-core orchestration outside this folder.
 Reuse existing manifest schemas and compiled access decisions; overrides cannot add resources.
 Every target file belongs to its declaring manifest's tree, excluding nested Spawnfile trees.
 Keep modules below 400 lines, use named exports, and keep filesystem calls in `load.ts`.

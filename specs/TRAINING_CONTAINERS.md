@@ -140,7 +140,6 @@ context. The command does not configure or start a machine-global VM.
       "nativeImage": "registry.example/native@sha256:<64 hex characters>",
       "pythonImage": "docker.io/library/python@sha256:<64 hex characters>",
       "platform": "linux/arm64",
-      "bridge": "./packages/dspy",
       "claude": "./packages/claude",
       "integration": { "source": "./integration", "entry": "container/entry.ts" },
       "bootstrap": "./bootstrap"
@@ -176,8 +175,12 @@ agent's pinned source bytes must match that snapshot. Confined internal links
 are supported; escaping links and submodules are rejected. Git and local
 `include` modes are separate.
 
-Build staging includes explicit distributions, locks, the installed Spawnfile,
-and its packaged recipe. Local `file:`/link dependency closures are unsupported
+Build staging includes the installed Spawnfile’s own `dist/training`, runtime
+adapters and `dist/training/dspy`, locks, the integration, and its packaged recipe.
+External training source/dist and bridge path inputs are no longer accepted.
+The project entry imports composed `launch` from
+`spawnfile/dist/runtime/trainingCli.js`; it supplies its existing preparation hooks
+while the bundled training CLI owns the loop and runtime registry. Local `file:`/link dependency closures are unsupported
 and fail before building; provide complete registry-locked distributions instead.
 The recipe supplies the Daimon peer from its native parent. Credentials and
 datasets never enter the image context. Cache identity includes actual source,
@@ -217,7 +220,10 @@ The installed integration reads `/run/paideia/preparation.json` using
 `parseTrainingMappedPreparation` from `spawnfile/training`. This protected
 `spawnfile.training-preparation.v1` receipt contains the preparation digest,
 immutable image ID, named container bindings, output root, installed package
-paths and the input-relative settings reference. It contains no host paths or
+paths and the input-relative settings reference. `packagePaths.training` names
+`/opt/training/spawnfile/dist/training`; `bridge` names its `dspy` child and
+`nativeWorker` names Spawnfile’s built runtime adapter. Legacy `/run/paideia/*`
+mounts and versioned wire IDs remain unchanged in this migration. It contains no host paths or
 credentials. The integration resolves its own typed settings; Spawnfile never
 rewrites arbitrary JSON strings or invokes a host project preparation script.
 
@@ -249,8 +255,13 @@ pin the parent's original compiler while using corrected evaluation/launch code.
 The mapped preparation receipt supplies that exact compiler executable path.
 
 `spawnfile.daimon-dspy-compatibility.v1` requires unchanged native/Python images,
-platform, compiler closure, installed integration, native adapter/trial code,
-canonical source and every declared input digest/binding. Optimizer Python and
+platform, compiler closure, installed integration, Spawnfile’s built native adapter
+and training trial code, canonical source and every declared input digest/binding.
+The component digests are `training-native`, `training-trials` and
+`training-optimizer`. External-distribution witnesses and receipts carrying the old
+`native`/`trials`/`optimizer` components are refused with a re-prepare instruction.
+Compiler comparison excludes the separately pinned training modules so corrected
+evaluation and repair transport can change. Optimizer Python and
 locks stay pinned; only checkpoint/protocol import plumbing and documentation may
 change. Generated `.coverage`, `.pytest_cache` and `coverage.json` are excluded
 explicitly, never arbitrary dotfiles. Paideia separately verifies candidate,

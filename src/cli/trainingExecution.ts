@@ -3,7 +3,6 @@ import { launchTrainingContainer } from "../compiler/training/container/index.js
 import { runTrainingDocker } from "../compiler/training/container/process.js";
 import { prepareTraining } from "../compiler/training/preparation/index.js";
 import { readBoundedJson } from "../compiler/training/preparation/inputs.js";
-import { main as trainingMain } from "../runtime/trainingCli.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { CliStreams } from "./runCli.js";
 
@@ -53,6 +52,7 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
   const terminate = (): void => { signalExit = 143; controller.abort(); };
   process.once("SIGINT", interrupt); process.once("SIGTERM", terminate);
   try {
+    const { main: trainingMain } = await import("../runtime/trainingCli.js");
     const code = await trainingMain(["train", ...options.args], {
       cwd: process.cwd(),
       signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
