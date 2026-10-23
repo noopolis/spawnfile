@@ -51,3 +51,13 @@ it.each(["native", "trials", "optimizer"])("refuses old external repair componen
   await expect(launchTrainingContainer(f.options)).rejects.toThrow("re-prepare with Spawnfile");
   expect(f.docker.calls).toEqual([]);
 });
+
+
+it('rejects padded adapter IDs without normalizing signed receipt bytes', async () => {
+  const f = await setup();
+  f.envelope.receipt.current.adapterId = ' daimon-native ';
+  f.envelope.digest = hashJson(f.envelope.receipt);
+  await writeFile(f.repairPath, JSON.stringify(f.envelope));
+  await expect(launchTrainingContainer(f.options)).rejects.toThrow('adapter is not registered');
+  expect(f.docker.calls).toEqual([]);
+});

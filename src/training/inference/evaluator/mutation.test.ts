@@ -16,7 +16,7 @@ const mutations = [
     test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'enforces independent spend ceilings' },
   { file: 'src/training/inference/evaluator/ledger.ts', before: "appendFileSync(fd, `${JSON.stringify(admitted)}\\n`); fsyncSync(fd);", after: '',
     test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'charges before dispatch' },
-  { file: 'src/training/inference/evaluator/provider.ts', before: 'const admission = reserveEvaluatorRequest(name, purpose, model);',
+  { file: 'src/training/inference/evaluator/provider.ts', before: 'const admission = reserveEvaluatorRequest(name, purpose, model, 0, registry);',
     after: "const admission = { finish() {} };", test: 'src/training/cli/training/request-cap.test.ts', title: 'budgets explicitly declared Codex proposals' },
   { file: 'src/training/inference/decision/typesafe/transport.ts', before: 'const admission = evaluatorCapped', after: 'const admission = false',
     test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'loads the key only into evaluator transport' },
@@ -33,7 +33,8 @@ it('kills each evaluator admission, request, spend, receipt and secret-isolation
     await cp(join(source, 'src/training'), join(root, 'src/training'), { recursive: true,
       filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
     await cp(join(source, 'src/shared'), join(root, 'src/shared'), { recursive: true });
-    await cp(join(source, 'src/runtime/daimon/training'), join(root, 'src/runtime/daimon/training'), { recursive: true });
+    await cp(join(source, 'src/runtime'), join(root, 'src/runtime'), { recursive: true });
+    await cp(join(source, 'fixtures/support/training'), join(root, 'fixtures/support/training'), { recursive: true });
     for (const file of ['package.json', 'tsconfig.json']) await cp(join(source, file), join(root, file));
     await writeFile(join(root, 'vitest.config.mjs'), 'export default {test:{include:["src/**/*.test.ts"]}};');
     await symlink(resolve('node_modules'), join(root, 'node_modules'));
