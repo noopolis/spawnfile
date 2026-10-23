@@ -25,9 +25,15 @@ export const trainingDigest = (value: unknown) => createHash('sha256').update(JS
 
 /** Experiment identity and exact stored native trials; never an evaluation-result cache. */
 export class TrainingCheckpoint {
+  private readonly path: string;
+  private state: State;
+  private readonly store: ExperimentStore;
   private readonly mutations = new MutationQueue();
   private readonly restored: Set<string>;
-  private constructor(private readonly path: string, private state: State, private readonly store: ExperimentStore) {
+  private constructor(path: string, state: State, store: ExperimentStore) {
+    this.path = path;
+    this.state = state;
+    this.store = store;
     this.restored = new Set(Object.keys(state.entries));
   }
   get inheritedTrialIds() { return [...this.state.lineage?.inheritedTrialIds ?? []]; }

@@ -121,7 +121,11 @@ async function generateBounded(route: InferenceRoute, request: InferenceRequest,
 }
 
 class AuditBoundaryFailure extends Error {
-  constructor(readonly kind: 'cancelled' | 'timeout') { super(`Audit boundary ${kind}`); }
+  readonly kind: 'cancelled' | 'timeout';
+  constructor(kind: 'cancelled' | 'timeout') {
+    super(`Audit boundary ${kind}`);
+    this.kind = kind;
+  }
 }
 
 /** An unavailable audit store must not leave an unattended route running forever. */

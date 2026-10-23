@@ -1,8 +1,10 @@
 import type { DataMap, DataValue } from '../contracts/dataset.js';
 
 export class DatasetError extends Error {
-  constructor(public readonly path: string, message: string) {
+  public readonly path: string;
+  constructor(path: string, message: string) {
     super(`${path}: ${message}`);
+    this.path = path;
     this.name = 'DatasetError';
   }
 }

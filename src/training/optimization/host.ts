@@ -9,6 +9,9 @@ import { assertBoundaries, compileBoundaries } from './boundaries.js';
 export interface CompletedEvaluation extends DspyEvaluateParams { result: DspyEvaluation }
 
 export class DspyHost {
+  readonly start: DspyStart;
+  private readonly options: DspyOptimizationOptions;
+  private readonly checkpoint?: OptimizationCheckpoint;
   evaluations = 0;
   proposals = 0;
   pending = 0;
@@ -19,8 +22,10 @@ export class DspyHost {
   private readonly workInFlight = new Set<Promise<unknown>>();
   private readonly calls = new Set<string>();
   private readonly captures = new Set<string>();
-
-  constructor(readonly start: DspyStart, private readonly options: DspyOptimizationOptions, private readonly checkpoint?: OptimizationCheckpoint) {
+  constructor(start: DspyStart, options: DspyOptimizationOptions, checkpoint?: OptimizationCheckpoint) {
+    this.start = start;
+    this.options = options;
+    this.checkpoint = checkpoint;
     for (const entry of checkpoint?.entries ?? []) {
       this.inferenceAttempts.push(...entry.failedAttempts ?? []);
       if (entry.result === undefined) continue;

@@ -4,8 +4,10 @@ import { inferenceFailureKind } from './attempts.js';
 
 /** A judge-side failure whose cause the judge itself already knows; never classified from its message. */
 export class JudgeEvaluationError extends Error {
-  constructor(readonly judgeCause: JudgeFailureCause, message: string) {
+  readonly judgeCause: JudgeFailureCause;
+  constructor(judgeCause: JudgeFailureCause, message: string) {
     super(message);
+    this.judgeCause = judgeCause;
     this.name = 'JudgeEvaluationError';
   }
 }
