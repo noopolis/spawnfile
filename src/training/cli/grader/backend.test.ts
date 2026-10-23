@@ -1,4 +1,4 @@
-import { SafeDiagnosticError } from '../../inference/safe-diagnostic.js';
+import { SafeDiagnosticError } from '../../inference/index.js';
 import '../../../../fixtures/support/training/graderProviders.js';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { DecisionBackend } from '../../contracts/grading.js';
