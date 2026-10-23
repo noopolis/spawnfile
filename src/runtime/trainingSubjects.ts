@@ -1,3 +1,4 @@
+import { installBuiltinGraderProviders } from './trainingGraderProviders.js';
 import { createTrainingProviderRegistry } from './trainingProviders.js';
 import { createExperimentSlotFreshness } from './daimon/training/services/index.js';
 import { loadRuntimeRegistry, type RuntimeRegistryEntry } from './registry.js';
@@ -19,6 +20,7 @@ export async function createTrainingSubjects(entries?: readonly RuntimeRegistryE
 }
 
 export async function trainingDependencies(dependencies: CliDependencies = {}): Promise<CliDependencies> {
+  installBuiltinGraderProviders();
   const subjects = dependencies.subjects ?? await createTrainingSubjects();
   return { ...dependencies, subjects,
     inferenceProviders: dependencies.inferenceProviders ?? createTrainingProviderRegistry({ ...dependencies, subjects }),
