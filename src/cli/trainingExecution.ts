@@ -51,13 +51,20 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
   const interrupt = (): void => { signalExit = 130; controller.abort(); };
   const terminate = (): void => { signalExit = 143; controller.abort(); };
   process.once("SIGINT", interrupt); process.once("SIGTERM", terminate);
+  const forward = (channel: "stdout" | "stderr", text: string): void => {
+    for (const raw of text.split("\n")) {
+      const line = raw.replace(/\r$/u, "");
+      if (line.trim()) options.streams[channel](line);
+    }
+  };
   try {
     const { main: trainingMain } = await import("../runtime/trainingCli.js");
-    const code = await trainingMain(["train", ...options.args], {
+    const args = options.args.includes("--dry-run") ? options.args : [...options.args, "--dry-run"];
+    const code = await trainingMain(["train", ...args], {
       cwd: process.cwd(),
       signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
-      stdout: text => options.streams.stdout(text.replace(/\n$/u, "")),
-      stderr: text => options.streams.stderr(text.replace(/\n$/u, ""))
+      stdout: text => forward("stdout", text),
+      stderr: text => forward("stderr", text)
     }, { spawnfileContext: options.context });
     return signalExit ?? code;
   } finally {

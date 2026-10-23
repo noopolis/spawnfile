@@ -68,3 +68,23 @@ it("rejects an image override owned by a preparation declaration", async () => {
   const file = path.join(root, "launch.json"); await writeFile(file, JSON.stringify({ version: "spawnfile.training-container.v2" }));
   await expect(runTraining({ ...options(), trainingConfig: file, trainingImage: "sha256:any" })).rejects.toThrow("owns its image declaration");
 });
+
+it("enforces dry-run at the in-process boundary even if its caller omitted the flag", async () => {
+  core.mockImplementation(async argv => {
+    expect(argv).toEqual(["train", "--train", "dataset.yaml", "--dry-run"]);
+    return 0;
+  });
+  expect(await runTraining({ ...options(), args: ["--train", "dataset.yaml"] })).toBe(0);
+});
+
+it("preserves the line-oriented stream contract for multi-line diagnostics", async () => {
+  const stdout = vi.fn(), stderr = vi.fn();
+  core.mockImplementation(async (_argv, io) => {
+    io.stdout("\n{\"modelCallsMade\":0}\r\n\n");
+    io.stderr("first\r\n\nsecond");
+    return 0;
+  });
+  expect(await runTraining({ ...options(), streams: { stdout, stderr } })).toBe(0);
+  expect(stdout.mock.calls).toEqual([['{"modelCallsMade":0}']]);
+  expect(stderr.mock.calls).toEqual([["first"], ["second"]]);
+});
