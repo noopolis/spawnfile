@@ -6,8 +6,11 @@ import { imageDocker, image, preparationFixture } from "../compiler/training/pre
 import type { TrainingDockerProcess } from "../compiler/training/container/process.js";
 const state = vi.hoisted(() => ({ run: undefined as TrainingDockerProcess | undefined }));
 vi.mock("../compiler/training/container/process.js", () => ({ runTrainingDocker: ((args, options) => state.run!(args, options)) satisfies TrainingDockerProcess }));
-import { datasetText } from "../training/cli/fixture.js";
 import { runCli } from "./runCli.js";
+
+// Public dataset wire fixtures belong to this CLI integration test, not core imports.
+const datasetText = (records: { id: string; group: string }[]): string =>
+  `schema: paideia.dataset.v1\nid: example\nchecks:\n  - id: correct\n    eval: equals\n    input: output.text\n    value: OK\nrecords:\n${records.map(record => `  - id: ${record.id}\n    group: ${record.group}\n    input:\n      prompt: Reply OK.\n`).join("")}`;
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

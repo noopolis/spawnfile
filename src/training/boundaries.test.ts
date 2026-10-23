@@ -113,7 +113,7 @@ test('training retains its imported structural and public module gates', async (
     .map((message) => `${path.relative(root, result.filePath)}:${message.line}: ${message.ruleId}: ${message.message}`))).toEqual([]);
 }, 120_000);
 
-test('training stays runtime neutral and Spawnfile continues to delegate externally', async () => {
+test('training stays runtime neutral through scoped runtime composition', async () => {
   const files = (await sourceFiles(path.join(root, 'src')));
   // This read-only inventory shares many imports. Resolve each target canonically
   // once for this scan, without retaining stale paths between tests or file edits.
