@@ -44,6 +44,14 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      runtime:
+        description: "Runtime images to build/publish"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - daimon
       push:
         description: "Push runtime images to Docker Hub"
         required: true
@@ -65,6 +73,7 @@ concurrency:
 jobs:
   build:
     name: ${{ matrix.runtime }} runtime image
+    if: github.event_name != 'workflow_dispatch' || inputs.runtime == 'all'
     timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
@@ -164,6 +173,7 @@ jobs:
 
   daimon:
     name: daimon runtime image
+    if: github.event_name != 'workflow_dispatch' || inputs.runtime == 'all' || inputs.runtime == 'daimon'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     # Every ref publishes the same pinned tag, so serialize across refs: the
@@ -292,6 +302,7 @@ jobs:
 
   training-native:
     name: training native parent image
+    if: github.event_name != 'workflow_dispatch' || inputs.runtime == 'all'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     # Every ref publishes the same pinned tag, so serialize across refs: the
