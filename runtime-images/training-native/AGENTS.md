@@ -6,7 +6,7 @@
   Consume only the root runtime and Moltnet authorities; refuse incomplete pins.
 - Keep the Bookworm Node base pinned by digest. Consumers pin the published
   image digest, so apt resolves from the current signed Bookworm repositories.
-- Keep the Paideia native adapter's ancestor node_modules link. Do not install
+- Keep the Spawnfile native adapter's ancestor node_modules link. Do not install
   evaluator CLIs or re-check Mneme versions outside the runtime receipt contract.
 - Training declarations should pin the published parent digest in
   `image.build.nativeImage`, never a mutable tag.

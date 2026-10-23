@@ -1,7 +1,7 @@
 # Training in one container
 
 `spawnfile train` runs the complete model-bearing experiment in one immutable
-Docker image: Paideia, DSPy, the integration, Daimon and inference CLIs. The host
+Docker image: Spawnfile’s training core, DSPy, the integration, Daimon and inference CLIs. The host
 validates declarations, mounts explicit inputs, forwards output and supervises
 container termination. No Docker socket enters the container. Dry-run remains a
 host-only estimate and does not use Docker or model authentication.
@@ -29,8 +29,8 @@ defaults) and native graders in capped runs before constructing their providers.
 
 The advanced v1 path requires both `--training-image` (a digest reference or immutable
 image ID already installed locally) and `--training-config` (JSON below).
-`--paideia-command` applies only to dry-run; actual execution always starts the
-image-owned `/opt/training/bin/train`. No shell or executable from the host is
+Host estimates call Spawnfile’s bundled core in-process; actual execution starts
+the image-owned `/opt/training/bin/train`. No shell or executable from the host is
 mounted or selected. The image must contain all dependencies and its integration.
 
 ```json
@@ -140,7 +140,6 @@ context. The command does not configure or start a machine-global VM.
       "nativeImage": "registry.example/native@sha256:<64 hex characters>",
       "pythonImage": "docker.io/library/python@sha256:<64 hex characters>",
       "platform": "linux/arm64",
-      "paideia": "./packages/paideia",
       "bridge": "./packages/dspy",
       "claude": "./packages/claude",
       "integration": { "source": "./integration", "entry": "container/entry.ts" },

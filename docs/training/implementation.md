@@ -21,7 +21,7 @@ The CLI supports native Codex and Daimon, explicit Markdown resources, dataset
 validation, evaluation, training and viewing. The TypeScript API exposes the
 underlying contracts for integrations. There is no production deployment command.
 
-The public `@noopolis/paideia/cli` export provides `launch` and the
+The public `spawnfile/dist/training/cli/index.js` export provides `launch` and the
 `SpawnfileCliIntegration` contract. The actual Spawnfile-to-Paideia dry-run validates
 the canonical handoff and static preparation definitions without native execution.
 It does not prove the selected container, authentication, shell or filing tools work.

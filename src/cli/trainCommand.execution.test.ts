@@ -20,7 +20,7 @@ it("prints a complete lowered dry-run without auth, Docker, delegation, context 
   const forbidden = vi.fn(async () => { throw Error("dry-run mutation/execution"); }); state.run = forbidden;
   const before = await readdir(root);
   expect(await runCli(["train", root, "--agent", "writer", "--dry-run"], {
-    handlers: { delegatePaideiaTraining: forbidden, createTrainingContext: forbidden, allocateTrainingOutputParent: forbidden },
+    handlers: { runTraining: forbidden, createTrainingContext: forbidden, allocateTrainingOutputParent: forbidden },
     streams: { stdout: value => stdout.push(value), stderr: value => stderr.push(value) }
   }), "dry-run isolation guarantee").toBe(0);
   expect(stderr).toEqual([]); expect(stdout).toHaveLength(1); expect(forbidden).not.toHaveBeenCalled();
@@ -158,7 +158,7 @@ it("keeps explicit dataset, output, config, image and model overrides on the aut
   const output = path.join(root, "chosen-output");
   expect(await runCli(["train", root, "--agent", "writer", "--train", path.join(root, "training/test.yaml"),
     "--out", output, "--training-config", path.join(root, "chosen.json"), "--training-image", executionImage, "--optimizer-model", "override"], {
-    handlers: { delegatePaideiaTraining: delegate }, streams: { stdout() {}, stderr() {} }
+    handlers: { runTraining: delegate }, streams: { stdout() {}, stderr() {} }
   })).toBe(0);
   expect(delegate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ trainingConfig: path.join(root, "chosen.json"), trainingImage: executionImage,
     execution: expect.objectContaining({ output, optimizer: { ...optimizer, model: "override" } }),

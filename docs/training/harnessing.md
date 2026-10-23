@@ -110,9 +110,9 @@ source project as baseline. Dataset location never changes the native working di
 
 The agreed dataset naming is `<name>.paideia.yaml`, with `train.paideia.yaml` and
 `test.paideia.yaml` as the example pair. The local `spawnfile train` implementation
-delegates through Paideia's public interface: Spawnfile supplies its canonical agent
-and environment; Paideia owns evaluation, optimization and isolated trials. Paideia
-also has a standalone CLI for explicit Markdown resources and supported native runtimes.
+calls its own training core in-process: Spawnfile supplies its canonical agent
+and environment, and the core owns evaluation, optimization and isolated trials.
+The bundled training CLI also supports explicit Markdown resources and native runtimes.
 The selected native runtime executes agent turns. No extra agent declaration or
 mandatory experiment file is required. Commands and
 flags exist for explicit Markdown resources and native Codex/Daimon trials.
@@ -121,11 +121,12 @@ implemented and tested across the actual CLIs. A native run still requires a
 registered isolated project preparation; unsupported projects fail before cognition.
 Dataset roles resolve explicitly in the invocation, never merely from filenames.
 
-An installed project entry point imports `launch` from `@noopolis/paideia/cli` and
+An installed project entry point imports `launch` from `spawnfile/dist/training/cli/index.js` and
 passes a `SpawnfileCliIntegration`. Its static preparation definitions validate case
 parameters, its edit policies may narrow explicitly selected instruction/skill files,
 and its adapter/preparation callbacks consume the canonical receipt. Identity stays
-locked. Spawnfile selects that entry point with `--paideia-command EXECUTABLE`.
+locked. The container recipe declares its project integration entry point. Host dry-run
+uses the runtime registry composition; the external executable flag was removed.
 This registration supplies environment construction, not a second training loop:
 the shared CLI owns signals, budgets, DSPy, datasets, judges, costs and stored results.
 Dry-run uses static definitions only and calls neither execution callback.

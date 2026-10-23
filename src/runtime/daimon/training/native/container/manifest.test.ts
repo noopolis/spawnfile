@@ -25,7 +25,7 @@ test('fresh explicit projections preserve candidate bytes and reject unsafe laun
       { projections: [...original.projections, { role: 'state' as const, source: original.projections[0]!.source, target: '/native/workspace/home-alias' }] },
       { projections: [...original.projections, { role: 'state' as const, source: original.projections[1]!.source, target: '/native/home/alias' }] },
       { projections: [...original.projections, { role: 'state' as const, source: original.projections[1]!.source, target: original.projections[1]!.target }] },
-      ...['/run', '/run/docker.sock', '/run/paideia/config.json', '/opt/paideia/native/alias'].map(target => ({ workspace: { ...original.workspace, target } })),
+      ...['/run', '/run/docker.sock', '/run/paideia/config.json', '/opt/training/native/alias'].map(target => ({ workspace: { ...original.workspace, target } })),
       { workerRoot: '/' }, { workerRoot: join(f.root, 'control') },
     ];
     for (const mutation of mutations) {

@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends bash bubblewrap
 COPY --from=daimon /opt/spawnfile/runtime-installs/daimon /opt/spawnfile/runtime-installs/daimon
 RUN @@DAIMON_INSTALL@@
 RUN @@MOLTNET_INSTALL@@
-# Paideia native adapter contract: /opt/paideia/native/worker imports @noopolis/daimon/runtime.
-RUN mkdir -p /opt/paideia && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules /opt/paideia/node_modules
+# Spawnfile native adapter contract: /opt/training/native/worker imports @noopolis/daimon/runtime.
+RUN mkdir -p /opt/training && ln -s /opt/spawnfile/runtime-installs/daimon/node_modules /opt/training/node_modules
 ENV PATH="/opt/spawnfile/runtime-installs/daimon/bin:${PATH}"
-WORKDIR /opt/paideia
+WORKDIR /opt/training

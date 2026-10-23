@@ -1,8 +1,8 @@
 # Canonical agent training
 
-`spawnfile train` resolves one agent from its full project and delegates to an installed
-Paideia CLI. Spawnfile owns canonical source resolution, training authoring and native
-compilation; Paideia owns evaluation, cost planning, optimization and isolated trials.
+`spawnfile train` resolves one agent from its full project and calls Spawnfile’s
+training core in-process. Spawnfile owns canonical source resolution, training
+authoring, native compilation, evaluation, cost planning, optimization and isolated trials.
 
 The [container boundary](TRAINING_CONTAINERS.md) runs the complete experiment
 inside one immutable image. The v2 training configuration prepares its pinned
@@ -24,17 +24,17 @@ spawnfile train ./Spawnfile --agent agent:writer \
   --editable agents/writer/AGENTS.md --cost-config local-costs.yaml --dry-run
 ```
 
-Paideia supplies the cost-config format and training options. Dataset roles are explicit.
+The training core supplies the cost-config format and training options. Dataset roles are explicit.
 
-`--resume` forwards to Paideia for the same output directory. Paideia validates
+`--resume` restores training in the same output directory. The training core validates
 unchanged canonical inputs, the isolated integration's execution identity and
 cumulative budgets before restoring its optimizer and native evidence. Spawnfile
 does not interpret checkpoints, repeat trials or deploy the optimized candidate.
 `--agent` accepts an exact resolved node ID or an unambiguous short authored name;
 omission is allowed only for one-agent projects. Exact IDs take precedence; ambiguous
 short names fail with a list of exact IDs. Prefix/fuzzy matching is forbidden.
-`--paideia-command` selects an installed executable, default `paideia`; no shell,
-automatic installation, model-provider fallback or production launch is involved.
+`--paideia-command` has been removed. Training uses the bundled core and subject
+registry; no external training executable or package is installed or located.
 
 ## Authoring
 
@@ -959,10 +959,11 @@ selections can fail before a moment exists and need not create a report.
 Generated schemas for the three bundle documents appear below; schema-sync
 tests MUST keep them identical to the exported runtime contracts.
 
-## Public handoff
+## Training context
 
-The child invocation is `paideia train --spawnfile-context FILE` followed by the
-explicit Paideia options. `FILE` is private evaluator-only JSON, removed after exit.
+The host calls the training composition with the resolved context object and
+explicit training options. The container reads the same strict context from
+`--spawnfile-context /run/paideia/context.json`; that file is evaluator-only.
 Dry-run requires neither `--out` nor an optimizer bridge; actual training requires `--out`.
 The receiver must save any provenance needed later in its own protected experiment.
 The strict `spawnfile.training-context.v1` schema appears below and is generated from
@@ -995,7 +996,7 @@ established from actual compilation/runtime receipts, never invented from this c
 
 ## Execution and outcomes
 
-Dry-run resolves local sources and lets Paideia validate datasets and estimate costs.
+Dry-run resolves local sources and calls the training core to validate datasets and estimate costs.
 It does not compile, use Docker/auth, call models, or start an optimizer. Its final JSON
 receipt must have `schema: paideia.training-cost-plan.v1` and `modelCallsMade: 0`.
 Unimplemented native preparation is reported as unsupported, not ready to execute.
@@ -1011,7 +1012,7 @@ forwarded options: `--train`, `--validation`, `--test`, `--optimizer-model`, `--
 `--trial-timeout-ms`, `--view`, `--cost-config`.
 The canonical runtime/model/instruction selection cannot be replaced by generic CLI flags.
 
-`--judge-citation-repairs NAME=0|1` is forwarded literally to Paideia. The receiver
+`--judge-citation-repairs NAME=0|1` is passed literally to the training core. The receiver
 requires a matching named judge, unique selections and an exact `0` or `1` before
 starting models. Default `0` preserves one judge call per check; `1` reserves one
 additional bounded citation repair. It never retries valid quality failures,

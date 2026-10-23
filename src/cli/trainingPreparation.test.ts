@@ -1,11 +1,12 @@
 import { dockerFixture } from "../compiler/training/container/fixtures.test-helper.js";
-import { chmod, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { imageDocker, image, preparationFixture } from "../compiler/training/preparation/fixtures.test-helper.js";
 import type { TrainingDockerProcess } from "../compiler/training/container/process.js";
 const state = vi.hoisted(() => ({ run: undefined as TrainingDockerProcess | undefined }));
 vi.mock("../compiler/training/container/process.js", () => ({ runTrainingDocker: ((args, options) => state.run!(args, options)) satisfies TrainingDockerProcess }));
+import { datasetText } from "../training/cli/fixture.js";
 import { runCli } from "./runCli.js";
 
 const roots: string[] = [];
@@ -37,12 +38,15 @@ it("runs cold, warm and exact-resume through the actual public command and exist
 
 it("keeps v2 public dry-run free of Docker, auth and preparation writes", async () => {
   const f = await preparationFixture(); roots.push(f.root); f.config.image = { ref: image }; f.config.auth[0]!.source = "missing"; await f.save();
-  const command = path.join(f.root, "estimate"); await writeFile(command, '#!/usr/bin/env node\nconsole.log(JSON.stringify({schema:"paideia.training-cost-plan.v1",modelCallsMade:0}));\n'); await chmod(command, 0o755);
+  await f.put("project/Spawnfile", 'spawnfile_version: "0.1"\nkind: agent\nname: author\nruntime: daimon\nworkspace:\n  docs: { system: AGENTS.md }\nexecution:\n  model:\n    primary: { provider: openai, name: gpt-5.5, auth: { method: codex } }\n');
+  await f.put("project/AGENTS.md", "Write clearly.\n");
+  await f.put("project/train.yaml", datasetText([{ id: "learn", group: "a" }, { id: "validate", group: "b" }]));
+  await f.put("project/test.yaml", datasetText([{ id: "sealed", group: "sealed" }]).replace("id: example", "id: sealed"));
   state.run = async () => { throw Error("Dry-run must never call Docker"); };
-  const output: string[] = [];
-  expect(await runCli(["train", f.context.project.root, "--train", f.args[1]!, "--training-config", f.configPath, "--paideia-command", command, "--dry-run"], {
-    streams: { stdout: value => output.push(value), stderr() {} }
-  })).toBe(0);
+  const output: string[] = [], errors: string[] = [];
+  expect(await runCli(["train", f.context.project.root, "--train", f.args[1]!, "--training-config", f.configPath, "--test", path.join(f.root, "project/test.yaml"), "--editable", "AGENTS.md", "--optimizer-model", "claude-fable-5-1", "--validation-group", "b", "--dry-run"], {
+    streams: { stdout: value => output.push(value), stderr: value => errors.push(value) }
+  }), errors.join("\n")).toBe(0);
   expect(JSON.parse(output.at(-1)!)).toMatchObject({ modelCallsMade: 0 });
   await expect(readFile(path.join(f.root, "output/index.json"))).rejects.toThrow();
 });
