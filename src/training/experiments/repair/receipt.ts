@@ -28,6 +28,9 @@ export async function readMeasurementRepair(path: string, expected: {
   const envelope = z.object({ receipt: receiptSchema, digest: sha }).strict().parse(JSON.parse(bytes.toString('utf8')));
   if (repairDigest(JSON.stringify(envelope.receipt)) !== envelope.digest) throw new Error('Repair receipt integrity mismatch');
   const { receipt } = envelope;
+  if (['native', 'trials', 'optimizer'].some(name => Object.hasOwn(receipt.compatibility.components, name))) {
+    throw new Error('Repair references external Paideia components; re-prepare with Spawnfile before repairing measurements');
+  }
   const parent = resolve(expected.parentRoot), out = resolve(expected.out);
   if (receipt.parent.root !== parent || await realpath(parent) !== parent ||
       parent === out || parent.startsWith(out + sep) || out.startsWith(parent + sep)) {

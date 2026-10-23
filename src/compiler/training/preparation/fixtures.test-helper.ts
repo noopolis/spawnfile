@@ -13,19 +13,19 @@ export async function preparationFixture() {
   const put = async (file: string, value = "fixture") => { await mkdir(path.dirname(path.join(root, file)), { recursive: true }); await writeFile(path.join(root, file), value); };
   await put("project/Spawnfile", 'spawnfile_version: "0.1"\nkind: agent\nname: author\nruntime: daimon\n');
   await put("project/train.yaml"); await put("settings/settings.json", "{}"); await put("auth", "fake-subscription");
-  for (const target of ["own", "paideia", "claude"]) {
+  for (const target of ["own", "claude"]) {
     const manifest = { name: target, version: "1.0.0", dependencies: {} };
     await put(`${target}/package.json`, JSON.stringify(manifest));
     await put(`${target}/package-lock.json`, JSON.stringify({ lockfileVersion: 3, packages: { "": manifest } }));
   }
   await put("own/dist/cli/index.js"); await put("own/runtimes.yaml"); await put("own/moltnet-releases.json");
   await put("own/runtime-images/training/Dockerfile", "ARG NATIVE_IMAGE\nFROM ${NATIVE_IMAGE}\nCOPY train /opt/training/bin/train\n");
-  await put("paideia/dist/src/cli/main.js"); await put("bridge/pyproject.toml"); await put("bridge/requirements.lock");
-  await put("bridge/paideia_dspy/__init__.py"); await put("integration/entry.ts"); await put("bootstrap/start.ts"); await put("grok", "native-binary");
+  await put("own/dist/runtime/trainingCli.js"); await put("own/dist/runtime/trainingSubjects.js"); await put("own/dist/runtime/daimon/training/native/worker/cli.js"); await put("own/dist/training/cli/index.js"); await put("own/dist/training/dspy/pyproject.toml"); await put("own/dist/training/dspy/requirements.lock");
+  await put("own/dist/training/dspy/paideia_dspy/__init__.py"); await put("integration/entry.ts"); await put("bootstrap/start.ts"); await put("grok", "native-binary");
   const config: TrainingPreparationConfig = {
     version: "spawnfile.training-container.v2", slots: 4, dockerContext: "local",
     image: { build: { recipe: "daimon-dspy.v1", nativeImage: image, pythonImage: image, platform: "linux/arm64",
-      paideia: "paideia", bridge: "bridge", claude: "claude",
+      claude: "claude",
       integration: { source: "integration", entry: "entry.ts" }, bootstrap: "bootstrap" } },
     integration: { settings: { input: "settings", path: "settings.json" } },
     inputs: [{ id: "project", source: "project", destination: "/run/training/inputs/project" }, { id: "settings", source: "settings", destination: "/run/training/inputs/settings" }],

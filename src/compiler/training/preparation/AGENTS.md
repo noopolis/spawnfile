@@ -27,7 +27,7 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 - Resume claims preserved scratch under that same guard and refreshes the local
   owner receipt before reading snapshots; another live owner cannot resume or reclaim it.
 - Repair transport/compatibility lives in sibling `repair/`; it never changes
-  candidate, criteria or checkpoint semantics owned by Paideia.
+  candidate, criteria or checkpoint semantics owned by the training core.
 - `daimonParent.ts` closes the two-pointer hole between `image.build.nativeImage`
   and `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`. They are never the same digest —
   `runtime-images/daimon/Dockerfile` ends in `FROM scratch`, so the identity can
@@ -51,3 +51,10 @@ lines. Source/lock/recipe mutation must invalidate cache and exact resume.
 - `image.build.integration.execution` optionally declares the exact supported authored receipt version. Render and hash its label with the recipe; clear parent capability when absent. Verify the declared label on cache hits and completed builds. Image tests stop at the actual launch gate without fabricating training output; mutation tests live in sibling `execution.mutation.test.ts`.
 
 - Map explicit validation dataset argv alongside train/test before sealing the container handoff. Preparation hook history paths are mapped through the execution receipt, never resolved by a second declaration reader.
+
+- Images seal this package's own `dist`, including `dist/training` and its DSPy
+  bridge. Build declarations never accept a separate training package or bridge.
+  `packagePaths.training` and `nativeWorker` point into the Spawnfile build.
+- The declared integration entry may supply project hooks through
+  `spawnfile/dist/runtime/trainingCli.js`; keep it executable inside the image.
+  Legacy `/run/paideia/*` handoff and credential mounts remain wire-compatible.

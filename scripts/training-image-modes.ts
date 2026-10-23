@@ -3,7 +3,7 @@
 /** One `find -printf` record per entry: path, octal mode, owner, group, type, link target. */
 export const MODE_LISTING_FORMAT = "%p\\t%m\\t%u\\t%g\\t%y\\t%l\\n";
 export const TASK_CLOCK_LIBRARY = "/usr/local/lib/daimon/libfaketime.so.1";
-export const MODE_ROOTS = ["/opt/training", "/opt/training/paideia/bridges/dspy/.venv", "/usr/local/lib/daimon"] as const;
+export const MODE_ROOTS = ["/opt/training", "/opt/training/spawnfile/dist/training/dspy/.venv", "/usr/local/lib/daimon"] as const;
 /**
  * `find` arguments. Only non-nested roots: `find a a/b` walks `a/b` twice and every
  * entry beneath it would arrive duplicated, which `parse` rejects. The venv stays a

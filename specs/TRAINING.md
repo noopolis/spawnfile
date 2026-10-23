@@ -1,8 +1,8 @@
 # Canonical agent training
 
-`spawnfile train` resolves one agent from its full project and delegates to an installed
-Paideia CLI. Spawnfile owns canonical source resolution, training authoring and native
-compilation; Paideia owns evaluation, cost planning, optimization and isolated trials.
+`spawnfile train` resolves one agent from its full project and calls Spawnfile’s
+training core in-process. Spawnfile owns canonical source resolution, training
+authoring, native compilation, evaluation, cost planning, optimization and isolated trials.
 
 The [container boundary](TRAINING_CONTAINERS.md) runs the complete experiment
 inside one immutable image. The v2 training configuration prepares its pinned
@@ -24,17 +24,17 @@ spawnfile train ./Spawnfile --agent agent:writer \
   --editable agents/writer/AGENTS.md --cost-config local-costs.yaml --dry-run
 ```
 
-Paideia supplies the cost-config format and training options. Dataset roles are explicit.
+The training core supplies the cost-config format and training options. Dataset roles are explicit.
 
-`--resume` forwards to Paideia for the same output directory. Paideia validates
+`--resume` restores training in the same output directory. The training core validates
 unchanged canonical inputs, the isolated integration's execution identity and
 cumulative budgets before restoring its optimizer and native evidence. Spawnfile
 does not interpret checkpoints, repeat trials or deploy the optimized candidate.
 `--agent` accepts an exact resolved node ID or an unambiguous short authored name;
 omission is allowed only for one-agent projects. Exact IDs take precedence; ambiguous
 short names fail with a list of exact IDs. Prefix/fuzzy matching is forbidden.
-`--paideia-command` selects an installed executable, default `paideia`; no shell,
-automatic installation, model-provider fallback or production launch is involved.
+`--paideia-command` has been removed. Training uses the bundled core and subject
+registry; no external training executable or package is installed or located.
 
 ## Authoring
 
@@ -959,10 +959,11 @@ selections can fail before a moment exists and need not create a report.
 Generated schemas for the three bundle documents appear below; schema-sync
 tests MUST keep them identical to the exported runtime contracts.
 
-## Public handoff
+## Training context
 
-The child invocation is `paideia train --spawnfile-context FILE` followed by the
-explicit Paideia options. `FILE` is private evaluator-only JSON, removed after exit.
+The host calls the training composition with the resolved context object and
+explicit training options. The container reads the same strict context from
+`--spawnfile-context /run/paideia/context.json`; that file is evaluator-only.
 Dry-run requires neither `--out` nor an optimizer bridge; actual training requires `--out`.
 The receiver must save any provenance needed later in its own protected experiment.
 The strict `spawnfile.training-context.v1` schema appears below and is generated from
@@ -995,7 +996,7 @@ established from actual compilation/runtime receipts, never invented from this c
 
 ## Execution and outcomes
 
-Dry-run resolves local sources and lets Paideia validate datasets and estimate costs.
+Dry-run resolves local sources and calls the training core to validate datasets and estimate costs.
 It does not compile, use Docker/auth, call models, or start an optimizer. Its final JSON
 receipt must have `schema: paideia.training-cost-plan.v1` and `modelCallsMade: 0`.
 Unimplemented native preparation is reported as unsupported, not ready to execute.
@@ -1011,7 +1012,7 @@ forwarded options: `--train`, `--validation`, `--test`, `--optimizer-model`, `--
 `--trial-timeout-ms`, `--view`, `--cost-config`.
 The canonical runtime/model/instruction selection cannot be replaced by generic CLI flags.
 
-`--judge-citation-repairs NAME=0|1` is forwarded literally to Paideia. The receiver
+`--judge-citation-repairs NAME=0|1` is passed literally to the training core. The receiver
 requires a matching named judge, unique selections and an exact `0` or `1` before
 starting models. Default `0` preserves one judge call per check; `1` reserves one
 additional bounded citation repair. It never retries valid quality failures,
@@ -1020,13 +1021,16 @@ and reserves both judge attempts without adding subject trials or optimizer prop
 
 Exit 0 requires the mode's final receipt. Completed actual runs also require
 `status: completed` and a nonempty `index` path; exit 1 preserves completed failed checks.
-Receiver error exits are propagated; empty success is a runtime failure. A supervisor
-retains the owned POSIX process-group identity after the native child exits. Cancellation
-forwards SIGTERM and escalates after one second; completion also removes group stragglers.
-The parent verifies group/output quiescence before returning 0 or cancellation 130/143;
-unknown cleanup is a runtime error. No signal uses an identity after its supervisor is reaped.
-This delegation requires POSIX process groups; escaped processes and remote effects are not observed.
-The child deadline is Paideia's declared deadline plus five seconds for cleanup.
+Training-core errors return exit 2. Host dry-run requires a final
+`paideia.training-cost-plan.v1` receipt with `modelCallsMade: 0`. The in-process
+host path forwards cancellation through an AbortSignal and enforces its outer
+command deadline: timeout fails, aborts the core and abandons the invocation,
+discarding subsequent output even if the core ignores cancellation. It removes
+its timer and signal handlers on completion. SIGINT and SIGTERM retain exit 130
+and 143. The core owns experiment and per-trial deadlines; the container launcher
+retains its Docker lifecycle and final-receipt validation.
+No external training process, process-group supervisor or temporary host context
+file is involved.
 
 The training plan declares `deadlines.experiment_ms`, defaulting to 43200000
 (12 hours). Author `training.deadlines.experiment_ms` (1..604800000, up to seven
@@ -1034,8 +1038,8 @@ days) and optional `training.deadlines.trial_ms` (1..86400000, up to 24 hours).
 Deadlines inherit through direct membership with local fields overriding inherited
 fields. `--experiment-timeout-ms` overrides the plan, followed by the legacy
 `--timeout-ms` alias; `--trial-timeout-ms` overrides the authored trial deadline.
-The outer experiment default is always forwarded to Paideia, and its supervisor
-gets that same duration plus the cleanup allowance. Paideia defaults each trial
+The outer experiment default is always passed to the training core; the container
+launcher gets that duration plus five seconds for cleanup. The core defaults each trial
 to one hour when no trial deadline is supplied. Experiment duration never changes
 broker turn limits (1800000 for a declared production-length 30-minute turn),
 judge/optimizer route deadlines or atomic extraction deadlines.

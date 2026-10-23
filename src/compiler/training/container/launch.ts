@@ -71,6 +71,9 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
     if (await realpath(options.repairPath) !== options.repairPath) throw Error("Repair receipt path must be canonical");
     const raw = JSON.parse(await readFile(options.repairPath, "utf8"));
     const envelope = repairEnvelopeSchema.parse(raw);
+    if (["native", "trials", "optimizer"].some(name => name in envelope.receipt.compatibility.components)) {
+      throw Error("Repair receipt references external training components; re-prepare with Spawnfile before repairing measurements");
+    }
     if (hashJson(raw.receipt) !== envelope.digest || envelope.receipt.current.imageId !== image ||
       !prepared.config.inputs.some(input => input.destination === envelope.receipt.parent.root)) throw Error("Repair receipt launch identity mismatch");
   }

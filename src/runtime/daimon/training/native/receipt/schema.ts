@@ -92,8 +92,8 @@ export type GrokBrokerLaunch = z.infer<typeof grokBrokerLaunchSchema>;
 export type VerifiedNativeLaunch = NativeLaunch & { receiptFile: string };
 export interface NativeMount { source: string; target: string; readonly: boolean }
 export const containerPaths = { config: '/run/paideia/config.json', control: '/run/paideia/control',
-  token: '/run/paideia/token', receipt: '/run/paideia/launch.json', worker: '/opt/paideia/native',
-  bootstrap: '/opt/paideia/bootstrap' } as const;
+  token: '/run/paideia/token', receipt: '/run/paideia/launch.json', worker: '/opt/training/native',
+  bootstrap: '/opt/training/bootstrap' } as const;
 
 export function isGrokLaunch<T extends NativeLaunch>(launch: T): launch is T & GrokNativeLaunch {
   return launch.agent.engine === 'grok';

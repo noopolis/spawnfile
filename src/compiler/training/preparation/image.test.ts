@@ -1,5 +1,8 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { dockerFixture } from "../container/fixtures.test-helper.js";
-import { readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { planTrainingImage, buildTrainingImage } from "./image.js";
@@ -7,6 +10,7 @@ import { preparationFixture, imageDocker, image } from "./fixtures.test-helper.j
 import { TRAINING_EXECUTION_CAPABILITY_LABEL, TRAINING_EXECUTION_VERSION } from "../contract.js";
 import { launchTrainingContainer } from "../container/launch.js";
 import { prepareTraining } from "./prepare.js";
+import { copySealed } from "./files.js";
 import type { TrainingExecution } from "../execution.js";
 
 const roots: string[] = [];
@@ -17,14 +21,14 @@ async function fixture() { const f = await preparationFixture(); roots.push(f.ro
 it("binds actual runtime bytes, locks, recipe, native parent, platform and entry into image identity", async () => {
   const f = await fixture(); const plan = () => planTrainingImage(f.build, f.root, [], f.own);
   const initial = await plan();
-  for (const file of ["paideia/dist/src/cli/main.js", "bridge/paideia_dspy/__init__.py", "bridge/requirements.lock", "integration/entry.ts", "bootstrap/start.ts", "own/dist/cli/index.js", "own/runtime-images/training/Dockerfile"]) {
+  for (const file of ["own/dist/runtime/trainingCli.js", "own/dist/training/dspy/paideia_dspy/__init__.py", "own/dist/training/dspy/requirements.lock", "integration/entry.ts", "bootstrap/start.ts", "own/dist/cli/index.js", "own/runtime-images/training/Dockerfile"]) {
     const previous = await readFile(path.join(f.root, file)); await f.put(file, "changed");
     expect((await plan()).digest).not.toBe(initial.digest); await writeFile(path.join(f.root, file), previous);
   }
   for (const patch of [{ platform: "linux/amd64" as const }, { nativeImage: `sha256:${"b".repeat(64)}` }, { pythonImage: `sha256:${"c".repeat(64)}` }]) {
     expect((await planTrainingImage({ ...f.build, ...patch }, f.root, [], f.own)).digest).not.toBe(initial.digest);
   }
-  await f.put("bridge/__pycache__/cache.pyc"); await f.put("integration/ignored.test.ts"); await f.put("integration/AGENTS.md");
+  await f.put("own/dist/training/dspy/__pycache__/cache.pyc"); await f.put("integration/ignored.test.ts"); await f.put("integration/AGENTS.md");
   expect((await plan()).digest).toBe(initial.digest);
 });
 
@@ -137,5 +141,62 @@ it("carries the packaged build declaration through preparation to the authored l
     expect(created, "packaged execution handoff guarantee").toBe(declared);
     expect(failure?.message).toContain(declared ? "gate reached" : "requires an image implementing --spawnfile-execution");
     expect(docker.calls.filter(args => args[2] === "build")).toHaveLength(1);
+  }
+});
+
+
+it("stages only Spawnfile training and runs the integration's hook through its own composition", async () => {
+  const f = await fixture();
+  // A separate package scope prevents the surrounding checkout's self-reference
+  // from bypassing the staged dependency when CI places temporary files there.
+  await f.put("integration/package.json", JSON.stringify({ name: "training-image-fixture", type: "module", private: true }));
+  await f.put("own/dist/runtime/trainingCli.js", `export async function launch(argv, dependencies) {
+    await dependencies.beforeTraining();
+    process.stdout.write(JSON.stringify({ argv, source: 'spawnfile' }));
+  }`);
+  await f.put("integration/entry.ts", `import { launch } from 'spawnfile/dist/runtime/trainingCli.js';
+    import { writeFile } from 'node:fs/promises';
+    await launch(process.argv.slice(2), { beforeTraining: () => writeFile(process.env.HOOK_RECEIPT, 'hook-ran') });`);
+  const plan = await planTrainingImage(f.build, f.root, [], f.own);
+  expect(plan.files.every(file => !file.destination.startsWith("paideia/") && !file.destination.startsWith("bridge/"))).toBe(true);
+  const parent = fileURLToPath(new URL("../../../../.tmp/", import.meta.url));
+  await mkdir(parent, { recursive: true });
+  const staging = await mkdtemp(path.join(parent, "training-image-entry-")), receipt = path.join(f.root, "hook.json");
+  roots.push(staging);
+  await copySealed(plan.files, staging);
+  await mkdir(path.join(staging, "integration/node_modules"), { recursive: true });
+  await symlink(path.join(staging, "spawnfile"), path.join(staging, "integration/node_modules/spawnfile"));
+  const entry = path.join(staging, "train");
+  await writeFile(entry, plan.entry.replace("/usr/local/bin/node", JSON.stringify(process.execPath)).replaceAll("/opt/training", staging));
+  const result = await promisify(execFile)("/bin/sh", [entry, "train", "--spawnfile-context", "/run/paideia/context.json"],
+    { env: { ...process.env, HOOK_RECEIPT: receipt } });
+  expect(JSON.parse(result.stdout)).toEqual({ argv: ["train", "--spawnfile-context", "/run/paideia/context.json"], source: "spawnfile" });
+  expect(await readFile(receipt, "utf8")).toBe("hook-ran");
+});
+
+
+it("requires the native worker entry consumed under the mapped worker root", async () => {
+  const f = await fixture();
+  const worker = "dist/runtime/daimon/training/native/worker/cli.js";
+  const plan = await planTrainingImage(f.build, f.root, [], f.own);
+  expect(plan.files.some(file => file.destination === `spawnfile/${worker}`), "native worker distribution guarantee").toBe(true);
+  await rm(path.join(f.own, worker));
+  await expect(planTrainingImage(f.build, f.root, [], f.own)).rejects.toThrow(`missing spawnfile/${worker}`);
+});
+
+it("never stages host Python environments or caches over the image-built venv", async () => {
+  const f = await fixture();
+  const before = await planTrainingImage(f.build, f.root, [], f.own);
+  for (const name of [".venv/bin/python", "__pycache__/optimizer.pyc", ".pytest_cache/nodeids"]) {
+    await f.put(`own/dist/training/dspy/${name}`, "host-generated-state");
+  }
+  const plan = await planTrainingImage(f.build, f.root, [], f.own);
+  expect(plan.digest, "host Python environment exclusion guarantee").toBe(before.digest);
+  const staging = path.join(f.root, "sealed-context");
+  await copySealed(plan.files, staging);
+  for (const distribution of ["spawnfile", "compiler"]) {
+    for (const name of [".venv", "__pycache__", ".pytest_cache"]) {
+      await expect(readdir(path.join(staging, distribution, "dist/training/dspy", name))).rejects.toThrow();
+    }
   }
 });

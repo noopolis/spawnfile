@@ -5,13 +5,38 @@ import { experimentSlotFreshnessFile, type GrokSlotFreshnessStore } from './daim
 import { parseArguments } from '../training/cli/arguments.js';
 import { resourceMappings } from '../training/cli/native.js';
 import { prepareNative } from './trainingSubjects.js';
-import { cliFixture } from '../training/cli/fixture.js';
+import { main } from './trainingCli.js';
+import { cliFixture, fixtureAdapter } from '../training/cli/fixture.js';
 import { contextFixture } from '../training/cli/spawnfile/fixture.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe('explicit native resource and inference selection', () => {
+  it('exposes import-safe CLI composition without changing process signal listeners', async () => {
+    const f = await cliFixture(); roots.push(f.root);
+    const listeners = [process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')];
+    expect(await main(['--help'], f.io, { subjects: {} })).toBe(0);
+    expect(f.stdout.join('')).toContain('train');
+    expect([process.listenerCount('SIGINT'), process.listenerCount('SIGTERM')]).toEqual(listeners);
+  });
+  it('executes canonical host context through the composed CLI without a receipt file', async () => {
+    const f = await cliFixture(), context = await contextFixture(); roots.push(f.root, context.root);
+    await rm(context.path);
+    const adapter = fixtureAdapter('host-context', f.observedInstructions, 'pass');
+    const createAdapter = vi.fn(() => ({ ...adapter, capabilities: { ...adapter.capabilities,
+      resources: ['instructions' as const, 'supporting-files' as const, 'native-skills' as const] } }));
+    const prepareEnvironment = vi.fn(async () => ({}));
+    const code = await main(['evaluate', 'data.yaml', '--out', 'out'], f.io, { ...f.dependencies,
+      spawnfileContext: context.context, spawnfile: { id: 'fixture', version: '1', createAdapter, prepareEnvironment } });
+    expect(code, f.stderr.join('')).toBe(0);
+    expect(createAdapter).toHaveBeenCalledWith(context.context, expect.objectContaining({ model: 'gpt-5.5' }));
+    expect(prepareEnvironment).toHaveBeenCalledOnce();
+    expect(f.observedInstructions).toEqual(['Write clearly.\n']);
+    const index = JSON.parse(await readFile(join(f.root, 'out', 'invocation.json'), 'utf8'));
+    expect(index).toMatchObject({ command: 'evaluate', trialIds: [expect.any(String)] });
+    await expect(readFile(context.path)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
   it('defaults every Markdown resource to locked and changes only explicitly selected files', () => {
     const locked = resourceMappings(parseArguments(['evaluate', 'x', '--instructions', 'AGENTS.md', '--supporting', 'skills/review.md', '--locked', 'policy.md']));
     expect(locked.map((resource) => resource.edit)).toEqual(['locked', 'locked', 'locked']);
@@ -42,12 +67,13 @@ describe('explicit native resource and inference selection', () => {
     }
     await expect(prepareNative(parseArguments(['evaluate', 'x', '--runtime', 'other']), fixture.io, {}, 1)).rejects.toThrow('Supported native runtimes');
   });
-  it('preserves registered Spawnfile preparation while installing evaluation services', async () => {
+  it.each(['file', 'in-process'])('preserves registered Spawnfile %s context preparation while installing evaluation services', async mode => {
     const f = await cliFixture(), context = await contextFixture(); roots.push(f.root, context.root);
     const createAdapter = vi.fn(() => f.dependencies.adapter!('daimon', { model: 'gpt-5.5', timeoutMs: 1000 }));
     const prepareEnvironment = vi.fn(async () => ({ tools: [] }));
-    const native = await prepareNative(parseArguments(['evaluate', 'data.yaml', '--spawnfile-context', context.path, '--out', 'out']), f.io,
-      { ...f.dependencies, spawnfile: { id: 'fixture', version: '1', subjectRoot: context.root, createAdapter, prepareEnvironment } }, 1000);
+    if (mode === 'in-process') await rm(context.path);
+    const native = await prepareNative(parseArguments(['evaluate', 'data.yaml', ...(mode === 'file' ? ['--spawnfile-context', context.path] : []), '--out', 'out']), f.io,
+      { ...f.dependencies, ...(mode === 'in-process' ? { spawnfileContext: context.context } : {}), spawnfile: { id: 'fixture', version: '1', subjectRoot: context.root, createAdapter, prepareEnvironment } }, 1000);
     expect(createAdapter).toHaveBeenCalledWith(context.context, { model: 'gpt-5.5', timeoutMs: 1000, grokSlots: expect.any(Object) });
     expect(native.subjectRoot).toBe(context.root);
     const paths = { root: f.root, workspace: f.root, control: f.root, runtimeHome: f.root };

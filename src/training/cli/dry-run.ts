@@ -5,9 +5,8 @@ import { candidateComponents } from '../candidates/index.js';
 import { planTrainingCost, resolveCostConfig } from '../experiments/index.js';
 import { count, one, type CliArguments } from './arguments.js';
 import { readCliText } from './datasets.js';
-import { prepareInputs } from './native.js';
+import { prepareCliInputs } from './native.js';
 import type { CliDependencies, CliIO } from './types.js';
-import { prepareSpawnfileInputs } from './spawnfile/index.js';
 
 export function readCostConfig(args: CliArguments, io: CliIO) {
   const file = args.flags['cost-config']?.[0];
@@ -18,7 +17,7 @@ export function readCostConfig(args: CliArguments, io: CliIO) {
 }
 
 export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies: CliDependencies = {}): Promise<number> {
-  const native = args.flags['spawnfile-context'] ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects);
+  const native = await prepareCliInputs(args, io, dependencies);
   const train = native.datasets.loadForCost(one(args, 'train'), true);
   const validation = args.flags.validation ? native.datasets.loadForCost(one(args, 'validation'), true) : undefined;
   const test = native.datasets.loadForCost(one(args, 'test'), true);

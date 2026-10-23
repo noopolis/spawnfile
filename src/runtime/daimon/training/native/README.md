@@ -8,11 +8,11 @@ Mneme. Caller preparation supplies canonical native config and immutable code.
 
 ## Public entry points
 
-- `@noopolis/paideia/adapters/daimon-native`: adapter, launch schema and types,
+- `spawnfile/dist/runtime/daimon/training/native/index.js`: adapter, launch schema and types,
   plus `loadNativeLaunch` (receipt and path preflight, starts nothing) and
   `nativeTrialArtifactsRoot` (where a trial's private control artifacts land).
   Callers prepare against these rather than re-deriving either.
-- `@noopolis/paideia/adapters/daimon-native/worker`: `runDaimonNativeWorker(args)`,
+- `spawnfile/dist/runtime/daimon/training/native/worker/index.js`: `runDaimonNativeWorker(args)`,
   plus `verifyNativeWorkerStartup(args)` and the three checks it composes
   (`parseWorkerArguments`, `assertNativeProfile`, `verifyWorkerPaths`).
   Importing this subpath never starts a worker. The separate built `worker/cli.js`
@@ -46,8 +46,8 @@ worker refuses a config, token file or control root whose path traverses a link.
 
 The container needs Node at `/usr/local/bin/node`, the public Daimon runtime,
 Paideia's dependencies, and the caller's canonical native engine/backend programs.
-The adapter mounts the built native adapter directory at `/opt/paideia/native`.
-An optional bootstrap mounts at `/opt/paideia/bootstrap` and receives the worker
+The adapter mounts the built native adapter directory at `/opt/training/native`.
+An optional bootstrap mounts at `/opt/training/bootstrap` and receives the worker
 arguments. That trusted caller code owns local transport startup; it must call
 the public worker afterward. Controls and bearer token stay under `/run/paideia`.
 The optional Daimon dependency is loaded only by the native worker.

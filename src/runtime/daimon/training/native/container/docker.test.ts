@@ -43,9 +43,9 @@ test('native request and ownership readers reject failed or foreign evidence', a
 test('container startup selects the declared bootstrap or the packaged worker and kills a TERM-resistant child', async () => {
   const f = await launchFixture();
   try {
-    assert.ok(createContainerArguments(f.launch, 'n', 'o', 't', 1000).includes('/opt/paideia/bootstrap/bootstrap.js'));
+    assert.ok(createContainerArguments(f.launch, 'n', 'o', 't', 1000).includes('/opt/training/bootstrap/bootstrap.js'));
     delete f.launch.bootstrap;
-    assert.ok(createContainerArguments(f.launch, 'n', 'o', 't', 1000, '1000:1000').includes('/opt/paideia/native/worker/cli.js'));
+    assert.ok(createContainerArguments(f.launch, 'n', 'o', 't', 1000, '1000:1000').includes('/opt/training/native/worker/cli.js'));
     await assert.rejects(dockerCommand(process.execPath)(['-e', 'process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'], { timeoutMs: 200 }), /deadline/);
     await assert.rejects(dockerCommand(process.execPath)(['-e', 'process.stdin.destroy();setInterval(()=>{},1000)'],
       { timeoutMs: 200, stdin: 'x'.repeat(4_000_000) }), /deadline/);

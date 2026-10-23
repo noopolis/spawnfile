@@ -5,10 +5,11 @@ import { snapshotCandidate, type ResourceMapping } from '../../candidates/index.
 import { count, judgeCitationRepairs, one, pairs, type CliArguments } from '../arguments.js';
 import { CliDatasets } from '../datasets.js';
 import type { CliIO, SpawnfileCliIntegration } from '../types.js';
-import { readSpawnfileContext } from './context.js';
+import { resolveSpawnfileContext, type SpawnfileTrainingContext } from './context.js';
 
-export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, integration?: SpawnfileCliIntegration) {
-  const context = readSpawnfileContext(resolve(io.cwd, one(args, 'spawnfile-context')));
+export async function prepareSpawnfileInputs(args: CliArguments, io: CliIO, integration?: SpawnfileCliIntegration, providedContext?: SpawnfileTrainingContext) {
+  const context = resolveSpawnfileContext(args.flags['spawnfile-context']
+    ? resolve(io.cwd, one(args, 'spawnfile-context')) : undefined, providedContext);
   for (const flag of ['runtime', 'instructions', 'supporting', 'locked', 'source-root']) {
     if (args.flags[flag]) throw new Error(`--${flag} cannot replace canonical Spawnfile configuration`);
   }

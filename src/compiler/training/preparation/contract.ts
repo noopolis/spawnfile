@@ -13,7 +13,7 @@ const destination = z.string().regex(/^\/run\/training\/inputs\/[A-Za-z0-9._/-]+
 export const trainingBuildSchema = z.object({
   recipe: z.literal("daimon-dspy.v1"), nativeImage: trainingImageSchema, pythonImage: trainingImageSchema,
   platform: z.enum(["linux/arm64", "linux/amd64"]),
-  paideia: local, bridge: local, claude: local, compiler: local.optional(),
+  claude: local, compiler: local.optional(),
   /**
    * Deprecated with `spawnfile.training-container.v3`: the image no longer
    * copies a Grok binary at all. Judges run the native parent's pinned
@@ -101,7 +101,7 @@ export interface TrainingMappedPreparation {
   imageId: string;
   bindings: { inputId: string; destination: string }[];
   outputRoot: "/run/training/output";
-  packagePaths: { spawnfile: string; paideia: string; bridge: string; nativeWorker: string; integration: string; bootstrap: string };
+  packagePaths: { spawnfile: string; training: string; bridge: string; nativeWorker: string; integration: string; bootstrap: string };
   integration: { settings: { input: string; path: string } };
 }
 
@@ -110,7 +110,7 @@ const mappedSchema = z.object({
   version: z.literal("spawnfile.training-preparation.v1"), preparationDigest: sha, imageId: trainingImageSchema,
   bindings: z.array(z.object({ inputId: z.string().min(1), destination }).strict()).min(1).max(64),
   outputRoot: z.literal("/run/training/output"),
-  packagePaths: z.object({ spawnfile: containerPath, paideia: containerPath, bridge: containerPath,
+  packagePaths: z.object({ spawnfile: containerPath, training: containerPath, bridge: containerPath,
     nativeWorker: containerPath, integration: containerPath, bootstrap: containerPath }).strict(),
   integration: z.object({ settings: reference }).strict()
 }).strict().superRefine((value, context) => {

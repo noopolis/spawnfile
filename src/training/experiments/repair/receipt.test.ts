@@ -16,7 +16,7 @@ async function fixture() {
     parent:{root:parent,imageId:sha,experimentId:'original',executionIdentity:'original-execution',manifestDigest:sha,
       checkpoints:{command:sha,training:sha,host:sha,optimizer:sha},trainingIdentity:'original-training'},
     current:{imageId:sha,canonicalSourceDigest:sha,adapterId:'daimon-native'},
-    compatibility:{version:'spawnfile.daimon-dspy-compatibility.v1',digest:'',components:{native:sha},inputs:{evidence:sha}}};
+    compatibility:{version:'spawnfile.daimon-dspy-compatibility.v1',digest:'',components:{'training-native':sha},inputs:{evidence:sha}}};
   const path = join(root,'receipt.json');
   const save = async () => {
     receipt.compatibility.digest = repairDigest(JSON.stringify({components:receipt.compatibility.components,inputs:receipt.compatibility.inputs}));
@@ -77,4 +77,11 @@ it('binds a repair receipt to the injected subject identity without a runtime al
   expect(await readMeasurementRepair(f.path, f.expected)).toEqual(envelope);
   f.expected.adapterId = 'other';
   await expect(readMeasurementRepair(f.path, f.expected)).rejects.toThrow('authority');
+});
+
+it.each(['native', 'trials', 'optimizer'])('rejects legacy %s component authority with a re-prepare message', async name => {
+  const f = await fixture();
+  Object.assign(f.receipt.compatibility.components, { [name]: repairDigest('legacy Paideia component') });
+  await f.save();
+  await expect(readMeasurementRepair(f.path, f.expected)).rejects.toThrow('re-prepare with Spawnfile');
 });

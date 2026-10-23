@@ -88,3 +88,41 @@ execution:
     await expect(readTrainingWitness(file), "witness execution identity guarantee").rejects.toThrow("preparation identity mismatch");
   }
 });
+
+
+it("validates a null witness manifest without throwing a property access error", async () => {
+  const f = await preparationFixture(); roots.push(f.root);
+  const file = path.join(f.root, "null-witness.json");
+  await writeFile(file, JSON.stringify({ manifest: null, digest: hashJson(null) }));
+  const error = await readTrainingWitness(file).then(() => undefined, error => error);
+  expect(error).toMatchObject({ name: "ZodError" });
+});
+
+
+it.each([
+  { image: { build: 1, files: [] } },
+  { image: { build: "install", files: [] } },
+  { image: { build: null, files: [] } },
+  { image: { build: {}, files: {} } },
+  { image: { build: {}, files: "files" } },
+  { image: { build: {}, files: [null] } },
+  { image: { build: {}, files: [{ destination: 1 }] } },
+  { image: null },
+  1,
+  "manifest"
+])("routes malformed witness shape through schema validation: %j", async manifest => {
+  const f = await preparationFixture(); roots.push(f.root);
+  const file = path.join(f.root, "malformed-witness.json");
+  await writeFile(file, JSON.stringify({ manifest, digest: hashJson(manifest) }));
+  const error = await readTrainingWitness(file).then(() => undefined, error => error);
+  expect(error, "malformed witness schema guarantee").toMatchObject({ name: "ZodError" });
+});
+
+it.each([null, 1, "envelope", [], { manifest: null, digest: 1 }])(
+  "validates malformed witness envelopes before migration inspection: %j", async envelope => {
+    const f = await preparationFixture(); roots.push(f.root);
+    const file = path.join(f.root, "malformed-envelope.json");
+    await writeFile(file, JSON.stringify(envelope));
+    const error = await readTrainingWitness(file).then(() => undefined, error => error);
+    expect(error, "malformed envelope schema guarantee").toMatchObject({ name: "ZodError" });
+  });

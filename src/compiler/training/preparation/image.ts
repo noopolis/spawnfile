@@ -34,7 +34,7 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
   // and the declared native parent must name one rebuild (see daimonParent.ts).
   const daimonParent = await resolveTrainingDaimonParent(build, declarationPath);
   assertInputRoot(ownRoot, auth);
-  for (const source of [build.paideia, build.bridge, build.claude, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
+  for (const source of [build.claude, build.integration.source, ...build.compiler ? [build.compiler] : [], ...build.bootstrap ? [build.bootstrap] : []]) assertInputRoot(resolve(source), auth);
   const assets = ownRoot === packageRoot ? trainingAssets : path.join(ownRoot, "runtime-images/training");
   assertInputRoot(assets, auth);
   const recipe = await readFile(path.join(assets, "Dockerfile"), "utf8");
@@ -44,12 +44,10 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
   const ownLock = path.extname(fileURLToPath(import.meta.url)) === ".ts" || ownRoot !== packageRoot
     ? path.join(ownRoot, "package-lock.json") : path.join(assets, "package-lock.json");
   const files = [
-    ...await packageFiles(resolve(build.paideia), "paideia", true),
     ...await packageFiles(ownRoot, "spawnfile", true, ownLock),
     ...await packageFiles(build.compiler ? resolve(build.compiler) : ownRoot, "compiler", true,
       build.compiler ? path.join(resolve(build.compiler), "package-lock.json") : ownLock),
     ...await packageFiles(resolve(build.claude), "claude", false),
-    ...await sealTree(resolve(build.bridge), "bridge", { ignoreDevelopment: true }),
     ...await sealTree(resolve(build.integration.source), "integration", { ignoreDevelopment: true }),
     ...build.bootstrap ? await sealTree(resolve(build.bootstrap), "bootstrap", { ignoreDevelopment: true }) : [],
     await sealFile(path.join(ownRoot, "runtimes.yaml"), "spawnfile/runtimes.yaml"),
@@ -57,7 +55,7 @@ export async function planTrainingImage(build: TrainingImageBuild, root: string,
     ...await Promise.all(["runtimes.yaml", "moltnet-releases.json"].map(name =>
       sealFile(path.join(build.compiler ? resolve(build.compiler) : ownRoot, name), `compiler/${name}`)))
   ];
-  for (const required of [`integration/${build.integration.entry}`, "bridge/pyproject.toml", "bridge/requirements.lock", "bridge/paideia_dspy/__init__.py", "paideia/dist/src/cli/main.js", "spawnfile/dist/cli/index.js", "compiler/dist/cli/index.js"]) {
+  for (const required of [`integration/${build.integration.entry}`, "spawnfile/dist/training/dspy/pyproject.toml", "spawnfile/dist/training/dspy/requirements.lock", "spawnfile/dist/training/dspy/paideia_dspy/__init__.py", "spawnfile/dist/runtime/trainingCli.js", "spawnfile/dist/runtime/trainingSubjects.js", "spawnfile/dist/runtime/daimon/training/native/worker/cli.js", "spawnfile/dist/training/cli/index.js", "spawnfile/dist/cli/index.js", "compiler/dist/cli/index.js"]) {
     if (!files.some(file => file.destination === required)) throw Error(`Training distribution is missing ${required}`);
   }
   const entry = `#!/bin/sh\nexec /usr/local/bin/node --experimental-strip-types ${JSON.stringify(`/opt/training/integration/${build.integration.entry}`)} "$@"\n`;

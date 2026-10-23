@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { runCli } from "./runCli.js";
-import type { DelegatePaideiaTrainingOptions } from "./paideiaDelegation.js";
+import type { RunTrainingOptions } from "./trainingExecution.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -22,9 +22,9 @@ runtime: daimon
 training:
   deadlines: { experiment_ms: 60000000, trial_ms: 5000000 }
 `);
-  const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+  const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
   expect(await runCli(["train", root, "--train", "train.yaml", "--dry-run", ...flags], {
-    handlers: { delegatePaideiaTraining: delegate }, streams: { stdout() {}, stderr() {} }
+    handlers: { runTraining: delegate }, streams: { stdout() {}, stderr() {} }
   })).toBe(0);
   const options = delegate.mock.calls[0]![0];
   expect(options.timeoutMs, "outer experiment deadline guarantee").toBe(experimentMs + 5000);
@@ -32,7 +32,7 @@ training:
   expect(options.args).toEqual(expect.arrayContaining(["--trial-timeout-ms", "5000000"]));
   delegate.mockClear();
   expect(await runCli(["train", root, "--train", "train.yaml", "--dry-run", ...flags, "--trial-timeout-ms", "2000"], {
-    handlers: { delegatePaideiaTraining: delegate }, streams: { stdout() {}, stderr() {} }
+    handlers: { runTraining: delegate }, streams: { stdout() {}, stderr() {} }
   })).toBe(0);
   expect(delegate.mock.calls[0]![0].args).toEqual(expect.arrayContaining(["--trial-timeout-ms", "2000"]));
   expect(delegate.mock.calls[0]![0].args).not.toContain("5000000");
@@ -42,7 +42,7 @@ it.each(["--experiment-timeout-ms", "--trial-timeout-ms"])("validates %s before 
   const forbidden = vi.fn(async () => { throw new Error("must not read"); });
   for (const value of ["0", "1.5", "NaN", "604800001"]) {
     expect(await runCli(["train", "/missing", "--train", "train.yaml", flag, value], {
-      handlers: { loadTrainingProject: forbidden, delegatePaideiaTraining: forbidden }, streams: { stdout() {}, stderr() {} }
+      handlers: { loadTrainingProject: forbidden, runTraining: forbidden }, streams: { stdout() {}, stderr() {} }
     })).toBe(2);
   }
   expect(forbidden).not.toHaveBeenCalled();

@@ -9,7 +9,7 @@ specs/
 ├── COMPILER.md              # Compiler architecture and internal contracts
 ├── CONTAINERS.md            # Container compilation spec
 ├── RUNTIMES.md              # Runtime registry, version pinning, adapter lifecycle
-├── TRAINING.md              # Canonical source handoff and Paideia CLI delegation
+├── TRAINING.md              # Canonical source context and bundled training execution
 ├── TRAINING_CONTAINERS.md   # Single-container training launch boundary
 ├── CAUSAL.md                # Shared causal wire and Stele read/verify contract
 ├── RELEASE.md               # Drained release: identity no-op, drain/resume, ledger, notifier

@@ -30,7 +30,7 @@ const RECIPE = "ARG NATIVE_IMAGE\nARG PYTHON_IMAGE\nFROM ${PYTHON_IMAGE} AS pyth
 
 const build = (patch: Partial<TrainingImageBuild> = {}): TrainingImageBuild => ({
   recipe: "daimon-dspy.v1", nativeImage: NATIVE_IMAGE, pythonImage: digest("python"), platform: "linux/arm64",
-  paideia: "paideia", bridge: "bridge", claude: "claude",
+  claude: "claude",
   integration: { source: "integration", entry: "entry.ts" }, ...patch
 } as TrainingImageBuild);
 

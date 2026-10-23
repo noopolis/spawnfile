@@ -5,7 +5,7 @@ subject, restore a workspace, send another stimulus or create a new trial.
 `store.readReplay` and the viewer remain playback operations with no inference.
 
 ```ts
-import { rescoreStoredTrial } from '@noopolis/paideia';
+import { rescoreStoredTrial } from 'spawnfile/dist/training/index.js';
 
 const rescored = await rescoreStoredTrial({
   store,

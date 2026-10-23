@@ -6,8 +6,11 @@ const config = () => ({ version: "spawnfile.training-container.v2", dockerContex
   output: { source: "out", destination: "/run/training/output" }, auth: [] });
 it("accepts only an explicit supported integration execution declaration", () => {
   const build = { recipe: "daimon-dspy.v1", nativeImage: config().image.ref, pythonImage: config().image.ref,
-    platform: "linux/arm64", paideia: "paideia", bridge: "bridge", claude: "claude", integration: { source: "integration", entry: "entry.ts" } };
+    platform: "linux/arm64", claude: "claude", integration: { source: "integration", entry: "entry.ts" } };
   expect(trainingBuildSchema.parse(build).integration).toEqual(build.integration);
+  for (const obsolete of ["paideia", "bridge"]) {
+    expect(trainingBuildSchema.safeParse({ ...build, [obsolete]: "external-install" }).success).toBe(false);
+  }
   const declared = { ...build, integration: { ...build.integration, execution: "spawnfile.training-execution.v1" } };
   expect(trainingPreparationSchema.parse({ ...config(), image: { build: declared } }).image).toEqual({ build: declared });
   for (const execution of [true, "", "spawnfile.training-execution.v0", "spawnfile.training-execution.v2", ["spawnfile.training-execution.v1"]]) {
@@ -27,7 +30,7 @@ it("keeps authoring strict and rejects ambiguous input and settings references",
 it("validates the public mapped receipt without accepting host paths or missing IDs", () => {
   const receipt = { version: "spawnfile.training-preparation.v1", preparationDigest: `sha256:${"a".repeat(64)}`, imageId: `sha256:${"b".repeat(64)}`,
     bindings: [{ inputId: "project", destination: "/run/training/inputs/project" }], outputRoot: "/run/training/output",
-    packagePaths: Object.fromEntries(["spawnfile", "paideia", "bridge", "nativeWorker", "integration", "bootstrap"].map(key => [key, `/opt/training/${key}`])),
+    packagePaths: Object.fromEntries(["spawnfile", "training", "bridge", "nativeWorker", "integration", "bootstrap"].map(key => [key, `/opt/training/${key}`])),
     integration: { settings: { input: "project", path: "." } } };
   expect(parseTrainingMappedPreparation(receipt)).toEqual(receipt);
   expect(() => parseTrainingMappedPreparation({ ...receipt, bindings: [...receipt.bindings, ...receipt.bindings] })).toThrow("IDs");

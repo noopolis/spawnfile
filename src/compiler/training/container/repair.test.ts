@@ -40,3 +40,13 @@ it.each(["digest", "image", "mount", "symlink"])("rejects wrong repair %s before
   await expect(launchTrainingContainer(f.options)).rejects.toThrow();
   expect(f.docker.calls).toEqual([]);
 });
+
+
+it.each(["native", "trials", "optimizer"])("refuses old external repair component %s with re-prepare guidance", async component => {
+  const f = await setup();
+  Object.assign(f.envelope.receipt.compatibility.components, { [component]: image });
+  f.envelope.digest = hashJson(f.envelope.receipt);
+  await writeFile(f.repairPath, JSON.stringify(f.envelope));
+  await expect(launchTrainingContainer(f.options)).rejects.toThrow("re-prepare with Spawnfile");
+  expect(f.docker.calls).toEqual([]);
+});

@@ -57,7 +57,7 @@ export function createContainerArguments(launch: VerifiedNativeLaunch, name: str
     '--pull', 'never', '--init', '--read-only', '--user', user, '--cap-drop', 'ALL',
     '--security-opt', 'no-new-privileges', ...security, '--pids-limit', '256',
     '--tmpfs', '/tmp:rw,nosuid,nodev,size=268435456', '--tmpfs', '/run:rw,nosuid,nodev,size=16777216',
-    '--env-file', launch.envFile, '--workdir', '/opt/paideia',
+    '--env-file', launch.envFile, '--workdir', '/opt/training',
     ...mounts.flatMap(mount => ['--mount', `type=bind,source=${mount.source},target=${mount.target}${mount.readonly ? ',readonly' : ''}`]),
     '--entrypoint', '/usr/local/bin/node', launch.image, '--experimental-strip-types',
     launch.bootstrap ? posix.join(containerPaths.bootstrap, launch.bootstrap.entrypoint) : `${containerPaths.worker}/worker/cli.js`,

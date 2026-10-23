@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCli, type CliHandlers } from "./runCli.js";
-import type { DelegatePaideiaTrainingOptions } from "./paideiaDelegation.js";
+import type { RunTrainingOptions } from "./trainingExecution.js";
 import {
   agentManifest, cleanTrainingProjects, dataFiles, example, trainingProject, volume
 } from "../compiler/training/plan/fixtures.test-helper.js";
@@ -35,7 +35,7 @@ describe("spawnfile train --materialize", () => {
     const forbidden = vi.fn(async () => { throw Error("must not execute, authenticate, or compile output"); });
     const code = await runCli(["train", path.join(root, "Spawnfile"), "--agent", "agent:writer",
       "--materialize", selector, "--out", out], {
-      handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden, compileProject: forbidden,
+      handlers: { createTrainingContext: forbidden, runTraining: forbidden, compileProject: forbidden,
         buildProject: forbidden, runProject: forbidden, upProject: forbidden, publishProject: forbidden,
         importClaudeCodeAuth: forbidden, importCodexAuth: forbidden, importGrokAuth: forbidden,
         requireAuthProfile: forbidden, provisionCredentials: forbidden },
@@ -127,7 +127,7 @@ describe("spawnfile train --materialize", () => {
     const forbidden = vi.fn(async () => { throw Error("must not read project"); });
     expect(await runCli(["train", await project(), ...flags], {
       handlers: { loadTrainingProject: forbidden, createTrainingPlan: forbidden, materializeTrainingMoment: forbidden,
-        createTrainingContext: forbidden, delegatePaideiaTraining: forbidden }, streams: { stdout() {}, stderr() {} }
+        createTrainingContext: forbidden, runTraining: forbidden }, streams: { stdout() {}, stderr() {} }
     })).toBe(2);
     expect(forbidden).not.toHaveBeenCalled();
   });
@@ -139,6 +139,7 @@ describe("spawnfile train --materialize", () => {
     expect(help.match(/--out <value>/gu)).toHaveLength(1);
     expect(help).toContain("--materialize <example>");
     expect(help).toContain("--history <directory>");
+    expect(help).not.toContain("--paideia-command");
   });
 });
 
@@ -148,7 +149,7 @@ describe("spawnfile train --plan", () => {
     const root = await project(), stdout: string[] = [], stderr: string[] = [];
     const forbidden = vi.fn(async () => { throw Error("must not execute, extract a context or authenticate"); });
     const code = await runCli(["train", root, "--plan", ...flags, "--timeout-ms", "invalid"], {
-      handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden, compileProject: forbidden,
+      handlers: { createTrainingContext: forbidden, runTraining: forbidden, compileProject: forbidden,
         buildProject: forbidden, runProject: forbidden, upProject: forbidden, publishProject: forbidden,
         importClaudeCodeAuth: forbidden, importCodexAuth: forbidden, importGrokAuth: forbidden,
         requireAuthProfile: forbidden, provisionCredentials: forbidden },
@@ -168,7 +169,7 @@ describe("spawnfile train --plan", () => {
     const stdout: string[] = [];
     expect(await runCli(["train", "./project with spaces", "--plan", "--agent", "agent:author",
       "--train", "unused.yaml", "--out", "unused-output", "--training-config", "unused.json", "--resume"], {
-      handlers: { createTrainingPlan, createTrainingContext: forbidden, delegatePaideiaTraining: forbidden },
+      handlers: { createTrainingPlan, createTrainingContext: forbidden, runTraining: forbidden },
       streams: { stdout: (value) => stdout.push(value), stderr() {} }
     })).toBe(0);
     expect(createTrainingPlan).toHaveBeenCalledExactlyOnceWith("./project with spaces", { agent: "agent:author", packageVersion });
@@ -183,7 +184,7 @@ describe("spawnfile train --plan", () => {
     const forbidden = vi.fn(async () => { throw Error("must not start training"); });
     try {
       expect(await runCli(["train", root, "--plan"], {
-        handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden }
+        handlers: { createTrainingContext: forbidden, runTraining: forbidden }
       })).toBe(0);
       expect(stdout).toHaveBeenCalledExactlyOnceWith(`${JSON.stringify(emptyPlan(root), null, 2)}\n`);
       expect(stderr).not.toHaveBeenCalled();
@@ -199,7 +200,7 @@ describe("spawnfile train --plan", () => {
     const forbidden = vi.fn(async () => { throw Error("must not read the project"); });
     const stderr: string[] = [];
     expect(await runCli(["train", await project(), ...flags], {
-      handlers: { createTrainingPlan: forbidden, createTrainingContext: forbidden, delegatePaideiaTraining: forbidden },
+      handlers: { createTrainingPlan: forbidden, createTrainingContext: forbidden, runTraining: forbidden },
       streams: { stdout() {}, stderr: (value) => stderr.push(value) }
     })).toBe(2);
     expect(stderr).toEqual(["error: Agent agent:author has no executable training targets; supply --train"]);
@@ -209,10 +210,10 @@ describe("spawnfile train --plan", () => {
 
 describe("spawnfile train", () => {
   it.each([[], ["--concurrency", "2"], ["--concurrency=2"]])("forwards explicit concurrency to the launcher without imposing a default: %j", async (...flags) => {
-    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+    const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
     const stderr: string[] = [];
     expect(await runCli(["train", await project(), ...base, ...container, ...flags], {
-      handlers: { delegatePaideiaTraining: delegate },
+      handlers: { runTraining: delegate },
       streams: { stdout() {}, stderr: (value) => stderr.push(value) }
     })).toBe(0);
     expect(stderr).toEqual([]);
@@ -222,22 +223,21 @@ describe("spawnfile train", () => {
     }));
   });
 
-  it("resolves the real canonical project and preserves explicit Paideia options", async () => {
+  it("resolves the real canonical project and preserves explicit training core options", async () => {
     const root = await project(), stdout: string[] = [], stderr: string[] = [];
-    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+    const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
     const forbidden = vi.fn(async () => { throw new Error("must not compile, build or authenticate"); });
     const code = await runCli(["train", root, ...base, "--agent", "agent:author", "--dry-run",
-      "--paideia-command", "/opt/paideia with space", "--editable", "a.md", "--editable", "b.md", "--resource", "archive=/private/source",
+      "--editable", "a.md", "--editable", "b.md", "--resource", "archive=/private/source",
       "--judge", "editor=fable", "--judge", "grounding=other-model", "--judge-citation-repairs", "editor=1",
       "--judge-citation-repairs", "grounding=0", "--validation-group", "previous", "--cost-config", "prices.yaml", "--max-trials", "3", "--timeout-ms", "5000"], {
       streams: { stdout: (value) => stdout.push(value), stderr: (value) => stderr.push(value) },
-      handlers: { delegatePaideiaTraining: delegate, compileProject: forbidden, buildProject: forbidden, importCodexAuth: forbidden }
+      handlers: { runTraining: delegate, compileProject: forbidden, buildProject: forbidden, importCodexAuth: forbidden }
     });
     expect(code).toBe(0); expect(forbidden).not.toHaveBeenCalled();
     expect(delegate).toHaveBeenCalledOnce();
     const options = delegate.mock.calls[0]![0];
     expect(options.context.agent.id).toBe("agent:author");
-    expect(options.command).toBe("/opt/paideia with space");
     expect(options.dryRun).toBe(true); expect(options.timeoutMs).toBe(10_000);
     expect(options.args).toEqual(["--train", "train.paideia.yaml", "--test", "test.paideia.yaml", "--editable", "a.md", "--editable", "b.md",
       "--resource", "archive=/private/source", "--judge", "editor=fable", "--judge", "grounding=other-model",
@@ -247,17 +247,17 @@ describe("spawnfile train", () => {
   });
 
   it("delegates YAML-owned test selection and forwards the complete default experiment budget", async () => {
-    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+    const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
     expect(await runCli(["train", await project(), "--train", "train.paideia.yaml", "--dry-run"], {
-      handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
+      handlers: { runTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(0);
     expect(delegate.mock.calls[0]![0]).toMatchObject({ timeoutMs: 43_205_000, args: ["--train", "train.paideia.yaml", "--dry-run", "--experiment-timeout-ms", "43200000"] });
   });
 
-  it("forwards explicit resume to Paideia without changing canonical agent context", async () => {
-    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+  it("forwards explicit resume to training core without changing canonical agent context", async () => {
+    const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
     expect(await runCli(["train", await project(), ...base, ...container, "--resume"], {
-      handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
+      handlers: { runTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(0);
     expect(delegate.mock.calls[0]![0].args).toEqual([...base, "--resume", "--experiment-timeout-ms", "43200000"]);
     expect(delegate.mock.calls[0]![0].context.agent.id).toBe("agent:author");
@@ -265,19 +265,19 @@ describe("spawnfile train", () => {
   });
 
   it.each([1, 2, 130, 143])("propagates the delegated exit %s", async (exitCode) => {
-    const code = await runCli(["train", await project(), ...base, ...container], { handlers: { delegatePaideiaTraining: async () => exitCode },
+    const code = await runCli(["train", await project(), ...base, ...container], { handlers: { runTraining: async () => exitCode },
       streams: { stdout: () => undefined, stderr: () => undefined } });
     expect(code).toBe(exitCode);
   });
 
-  it("forwards cancellation and default executable/timeout without forcing dry-run", async () => {
+  it("forwards cancellation and default timeout without forcing dry-run", async () => {
     const controller = new AbortController();
-    let captured: DelegatePaideiaTrainingOptions | undefined;
+    let captured: RunTrainingOptions | undefined;
     expect(await runCli(["train", await project(), ...base, ...container, "--optimizer-model", "fable", "--bridge-command", "bridge", "--max-proposals", "1", "--seed", "0", "--view", "0"], {
-      signal: controller.signal, handlers: { delegatePaideiaTraining: async (options) => { captured = options; return 2; } },
+      signal: controller.signal, handlers: { runTraining: async (options) => { captured = options; return 2; } },
       streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);
-    expect(captured).toMatchObject({ command: "paideia", timeoutMs: 43_205_000, signal: controller.signal, dryRun: false });
+    expect(captured).toMatchObject({ timeoutMs: 43_205_000, signal: controller.signal, dryRun: false });
     expect(captured?.args).toContain("--bridge-command");
     expect(captured?.args).not.toContain("--dry-run");
   });
@@ -285,7 +285,7 @@ describe("spawnfile train", () => {
   it("allows dry-run without output or optimizer bridge, but rejects an actual run without output", async () => {
     const root = await project(), delegated = vi.fn(async () => 0);
     const args = ["train", root, "--train", "train.paideia.yaml", "--test", "test.paideia.yaml"];
-    const options = { handlers: { delegatePaideiaTraining: delegated }, streams: { stdout: () => undefined, stderr: () => undefined } };
+    const options = { handlers: { runTraining: delegated }, streams: { stdout: () => undefined, stderr: () => undefined } };
     expect(await runCli([...args, "--dry-run"], options)).toBe(0);
     expect(delegated).toHaveBeenCalledOnce();
     expect(await runCli(args, options)).toBe(2);
@@ -295,25 +295,25 @@ describe("spawnfile train", () => {
   it.each(["0", "1.5", "-1", "NaN", "604800001"])("rejects timeout %s before extracting or delegating", async (timeout) => {
     const forbidden = vi.fn(async () => { throw Error("must not start"); });
     const code = await runCli(["train", "/missing", ...base, "--timeout-ms", timeout], {
-      handlers: { createTrainingContext: forbidden, delegatePaideiaTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined }
+      handlers: { createTrainingContext: forbidden, runTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined }
     });
     expect(code).toBe(2); expect(forbidden).not.toHaveBeenCalled();
   });
 
   it("rejects generic runtime/instruction overrides and missing required datasets", async () => {
     const forbidden = vi.fn(async () => { throw Error("must not start"); });
-    for (const args of [["train", ...base, "--runtime", "pi"], ["train", ...base, "--instructions", "prompt.md"], ["train", "--dry-run"]]) {
-      expect(await runCli(args, { handlers: { delegatePaideiaTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined } })).toBe(2);
+    for (const args of [["train", ...base, "--paideia-command", "/removed"], ["train", ...base, "--runtime", "pi"], ["train", ...base, "--instructions", "prompt.md"], ["train", "--dry-run"]]) {
+      expect(await runCli(args, { handlers: { runTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined } })).toBe(2);
     }
     expect(forbidden).not.toHaveBeenCalled();
   });
-  it("forwards literal invalid repair selections for Paideia to validate and preserves receiver failure", async () => {
+  it("forwards literal invalid repair selections for training core to validate and preserves receiver failure", async () => {
     const root = await project();
-    const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 2);
+    const delegate = vi.fn(async (_options: RunTrainingOptions) => 2);
     const literal = "unknown=$(false) with spaces";
     expect(await runCli(["train", root, ...base, "--judge-citation-repairs", literal,
       "--judge-citation-repairs", literal, "--dry-run"], {
-      handlers: { delegatePaideiaTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
+      handlers: { runTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);
     expect(delegate.mock.calls[0]![0].args).toEqual(["--train", "train.paideia.yaml", "--test", "test.paideia.yaml",
       "--judge-citation-repairs", literal, "--judge-citation-repairs", literal, "--out", "local output", "--dry-run", "--experiment-timeout-ms", "43200000"]);
@@ -321,9 +321,9 @@ describe("spawnfile train", () => {
 });
 
 it("keeps public repair authority separate from forwarded optimizer flags", async () => {
-  const delegate = vi.fn(async (_options: DelegatePaideiaTrainingOptions) => 0);
+  const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
   expect(await runCli(["train", await project(), ...base, "--training-config", "/recipe.json", "--repair-measurements", "/parent", "--repair-witness", "/witness.json"], {
-    handlers: { delegatePaideiaTraining: delegate }, streams: { stdout() {}, stderr() {} }
+    handlers: { runTraining: delegate }, streams: { stdout() {}, stderr() {} }
   })).toBe(0);
   expect(delegate.mock.calls[0]![0]).toMatchObject({ repairMeasurements: "/parent", repairWitness: "/witness.json" });
   expect(delegate.mock.calls[0]![0].args).not.toContain("--repair-measurements");
