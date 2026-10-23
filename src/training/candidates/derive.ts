@@ -20,14 +20,13 @@ export function candidateComponents(candidate: CandidateManifest): CandidateComp
 export function deriveCandidate(baseline: CandidateManifest, parent: CandidateManifest,
   replacements: Readonly<Record<string, string>>): CandidateManifest {
   assertOriginalPolicy(baseline, parent);
-  if (baseline.schema !== 'spawnfile.training.candidate.v1') throw new Error('Legacy candidate identity requires re-prepare with Spawnfile before deriving candidates');
   const components = candidateComponents(parent);
   for (const [id, text] of Object.entries(replacements)) {
     if (!components.some(component => component.id === id)) throw new Error(`Undeclared or locked candidate component: ${id}`);
     if (typeof text !== 'string') throw new Error('Candidate replacement must be text');
   }
   const resources = parent.resources.map(resource => replaceResource(resource, replacements));
-  const body = { schema: parent.schema, parentId: parent.id, policyDigest: baseline.policyDigest, resources };
+  const body = { schema: 'spawnfile.training.candidate.v1' as const, parentId: parent.id, policyDigest: baseline.policyDigest, resources };
   const candidate = { ...body, baselineId: baseline.id, id: candidateIdentity(body, baseline.id) };
   assertOriginalPolicy(baseline, candidate);
   return freezeCandidate(candidate);

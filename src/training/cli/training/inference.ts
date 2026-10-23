@@ -1,3 +1,4 @@
+import { OPTIMIZER_ROUTE_PREFIX } from '../../contracts/index.js';
 import { trainingEnvironment } from '../../platform/index.js';
 import { trainingRoutePolicies, trainingInferencePolicies } from '../../contracts/inference-policy.js';
 import type { JudgeRoute } from '../../contracts/evaluation.js';
@@ -73,7 +74,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   }));
   const optimizer = config?.optimizer;
   const identity = optimizer === undefined ? undefined : createHash('sha256').update(JSON.stringify({ optimizer, models: config!.models, providerPolicies: trainingRoutePolicies(config!, optimizer, executionIdentity) })).digest('hex');
-  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `training.optimizer:${identity}`, 'optimizer');
+  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `${OPTIMIZER_ROUTE_PREFIX}${identity}`, 'optimizer');
   return { get inference() {
     if (inference === undefined) throw new Error('Authored comparison has no optimizer inference');
     return inference;

@@ -10,4 +10,5 @@ filenames and frozen content-addressing domains. Public entry point: index.ts.
 - Adjacent tests cover accepted legacy inputs and rejected malformed data.
 
 Keep this module independent of runtime, compiler and the parent shared barrel.
-Frozen domains are hash inputs only; current writers keep current wire IDs.
+Frozen identities include model prompt versions and canary bytes; wire writers keep current wire IDs.
+Project only owned schema fields into hash views; never rewrite user content recursively.

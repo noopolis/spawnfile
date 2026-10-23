@@ -1,3 +1,4 @@
+import { JEV_IDENTITY_KEY } from '../../contracts/index.js';
 import { expect, it, vi } from 'vitest';
 import type { DecisionRequest } from '../../contracts/grading.js';
 import { createJevDecision } from './index.js';
@@ -98,7 +99,7 @@ it('throws a long-canary timeout and refuses invalid successful probability resp
     return new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(Error('timeout')), { once: true }));
   };
   await expect(createJevDecision({ endpoint, timeoutMs: 5, fetch: slow }).identity()).rejects.toThrow('timed out');
-  for (const answers of [undefined, { training_identity: { probabilities: { true: 1 } } }]) {
+  for (const answers of [undefined, { [JEV_IDENTITY_KEY]: { probabilities: { true: 1 } } }]) {
     await expect(createJevDecision({ endpoint, fetch: async () => new Response(JSON.stringify({ model: 'm', answers })) }).identity())
       .rejects.toThrow('identity canary');
   }

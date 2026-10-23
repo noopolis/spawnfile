@@ -1,3 +1,4 @@
+import { LABEL_PROMPT_VERSION } from '../../contracts/index.js';
 import { describe, it, expect } from 'vitest';
 import { parseGrader, stableDigest, type Labels } from '../index.js';
 import { groupLabelInstances, buildLabelPrompt, decodeLabelVotes, teacherPolicyDigest, adjudicationRows, validateStoredVotes, voteProvenance } from './index.js';
@@ -19,7 +20,7 @@ describe('label planning', () => {
     expect(groups[0]!.instances.map(i => i.instance.key)).toEqual(['q', 's']);
     const prompt = buildLabelPrompt(groups[0]!);
     expect(prompt.prompt).not.toContain('private');
-    expect(prompt.system).toContain('spawnfile.training.grader-label-prompt.v1');
+    expect(prompt.system).toContain(LABEL_PROMPT_VERSION);
     expect(prompt.schema).toMatchObject({ additionalProperties: false, required: ['q', 's'] });
     expect(prompt.digest).toHaveLength(64);
     expect(decodeLabelVotes('{"q":"yes","s":"2"}', groups[0]!)).toEqual({ q: 'yes', s: 2 });
@@ -112,8 +113,8 @@ describe('label planning', () => {
 
 it('pins the Codex containment policy separately from empty-tool teachers', () => {
   const teacher = { id: 'codex', provider: 'codex' as const, model: 'gpt-5' };
-  expect(teacherPolicyDigest(teacher)).toBe(stableDigest({ teacher, prompt: 'spawnfile.training.grader-label-prompt.v1',
+  expect(teacherPolicyDigest(teacher)).toBe(stableDigest({ teacher, prompt: LABEL_PROMPT_VERSION,
     policy: 'subscription-codex-containment-one-schema-repair.v1' }));
-  expect(teacherPolicyDigest(teacher)).not.toBe(stableDigest({ teacher, prompt: 'spawnfile.training.grader-label-prompt.v1',
+  expect(teacherPolicyDigest(teacher)).not.toBe(stableDigest({ teacher, prompt: LABEL_PROMPT_VERSION,
     policy: 'subscription-empty-tools-one-schema-repair.v1' }));
 });

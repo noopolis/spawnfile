@@ -1,3 +1,4 @@
+import { AUTHORED_JUDGE_VERSION_PREFIX } from '../../contracts/index.js';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import { parseDatasetYaml, resolveDataset } from '../index.js';
@@ -74,7 +75,7 @@ describe('dataset-authored training configuration', () => {
     expect(trainingJudgeVersions(budgetOnly)).toEqual(identity);
     expect(trainingJudgeVersions({ models: initial.models })).toEqual({});
     expect(trainingJudgeVersions({ models: initial.models, judges: { simple: { model: 'cheap' } } }).simple!.version)
-      .toMatch(/^spawnfile.training.authored-judge.v1:sha256:/);
+      .toMatch(new RegExp(`^${AUTHORED_JUDGE_VERSION_PREFIX.replaceAll('.', '\\.')}`));
     initial.models.cheap!.model = 'changed';
     const resolve = (training: unknown) => resolveDataset(parseDatasetYaml(stringify(dataset(training))), {
       registry: { judges: trainingJudgeVersions(validateTrainingConfiguration(training)) },

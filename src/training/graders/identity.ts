@@ -1,3 +1,4 @@
+import { LABELS_DIGEST_SCHEMA } from '../contracts/index.js';
 import { compatibleWireLiteral } from '../contracts/index.js';
 import { z } from 'zod';
 import { teacherAccuracyFailures } from './calibration/index.js';
@@ -77,7 +78,7 @@ export function createCalibrationIdentity(grader: Grader, supplied: Omit<Calibra
   });
 }
 
-export function goldenIdentity(labels: Labels): string { return stableDigest(labels); }
+export function goldenIdentity(labels: Labels): string { return stableDigest({ ...labels, schema: LABELS_DIGEST_SCHEMA }); }
 
 export interface CalibrationCheck {
   ok: boolean;

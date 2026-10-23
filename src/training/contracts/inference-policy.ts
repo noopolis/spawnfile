@@ -1,13 +1,8 @@
+import { INFERENCE_POLICY_VERSIONS } from '../../shared/trainingLegacy/index.js';
 import type { TrainingConfiguration, TrainingModel, TrainingRoute } from './training-config.js';
 
 /** Versions describe maintained invocation policy, not model/account or ambient profile contents. */
-const policies: Readonly<Record<TrainingModel['provider'], string>> = Object.freeze({
-  'grok-subscription': 'spawnfile.training.grok-attested-response.v3',
-  'grok-broker': 'spawnfile.training.grok-broker-grant-response.v1',
-  'claude-subscription': 'spawnfile.training.claude-attested-response.v3',
-  'codex-subscription': 'spawnfile.training.codex-contained-response.v1',
-  ollama: 'spawnfile.training.ollama-attested-response.v2',
-});
+const policies: Readonly<Record<TrainingModel['provider'], string>> = INFERENCE_POLICY_VERSIONS;
 
 /** Preserve route order and include every declared fallback, whether invoked or not. */
 export function trainingRoutePolicies(configuration: TrainingConfiguration, route: TrainingRoute, executionIdentity?: string) {

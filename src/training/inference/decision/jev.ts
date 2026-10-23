@@ -1,3 +1,4 @@
+import { JEV_IDENTITY_KEY, JEV_IDENTITY_LONG_KEY, JEV_CANARY_MARKER, JEV_CANARY_QUESTION } from '../../contracts/index.js';
 import { GRADER_CACHE_PROMPT_DOMAIN } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import type { DecisionBackend, DecisionIdentity, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
@@ -120,11 +121,11 @@ function declaredRevisions(response: JevEnvelope): Record<string, string> {
 /** Keep both payloads deterministic; the long state exposes input-size preparation. */
 function identityCanaries(): DecisionRequest[] {
   return [
-    { key: 'training_identity', type: 'yes-no', optionLabels: ['yes', 'no'],
+    { key: JEV_IDENTITY_KEY, type: 'yes-no', optionLabels: ['yes', 'no'],
       instructions: 'Is the supplied JSON object empty?', projection: {} },
-    { key: 'training_identity_long', type: 'yes-no', optionLabels: ['yes', 'no'],
-      instructions: 'Does the supplied text end with SPAWNFILE_TRAINING_CANARY_END?',
-      projection: { text: `${'0123456789 abcdefghijklmnopqrstuvwxyz. '.repeat(1100).slice(0, 39_982)}SPAWNFILE_TRAINING_CANARY_END` } },
+    { key: JEV_IDENTITY_LONG_KEY, type: 'yes-no', optionLabels: ['yes', 'no'],
+      instructions: JEV_CANARY_QUESTION,
+      projection: { text: `${'0123456789 abcdefghijklmnopqrstuvwxyz. '.repeat(1100).slice(0, 39_982)}${JEV_CANARY_MARKER}` } },
   ];
 }
 

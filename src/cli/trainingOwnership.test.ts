@@ -16,6 +16,7 @@ const legacyPaths = new Set([
   'src/shared/trainingLegacy/trainingLegacyHashDomains.ts',
   'src/training/cli/grader/atomic/legacy-checkpoints.test.ts',
   'src/training/evaluation/semantic/evidence-rubric.test.ts',
+  'src/training/cli/training/legacy-identities.test.ts',
   'src/training/cli/grader/cache-exclusions.test.ts',
   'src/shared/trainingLegacy/trainingLegacyWire.ts',
   'src/shared/trainingLegacy/trainingLegacyWireAliases.json',

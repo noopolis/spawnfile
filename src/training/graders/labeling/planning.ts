@@ -1,9 +1,10 @@
+import { LABEL_PROMPT_VERSION, ADJUDICATION_SEED } from '../../contracts/index.js';
 import { parseDocument } from 'yaml';
 import { questionDefinitionDigest, allQuestions, optionsFor, stableDigest, type Grader, type DecisionQuestion, type Labels, type Label, type Option } from '../format/index.js';
 import { expandInstances, type QuestionInstance } from '../instances.js';
 import { deriveConsensus } from '../consensus.js';
 
-export const labelPromptVersion = 'spawnfile.training.grader-label-prompt.v1';
+export const labelPromptVersion = LABEL_PROMPT_VERSION;
 export interface LabelGroup {
   projection: Record<string, unknown>;
   projectionDigest: string;
@@ -64,7 +65,7 @@ export function teacherPolicyDigest(teacher: Grader['teachers'][number]): string
 }
 
 export interface AdjudicationRow { label: string; lineage: string; instance: string; answer: Option | null; disputed: boolean; votes: Record<string, Option>; output: Labels['labels'][number]['output']; context: Labels['labels'][number]['context'] }
-export function adjudicationRows(labels: Labels, count: number, seed = 'spawnfile.training.adjudication.v1'): AdjudicationRow[] {
+export function adjudicationRows(labels: Labels, count: number, seed: string = ADJUDICATION_SEED): AdjudicationRow[] {
   const rows = labels.labels.flatMap(label => Object.entries(deriveConsensus(label, labels.labelers)).map(([instance, consensus]) => ({
     label: label.id, lineage: label.lineage, instance, answer: consensus.answer ?? null,
     disputed: consensus.disputed, votes: consensus.votes, output: label.output, context: label.context,

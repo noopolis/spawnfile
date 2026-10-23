@@ -1,3 +1,4 @@
+import { ADJUDICATION_SEED } from '../../contracts/index.js';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
@@ -143,7 +144,7 @@ export async function runLabel(options: LabelOptions, dependencies: LabelDepende
   if (options.adjudication !== undefined) {
     adjudicationFile = `${grader.golden}.adjudication.yaml`;
     await writeFile(adjudicationFile, stringify({ schema: 'spawnfile.training.grader-adjudication.v1', grader: grader.id,
-      seed: 'spawnfile.training.adjudication.v1', items: adjudicationRows(labels, options.adjudication) }), { mode: 0o600 });
+      seed: ADJUDICATION_SEED, items: adjudicationRows(labels, options.adjudication) }), { mode: 0o600 });
   }
   return { labelsFile: grader.golden, ...(adjudicationFile ? { adjudicationFile } : {}), ...counts, failures, stopped };
 }

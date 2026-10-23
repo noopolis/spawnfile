@@ -1,3 +1,4 @@
+import { LABELS_DIGEST_SCHEMA } from '../../contracts/index.js';
 import { checkTrainingFilename } from '../../platform/index.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import { readFile } from 'node:fs/promises';
@@ -92,7 +93,7 @@ export async function loadLabels(source: Grader['golden'], grader: Grader): Prom
     : parseLabels({ ...source, grader: source.grader ?? grader.id }, grader);
   const directory = typeof source === 'string' ? path.dirname(source) : sourceDirectory(grader);
   // Identity includes original content addresses, votes, asked set and provenance.
-  const goldenDigest = stableDigest(labels);
+  const goldenDigest = stableDigest({ ...labels, schema: LABELS_DIGEST_SCHEMA });
   const resolved = await Promise.all(labels.labels.map(async label => ({
     ...label,
     output: await resolveValue(label.output, directory, label.id),

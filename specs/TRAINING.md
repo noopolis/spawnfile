@@ -38,6 +38,30 @@ registry; no external training executable or package is installed or located.
 
 History: Paideia was renamed to Spawnfile training. Legacy wire IDs, environment variables and explicit dataset filenames remain readable; new values win over deprecated environment aliases, ambiguous filename pairs fail, and incompatible execution/bridge/image receipts require re-prepare. Original stored content hashes are verified before interpretation.
 
+Display and wire-name changes MUST NOT invalidate reusable measurement identities.
+The shared legacy module freezes judge/optimizer route prefixes, provider policies,
+checkpoint domains, candidate and golden-label hash schemas, scoring-policy versions,
+and grader/teacher/council prompt versions and default sampling seeds. Prompt versions
+and identity-canary bytes remain historical in actual model requests when their
+content or observed response participates in a recorded digest. Hash views replace
+only the owner's protocol discriminator; user text, evidence, source bytes and
+caller-selected seeds remain exact.
+
+Executable closure identities are intentionally different: the installed Python
+bridge binds its launcher, import paths, package metadata, alias resource and source
+bytes; optimizer host/Python checkpoints bind the corresponding full start envelope.
+The renamed bridge and DSPy envelope therefore require re-preparation before resume.
+Prepared images, native sandbox/broker projections, evaluator-route manifests and
+measurement-repair receipts bind actual executable paths, mount/deny lists and sealed
+bytes. Their changed closures require re-preparation; a historical hash domain cannot
+attest those changed bytes. Existing receipts MUST verify their original envelope
+before normalization and MUST fail with an explicit re-prepare instruction when
+closure compatibility is unavailable. Editing or renaming authored dataset, grader,
+label or template files changes their exact source identity and requires new
+preparation; merely reading unchanged historical files preserves their identities.
+New report/blob/envelope digests describe the bytes actually written and are not
+lookup keys for historical paid work.
+
 ## Authoring
 
 Teams (including the root organization) MAY declare `shared.training`; agents and

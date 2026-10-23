@@ -1,3 +1,4 @@
+import { COUNCIL_PROMPT_VERSION } from '../../contracts/index.js';
 import { expect, it, vi } from 'vitest';
 import type { InferenceProvider, InferenceRequest } from '../../contracts/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
@@ -125,7 +126,7 @@ it('drains in-flight teachers after a checkpoint failure and starts no more batc
 
 it('pins batch size and the v7 protocol and refuses v6 checkpoint reuse', async () => {
   const options = setup(1), result = await runCouncil(options);
-  expect(councilPromptVersion).toBe('spawnfile.training.council.v7');
+  expect(councilPromptVersion).toBe(COUNCIL_PROMPT_VERSION);
   await expect(runCouncil({ ...options, previous: result, batchSize: 1 })).rejects.toThrow('Stale');
   const identity = stableDigest({ version: 'spawnfile.training.council.v6', output: options.outputDigest,
     instances: options.instances, teachers: options.teachers, batchSize: 40, adjudicator: 'c', window: defaultGrokWindow,

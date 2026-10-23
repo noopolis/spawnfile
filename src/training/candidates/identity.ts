@@ -1,3 +1,4 @@
+import { CANDIDATE_DIGEST_SCHEMA } from '../contracts/index.js';
 import { createHash } from 'node:crypto';
 import type { CandidateManifest, CandidateResource } from './types.js';
 
@@ -17,7 +18,7 @@ export function policyIdentity(resources: CandidateResource[]): string {
 }
 export function candidateIdentity(candidate: Omit<CandidateManifest, 'id' | 'baselineId'>,
   baselineId?: string): string {
-  return digestBytes(canonicalCandidate({ ...candidate, ...(baselineId ? { baselineId } : {}) }));
+  return digestBytes(canonicalCandidate({ ...candidate, schema: CANDIDATE_DIGEST_SCHEMA, ...(baselineId ? { baselineId } : {}) }));
 }
 export function freezeCandidate<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
