@@ -1,4 +1,4 @@
-import { compatibleWireLiteral } from '../../../contracts/index.js';
+import { CHECK_TEMPLATES_DIGEST_SCHEMA, DECOMPOSITION_DIGEST_SCHEMA, compatibleWireLiteral } from '../../../contracts/index.js';
 import { readFile, mkdir, rename, writeFile, readdir } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -62,7 +62,7 @@ export async function readDecompositions(directory: string, templates: CheckTemp
     const inputs = { output: output.value, context: Object.fromEntries(context.map(([name, loaded]) => [name, loaded.value])) };
     const validated = validateDecomposition(doc, inputs, templates);
     if (validated.rejected.length) throw new Error(`Invalid decomposition spans: ${file}`);
-    return { file, doc, inputs, digest: stableDigest({ doc, templates }) };
+    return { file, doc, inputs, digest: stableDigest({ doc: { ...doc, schema: DECOMPOSITION_DIGEST_SCHEMA }, templates: { ...templates, schema: CHECK_TEMPLATES_DIGEST_SCHEMA } }) };
   }));
 }
 export async function workers<T>(items: T[], concurrency: number, work: (item: T) => Promise<void>, signal?: AbortSignal) {
@@ -76,4 +76,9 @@ export async function workers<T>(items: T[], concurrency: number, work: (item: T
   }));
   const error = results.find(result => result.status === 'rejected');
   if (error?.status === 'rejected') throw error.reason;
+}
+
+/** Schema spelling is frozen in content identities, independently of wire output. */
+export function templatesDigest(templates: CheckTemplates): string {
+  return stableDigest({ ...templates, schema: CHECK_TEMPLATES_DIGEST_SCHEMA });
 }

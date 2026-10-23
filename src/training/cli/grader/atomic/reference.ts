@@ -7,7 +7,7 @@ import { runCouncil, referenceQuality, type CouncilOutput, type TrapAssessment }
 import type { GraderDependencies } from '../backend.js';
 import { createGraderTeacher } from '../label-call.js';
 import { selectTeachers } from './decompose.js';
-import { atomicWrite, readDecompositions, readOptional, readTemplates, workers } from './files.js';
+import { templatesDigest, atomicWrite, readDecompositions, readOptional, readTemplates, workers } from './files.js';
 
 export interface ReferenceOptions {
   templatesFile: string; decompositions: string; traps?: string; teachers: string[];
@@ -82,7 +82,7 @@ export async function runReference(options: ReferenceOptions, dependencies: Grad
   const quality = referenceQuality(baseOutputs, assessments, { outputIds: inputs.map(input => input.file),
     rejectedUnits: inputs.reduce((sum, input) => sum + (input.doc.rejected?.length ?? 0), 0),
     variantOutputs: Object.entries(sorted).filter(([key]) => !baseKeys.has(key)).map(([, output]) => output) });
-  const artifact = { schema: 'spawnfile.training.references.v1', templatesDigest: stableDigest(templates), outputs: sorted, quality };
+  const artifact = { schema: 'spawnfile.training.references.v1', templatesDigest: templatesDigest(templates), outputs: sorted, quality };
   await atomicWrite(options.out, { ...artifact, digest: stableDigest(artifact) });
   const reportFile = `${options.out}.md`;
   await atomicWrite(reportFile, referenceReport(artifact));

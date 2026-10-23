@@ -1,7 +1,8 @@
+import { GRADER_CACHE_PROMPT_DOMAIN } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import type { DecisionBackend, DecisionIdentity, DecisionRequest, DecisionResult } from '../../contracts/grading.js';
 import { decisionHttp, DecisionRequestRejected, type DecisionHttpOptions } from './http.js';
-import { DECISION_PROMPT_VERSION, validateDecisionRequest } from './prompt.js';
+import { validateDecisionRequest } from './prompt.js';
 
 type JevEnvelope = { model?: unknown; fingerprint?: unknown; system_fingerprint?: unknown; answers?: Record<string, { probabilities?: unknown }> };
 
@@ -62,7 +63,7 @@ export function createJevDecision(options: DecisionHttpOptions): DecisionBackend
       }
     }
     if (!accepted) throw rejection!;
-    const fingerprint = createHash('sha256').update(JSON.stringify({ protocol: DECISION_PROMPT_VERSION,
+    const fingerprint = createHash('sha256').update(JSON.stringify({ protocol: GRADER_CACHE_PROMPT_DOMAIN,
       model: reportedModel, outcomes })).digest('hex');
     return { backend: 'jev-http', model: reportedModel!, fingerprint };
   }

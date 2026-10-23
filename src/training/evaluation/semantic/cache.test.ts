@@ -35,3 +35,8 @@ it('invalidates independently on policy, protocol, rendered input or threshold c
   expect(judgmentCacheKey(base[0], base[1], 'other', base[3])).not.toBe(key);
   expect(judgmentCacheKey(base[0], base[1], base[2], 0.9)).not.toBe(key);
 });
+
+it('retains the pre-rename judgment cache key (origin/main)', () => {
+  expect(judgmentCacheKey('policy', 'system', 'prompt', 0.8, 'scope'))
+    .toBe('sha256:76705ea9c8418792f3f1a2d493170050ac6a15cffce563d5445fe0d7fb0069eb');
+});

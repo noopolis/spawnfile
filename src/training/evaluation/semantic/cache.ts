@@ -1,3 +1,4 @@
+import { JUDGMENT_CACHE_DOMAIN } from '../../contracts/index.js';
 import { createHash } from 'node:crypto';
 import type { CachedJudgment, JudgeCache } from '../../contracts/evaluation.js';
 
@@ -35,5 +36,5 @@ export function createJudgeCache({ maxEntries }: { maxEntries: number }): Omit<J
 }
 
 export function judgmentCacheKey(identity: string, system: string, prompt: string, minimum: number, scope = ''): string {
-  return `sha256:${createHash('sha256').update(JSON.stringify(['spawnfile.training.judgment-cache.v3', scope, identity, system, prompt, minimum])).digest('hex')}`;
+  return `sha256:${createHash('sha256').update(JSON.stringify([JUDGMENT_CACHE_DOMAIN, scope, identity, system, prompt, minimum])).digest('hex')}`;
 }

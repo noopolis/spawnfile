@@ -1,3 +1,4 @@
+import { EXTRACTION_CHECKPOINT_DOMAIN } from '../../../contracts/index.js';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { InferenceFailure } from '../../../inference/index.js';
@@ -122,7 +123,7 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
   let completed = 0, resumed = 0, rejected = 0, dropped = 0, duplicates = 0;
   for (const input of inputs) {
     options.signal?.throwIfAborted();
-    const identity = stableDigest({ refs: input.refs, templates: extraction, teachers, protocol: 'spawnfile.training.extraction.v9' });
+    const identity = stableDigest({ refs: input.refs, templates: extraction, teachers, protocol: EXTRACTION_CHECKPOINT_DOMAIN });
     const basename = stableDigest(input.id);
     const checkpointFile = join(options.out, `${basename}.checkpoint.json`);
     const decompositionFile = join(options.out, `${basename}.decomposition.json`);
@@ -131,8 +132,10 @@ export async function runDecompose(options: DecomposeOptions, dependencies: Grad
       const { digest, ...content } = checkpoint;
       if (digest !== stableDigest(content)) throw new Error(`Corrupt decomposition checkpoint: ${input.id}`);
       if (checkpoint.decomposition) {
-        const checked = validateDecomposition(parseDecomposition(checkpoint.decomposition), input, templates);
+        const parsed = parseDecomposition(checkpoint.decomposition);
+        const checked = validateDecomposition(parsed, input, templates);
         if (checked.rejected.length) throw new Error(`Invalid decomposition checkpoint: ${input.id}`);
+        checkpoint.decomposition = parsed;
       }
     }
     if (checkpoint && checkpoint.identity !== identity) throw new Error(`Stale decomposition checkpoint: ${input.id}`);

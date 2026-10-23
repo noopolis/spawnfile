@@ -13,3 +13,4 @@ export type { AtomicFeedback } from './atomic-feedback.js';
 export type { TrialSlot } from "./trial-slot.js";
 
 export { legacyWireAliases, canonicalWireId, compatibleWireLiteral, wireIdMatches, hasLegacyTrainingDistribution } from '../../shared/index.js';
+export { EXTRACTION_CHECKPOINT_DOMAIN, TRAP_CHECKPOINT_DOMAIN, JUDGMENT_CACHE_DOMAIN, GRADER_CACHE_PROMPT_DOMAIN, GRADER_CACHE_LEGACY_DIRECTORY, DECOMPOSITION_DIGEST_SCHEMA, CHECK_TEMPLATES_DIGEST_SCHEMA } from '../../shared/index.js';
