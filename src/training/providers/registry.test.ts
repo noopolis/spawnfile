@@ -28,7 +28,7 @@ const config = { models: { local: { provider: 'registered', model: 'registered-m
 
 it('uses an externally registered validator, identity default, policy and factory throughout the core', async () => {
   const { registry, create, validate, close } = registration();
-  expect(() => validateTrainingConfiguration(config)).toThrow('unsupported provider');
+  expect(() => validateTrainingConfiguration(config)).toThrow(expect.objectContaining({ message: '$.training.models.local.provider: expected one of claude-subscription, ollama' }));
   const parsed = parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: registry
 training: ${JSON.stringify(config)}
@@ -51,6 +51,14 @@ records: [{id: one, input: {prompt: Write.}}]
   expect(close).toHaveBeenCalledOnce();
   const changed = structuredClone(config); changed.models.local.model = 'rejected';
   expect(() => validateTrainingConfiguration(changed, '$.training', registry)).toThrow('registration rejected');
+});
+
+it('lists only injected provider ids in registration order for invalid authored providers', () => {
+  const { registry } = registration();
+  const descriptor = registry.providers.registered!;
+  const injected = { ...registry, providers: { second: descriptor, first: descriptor } };
+  expect(() => validateTrainingConfiguration(config, '$.training', injected))
+    .toThrow(expect.objectContaining({ message: '$.training.models.local.provider: expected one of second, first' }));
 });
 
 it('resolves omitted routes and legacy identity from the selected registry default', async () => {

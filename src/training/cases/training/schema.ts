@@ -17,10 +17,9 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
     const location = `${path}.models.${name}`;
     string(name, location);
     const model = object(value, location);
-    const providerId = string(model.provider, `${location}.provider`);
-    const descriptor = Object.hasOwn(registry.providers, providerId) ? registry.providers[providerId] : undefined;
-    if (!descriptor) fail(`${location}.provider`, `unsupported provider ${providerId}`);
-    descriptor.validate(model, location);
+    fields(model, ['provider', 'model', 'endpoint', 'reasoning_effort', 'think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'], location);
+    oneOf(model.provider, Object.keys(registry.providers), `${location}.provider`);
+    registry.providers[model.provider as string]!.validate(model, location);
   }
   function route(value: unknown, location: string, judge = false): void {
     const policy = object(value, location);

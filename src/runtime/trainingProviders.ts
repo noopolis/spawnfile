@@ -65,7 +65,9 @@ export function createTrainingProviderRegistry(dependencies: Pick<CliDependencie
     },
   };
   return { ...defaultInferenceProviders, brokerAdmissionLabel: 'grok-broker',
-    providers: { ...defaultInferenceProviders.providers, ollama: {
+    // Registration order preserves the historical authored-provider diagnostic.
+    providers: { 'claude-subscription': { ...defaultInferenceProviders.providers['claude-subscription']!, validate: (model, path) => validate(model, path, 'none') },
+      'codex-subscription': codex, 'grok-subscription': grok, 'grok-broker': broker, ollama: {
       ...defaultInferenceProviders.providers.ollama!,
       validate(model, path) {
         // Preserve the historical host-composed configuration diagnostic outside the neutral core.
@@ -77,5 +79,5 @@ export function createTrainingProviderRegistry(dependencies: Pick<CliDependencie
         }
         defaultInferenceProviders.providers.ollama!.validate(model, path);
       },
-    }, 'claude-subscription': { ...defaultInferenceProviders.providers['claude-subscription']!, validate: (model, path) => validate(model, path, 'none') }, 'codex-subscription': codex, 'grok-subscription': grok, 'grok-broker': broker } };
+    } } };
 }

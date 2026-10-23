@@ -18,6 +18,19 @@ const dataset = (training?: unknown) => ({ schema: 'spawnfile.training.dataset.v
   records: [{ id: 'one', input: { prompt: 'Write.' } }] });
 
 describe('dataset-authored training configuration', () => {
+  it.each([
+    ['unknown id', { provider: 'foo', model: 'chosen' }],
+    ['empty id', { provider: '', model: 'chosen' }],
+    ['missing id', { model: 'chosen' }],
+  ])('preserves the exact invalid-provider diagnostic for %s', (_name, model) => {
+    expect(() => validateTrainingConfiguration({ models: { one: model } })).toThrow(expect.objectContaining({ message:
+      '$.training.models.one.provider: expected one of claude-subscription, codex-subscription, grok-subscription, grok-broker, ollama' }));
+  });
+  it.each(['foo', '', undefined])('reports unknown fields before invalid provider %s', provider => {
+    expect(() => validateTrainingConfiguration({ models: { one: { provider, bogus: 1 } } }))
+      .toThrow(expect.objectContaining({ message: '$.training.models.one.bogus: unknown field' }));
+  });
+
   it('accepts Codex subscription models for YAML judges and optimizer routes', () => {
     const training = { models: { codex: { provider: 'codex-subscription', model: 'chosen' } },
       judges: { prose: { model: 'codex' } }, optimizer: { model: 'codex' } };
