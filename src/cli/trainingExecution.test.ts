@@ -138,7 +138,7 @@ it.each(['{}', 'null', '[]', '{"schema":"wrong","modelCallsMade":0}',
 it("accepts a receipt split across writes without a trailing newline", async () => {
   const stdout = vi.fn(), stderr = vi.fn();
   core.mockImplementation(async (_argv, io) => {
-    io.stdout('diagnostic\n{"schema":"training.training-');
+    io.stdout('diagnostic\n{"schema":"spawnfile.training.training-');
     io.stdout('cost-plan.v1","modelCallsMade":0}');
     io.stderr('partial '); io.stderr('diagnostic\nlast diagnostic');
     return 0;

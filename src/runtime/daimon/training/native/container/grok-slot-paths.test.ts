@@ -24,7 +24,7 @@ async function slotFixture(workerConfigVariant: 'unclocked' | 'clocked' = 'unclo
     workspace: join(slot, 'workspace'), runtimeHome: join(slot, 'runtime-home'), state: join(slot, 'state'),
     acceptance: join(slot, 'state/wake-acceptance'), turns: join(slot, 'turns'), usage: join(slot, 'usage'),
     runRoot: join(root, 'run/training/output'), sealed: join(root, 'run/training/inputs'),
-    grants: join(root, 'run/training/grants'), controls: join(root, 'run/training'),
+    grants: join(root, 'run/training/grants'), controls: join(root, 'run/spawnfile-training'),
     worker: join(root, 'opt/training/native'),
   };
   for (const path of Object.values(paths)) await mkdir(path, { recursive: true, mode: 0o700 });

@@ -82,7 +82,7 @@ describe('nativeTrialInputsRoot', () => {
     const a = nativeTrialInputsRoot(subject, 'trial-a');
     expect(a).toMatch(new RegExp(`^${grokContextRoot}/trials/trial-[a-f0-9]{32}$`, 'u'));
     expect(nativeTrialInputsRoot(subject, 'trial-b')).not.toBe(a);
-    expect(nativeTrialInputsRoot(subject, '../../escape')).toMatch(/^\/run\/training\/trials\/trial-[a-f0-9]{32}$/u);
+    expect(nativeTrialInputsRoot(subject, '../../escape')).toMatch(/^\/run\/spawnfile-training\/trials\/trial-[a-f0-9]{32}$/u);
     const launchLike = { agent: subject.agent, controlRoot: subject.roots.control } as Parameters<typeof nativeTrialArtifactsRoot>[0];
     expect(nativeTrialArtifactsRoot(launchLike, 'trial-a').startsWith(`${grokSlotRoot}/state/training-trials/`)).toBe(true);
   });

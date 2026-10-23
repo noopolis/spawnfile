@@ -22,6 +22,11 @@ const emitMemoryPackage = async (directory: string): Promise<void> => {
     const relative = path.relative(sourceRoot, source);
     if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error(`Unexpected package source ${source}`);
     const output = path.join(directory, "dist", relative.replace(/\.ts$/u, ".js"));
+    if (path.extname(source) === ".json") {
+      await mkdir(path.dirname(output), { recursive: true });
+      await cp(source, output);
+      return;
+    }
     const { outputText } = transpileModule(await readFile(source, "utf8"), {
       fileName: source, compilerOptions: { module: ModuleKind.ESNext, target: ScriptTarget.ES2023 }
     });
