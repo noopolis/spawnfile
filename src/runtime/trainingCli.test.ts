@@ -14,6 +14,16 @@ describe('executable command entry', () => {
     await import('./trainingCli.js');
     expect(launch).not.toHaveBeenCalled();
   });
+  it('imports safely from a stdin host whose argv entry is not a file', async () => {
+    const url = new URL('./trainingCli.ts', import.meta.url).href;
+    const lines: string[] = [];
+    const result = await runProcess({ command: process.execPath,
+      args: ['--import', 'tsx', '--input-type=module', '-'], cwd: process.cwd(), env: { PATH: process.env.PATH },
+      stdin: `await import(${JSON.stringify(url)}); console.log("import-safe");`, timeoutMs: 10000,
+      onLine: line => { lines.push(line); } }).completion;
+    expect(result.exitCode).toBe(0);
+    expect(lines).toEqual(['import-safe']);
+  });
   it('runs the actual CLI process against real files and verifies positive output and malformed-input failure', async () => {
     const fixture = await cliFixture(); roots.push(fixture.root);
     const cli = resolve('src/runtime/trainingCli.ts');

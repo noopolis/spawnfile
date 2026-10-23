@@ -12,7 +12,12 @@ export async function launch(argv = process.argv.slice(2), dependencies: CliDepe
   await launchTraining(argv, await trainingDependencies(dependencies));
 }
 
-// Importing the host composition must not launch a second CLI or install signal handlers.
-if (process.argv[1] && pathToFileURL(realpathSync(resolve(process.argv[1]))).href === import.meta.url) {
-  await launch();
+// Stdin and embedding hosts may set argv[1] to a label rather than an existing file.
+function isExecutableEntry(): boolean {
+  try {
+    return Boolean(process.argv[1] && pathToFileURL(realpathSync(resolve(process.argv[1]))).href === import.meta.url);
+  } catch { return false; }
 }
+
+// Importing the host composition must not launch a second CLI or install signal handlers.
+if (isExecutableEntry()) await launch();
