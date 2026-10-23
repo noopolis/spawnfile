@@ -1,3 +1,4 @@
+import '../../../fixtures/support/training/graderProviders.js';
 import { parseGrader, createCalibrationIdentity, decisionBackendIdentity, type GradingRuntime } from '../graders/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createEvaluationRegistry, createJudgeCache, evaluatePlan, result } from './index.js';
