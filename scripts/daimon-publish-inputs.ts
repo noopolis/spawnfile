@@ -14,6 +14,7 @@ type AgyPlatformPin = {
 export type DaimonPublishInputs = {
   agy: { platforms: Partial<Record<DaimonPublishArchitecture, AgyPlatformPin>>; version: string };
   codex: { executable_sha256: string; version: string };
+  contract_manifest_sha256?: string;
   daimon: { commit: string; package_version: string; source: string };
   image: string;
   platforms: DaimonPublishArchitecture[];
@@ -77,7 +78,8 @@ const httpsUrl = (value: unknown, label: string): string => {
 
 /** Validates the checked-in publish inputs; every pin is explicit, nothing floats. */
 export const parseDaimonPublishInputs = (raw: unknown): DaimonPublishInputs => {
-  const root = exactKeys(raw, ["agy", "codex", "daimon", "image", "platforms", "registry", "version"], "publish inputs");
+  const manifestKeys = isRecord(raw) && "contract_manifest_sha256" in raw ? ["contract_manifest_sha256"] : [];
+  const root = exactKeys(raw, ["agy", "codex", "daimon", "image", "platforms", "registry", "version", ...manifestKeys], "publish inputs");
   if (root.version !== "spawnfile.daimon-runtime-publish-inputs.v1") throw new Error("publish inputs version is unsupported");
   const platforms = root.platforms;
   if (!Array.isArray(platforms) || platforms.length === 0 || new Set(platforms).size !== platforms.length ||
@@ -103,6 +105,7 @@ export const parseDaimonPublishInputs = (raw: unknown): DaimonPublishInputs => {
       executable_sha256: matching(codex.executable_sha256, SHA256, "codex.executable_sha256"),
       version: matching(codex.version, VERSION, "codex.version")
     },
+    ...(manifestKeys.length ? { contract_manifest_sha256: matching(root.contract_manifest_sha256, SHA256, "contract_manifest_sha256") } : {}),
     daimon: {
       commit: matching(daimon.commit, COMMIT, "daimon.commit"),
       package_version: matching(daimon.package_version, VERSION, "daimon.package_version"),
@@ -114,6 +117,10 @@ export const parseDaimonPublishInputs = (raw: unknown): DaimonPublishInputs => {
     version: "spawnfile.daimon-runtime-publish-inputs.v1"
   };
 };
+
+/** Publication may precede the compiler/runtime re-pin; legacy inputs use the vendored digest. */
+export const resolvePublishManifestSha256 = (inputs: DaimonPublishInputs, vendoredDigest: string): string =>
+  inputs.contract_manifest_sha256 ?? vendoredDigest;
 
 /** One tag per pinned Daimon commit: `<package version>-<short commit>`, never `latest`. */
 export const resolvePublishedTag = (inputs: DaimonPublishInputs): string =>

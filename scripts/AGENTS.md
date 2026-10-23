@@ -47,11 +47,12 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
 - `publish-daimon-runtime.ts` is the CI publication path. It reads only the
   checked-in `runtime-images/daimon/publish-inputs.json` (full Daimon commit,
   per-architecture AGY pins, Codex pin; Grok comes from the vendored manifest),
-  refuses a packed manifest that differs from the vendored contract, and never
+  refuses a packed manifest that differs from the explicit publication
+  `contract_manifest_sha256` (or vendored contract for legacy inputs), and never
   moves an existing tag. Its receipts carry `mode: "ci-published"` provenance.
-  Re-vendoring the contract manifest must bump `daimon.commit` to the vendored
-  Daimon commit in the same change; the `runtime-images` PR dry run fails
-  otherwise.
+  A publication may precede the compiler/runtime re-pin by setting the explicit
+  manifest digest alongside `daimon.commit`; the Dockerfile still validates
+  contract semantics and every engine artifact pin.
   The published identity is pinned into `runtimes.yaml` by a reviewed PR, never
   written by the script.
 - Clean Git remains the default source mode. Explicit Daimon archive mode

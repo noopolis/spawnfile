@@ -389,8 +389,10 @@ test("Dockerfile contract validation accepts the vendored manifest and labels ea
   try {
     const run = (file: string): number | null => spawnSync(process.execPath, ["-e", code, file]).status;
     assert.equal(run(fileURLToPath(manifest)), 0, "Dockerfile rejects the pinned contract");
-    for (const [before, after] of [['"version":"noopolis.daimon.runtime-contract-manifest.v5"', '"version":"noopolis.daimon.runtime-contract-manifest.v3"'], ['"terminalReceiptHorizon":2048', '"terminalReceiptHorizon":0']]) {
-      writeFileSync(path.join(root, "invalid.json"), readFileSync(manifest, "utf8").replace(before!, after!));
+    for (const [before, after] of [['"version":"noopolis.daimon.runtime-contract-manifest.v6"', '"version":"noopolis.daimon.runtime-contract-manifest.v3"'], ['"terminalReceiptHorizon":2048', '"terminalReceiptHorizon":0']]) {
+      const source = readFileSync(manifest, "utf8");
+      assert.ok(source.includes(before!), `mutation target missing: ${before}`);
+      writeFileSync(path.join(root, "invalid.json"), source.replace(before!, after!));
       assert.equal(run(path.join(root, "invalid.json")), 1, `invalid contract must fail: ${after}`);
     }
     const lines = dockerfile.slice(dockerfile.indexOf("FROM daimon_${DAIMON_DEPENDENCY_MODE} AS build")).split("\n");

@@ -70,7 +70,7 @@ samples). The manifest also pins Grok CLI 1.0.34 (URL + sha256 per
 architecture), which the runtime image, the local builder, and generated
 organization images all verify.
 
-Manifest v5 carries a separate clocked config matrix, slot-routed control protocol v4
+The consumed v6 manifest carries engine descriptors, a separate clocked config matrix, slot-routed control protocol v4
 and projection v3. Training explicitly selects `clocked`; the default production
 matrix is byte-identical. Re-vendoring changes the whole-manifest authority:
 the old published pin must fail compilation until publication and re-pinning,
@@ -224,8 +224,9 @@ structural JSON Schema; `engineDescriptorSchema.ts` validates descriptors and
 their cross-field relationships. v5 uses the generated
 `engine-descriptors.json`/`.sha256` and `engineDescriptors.generated.ts`, produced
 by `scripts/generate-daimon-engine-descriptors.ts` from static Git objects at the
-registry's exact pin; CI reproduces them. v6 carries those descriptors directly
-in `engines`. Engine selection follows capabilities and staging roles, while
+registry's exact pin; CI reproduces them. Keep this mirror for v5 compatibility
+and the literal broker/realm ABI types and schemas. The active v6 inventory
+comes directly from `engines` in the manifest. Engine selection follows capabilities and staging roles, while
 omission defaults, historical wire identities and compiler admission stay local
 policy. Training providers own subscription transport and engine-broker grants;
 training/services owns durable slot freshness. Presence in the runtime inventory
