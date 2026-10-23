@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../../inference/safe-diagnostic.js';
 import '../../../../fixtures/support/training/graderProviders.js';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { DecisionBackend } from '../../contracts/grading.js';
@@ -70,15 +71,19 @@ it('constructs the explicitly declared TypeSafe paid route only', () => {
 });
 
 it('keeps the missing-key refusal visible through named backend construction', () => {
-  vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new Error('TypeSafe requires TYPESAFE_API_KEY'); });
+  vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new SafeDiagnosticError('TypeSafe requires TYPESAFE_API_KEY'); });
   expect(() => graderBackends(grader({ backend: 'typesafe', name: 'jev-1.13.0' }))).toThrow('TypeSafe requires TYPESAFE_API_KEY');
 });
 
 it('surfaces safe startup causes while withholding arbitrary provider diagnostics', () => {
-  for (const message of ['Invalid evaluator route policy', 'Invalid evaluator TypeSafe secret file']) {
-    vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new Error(message); });
+  for (const message of ['Invalid evaluator route policy', 'Invalid evaluator TypeSafe secret file', 'Unsupported budgeted provider', 'Reworded safe startup cause']) {
+    vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new SafeDiagnosticError(message); });
     expect(() => graderBackends(grader({ backend: 'typesafe', name: 'jev-1.13.0' }))).toThrow(message);
   }
-  vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw new Error('private-opaque-secret'); });
-  expect(() => graderBackends(grader({ backend: 'typesafe', name: 'jev-1.13.0' }))).toThrow('startup diagnostic withheld');
+  for (const cause of [new Error('private-opaque-secret'), new Error('Invalid evaluator route policy'),
+    { name: 'SafeDiagnosticError', message: 'private-opaque-secret' }]) {
+    vi.mocked(createTypeSafeDecision).mockImplementationOnce(() => { throw cause; });
+    const invoke = () => graderBackends(grader({ backend: 'typesafe', name: 'jev-1.13.0' }));
+    expect(invoke).toThrow('startup diagnostic withheld');
+  }
 });

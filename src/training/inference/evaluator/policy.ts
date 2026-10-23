@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../safe-diagnostic.js';
 import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
 import { defaultInferenceProviders } from '../../providers/index.js';
 import { trainingEnvironment } from '../../platform/index.js';
@@ -45,11 +46,14 @@ export function evaluatorPolicy(registry: InferenceProviderRegistry = defaultInf
       const purposes = dedicated?.purposes ?? descriptor?.capabilities.evaluatorPurposes;
       const budget = dedicated?.budget ?? descriptor?.capabilities.evaluatorBudget;
       if (!purposes?.includes(route.purpose) || !budget ||
-          (budget === 'usd') !== (route.maxSpendUsd !== undefined)) throw Error('Unsupported budgeted provider');
+          (budget === 'usd') !== (route.maxSpendUsd !== undefined)) throw new SafeDiagnosticError('Unsupported budgeted provider');
     }
     return policy;
   }
-  catch { throw Error('Invalid evaluator route policy'); }
+  catch (cause) {
+    if (cause instanceof SafeDiagnosticError) throw cause;
+    throw new SafeDiagnosticError('Invalid evaluator route policy');
+  }
 }
 export function evaluatorRoute(provider: string, purpose: EvaluatorPurpose, model: string, registry: InferenceProviderRegistry = defaultInferenceProviders) {
   const policy = evaluatorPolicy(registry);

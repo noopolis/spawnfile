@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../../inference/index.js';
 import type { InferenceProviderRegistry } from '../../contracts/index.js';
 import type { DecisionBackend, DecisionRequestReceipt, DecisionSpendBudget } from '../../contracts/grading.js';
 import type { InferenceProvider } from '../../contracts/execution.js';
@@ -39,8 +40,7 @@ export function graderBackends(grader: Grader, dependencies: GraderDependencies 
     try { return [model.id, graderBackend(graderForModel(grader, model), dependencies)]; }
     catch (cause) {
       // Only owner-authored static errors are safe; injected transports may echo credentials.
-      const safe = /^(?:TypeSafe requires (?:TYPESAFE_API_KEY|a pinned versioned model)|Invalid (?:evaluator route policy|evaluator TypeSafe secret file|TypeSafe endpoint|TypeSafe transport options|TypeSafe concurrency)|Capped TypeSafe evaluator requires the declared hosted endpoint)$/u;
-      const reason = cause instanceof Error && safe.test(cause.message) ? cause.message : 'startup diagnostic withheld';
+      const reason = cause instanceof SafeDiagnosticError ? cause.message : 'startup diagnostic withheld';
       throw new Error(`Decision model ${model.id}: ${reason}`, { cause });
     }
   }));

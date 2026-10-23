@@ -1,3 +1,4 @@
+import { SafeDiagnosticError } from '../safe-diagnostic.js';
 import { link, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -56,12 +57,20 @@ it('admits only exact explicitly budgeted purposes, providers and models; broker
 });
 
 it.each([
-  { ...extraction, maxRequests: 0 }, { ...extraction, maxSpendUsd: 1 }, { ...decisions, maxSpendUsd: undefined },
-  { ...decisions, purpose: 'proposals' }, { ...extraction, provider: 'typesafe' }, { ...extraction, model: '../secret' },
-  { ...extraction, arbitrary: true },
+  { ...extraction, maxRequests: 0 }, { ...extraction, model: '../secret' }, { ...extraction, arbitrary: true },
 ])('rejects malformed evaluator grant %j', async invalid => {
   const f = await fixture(); await writeFile(f.policy, JSON.stringify({ ...f.document, routes: [invalid] }));
   expect(evaluatorPolicy).toThrow('Invalid evaluator route policy');
+  expect(evaluatorPolicy).toThrow(SafeDiagnosticError);
+});
+
+it.each([
+  { ...extraction, maxSpendUsd: 1 }, { ...decisions, maxSpendUsd: undefined },
+  { ...decisions, purpose: 'proposals' }, { ...extraction, provider: 'typesafe' },
+])('preserves the specific safe cause for unsupported budgeted grant %j', async invalid => {
+  const f = await fixture(); await writeFile(f.policy, JSON.stringify({ ...f.document, routes: [invalid] }));
+  expect(evaluatorPolicy).toThrow('Unsupported budgeted provider');
+  expect(evaluatorPolicy).toThrow(SafeDiagnosticError);
 });
 
 it('rejects duplicate routes, missing/oversized/malformed policy and unsafe secret leaves without leaking bytes', async () => {
@@ -75,6 +84,7 @@ it('rejects duplicate routes, missing/oversized/malformed policy and unsafe secr
   expect(() => readProtectedFile(secret, 16384)).toThrow('Invalid evaluator leaf file'); await rm(alias);
   const linkPath = join(f.root, 'link'); await symlink(secret, linkPath);
   vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', linkPath); expect(typeSafeEvaluatorEnvironment).toThrow('Invalid evaluator TypeSafe secret file');
+  expect(typeSafeEvaluatorEnvironment).toThrow(SafeDiagnosticError);
   vi.stubEnv('SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE', secret);
   for (const bad of ['', 'PRIVATE\nMARKER', '\0PRIVATE']) { await writeFile(secret, bad); expect(typeSafeEvaluatorEnvironment).toThrow('Invalid evaluator TypeSafe secret file'); }
   await writeFile(secret, 'x'.repeat(16385)); expect(typeSafeEvaluatorEnvironment).toThrow('Invalid evaluator TypeSafe secret file');

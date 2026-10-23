@@ -6,3 +6,4 @@ export { validateInferenceSchema, validateInferenceResponse, validateInferenceSc
 export { captureInferenceDiagnostic } from './diagnostic.js';
 export { assertModelRequestAdmission } from './request-cap.js';
 export { budgetEvaluatorInference, typeSafeEvaluatorEnvironment } from './evaluator/index.js';
+export { SafeDiagnosticError } from './safe-diagnostic.js';
