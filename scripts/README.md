@@ -19,6 +19,7 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | `compile-explicit-test-mcp.ts` | `npm run compile:explicit-test-mcp` | Lower bounded test MCP declarations against a compiled report; build the CLI first |
 | `verify-training-image-modes.ts` | `npm run verify:training-image-modes -- --build-config <training.json>` | Build the staged-mode training image and a control with the old `chmod -R a+rX`, then fail on any mode/owner/type/link difference under `/opt/training` (incl. the bridge venv); Docker required, not run in CI |
 | `verify-package-closure.ts` | `npm run verify:package-closure` | Verify the packed CLI and runtime closure |
+| `training-public-exports.test.ts` | `npm run test:scripts`, CI | Pack and install the production package; verify integration values, declarations and a missing-export mutation |
 | `test-training-python.ts` | `npm run test:training-python`, CI | Run the real DSPy bridge pytest suite and enforce 90% lines and branches for every module and the total; install `src/training/dspy/requirements.lock` and the editable bridge in `src/training/dspy/.venv` first |
 | `product-state-volume-integration.test.ts` | `npm run test:product-state-volume`, CI | Test real volume preseed; Docker and host volume access required |
 | `source-provenance-bundle.integration.test.ts` | `npm run test:source-provenance-docker` | PR/main and publish workflows: real offline Daimon archive build and tamper rejection; Docker, Daimon checkout (`SPAWNFILE_TEST_DAIMON_SOURCE`), pinned Linux Grok CLI (`SPAWNFILE_GROK_CLI_FILE`) |

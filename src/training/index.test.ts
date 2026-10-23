@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createEvaluationRegistry, evaluatePlan, parseDatasetYaml, resolveDataset } from './index.js';
+import { createEvaluationRegistry, evaluatePlan, parseDatasetYaml, resolveDataset } from './public.js';
 import { evaluationContext, snapshot } from './testing/index.js';
 
 it('resolves and evaluates authored cases through the training public entry point', async () => {

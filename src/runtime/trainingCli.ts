@@ -6,6 +6,14 @@ import { launch as launchTraining, type CliDependencies } from '../training/cli/
 import { trainingDependencies } from './trainingSubjects.js';
 
 export { main } from './trainingSubjects.js';
+export { trainingDependencies } from './trainingSubjects.js';
+export { spawnfileEnvironment } from '../training/cli/index.js';
+export type {
+  CliExecutionIdentityContext, SpawnfileCliIntegration, SpawnfileTrainingContext,
+  TrainingMomentCase, TrainingMomentPreparation,
+} from '../training/cli/index.js';
+export { CliDatasets } from '../training/cli/datasets.js';
+export { createTrainingInference } from '../training/cli/training/index.js';
 
 /** Executable project integrations receive the same subject registry as host calls. */
 export async function launch(argv = process.argv.slice(2), dependencies: CliDependencies = {}): Promise<void> {
