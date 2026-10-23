@@ -145,8 +145,8 @@ it.each(['grok-subscription', 'claude-subscription'] as const)('misses persisten
   await evaluate(); await evaluate(); expect(generations).toBe(2);
   const original = providerPolicies.trainingRoutePolicies;
   let changed: 'grok-subscription' | 'claude-subscription' = 'grok-subscription';
-  vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((configuration, route) =>
-    original(configuration, route).map(value => value.provider === changed ? { ...value, policy: `${value.policy}:changed` } : value));
+  vi.spyOn(providerPolicies, 'trainingRoutePolicies').mockImplementation((...args) =>
+    original(...args).map(value => value.provider === changed ? { ...value, policy: `${value.policy}:changed` } : value));
   await evaluate(); await evaluate(); expect(generations).toBe(3);
   changed = 'claude-subscription';
   await evaluate(); await evaluate(); expect(generations).toBe(4);
