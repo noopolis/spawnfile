@@ -9,6 +9,7 @@ Spawnfile accepts `noopolis.daimon.runtime-contract-manifest.v5` and
 bytes, the SHA-256 sidecar, and the image capability receipt binding. Accepting
 v6 does not make a v5 image attest a new digest; publication and re-pinning
 remain required when Daimon starts emitting v6.
+The image recipe may accept newer manifest versions without republishing: the pinned image remains valid because verification binds its immutable image and capability-receipt digests, not current Dockerfile bytes.
 
 v6 retains every v5 section and adds `engines: { <id>: descriptor }`.
 `supportedEngineKinds` MUST equal the sorted descriptor keys; each key MUST
