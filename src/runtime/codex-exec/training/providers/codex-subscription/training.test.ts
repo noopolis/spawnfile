@@ -1,17 +1,17 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { TrainingConfiguration } from '../../contracts/index.js';
-import { runProcess, type ProcessOptions } from '../../platform/process/index.js';
-import { createCodexInference } from '../../../../fixtures/support/training/providers.js';
-import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
-import { createDspyGeneration } from '../../optimization/index.js';
+import type { TrainingConfiguration } from '../../../../../training/contracts/index.js';
+import { runProcess, type ProcessOptions } from '../../../../../training/index.js';
+import { createCodexInference } from '../../../../../../fixtures/support/training/providers.js';
+import { createTrainingInference } from '../../../../../../fixtures/support/training/providers.js';
+import { createDspyGeneration } from '../../../../../training/index.js';
 
-vi.mock('../../platform/process/index.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../platform/process/index.js')>();
+vi.mock('../../../../../training/index.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../../training/index.js')>();
   return { ...actual, runProcess: vi.fn() };
 });
-vi.mock('../../../../fixtures/support/training/providers.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../../fixtures/support/training/providers.js')>();
+vi.mock('./index.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('./index.js')>();
   return { ...actual, createCodexInference: vi.fn(actual.createCodexInference) };
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });

@@ -1,10 +1,10 @@
 import { expect, it, vi } from 'vitest';
-import { createGrokInference } from '../../../../fixtures/support/training/providers.js';
-import { parseDatasetYaml, trainingJudgeVersions } from '../../../../fixtures/support/training/providers.js';
-import { createTrainingInference } from '../../../../fixtures/support/training/providers.js';
+import { createGrokInference } from '../../../../../../fixtures/support/training/providers.js';
+import { parseDatasetYaml, trainingJudgeVersions } from '../../../../../../fixtures/support/training/providers.js';
+import { createTrainingInference } from '../../../../../../fixtures/support/training/providers.js';
 
-vi.mock('../../../../fixtures/support/training/providers.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../../fixtures/support/training/providers.js')>();
+vi.mock('./index.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('./index.js')>();
   return { ...actual, createGrokInference: vi.fn(actual.createGrokInference) };
 });
 
