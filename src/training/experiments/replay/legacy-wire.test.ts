@@ -42,7 +42,7 @@ it('accepts only supported legacy dataset versions and emits the canonical datas
     .toBe('spawnfile.training.dataset.v1');
   expect(() => dataset({ schema: 'paideia.dataset.v2', id: 'd', records: [] })).toThrow('$.schema');
 });
-it('verifies historical candidate identities in their original hash domain and refuses new legacy writes', () => {
+it('verifies historical candidate identities and derives only current-wire candidates', () => {
   const content = 'Original';
   const resources = [{ id: 'instructions', sourcePath: 'AGENTS.md', destinations: [{ kind: 'instructions' as const, path: 'AGENTS.md' }],
     edit: 'whole-file' as const, content, sourceContent: content, digest: digestBytes(content), sourceDigest: digestBytes(content) }];
@@ -51,8 +51,12 @@ it('verifies historical candidate identities in their original hash domain and r
   const candidate = { ...body, id, baselineId: id } as CandidateManifest;
   expect(() => validateCandidate(candidate)).not.toThrow();
   expect(candidate.schema).toBe('paideia.candidate.v1');
-  expect(() => deriveAuthoredCandidate(candidate, { 'AGENTS.md': 'New' })).toThrow('re-prepare');
-  expect(() => validateCandidate({ ...candidate, schema: 'spawnfile.training.candidate.v1' })).toThrow('identity mismatch');
+  const derived = deriveAuthoredCandidate(candidate, { 'AGENTS.md': 'New' });
+  expect(derived.schema).toBe('spawnfile.training.candidate.v1');
+  expect(derived.baselineId).toBe(id);
+  expect(() => validateCandidate(derived)).not.toThrow();
+  expect(() => validateCandidate({ ...candidate, schema: 'spawnfile.training.candidate.v1' })).not.toThrow();
+  expect(() => validateCandidate({ ...candidate, resources: [{ ...resources[0]!, content: 'Tampered' }] })).toThrow('digest mismatch');
 });
 
 it('routes legacy cost-only projections through planning and refuses them before trial execution', async () => {

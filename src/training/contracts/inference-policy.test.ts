@@ -10,19 +10,19 @@ const config: TrainingConfiguration = {
 };
 it('returns maintained policy versions in declared route order without model or host data', () => {
   expect(trainingRoutePolicies(config, config.judges!.z!)).toEqual([
-    { provider: 'grok-subscription', policy: 'spawnfile.training.grok-attested-response.v3' },
-    { provider: 'claude-subscription', policy: 'spawnfile.training.claude-attested-response.v3' },
+    { provider: 'grok-subscription', policy: 'paideia.grok-attested-response.v3' },
+    { provider: 'claude-subscription', policy: 'paideia.claude-attested-response.v3' },
   ]);
   const identities = trainingInferencePolicies(config);
   expect(Object.keys(identities.judges)).toEqual(['a', 'z']);
   expect(identities.optimizer.map(value => value.provider)).toEqual(['claude-subscription', 'grok-subscription']);
-  expect(identities.judges.a).toEqual([{ provider: 'ollama', policy: 'spawnfile.training.ollama-attested-response.v2' }]);
+  expect(identities.judges.a).toEqual([{ provider: 'ollama', policy: 'paideia.ollama-attested-response.v2' }]);
   identities.optimizer[0]!.policy = 'external mutation';
-  expect(trainingInferencePolicies(config).optimizer[0]!.policy).toBe('spawnfile.training.claude-attested-response.v3');
+  expect(trainingInferencePolicies(config).optimizer[0]!.policy).toBe('paideia.claude-attested-response.v3');
 });
 it('identifies legacy Claude execution without constructing a provider', () => {
   expect(trainingInferencePolicies()).toEqual({ judges: {}, optimizer: [
-    { provider: 'claude-subscription', policy: 'spawnfile.training.claude-attested-response.v3' },
+    { provider: 'claude-subscription', policy: 'paideia.claude-attested-response.v3' },
   ] });
   expect(trainingInferencePolicies({ models: config.models })).toEqual(trainingInferencePolicies());
 });
@@ -30,7 +30,7 @@ it('identifies legacy Claude execution without constructing a provider', () => {
 it('identifies the contained Codex subscription policy for optimizer and judge routes', () => {
   const codex: TrainingConfiguration = { models: { primary: { provider: 'codex-subscription', model: 'chosen' } },
     judges: { prose: { model: 'primary' } }, optimizer: { model: 'primary' } };
-  const policy = [{ provider: 'codex-subscription', policy: 'spawnfile.training.codex-contained-response.v1' }];
+  const policy = [{ provider: 'codex-subscription', policy: 'paideia.codex-contained-response.v1' }];
   expect(trainingInferencePolicies(codex)).toEqual({ judges: { prose: policy }, optimizer: policy });
 });
 
@@ -49,6 +49,6 @@ it('binds explicit execution to every primary, fallback and legacy policy withou
 it('versions broker-grant Grok separately from the desktop subscription policy', () => {
   const broker: TrainingConfiguration = { models: { grant: { provider: 'grok-broker', model: 'grok-4.6', reasoning_effort: 'low' }, desktop: { provider: 'grok-subscription', model: 'grok-4.6' } },
     judges: { j: { model: 'grant' } } };
-  expect(trainingRoutePolicies(broker, broker.judges!.j!)).toEqual([{ provider: 'grok-broker', policy: 'spawnfile.training.grok-broker-grant-response.v1' }]);
-  expect(trainingRoutePolicies(broker, { model: 'desktop' })[0]!.policy).not.toBe('spawnfile.training.grok-broker-grant-response.v1');
+  expect(trainingRoutePolicies(broker, broker.judges!.j!)).toEqual([{ provider: 'grok-broker', policy: 'paideia.grok-broker-grant-response.v1' }]);
+  expect(trainingRoutePolicies(broker, { model: 'desktop' })[0]!.policy).not.toBe('paideia.grok-broker-grant-response.v1');
 });
