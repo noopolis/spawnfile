@@ -53,6 +53,11 @@ test("PR/main runs the same offline source provenance gate and inputs as release
   }
   assert.equal(job.steps.find((step) => step.name === "Check out Daimon provenance fixture")?.with?.ref,
     "${{ steps.daimon-provenance.outputs.ref }}");
+  for (const candidate of [job, release.jobs.publish]) {
+    const resolve = candidate.steps.findIndex((step) => step.name === "Resolve exact Daimon provenance fixture revision");
+    const checkout = candidate.steps.findIndex((step) => step.name === "Check out Daimon provenance fixture");
+    assert.ok(resolve >= 0 && checkout > resolve, "resolve the pin before checkout, or an empty ref follows upstream HEAD");
+  }
   const gate = job.steps.findIndex((step) => step.run?.includes("npm run test:source-provenance-docker"));
   const build = job.steps.findIndex((step) => step.run?.includes("npm run build"));
   assert.ok(build >= 0 && gate > build, "the gate requires compiled materializer output");
