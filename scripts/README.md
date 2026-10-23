@@ -21,7 +21,7 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | `verify-package-closure.ts` | `npm run verify:package-closure` | Verify the packed CLI and runtime closure |
 | `test-training-python.ts` | `npm run test:training-python`, CI | Run the real DSPy bridge pytest suite and enforce 90% lines and branches for every module and the total; install `src/training/dspy/requirements.lock` and the editable bridge in `src/training/dspy/.venv` first |
 | `product-state-volume-integration.test.ts` | `npm run test:product-state-volume`, CI | Test real volume preseed; Docker and host volume access required |
-| `source-provenance-bundle.integration.test.ts` | `npm run test:source-provenance-docker` | Test the real offline Daimon archive build |
+| `source-provenance-bundle.integration.test.ts` | `npm run test:source-provenance-docker` | PR/main and publish workflows: real offline Daimon archive build and tamper rejection; Docker, Daimon checkout (`SPAWNFILE_TEST_DAIMON_SOURCE`), pinned Linux Grok CLI (`SPAWNFILE_GROK_CLI_FILE`) |
 | `moltnet-source-provenance.integration.test.ts` | `npm run test:moltnet-source-provenance-docker` | Test the real offline Moltnet archive build |
 
 `source-provenance-bundle.ts`, `native-helper-artifacts.ts`, and
