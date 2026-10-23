@@ -140,6 +140,7 @@ describe("spawnfile train --materialize", () => {
     expect(help).toContain("--materialize <example>");
     expect(help).toContain("--history <directory>");
     expect(help).not.toContain("--training-command");
+    expect(help).not.toContain("--paideia-command");
   });
 });
 
@@ -300,9 +301,19 @@ describe("spawnfile train", () => {
     expect(code).toBe(2); expect(forbidden).not.toHaveBeenCalled();
   });
 
+  it.each(["--paideia-command", "--training-command"])("rejects removed executable flag %s as unknown", async flag => {
+    const forbidden = vi.fn(async () => { throw Error("must not start"); });
+    const stderr: string[] = [];
+    expect(await runCli(["train", "/missing", ...base, flag, "/removed"], {
+      handlers: { runTraining: forbidden }, streams: { stdout() {}, stderr: value => stderr.push(value) }
+    })).toBe(2);
+    expect(stderr.join("\n")).toContain(`unknown option '${flag}'`);
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+
   it("rejects generic runtime/instruction overrides and missing required datasets", async () => {
     const forbidden = vi.fn(async () => { throw Error("must not start"); });
-    for (const args of [["train", ...base, "--training-command", "/removed"], ["train", ...base, "--runtime", "pi"], ["train", ...base, "--instructions", "prompt.md"], ["train", "--dry-run"]]) {
+    for (const args of [["train", ...base, "--paideia-command", "/removed"], ["train", ...base, "--training-command", "/removed"], ["train", ...base, "--runtime", "pi"], ["train", ...base, "--instructions", "prompt.md"], ["train", "--dry-run"]]) {
       expect(await runCli(args, { handlers: { runTraining: forbidden }, streams: { stdout: () => undefined, stderr: () => undefined } })).toBe(2);
     }
     expect(forbidden).not.toHaveBeenCalled();

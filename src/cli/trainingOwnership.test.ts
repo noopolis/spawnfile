@@ -12,6 +12,7 @@ const forbidden = /paideia/iu;
 // the single history note. No directory or blanket test exemptions.
 const legacyPaths = new Set([
   'src/cli/trainingOwnership.test.ts',
+  'src/cli/trainCommand.test.ts',
   'src/shared/trainingLegacy/trainingLegacyHashDomains.ts',
   'src/training/cli/grader/atomic/legacy-checkpoints.test.ts',
   'src/training/cli/grader/cache-exclusions.test.ts',
