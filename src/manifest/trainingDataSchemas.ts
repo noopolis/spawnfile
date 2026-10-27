@@ -1,3 +1,4 @@
+import { compatibleIsoDateTimeSchema } from '../shared/index.js';
 import { z } from "zod";
 
 import { memoryBankSchema } from "./memorySchemas.js";
@@ -14,7 +15,7 @@ const uniqueIds = (entries: Array<{ id: string }>, context: z.RefinementCtx): vo
   });
 };
 
-export const trainingInstantSchema = z.iso.datetime({ offset: true });
+export const trainingInstantSchema = compatibleIsoDateTimeSchema({ offset: true });
 
 export const trainingWakeSchema = z.object({
   surface: z.literal("moltnet"),

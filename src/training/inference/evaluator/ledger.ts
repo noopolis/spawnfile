@@ -1,3 +1,4 @@
+import { compatibleIsoDateTimeSchema } from '../../../shared/trainingLegacy/index.js';
 import type { InferenceProviderRegistry } from '../../contracts/inference-registry.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import { appendFileSync, constants, closeSync, fstatSync, fsyncSync, openSync, readFileSync } from 'node:fs';
@@ -7,7 +8,7 @@ import { evaluatorRoute, routeKey, type EvaluatorPurpose } from './policy.js';
 
 const receipt = z.object({ version: compatibleWireLiteral('spawnfile.training.evaluator-request.v1'), id: z.string().uuid(),
   policy: z.string().regex(/^[a-f0-9]{64}$/u), route: z.string(),
-  event: z.enum(['admitted', 'completed', 'failed']), at: z.string().datetime(),
+  event: z.enum(['admitted', 'completed', 'failed']), at: compatibleIsoDateTimeSchema(),
   reservedUsd: z.number().finite().nonnegative(), chargedUsd: z.number().finite().nonnegative(),
   inputTokens: z.number().int().nonnegative().nullable(), outputTokens: z.number().int().nonnegative().nullable(),
 }).strict();

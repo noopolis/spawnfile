@@ -63,7 +63,7 @@ test('cross-process ownership survives waiting cancellation and releases when th
   try {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('owner did not acquire')), 2000);
-      child.stdout!.once('data', bytes => { clearTimeout(timer); String(bytes) === 'owned\n' ? resolve() : reject(new Error('invalid owner signal')); });
+      child.stdout!.once('data', bytes => { clearTimeout(timer); if (String(bytes) === 'owned\n') resolve(); else reject(new Error('invalid owner signal')); });
       child.once('error', error => { clearTimeout(timer); reject(error); });
     });
     const cancel = new AbortController();

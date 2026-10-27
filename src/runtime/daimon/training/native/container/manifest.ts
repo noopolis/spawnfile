@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import type { SubjectStart } from '../../../../../training/index.js';
 import { grokContainerUnsupported } from './preflight.js';
 import { readGrokSlotDenials } from './grok-slot.js';
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../contractManifest.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../index.js';
 import { containerPaths, grokSubjectRoots, isGrokLaunch, nativeCodexAccount, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256, within,
   type NativeLaunch, type VerifiedNativeLaunch, type NativeMount } from '../receipt/index.js';
 

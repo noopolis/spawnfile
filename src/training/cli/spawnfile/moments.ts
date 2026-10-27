@@ -1,3 +1,4 @@
+import { compatibleIsoDateTimeSchema } from '../../../shared/trainingLegacy/index.js';
 import { canonicalWireId } from '../../contracts/index.js';
 import { lstat, readFile, realpath } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
@@ -7,7 +8,7 @@ import type { SpawnfileTrainingContext } from './context.js';
 import type { NativePreparationContext, StoredTrialOptions } from '../../experiments/index.js';
 
 const absolute = z.string().refine(value => isAbsolute(value) && resolve(value) === value);
-const instant = z.iso.datetime({ offset: true });
+const instant = compatibleIsoDateTimeSchema({ offset: true });
 const momentSchema = z.object({
   version: z.literal('spawnfile.training-moment-case.v1'), projectRoot: absolute,
   agent: z.string().min(1), example: z.string().min(1), role: z.enum(['train', 'validation', 'test']),

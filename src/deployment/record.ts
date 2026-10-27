@@ -8,7 +8,7 @@ import {
 } from "../filesystem/index.js";
 import { deployResourcesSchema } from "./resourceLog.js";
 import { publishDeploymentRecord } from "./recordPublication.js";
-import { SpawnfileError } from "../shared/index.js";
+import { compatibleIsoDateTimeSchema, SpawnfileError } from "../shared/index.js";
 import { recordingReportSchema } from "../report/index.js";
 
 import { parseOrganizationHandoff, type OrganizationHandoff } from "./organizationHandoffTypes.js";
@@ -107,7 +107,7 @@ const deploymentRecordV1Schema = z.object({
 }).strict();
 
 export const deploymentRecordSchema = z.object({
-  activated_at: z.iso.datetime({ offset: true }).optional(),
+  activated_at: compatibleIsoDateTimeSchema({ offset: true }).optional(),
   activation_exact: z.boolean().optional(),
   activation_note: z.string().min(1).optional(),
   recording: recordingReportSchema.optional(),

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { SubjectStart } from '../../../../training/index.js';
 import { bindNativeSandboxProjection, sha256, type NativeSandboxProjection, type VerifiedNativeLaunch } from './receipt/index.js';
 import { ownerLabel, type DockerCommand } from './container/index.js';
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../contractManifest.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../index.js';
 
 export function configFixture(root = '/isolated'): NativeConfig {
   return { version: 'noopolis.daimon.organization-runtime.v2',

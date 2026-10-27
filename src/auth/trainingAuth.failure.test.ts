@@ -21,18 +21,18 @@ vi.mock("node:fs/promises",async(importOriginal)=>{
 import {stageTrainingAuth} from "./trainingAuth.js";
 const roots:string[]=[];
 afterEach(async()=>{control.failWrite=false;control.mutateSource=false;control.growSource=false;for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});});
-const setup=async()=>{const root=await realpath(await mkdtemp(path.join(os.tmpdir(),"training-auth-failure-")));roots.push(root);const home=path.join(root,"home"),source=path.join(root,"source");await mkdir(home,{mode:0o700});await writeFile(source,"complete-fake-credential");return {home,source,provider:"codex" as const};};
+const setup=async()=>{const root=await realpath(await mkdtemp(path.join(os.tmpdir(),"training-auth-failure-")));roots.push(root);const home=path.join(root,"home"),source=path.join(root,"source");await mkdir(home,{mode:0o700});await writeFile(source,"complete-fake-credential");return {home,source,provider:"claude" as const};};
 it("never publishes a partial credential and allows a clean retry after write failure",async()=>{
- const f=await setup();control.failWrite=true;await expect(stageTrainingAuth(f)).rejects.toThrow("disk full");expect(await readdir(path.join(f.home,".daimon-inbound"))).toEqual([]);
+ const f=await setup();control.failWrite=true;await expect(stageTrainingAuth(f)).rejects.toThrow("disk full");expect(await readdir(path.join(f.home,".claude"))).toEqual([]);
  control.failWrite=false;const receipt=await stageTrainingAuth(f);expect(await readFile(receipt.destination,"utf8")).toBe("complete-fake-credential");
 });
 it("rejects even a nanosecond source identity change before publication",async()=>{
- const f=await setup();control.mutateSource=true;await expect(stageTrainingAuth(f)).rejects.toThrow("changed during staging");expect(await readdir(path.join(f.home,".daimon-inbound"))).toEqual([]);
+ const f=await setup();control.mutateSource=true;await expect(stageTrainingAuth(f)).rejects.toThrow("changed during staging");expect(await readdir(path.join(f.home,".claude"))).toEqual([]);
 });
 
 it("bounds an unexpectedly growing source to the preallocated limit",async()=>{
- const f=await setup();control.growSource=true;await expect(stageTrainingAuth(f)).rejects.toThrow("changed during staging");expect(await readdir(path.join(f.home,".daimon-inbound"))).toEqual([]);
+ const f=await setup();control.growSource=true;await expect(stageTrainingAuth(f)).rejects.toThrow("changed during staging");expect(await readdir(path.join(f.home,".claude"))).toEqual([]);
 });
 it("selects the fixed default ingress without opening real credentials",async()=>{
- const f=await setup();await expect(stageTrainingAuth({home:f.home,provider:"codex"})).rejects.toThrow("fixed ingress intercepted for test: /run/spawnfile-training-auth/codex");
+ const f=await setup();await expect(stageTrainingAuth({home:f.home,provider:"claude"})).rejects.toThrow("fixed ingress intercepted for test: /run/spawnfile-training-auth/claude");
 });

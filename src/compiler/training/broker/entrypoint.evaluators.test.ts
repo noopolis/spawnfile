@@ -34,6 +34,7 @@ import { runTrainingBrokerEntrypoint } from "./entrypoint.js";
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 it("stages evaluator credentials before transferring tmpfs ownership or dropping to the evaluator", async () => {
   vi.spyOn(process as { getuid: () => number }, "getuid").mockReturnValue(0);
+  vi.stubEnv("TYPESAFE_API_KEY", undefined);
   vi.stubEnv("SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE", "/run/spawnfile-training/secrets/typesafe");
   control.order.length = 0;
   const listeners = new Map((["SIGINT", "SIGTERM", "SIGHUP"] as const).map(signal => [signal, process.listeners(signal)]));

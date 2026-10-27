@@ -3,7 +3,7 @@ import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { launchFixture } from '../test-fixtures.js';
 import { grokLaunchFrom, grokProtectedPaths, writeGrokSlotReceipt } from '../grok-fixtures.js';
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../contractManifest.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../index.js';
 import { loadNativeLaunch } from './manifest.js';
 
 test('fresh explicit projections preserve candidate bytes and reject unsafe launch sources', async () => {

@@ -49,7 +49,7 @@ export async function acquireNativeAccountLease(root: string, signal?: AbortSign
       } catch (error) {
         if ((error as { errcode?: number }).errcode !== 5) throw error;
         const remaining = deadline - performance.now();
-        if (remaining <= 0) throw new Error('Native account admission exceeded its wait bound');
+        if (remaining <= 0) throw new Error('Native account admission exceeded its wait bound', { cause: error });
         await pause(Math.min(25, remaining), undefined, { signal });
       }
     }

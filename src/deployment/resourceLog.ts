@@ -1,3 +1,4 @@
+import { compatibleIsoDateTimeSchema } from '../shared/index.js';
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
@@ -17,9 +18,9 @@ const resourceSchema = z.discriminatedUnion("kind", [
 export const deployResourcesSchema = z.object({
   version: z.literal(DEPLOY_RESOURCES_VERSION), deployment: text,
   deployment_id: text,
-  activated_at: z.iso.datetime({ offset: true }), activation_exact: z.boolean(), activation_note: text.optional(),
-  rolled_back_at: z.iso.datetime({ offset: true }).optional(), exact: z.literal(false).optional(),
-  deployed_at: z.iso.datetime({ offset: true }), report_sha256: digest,
+  activated_at: compatibleIsoDateTimeSchema({ offset: true }), activation_exact: z.boolean(), activation_note: text.optional(),
+  rolled_back_at: compatibleIsoDateTimeSchema({ offset: true }).optional(), exact: z.literal(false).optional(),
+  deployed_at: compatibleIsoDateTimeSchema({ offset: true }), report_sha256: digest,
   resources: z.array(resourceSchema),
   recording_agents: z.array(recordingAgentSchema).optional()
 }).strict().refine((value) => !value.rolled_back_at || (value.exact === false && !value.activation_exact

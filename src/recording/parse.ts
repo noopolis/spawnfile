@@ -1,9 +1,10 @@
+import { compatibleIsoDateTimeSchema } from '../shared/index.js';
 import { z } from "zod";
 
 import { WAKE_MOMENT_VERSION, type MemoryLedgerEntry, type WakeMomentRow } from "./types.js";
 
 const text = z.string().min(1);
-const instant = z.iso.datetime({ offset: true }).refine((value) => Number.isFinite(Date.parse(value)));
+const instant = compatibleIsoDateTimeSchema({ offset: true }).refine((value) => Number.isFinite(Date.parse(value)));
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const snapshot = z.object({
   id: text.regex(/^[A-Za-z0-9._-]{1,128}$/u),

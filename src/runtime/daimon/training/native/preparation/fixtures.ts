@@ -2,7 +2,7 @@ import type { TrialSlot } from '../../../../../training/index.js';
 import type { GrokSlotFreshness } from '../child/index.js';
 import type { GrokBrokerLaunch } from '../receipt/index.js';
 import type { NativeTrialRoots, ProvisionedSubject, SubjectProvisionInput, SubjectProvisioner } from './types.js';
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../contractManifest.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../index.js';
 
 /** Test-only shapes of a Spawnfile-style training slot; never provisioning evidence. */
 export const grokSlotRoot = '/run/training/slots/1';
