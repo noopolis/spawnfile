@@ -17,17 +17,19 @@ test('worker resolves exact control-host inputs and refuses another native agent
   let wrong = true;
   const runtime = { resolveOrganizationCodexSandboxProjection: async (value, agentId, context) => {
     assert.equal(value, config); assert.equal(agentId, agent.id); assert.equal(context.acceptanceStorePath, f.launch.controlRoot);
+    assert.deepEqual(context.subscriptionRealmPaths, { codex: { durablePath: f.launch.projections.find(row => row.role === 'subscription')!.target,
+      bootstrapPath: f.launch.credentials[0]!.target } });
     return sandboxProjectionFixture(wrong ? 'foreign' : agent.id, agent.workspacePath, agent.runtimeHomePath);
   } } as NativeRuntimeModule;
   try {
-    await assert.rejects(persistNativeSandboxProjection(runtime, config, options), /not bound/);
+    await assert.rejects(persistNativeSandboxProjection(runtime, config, options, f.launch), /not bound/);
     await assert.rejects(readFile(join(f.launch.controlRoot, 'sandbox-projection.json')), /ENOENT/);
     wrong = false;
-    await persistNativeSandboxProjection(runtime, config, options);
+    await persistNativeSandboxProjection(runtime, config, options, f.launch);
     const receipt = JSON.parse(await readFile(join(f.launch.controlRoot, 'sandbox-projection.json'), 'utf8'));
     assert.equal(receipt.trialId, f.input.trialId); assert.equal(receipt.configSha256, f.launch.configSha256);
     assert.equal(receipt.projection.agentId, agent.id);
-    await assert.rejects(persistNativeSandboxProjection(runtime, config, options), /EEXIST/);
+    await assert.rejects(persistNativeSandboxProjection(runtime, config, options, f.launch), /EEXIST/);
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 

@@ -37,11 +37,12 @@ export async function validateChildPaths(launch: VerifiedNativeLaunch): Promise<
   }
   for (const credential of launch.credentials) {
     const target = await lstat(credential.target);
-    if (!target.isFile() || target.isSymbolicLink() || target.nlink !== 1 || (target.mode & 0o777) !== 0o600 || await realpath(credential.target) !== credential.target) {
+    if (!target.isFile() || target.isSymbolicLink() || target.nlink !== 1 || target.uid !== process.getuid?.() || (target.mode & 0o777) !== 0o600 || await realpath(credential.target) !== credential.target) {
       throw new Error('Caller-owned native credential ingress was not safely staged');
     }
     const directory = await lstat(dirname(credential.target));
-    if (!directory.isDirectory() || directory.isSymbolicLink() || (directory.mode & 0o777) !== 0o700) throw new Error('Caller-owned native credential directory is unsafe');
+    if (!directory.isDirectory() || directory.isSymbolicLink() || (directory.mode & 0o022) !== 0
+      || directory.uid !== 0 && directory.uid !== process.getuid?.()) throw new Error('Caller-owned native credential directory is unsafe');
   }
 }
 /** Docker env-file semantics: literal values, no shell expansion or inherited host provider settings. */

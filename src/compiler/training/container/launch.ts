@@ -22,6 +22,8 @@ import { parseTrainingMappedPreparation } from "../preparation/contract.js";
 import { persistTrainingGrokCredential } from "./grokWriteback.js";
 import { nativeTrainingSlotsDocument } from "./nativeSlots.js";
 import { createTrainingOutputVolume, trainingOutputVolumeEnabled } from "./outputVolume.js";
+import { prepareTrainingCodexAuthority } from '../../../auth/index.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../runtime/daimon/contractManifest.js';
 
 // The image bakes /run/training/inputs as 0:2000 0750 for brokered worker isolation; the
 // non-brokered host-uid evaluator joins that group so it can still traverse its own inputs.
@@ -136,6 +138,12 @@ export const launchTrainingContainer = async (options: LaunchTrainingContainerOp
       ...options.repairPath ? [`type=bind,src=${options.repairPath},dst=/run/spawnfile-training/repair.json,readonly`] : [],
       ...prepared.config.auth.map((entry) => `type=bind,src=${entry.source},dst=/run/spawnfile-training-auth/${entry.provider},readonly`)];
     const broker = prepared.config.broker;
+    const codex = prepared.config.auth.find(entry => entry.provider === 'codex');
+    if (codex && !broker) {
+      const account = await prepareTrainingCodexAuthority(codex.source, prepared.config.dockerContext);
+      mounts.push(`type=bind,src=${account},dst=${DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath}`,
+        `type=bind,src=${codex.source},dst=${DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath},readonly`);
+    }
     if (broker) {
       mounts.push(trainingRunRequestMount(prepared.config.output.source, prepared.args));
       const slotsFile = path.join(privateRoot, "slots.json");

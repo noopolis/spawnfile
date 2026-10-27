@@ -23,7 +23,9 @@ test('worker checks real receipt bytes before boot and serves native authenticat
     stop: async () => { stops++; return {}; },
     health: async () => ({ version: 'noopolis.daimon.organization-runtime-health.v1', state: failure === 'health' ? 'starting' : 'running', agents: [] }),
     activityV2: async () => failure === 'activity' ? undefined : ({ version: 'native-unit', items: [], executions: [] }) } as unknown as NativeHost;
-  const load = vi.spyOn(runtime, 'loadDaimonRuntime').mockResolvedValue({ parseOrganizationRuntimeConfig: value => value as NativeConfig, createOrganizationRuntimeControlHost: () => host,
+  const load = vi.spyOn(runtime, 'loadDaimonRuntime').mockResolvedValue({ parseOrganizationRuntimeConfig: value => value as NativeConfig, createOrganizationRuntimeControlHost: (_value, options) => {
+    expect(options.subscriptionRealmPaths).toEqual({ codex: { durablePath: f.launch.projections.find(row => row.role === 'subscription')!.target,
+      bootstrapPath: f.launch.credentials[0]!.target } }); return host; },
     resolveOrganizationCodexSandboxProjection: async value => { const agent = (value as NativeConfig).agents[0]!;
       return sandboxProjectionFixture(agent.id, agent.workspacePath, agent.runtimeHomePath); } });
   try {

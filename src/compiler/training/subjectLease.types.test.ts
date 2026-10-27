@@ -29,7 +29,7 @@ interface TrainingProvisionedSubject {
   agent: { id: string; engine: "codex"; model: string }
     | { id: string; engine: "grok"; model: "grok-4.6" | "grok-4.5" | "grok-build"; reasoningEffort: "low" | "medium" | "high" };
   workspace: { source: string; target: string };
-  projections: { role: "home" | "memory" | "transport"; source: string; target: string }[];
+  projections: { role: "home" | "memory" | "transport" | "subscription"; source: string; target: string }[];
   credentials: { source: string; target: string }[];
   broker?: TrainingBroker;
   roots: Readonly<Record<string, string>> & { readonly workspace: string; readonly home: string; readonly control: string };

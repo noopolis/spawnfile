@@ -3,17 +3,20 @@ import os from "node:os";
 import path from "node:path";
 import type { TrainingContext } from "../contract.js";
 import type { TrainingDockerProcess } from "./process.js";
+import { afterEach, vi } from 'vitest';
+afterEach(() => vi.unstubAllEnvs());
 
 export const image = `sha256:${"a".repeat(64)}`;
 export const id = "b".repeat(64);
 export const fixture = async () => {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "spawnfile-container-test-")));
+  vi.stubEnv('SPAWNFILE_HOME', path.join(root, 'spawnfile-state'));
   const project = path.join(root, "project"), output = path.join(root, "output");
   await mkdir(project); await mkdir(output);
   await writeFile(path.join(project, "Spawnfile"), "fixture");
   await writeFile(path.join(project, "train.yaml"), "fixture");
   await writeFile(path.join(output, "index.json"), "{}");
-  await writeFile(path.join(root, "auth-leaf"), "fake-fixture-token");
+  await writeFile(path.join(root, "auth-leaf"), "fake-fixture-token", { mode: 0o600 });
   const source = { sourcePath: path.join(project, "Spawnfile"), destinationPath: "Spawnfile", sha256: image };
   const context: TrainingContext = { version: "spawnfile.training-context.v1", producer: { package: "spawnfile", version: "test" },
     project: { root: project, manifest: source.sourcePath, sourceDigest: image },

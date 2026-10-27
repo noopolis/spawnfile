@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { SubjectStart } from '../../../../training/index.js';
 import { bindNativeSandboxProjection, sha256, type NativeSandboxProjection, type VerifiedNativeLaunch } from './receipt/index.js';
 import { ownerLabel, type DockerCommand } from './container/index.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../contractManifest.js';
 
 export function configFixture(root = '/isolated'): NativeConfig {
   return { version: 'noopolis.daimon.organization-runtime.v2',
@@ -67,10 +68,11 @@ export async function launchFixture(): Promise<{ root: string; input: SubjectSta
   const runtime = join(root, 'runtime');
   const native = join(runtime, 'native');
   for (const directory of [workspace, join(root, 'control'), join(native, 'home'), join(native, 'memory'), join(native, 'state'),
-    join(native, 'inputs'), join(native, 'acceptance'), join(root, 'worker'), join(root, 'bootstrap')]) {
+    join(native, 'inputs'), join(native, 'acceptance'), join(root, 'worker'), join(root, 'bootstrap'), join(root, 'account')]) {
     await mkdir(directory, { recursive: true, mode: 0o700 });
   }
   const instructions = 'Compiler-owned identity';
+  await writeFile(join(root, 'codex-bootstrap'), 'unit-bootstrap-never-a-login', { mode: 0o600 });
   await writeFile(join(workspace, 'AGENTS.md'), instructions);
   const inputs = join(native, 'inputs');
   const config = configFixture('/native');
@@ -89,7 +91,9 @@ export async function launchFixture(): Promise<{ root: string; input: SubjectSta
     workspace: { source: workspace, target: '/native/workspace' },
     projections: [{ role: 'home', source: join(native, 'home'), target: '/native/home' },
       { role: 'memory', source: join(native, 'memory'), target: '/native/memory' },
-      { role: 'state', source: join(native, 'state'), target: '/native/state' }], credentials: [],
+      { role: 'state', source: join(native, 'state'), target: '/native/state' },
+      { role: 'subscription', source: join(root, 'account'), target: DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath }],
+    credentials: [{ source: join(root, 'codex-bootstrap'), target: DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath }],
     limits: { maxTokens: 8000000, wakeTokenCeiling: 1000000 },
     overrides: { schedule: { before: { kind: 'every', interval_ms: 60000 }, after: { kind: 'disabled' }, reason: 'Isolated single trial' },
       selection: { before: ['agent:writer', 'agent:editor'], after: ['agent:writer'], reason: 'Selected subject only' } },

@@ -23,6 +23,7 @@ export async function childFixture(mode = 'complete', frames?: string) {
   await new Promise<void>(resolve => reservation.close(() => resolve()));
   f.launch.workspace.target = f.launch.workspace.source;
   for (const row of f.launch.projections) row.target = row.source;
+  for (const row of f.launch.credentials) row.target = row.source;
   const config = JSON.parse(await readFile(f.launch.config, 'utf8'));
   config.host.port = f.launch.host.port; config.agents[0].workspacePath = f.launch.workspace.target;
   config.agents[0].runtimeHomePath = f.launch.projections[0]!.target; config.agents[0].instructions = f.input.instructions;

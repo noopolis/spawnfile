@@ -8,6 +8,7 @@ import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
 import { verifyChildSandbox } from './sandbox.js';
 import { grokLaunchFrom } from '../grok-fixtures.js';
+import { nativeStartupClosureConfirmed } from '../../services/index.js';
 import { subjectStartupDiagnostic } from '../../../../../training/index.js';
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
@@ -158,7 +159,8 @@ it('rejects unsupported modes, Docker callback mixing, invalid deadlines and can
   expect(() => createDaimonNativeAdapter({ execution: { kind: 'wrong' as 'child-process' } })).toThrow('Unsupported');
   expect(() => createDaimonNativeAdapter({ execution: { kind: 'child-process' }, docker: vi.fn() })).toThrow('one native execution');
   await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, undefined, 0)).rejects.toThrow('deadline');
-  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, AbortSignal.abort())).rejects.toThrow();
+  const aborted = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, AbortSignal.abort()).catch(error => error);
+  expect(aborted).toBeInstanceOf(Error); expect(nativeStartupClosureConfirmed(aborted)).toBe(true);
   await expect(startOwnedChild({ kind: 'child-process', prepare: () => new Promise(() => undefined) }, f.launch, f.input.trialId, 1000, undefined, 10)).rejects.toThrow('preparation cancelled');
 });
 

@@ -5,6 +5,7 @@ import type { StopReceipt } from '../../../../../training/index.js';
 import { createContainerArguments, inspectOwned, workerRequest, type DockerCommand } from './docker.js';
 import type { VerifiedNativeLaunch } from '../receipt/index.js';
 import type { NativeStopEvidence } from '../worker/index.js';
+import { recordNativeStartupClosure } from '../../services/index.js';
 
 export async function startOwnedContainer(run: DockerCommand, launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number,
   signal?: AbortSignal, startupMs = 60_000) {
@@ -77,7 +78,7 @@ export async function startOwnedContainer(run: DockerCommand, launch: VerifiedNa
   } catch (error) {
     const outcome = await stop('Native startup failed');
     if (outcome.quiescence !== 'confirmed') throw new Error(`${String(error)}; ${outcome.detail}`, { cause: error });
-    throw error;
+    throw recordNativeStartupClosure(error, true);
   }
 }
 

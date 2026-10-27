@@ -5,7 +5,7 @@ import type { Socket } from "node:net";
 import path from "node:path";
 
 import { SpawnfileError } from "../../shared/index.js";
-import { DAIMON_GROK_ENGINE_BROKER, type DaimonGrokBrokerModel, type DaimonGrokBrokerReasoningEffort } from "../../runtime/daimon/contractManifest.js";
+import { DAIMON_CODEX_SUBSCRIPTION_REALM, DAIMON_GROK_ENGINE_BROKER, type DaimonGrokBrokerModel, type DaimonGrokBrokerReasoningEffort } from "../../runtime/daimon/contractManifest.js";
 import { parseTrainingBrokerDeclaration } from "./broker/declaration.js";
 import { TRAINING_BROKER_DECLARATION_FILE, TRAINING_ROOT, TRAINING_SLOTS_FILE, trainingSlotDescriptors } from "./broker/paths.js";
 import { loadDaimonProjectionModule, resolveTrainingSlotProjection } from "./broker/projection.js";
@@ -44,7 +44,7 @@ export type TrainingSubjectAgent =
 export interface TrainingSubjectLease {
   agent: TrainingSubjectAgent;
   workspace: { source: string; target: string };
-  projections: { role: "home" | "memory" | "transport"; source: string; target: string }[];
+  projections: { role: "home" | "memory" | "transport" | "subscription"; source: string; target: string }[];
   credentials: { source: string; target: string }[];
   broker?: TrainingSubjectBrokerSection;
   /** Named slot roots: always `workspace`, `home` and `control`, plus engine-specific roots (Grok adds `context`). */
@@ -171,15 +171,14 @@ const loadDaimonRuntime = async (): Promise<unknown> => {
 };
 
 /** The Codex credential leaf Daimon reads, from its public export, refused unless it equals the vendored manifest. */
-const codexCredentialRelativePath = async (load: () => Promise<unknown> = loadDaimonRuntime): Promise<string> => {
-  let daimon: { ENGINE_CREDENTIAL_MATERIAL?: Record<string, { sourceRelativePath?: unknown }> };
+const codexSubscriptionRealm = async (load: () => Promise<unknown> = loadDaimonRuntime): Promise<typeof DAIMON_CODEX_SUBSCRIPTION_REALM> => {
+  let daimon: { CODEX_SUBSCRIPTION_REALM?: Record<string, unknown> };
   try { daimon = await load() as typeof daimon; }
   catch { return refused(`The training image must install ${DAIMON_PACKAGE_NAME} with its public /runtime export`); }
-  const relative = daimon?.ENGINE_CREDENTIAL_MATERIAL?.[DAIMON_PORTABLE_ENGINE_ID]?.sourceRelativePath;
-  if (typeof relative !== "string" || relative !== getDaimonEngineDescriptor(DAIMON_PORTABLE_ENGINE_ID)!.credentialMaterial!.sourceRelativePath) {
-    return refused("The installed Daimon Codex credential material differs from this compiler's vendored manifest");
+  if (!daimon?.CODEX_SUBSCRIPTION_REALM || Object.entries(DAIMON_CODEX_SUBSCRIPTION_REALM).some(([key, value]) => daimon.CODEX_SUBSCRIPTION_REALM![key] !== value)) {
+    return refused("The installed Daimon Codex subscription realm differs from this compiler's vendored manifest");
   }
-  return relative;
+  return DAIMON_CODEX_SUBSCRIPTION_REALM;
 };
 
 /** Ports from the leased slot's own `slots.json` block (offsets 0=Moltnet, 1=worker control, 2=bridge), refused outside it. */
@@ -208,7 +207,7 @@ const leaseCodexSubject = async (options: LeaseTrainingSubjectOptions): Promise<
   const workspace = canonical("workspace", options.trialRoots.workspace);
   const runtimeHome = canonical("runtime home", options.trialRoots.runtimeHome);
   const ports = await leasedSlotPorts(options.slot, options.slotsFile ?? TRAINING_SLOTS_FILE);
-  const relative = await codexCredentialRelativePath(options.loadDaimon);
+  const realm = await codexSubscriptionRealm(options.loadDaimon);
   options.signal.throwIfAborted();
   // Codex's writable data sits beside the workspace, disjoint from the evaluator runtime and its controls.
   const parent = path.posix.dirname(workspace);
@@ -224,10 +223,11 @@ const leaseCodexSubject = async (options: LeaseTrainingSubjectOptions): Promise<
     agent: { id: options.agentId, engine: DAIMON_PORTABLE_ENGINE_ID, model: options.model! },
     workspace: { source: workspace, target: workspace },
     projections: [{ role: "home", source: home, target: home }, { role: "memory", source: memory, target: memory },
-      { role: "transport", source: transport, target: transport }],
-    // The read-only container leaf is the sole ingress; the child stages it into exactly this target
-    // (`stageTrainingAuth` from `spawnfile/auth`), never overwriting a renewed credential.
-    credentials: [{ source: TRAINING_CODEX_CREDENTIAL_INGRESS, target: path.posix.join(home, relative) }],
+      { role: "transport", source: transport, target: transport },
+      { role: "subscription", source: realm.durableMountPath, target: realm.durableMountPath }],
+    // The container owns one persistent authority for every trial. The runtime
+    // stages credentials during each serialized host lifecycle and promotes refreshes.
+    credentials: [{ source: TRAINING_CODEX_CREDENTIAL_INGRESS, target: realm.bootstrapMountPath }],
     roots,
     ports,
     env: {}

@@ -2,6 +2,7 @@ import type { TrialSlot } from '../../../../../training/index.js';
 import type { GrokSlotFreshness } from '../child/index.js';
 import type { GrokBrokerLaunch } from '../receipt/index.js';
 import type { NativeTrialRoots, ProvisionedSubject, SubjectProvisionInput, SubjectProvisioner } from './types.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../contractManifest.js';
 
 /** Test-only shapes of a Spawnfile-style training slot; never provisioning evidence. */
 export const grokSlotRoot = '/run/training/slots/1';
@@ -45,8 +46,9 @@ export function codexSubject(roots: NativeTrialRoots): ProvisionedSubject {
     workspace: { source: roots.workspace, target: roots.workspace },
     projections: [{ role: 'home', source: home, target: home },
       { role: 'memory', source: `${roots.root}/memory`, target: `${roots.root}/memory` },
-      { role: 'transport', source: `${roots.runtimeHome}/native/moltnet`, target: `${roots.runtimeHome}/native/moltnet` }],
-    credentials: [{ source: '/run/spawnfile-training-auth/codex', target: `${home}/.daimon-inbound/codex-auth` }],
+      { role: 'transport', source: `${roots.runtimeHome}/native/moltnet`, target: `${roots.runtimeHome}/native/moltnet` },
+      { role: 'subscription', source: DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath, target: DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath }],
+    credentials: [{ source: '/run/spawnfile-training-auth/codex', target: DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath }],
     roots: { workspace: roots.workspace, home, control: `${roots.runtimeHome}/native/root-control/acceptance` },
     ports: { control: 20201, moltnet: 20200 }, env: {} };
 }

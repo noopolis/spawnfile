@@ -6,6 +6,7 @@ import { createTrainingContext } from "../context.js";
 import { trainingContainerConfigSchema } from "./contract.js";
 import { fixture, dockerFixture, image } from "./fixtures.test-helper.js";
 import { launchTrainingContainer } from "./launch.js";
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from "../../../runtime/daimon/contractManifest.js";
 import { prepareTrainingContainer } from "./prepare.js";
 
 const roots: string[] = [];
@@ -72,11 +73,20 @@ it("binds the Codex evaluator leaf at the final readonly Training path with unch
   expect(args).toContain("SPAWNFILE_TRAINING_TYPESAFE_SECRET_FILE=/run/spawnfile-training/secrets/typesafe");
   expect(args).toContain("SPAWNFILE_TRAINING_EVALUATOR_ROUTES_FILE=/run/spawnfile-training/evaluator-routes.json");
   expect(args).toContain(`type=bind,src=${f.config.auth[0]!.source},dst=/run/spawnfile-training-auth/codex,readonly`);
+  expect(args).toContain(`type=bind,src=${f.config.auth[0]!.source},dst=${DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath},readonly`);
+  const realmMount = args.find(arg => arg.endsWith(`dst=${DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath}`));
+  expect(realmMount, "shared Codex account mount guarantee").toMatch(/^type=bind,src=.*\/training\/subscription-accounts\/codex-/u);
+  const realmPath = realmMount!.split(",")[1]!.slice(4);
+  await writeFile(path.join(realmPath, "rotation"), "generation-2");
+  const next = dockerFixture();
+  expect(await launchTrainingContainer({ ...f, image, timeoutMs: 5000, process: next.process, streams })).toBe(0);
+  expect(next.calls.find(call => call[2] === "create")).toContain(realmMount);
+  expect(await readFile(path.join(realmPath, "rotation"), "utf8")).toBe("generation-2");
   expect(args.slice(args.indexOf("--user"), args.indexOf("--user") + 2)).toEqual(["--user", `${process.getuid!()}:${process.getgid!()}`]);
   expect(args.slice(args.indexOf("--cap-drop"), args.indexOf("--cap-drop") + 2)).toEqual(["--cap-drop", "ALL"]);
   expect(args).toContain("no-new-privileges"); expect(args).toContain("--read-only");
   expect(args[args.indexOf("--entrypoint") + 1]).toBe("/opt/training/bin/train");
-  expect(args.some(arg => /secret-ingress|grok|realm|SPAWNFILE_TRAINING_MODEL_REQUEST_CAP|TYPESAFE_API_KEY=|--cap-add/u.test(arg))).toBe(false);
+  expect(args.some(arg => /secret-ingress|grok|SPAWNFILE_TRAINING_MODEL_REQUEST_CAP|TYPESAFE_API_KEY=|--cap-add/u.test(arg))).toBe(false);
   expect(JSON.stringify([docker.calls, streams.stdout.mock.calls, streams.stderr.mock.calls])).not.toContain(marker);
   const after = await stat(f.secret);
   expect([after.ino, after.mode, after.uid, after.gid, after.nlink, after.ctimeMs]).toEqual([

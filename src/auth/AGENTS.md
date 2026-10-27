@@ -41,3 +41,5 @@ src/auth/
 - `derived-config.content` is DECLARATIVE, non-secret configuration that the caller authored into the request by design —
   it is stored as a target secret for uniform handling, but it is not minted material and its presence in the caller's
   own request file is not a leak.
+
+`trainingCodexAuthority.ts` owns persistent host training account placement. Codex staging validates the same read-only container bootstrap inode and returns its shared target; it never clones credentials into trial homes. Daimon owns the writable rotating account state.
