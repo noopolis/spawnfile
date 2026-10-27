@@ -7,6 +7,8 @@ import {
   materializeDaimonGrokSeccompProfile
 } from "../shared/daimonCodexDocker.js";
 
+import { readDaimonImageContract } from "./consumeImageDaimonContract.js";
+import type { DaimonEngineDescriptors } from "../runtime/daimon/engineDescriptorSchema.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractSingleFileFromTar } from "./tarReader.js";
 import type { DistributionReport, DistributionRuntimeInstance } from "./types.js";
@@ -29,8 +31,9 @@ const assertAbsoluteConfigPath = (instance: DistributionRuntimeInstance): string
 const readDaimonConfigSourcesFromImage = async (
   imageRef: string,
   instances: DistributionRuntimeInstance[],
-  runDocker: DockerCommandRunner
-): Promise<string[]> => {
+  runDocker: DockerCommandRunner,
+  securityDirectory: string
+): Promise<{ sources: string[]; engineDescriptors: DaimonEngineDescriptors }> => {
   const helperName = `spawnfile-daimon-config-${randomUUID()}`;
   await runDocker(["create", "--name", helperName, imageRef]);
   try {
@@ -48,23 +51,23 @@ const readDaimonConfigSourcesFromImage = async (
       }
       sources.push(extractSingleFileFromTar(tar, { maxBytes: DAIMON_CONFIG_SIZE_CAP_BYTES }).toString("utf8"));
     }
-    return sources;
+    return { sources, engineDescriptors: await readDaimonImageContract(helperName, runDocker, securityDirectory) };
   } finally {
     await runDocker(["rm", "-f", helperName]).catch(() => undefined);
   }
 };
 
-export const resolveDaimonDockerSecurityArgsForImage = async (
+export const resolveDaimonRuntimeForImage = async (
   imageRef: string,
   report: DistributionReport,
   runDocker: DockerCommandRunner,
   securityDirectory: string
-): Promise<string[]> => {
+): Promise<{ securityArgs: string[]; engineDescriptors?: DaimonEngineDescriptors }> => {
   const daimonInstances = daimonInstancesFrom(report);
-  if (daimonInstances.length === 0) return [];
-  const sources = await readDaimonConfigSourcesFromImage(imageRef, daimonInstances, runDocker);
-  return [
+  if (daimonInstances.length === 0) return { securityArgs: [] };
+  const { sources, engineDescriptors } = await readDaimonConfigSourcesFromImage(imageRef, daimonInstances, runDocker, securityDirectory);
+  return { engineDescriptors, securityArgs: [
     ...DAIMON_DOCKER_RUNTIME_SECURITY_ARGS,
     ...(await daimonEngineDockerSecurityArgsForConfigs(sources, () => materializeDaimonGrokSeccompProfile(securityDirectory)))
-  ];
+  ] };
 };

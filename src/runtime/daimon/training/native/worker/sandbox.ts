@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { bindGrokBrokerProjection, bindNativeSandboxProjection, grokBrokerProjectionSchema, grokProjectionSha256, isGrokLaunch,
-  nativeTrialArtifactsRoot, parseGrokBrokerReceipt, parseNativeSandboxReceipt, readPrivateFile,
+  nativeCodexAccount, nativeTrialArtifactsRoot, parseGrokBrokerReceipt, parseNativeSandboxReceipt, readPrivateFile,
   type GrokNativeLaunch, type NativeLaunch } from '../receipt/index.js';
 import type { NativeRuntimeModule } from './public.js';
 import type { NativeConfig, WorkerOptions } from './types.js';
@@ -9,7 +9,9 @@ import type { NativeConfig, WorkerOptions } from './types.js';
 export async function persistNativeSandboxProjection(runtime: NativeRuntimeModule, config: NativeConfig, options: WorkerOptions, launch?: NativeLaunch): Promise<void> {
   if (launch && isGrokLaunch(launch)) return persistGrokBrokerProjection(runtime, config, options, launch);
   const agent = config.agents[0]!;
-  const value = await runtime.resolveOrganizationCodexSandboxProjection(config, agent.id, { acceptanceStorePath: options.controlRoot });
+  const account = launch && nativeCodexAccount(launch);
+  const value = await runtime.resolveOrganizationCodexSandboxProjection(config, agent.id, { acceptanceStorePath: options.controlRoot,
+    ...(account ? { subscriptionRealmPaths: { codex: { durablePath: account.realm.target, bootstrapPath: account.bootstrap.target } } } : {}) });
   const receipt = bindNativeSandboxProjection(value, options.trialId, options.configSha256);
   parseNativeSandboxReceipt(receipt, { trialId: options.trialId, configSha256: options.configSha256,
     agentId: agent.id, workspacePath: agent.workspacePath, runtimeHomePath: agent.runtimeHomePath });

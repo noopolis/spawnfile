@@ -15,3 +15,5 @@ Project only owned schema fields into hash views; never rewrite user content rec
 
 - trainingLegacyGraderProviders.ts preserves authored council keys and teacher policy bytes after provider registration becomes external.
 - The subscription secret-environment exclusion pattern remains exact compatibility data; never relax credential stripping during provider extraction.
+
+- trainingLegacyDateTime.ts preserves accepted ISO minute/second precision with patched validators.

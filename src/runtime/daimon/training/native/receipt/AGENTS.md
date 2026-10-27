@@ -31,3 +31,5 @@ derive FAKETIME here: Daimon owns child clock gating and engine clock removal.
 Keep the origin/anchor evidence; the library path is installation input only.
 
 The launch engine vocabulary consumes the same pinned declaration published by the runtime registry. Engine-specific launch variants retain their own required fields and refuse unimplemented execution paths.
+
+Codex launches carry exactly one `subscription` projection and one bootstrap credential. Their private persistent sources are outside trial homes and evaluator roots. Standalone Docker uses actual host sources with the fixed native mount targets; child execution uses canonical already-mounted paths. This account projection survives trial cleanup.

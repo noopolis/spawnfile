@@ -23,7 +23,8 @@ const byStaging = (staging: DaimonEngineDescriptor["auth"]["staging"], preferred
 };
 
 /** Legacy wire identities retain their generated literal types, never a copied inventory. */
-export const DAIMON_PORTABLE_ENGINE_ID = byStaging("portable-file", DAIMON_PINNED_PORTABLE_DESCRIPTOR.id).id as typeof DAIMON_PINNED_PORTABLE_DESCRIPTOR.id;
+const portableStaging = getDaimonEngineDescriptor(DAIMON_PINNED_PORTABLE_DESCRIPTOR.id)?.auth.staging === "portable-file" ? "portable-file" : "portable-realm";
+export const DAIMON_PORTABLE_ENGINE_ID = byStaging(portableStaging, DAIMON_PINNED_PORTABLE_DESCRIPTOR.id).id as typeof DAIMON_PINNED_PORTABLE_DESCRIPTOR.id;
 export const DAIMON_BROKER_ENGINE_ID = byStaging("broker-realm", DAIMON_PINNED_BROKER_DESCRIPTOR.id).id as typeof DAIMON_PINNED_BROKER_DESCRIPTOR.id;
 export const DAIMON_SECRET_SERVICE_ENGINE_ID = byStaging("secret-service", DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR.id).id as typeof DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR.id;
 export const DAIMON_ENGINE_BROKER = byStaging("broker-realm", DAIMON_PINNED_BROKER_DESCRIPTOR.id).broker!;

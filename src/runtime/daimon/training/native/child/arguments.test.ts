@@ -47,7 +47,7 @@ it('requires source=target and safely staged caller-owned credential leaves', as
   const directory = join(f.launch.projections[0]!.target, '.daimon-inbound'), target = join(directory, 'codex-auth');
   await mkdir(directory, { mode: 0o700 }); await writeFile(target, 'opaque-unit-value', { mode: 0o600 });
   f.launch.credentials = [{ source: '/run/provisioned-unit-auth', target }]; await validateChildPaths(f.launch);
-  await chmod(directory, 0o755); await expect(validateChildPaths(f.launch)).rejects.toThrow('directory'); await chmod(directory, 0o700);
+  await chmod(directory, 0o777); await expect(validateChildPaths(f.launch)).rejects.toThrow('directory'); await chmod(directory, 0o700);
   await chmod(target, 0o644); await expect(validateChildPaths(f.launch)).rejects.toThrow('safely staged'); await chmod(target, 0o600);
   await link(target, join(directory, 'hardlink')); await expect(validateChildPaths(f.launch)).rejects.toThrow('safely staged');
   await rm(join(directory, 'hardlink')); await rm(target); await symlink('/outside', target); await expect(validateChildPaths(f.launch)).rejects.toThrow('safely staged');
@@ -55,7 +55,7 @@ it('requires source=target and safely staged caller-owned credential leaves', as
 it('permits only child fresh home/memory data under the exact materialized workspace parent', async () => {
   const f = await fixture(); const home = join(f.root, 'home'); await mkdir(home, { mode: 0o700 });
   f.launch.projections[0] = { role: 'home', source: home, target: home }; await f.save();
-  await expect(loadNativeLaunch(f.input)).rejects.toThrow('fresh trial data');
+  await expect(loadNativeLaunch(f.input)).rejects.toThrow('subscription realm targets');
   expect((await loadNativeLaunch(f.input, true)).projections[0]!.source).toBe(home);
   const elsewhere = join(f.root, 'other-trial'); await mkdir(elsewhere, { mode: 0o700 });
   f.launch.projections[0]!.source = elsewhere; f.launch.projections[0]!.target = elsewhere; await f.save();

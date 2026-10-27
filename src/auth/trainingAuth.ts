@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { link, lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
+import { verifyTrainingCodexBootstrap } from './trainingCodexAuthority.js';
 
 /**
  * Grok is deliberately absent. `spawnfile.training-container.v3` holds the one
@@ -27,6 +28,7 @@ export const stageTrainingAuth = async (options: TrainingAuthStageOptions): Prom
   if (!Object.hasOwn(targets, options.provider)) throw Error("Unsupported training auth provider");
   const home = path.resolve(options.home), source = options.source ?? `/run/spawnfile-training-auth/${options.provider}`;
   if (!path.isAbsolute(options.home) || await realpath(home) !== home || !(await lstat(home)).isDirectory()) throw Error("Training home must be a canonical existing directory");
+  if (options.provider === 'codex') return { version: 'spawnfile.training-auth-stage.v1', provider: 'codex', destination: await verifyTrainingCodexBootstrap(source) };
   if (!path.isAbsolute(source) || await realpath(source) !== path.resolve(source)) throw Error("Training auth source must be a canonical regular leaf");
   const input = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {

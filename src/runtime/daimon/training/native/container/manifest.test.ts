@@ -3,6 +3,7 @@ import { chmod, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { launchFixture } from '../test-fixtures.js';
 import { grokLaunchFrom, grokProtectedPaths, writeGrokSlotReceipt } from '../grok-fixtures.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../index.js';
 import { loadNativeLaunch } from './manifest.js';
 
 test('fresh explicit projections preserve candidate bytes and reject unsafe launch sources', async () => {
@@ -45,7 +46,7 @@ test('only one explicitly selected private portable credential ingress is mounte
   const f = await launchFixture();
   try {
     const auth = join(f.root, 'non-login-fixture'); await writeFile(auth, 'Unit fixture, never native authentication.', { mode: 0o600 });
-    f.launch.credentials = [{ source: auth, target: '/native/home/.daimon-inbound/codex-auth' }]; await f.save();
+    f.launch.credentials = [{ source: auth, target: DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath }]; await f.save();
     expect((await loadNativeLaunch(f.input)).credentials).toHaveLength(1);
     for (const source of [join(f.input.workspacePath, 'auth'), join(f.launch.projections[0]!.source, 'auth'), join(f.launch.workerRoot, 'auth')]) {
       await writeFile(source, 'Unit login-shape fixture', { mode: 0o600 });
@@ -53,7 +54,7 @@ test('only one explicitly selected private portable credential ingress is mounte
     }
     f.launch.credentials[0]!.source = auth; await f.save();
     await chmod(auth, 0o644); await expect(loadNativeLaunch(f.input)).rejects.toThrow('private read-only'); await chmod(auth, 0o600);
-    f.launch.credentials[0]!.target = '/native/workspace/auth'; await f.save(); await expect(loadNativeLaunch(f.input)).rejects.toThrow('ingress');
+    f.launch.credentials[0]!.target = '/native/workspace/auth'; await f.save(); await expect(loadNativeLaunch(f.input)).rejects.toThrow('subscription realm targets');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
@@ -68,7 +69,27 @@ test('Grok launches load only for child execution and carry no engine credential
     expect(loaded.agent).toEqual({ id: 'agent:writer', engine: 'grok', model: 'grok-4.6', reasoningEffort: 'low' });
     expect(loaded.credentials).toEqual([]);
     const auth = join(f.root, 'non-login-fixture'); await writeFile(auth, 'Unit fixture, never native authentication.', { mode: 0o600 });
-    f.launch.credentials = [{ source: auth, target: '/native/home/.daimon-inbound/codex-auth' }]; await f.save();
+    f.launch.credentials = [{ source: auth, target: DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath }]; await f.save();
     await expect(loadNativeLaunch({ ...f.input, model: 'grok-4.6' }, true)).rejects.toThrow();
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
+
+test('Codex account remains private and outside every trial or evaluator root', async () => {
+  const f = await launchFixture();
+  try {
+    const realm = f.launch.projections.find(row => row.role === 'subscription')!;
+    const source = realm.source;
+    await chmod(source, 0o755); await expect(loadNativeLaunch(f.input)).rejects.toThrow('private persistent'); await chmod(source, 0o700);
+    await expect(loadNativeLaunch({ ...f.input, protectedPaths: [source] })).rejects.toThrow('private persistent');
+    for (const target of [f.input.runtimeHomePath, f.input.workspacePath, f.launch.controlRoot]) {
+      realm.source = target; await f.save(); await expect(loadNativeLaunch(f.input)).rejects.toThrow();
+    }
+    realm.source = source;
+    const credentials = f.launch.credentials; f.launch.credentials = []; await f.save();
+    await expect(loadNativeLaunch(f.input)).rejects.toThrow('shared subscription bootstrap');
+    f.launch.credentials = credentials;
+    f.launch.projections = f.launch.projections.filter(row => row.role !== 'subscription'); await f.save();
+    await expect(loadNativeLaunch(f.input)).rejects.toThrow('one shared subscription');
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });

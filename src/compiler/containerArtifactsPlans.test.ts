@@ -228,6 +228,13 @@ describe("runtime target plan source identity", () => {
 
     expect(result[0]?.persistentMounts).toEqual([
       {
+        id: "daimon-codex-subscription-realm",
+        lifecycle: "exclusive-reattach",
+        mount_path: "/var/lib/spawnfile/daimon/codex-subscription-realm",
+        reason: "Daimon host codex subscription credential realm",
+        volume_name: createExclusiveReattachVolumeName("/tmp/Spawnfile\u0000compile", "daimon-codex-subscription-realm")
+      },
+      {
         id: "daimon-engine-home-codex-writer",
         mount_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/writer/.codex",
         reason: "Daimon codex subscription credential home for agent:writer",

@@ -138,7 +138,7 @@ const unsupportedAgentFeatures = (node: ResolvedAgentNode): void => {
       "Daimon AGY agents must omit Spawnfile execution.model; their subscription auth and model selection are Daimon-owned"
     );
   }
-  if (descriptor.auth.staging === "portable-file" && node.execution?.model?.primary.auth?.method === getDaimonEngineDescriptor(DAIMON_BROKER_ENGINE_ID)?.auth.method) {
+  if ((descriptor.auth.staging === "portable-file" || descriptor.auth.staging === "portable-realm") && node.execution?.model?.primary.auth?.method === getDaimonEngineDescriptor(DAIMON_BROKER_ENGINE_ID)?.auth.method) {
     throw new SpawnfileError("validation_error", `Daimon Codex agent ${node.name} cannot declare Grok model auth`);
   }
   if (descriptor.broker) resolveDaimonGrokModel(node, descriptor);

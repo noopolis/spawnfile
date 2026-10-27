@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { DAIMON_GROK_ENGINE_BROKER } from "../../runtime/daimon/contractManifest.js";
+import { DAIMON_CODEX_SUBSCRIPTION_REALM, DAIMON_GROK_ENGINE_BROKER } from "../../runtime/daimon/contractManifest.js";
 import { resolveDaimonGrokClockedWorkerConfig } from "../../runtime/daimon/grokWorkerContract.js";
 import { daimonGrokWorkerSkillsSha256, type DaimonAgentSkill } from "../../runtime/daimon/grokWorkerSkills.js";
 import { parseTrainingBrokerDeclaration } from "./broker/declaration.js";
@@ -184,7 +184,7 @@ describe("leaseTrainingSubject for a brokered Grok slot", () => {
 });
 
 describe("leaseTrainingSubject for a Codex subject", () => {
-  const material = { ENGINE_CREDENTIAL_MATERIAL: { codex: { sourceRelativePath: ".daimon-inbound/codex-auth" } } };
+  const material = { CODEX_SUBSCRIPTION_REALM: DAIMON_CODEX_SUBSCRIPTION_REALM };
   const slotsFile = (mutate: (document: ReturnType<typeof trainingSlotsDocument>) => void = () => undefined): string => {
     const document = trainingSlotsDocument(4);
     mutate(document);
@@ -196,14 +196,15 @@ describe("leaseTrainingSubject for a Codex subject", () => {
     model: "gpt-5.5", slotsFile: slotsFile(), signal: new AbortController().signal, loadDaimon: async () => material,
     trialRoots: { workspace: "/work/trial-1/workspace", runtimeHome: "/work/trial-1/runtime" }, ...overrides });
 
-  it("projects home, memory and transport and binds the credential ingress into the home", async () => {
+  it("projects fresh trial data around one persistent account and shared bootstrap", async () => {
     await expect(codex()).resolves.toEqual({
       agent: { id: "agent:reporter", engine: "codex", model: "gpt-5.5" },
       workspace: { source: "/work/trial-1/workspace", target: "/work/trial-1/workspace" },
       projections: [{ role: "home", source: "/work/trial-1/home", target: "/work/trial-1/home" },
         { role: "memory", source: "/work/trial-1/memory", target: "/work/trial-1/memory" },
-        { role: "transport", source: "/work/trial-1/runtime/native/moltnet", target: "/work/trial-1/runtime/native/moltnet" }],
-      credentials: [{ source: TRAINING_CODEX_CREDENTIAL_INGRESS, target: "/work/trial-1/home/.daimon-inbound/codex-auth" }],
+        { role: "transport", source: "/work/trial-1/runtime/native/moltnet", target: "/work/trial-1/runtime/native/moltnet" },
+        { role: "subscription", source: DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath, target: DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath }],
+      credentials: [{ source: TRAINING_CODEX_CREDENTIAL_INGRESS, target: DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath }],
       roots: { workspace: "/work/trial-1/workspace", home: "/work/trial-1/home", memory: "/work/trial-1/memory",
         transport: "/work/trial-1/runtime/native/moltnet", control: "/work/trial-1/runtime/native/root-control/acceptance",
         inputs: "/work/trial-1/runtime/native/root-control/inputs" },
@@ -225,7 +226,7 @@ describe("leaseTrainingSubject for a Codex subject", () => {
 
   it("refuses drifted Daimon credential material, missing inputs and freshness", async () => {
     await expect(codex({ loadDaimon: async () => ({ ENGINE_CREDENTIAL_MATERIAL: { codex: { sourceRelativePath: ".codex/auth.json" } } }) }))
-      .rejects.toThrow(/credential material differs/u);
+      .rejects.toThrow(/subscription realm differs/u);
     await expect(codex({ loadDaimon: async () => { throw Error("missing"); } })).rejects.toThrow(/must install @noopolis\/daimon/u);
     await expect(codex({ model: " " })).rejects.toThrow(/compiled model/u);
     await expect(codex({ trialRoots: undefined })).rejects.toThrow(/trial roots/u);

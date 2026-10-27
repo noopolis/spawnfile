@@ -1,10 +1,11 @@
 import { assertLeasedLaunch } from './slot.js';
 import { lstat, realpath, readdir } from 'node:fs/promises';
-import { basename, dirname, join, posix, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { SubjectStart } from '../../../../../training/index.js';
 import { grokContainerUnsupported } from './preflight.js';
 import { readGrokSlotDenials } from './grok-slot.js';
-import { containerPaths, grokSubjectRoots, isGrokLaunch, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256, within,
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../../index.js';
+import { containerPaths, grokSubjectRoots, isGrokLaunch, nativeCodexAccount, nativeTrialArtifactsRoot, parseNativeLaunch, readPrivateFile, sha256, within,
   type NativeLaunch, type VerifiedNativeLaunch, type NativeMount } from '../receipt/index.js';
 
 export function nativeMounts(launch: NativeLaunch): NativeMount[] {
@@ -17,8 +18,8 @@ export function nativeMounts(launch: NativeLaunch): NativeMount[] {
  * Only fresh subtrees explicitly projected by trusted preparation enter the subject.
  *
  * Codex anchors every writable root, control file and control root inside the
- * trial runtime home the evaluator created for this trial, so a launch receipt
- * can never widen writability past that scratch. A brokered Grok launch runs in
+ * trial runtime home the evaluator created for this trial. Its one subscription
+ * projection is separate persistent account state, denied by the native sandbox. A brokered Grok launch runs in
  * a training container whose slot paths are fixed and bound by
  * `projection_sha256`, so the same guarantee is taken from the container
  * contract instead: the two writable roots are exactly the trial workspace and
@@ -75,6 +76,11 @@ export async function loadNativeLaunch(input: SubjectStart, child = false): Prom
   // The engine-neutral trial runner protects its own runtime home; for a Grok slot that root is the subject's home.
   const subjectRoots = isGrokLaunch(launch) ? grokSubjectRoots(launch) : [];
   const home = launch.projections.find(row => row.role === 'home')!;
+  const account = nativeCodexAccount(launch);
+  if (account && !child && (account.realm.target !== DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath
+    || account.bootstrap.target !== DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath)) {
+    throw new Error('Codex container account mounts must use the native subscription realm targets');
+  }
   const targets = new Set<string>();
   const writableSources: string[] = [];
   for (const mount of nativeMounts(launch)) {
@@ -90,18 +96,31 @@ export async function loadNativeLaunch(input: SubjectStart, child = false): Prom
     }
     if (mount.readonly) {
       // Only Codex has a portable ingress credential; Grok launches carry none (schema) and use the broker realm.
-      if (launch.agent.engine !== 'codex' || mount.target !== posix.join(home.target, '.daimon-inbound', 'codex-auth') || !stat.isFile() || (stat.mode & 0o077) !== 0 || stat.nlink !== 1) {
+      if (!account || mount.target !== account.bootstrap.target || !stat.isFile() || (stat.mode & 0o077) !== 0 || stat.nlink !== 1) {
         throw new Error('Credential mount must be one private read-only native ingress file');
       }
       const exposedSources = [launch.workspace.source, ...launch.projections.map(row => row.source), launch.workerRoot,
         ...(launch.bootstrap ? [launch.bootstrap.root] : [])];
       if (exposedSources.some(root => within(root, source))) throw new Error('Credential source cannot also be exposed through another native mount');
+      if (launch.projections.some(row => within(row.target, mount.target) || within(mount.target, row.target))
+        || within(launch.workspace.target, mount.target)) throw new Error('Shared bootstrap cannot overlap writable native projections');
       continue;
     }
     if (writableSources.some(root => within(root, source) || within(source, root))) {
       throw new Error('Writable native projections cannot overlap or alias the engine credential home');
     }
     writableSources.push(source);
+    if (account && mount.target === account.realm.target) {
+      // The account outlives every trial. It must be a distinct private directory,
+      // never one of the trial's writable homes, controls, or evaluator roots.
+      const excluded = [runtime, workspace, control, launch.workerRoot, ...protectedRoots,
+        ...launch.projections.filter(row => row !== account.realm).map(row => row.source)];
+      if (!stat.isDirectory() || (stat.mode & 0o777) !== 0o700 || stat.uid !== process.getuid?.()
+        || excluded.some(root => within(source, root) || within(root, source))) {
+        throw new Error('Codex subscription realm must be private persistent account state outside trial data');
+      }
+      continue;
+    }
     if (source !== workspace) {
       if (slotDenied) {
         // Closed set: the schema admits one projection, and it must be the trial runtime home the evaluator named,

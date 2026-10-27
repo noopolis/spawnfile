@@ -3,3 +3,4 @@ export * from './trainingLegacyEnvironment.js';
 export * from './trainingLegacyFiles.js';
 export * from './trainingLegacyHashDomains.js';
 export * from './trainingLegacyGraderProviders.js';
+export * from './trainingLegacyDateTime.js';

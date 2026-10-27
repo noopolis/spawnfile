@@ -146,3 +146,5 @@ and the worker runs it as its first step so the two cannot drift.
 
 Bind `DAIMON_ENGINE_BROKER_SLOT` from the verified Grok launch before creating
 the native host; clear it for Codex. An inherited selector is never authoritative.
+
+Codex passes the launch’s shared subscription bootstrap and durable account paths to both public host construction and sandbox projection. The exact same paths must reach both APIs; Daimon denies them to candidate tools and owns all credential refresh. Never snapshot credentials into trial homes.

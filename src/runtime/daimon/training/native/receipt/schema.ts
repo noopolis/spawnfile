@@ -36,7 +36,7 @@ const common = {
   instructions: z.strictObject({ relativePath: relative, sha256: digest,
     rendering: z.strictObject({ kind: z.literal('trim-surround'), prefix: z.string().max(262144), suffix: z.string().max(262144), nativeSha256: digest }) }),
   workspace: z.strictObject({ source: absolute, target: nativePath }),
-  projections: z.array(z.strictObject({ role: z.enum(['home', 'memory', 'transport', 'state']), source: absolute, target: nativePath })).min(1).max(24),
+  projections: z.array(z.strictObject({ role: z.enum(['home', 'memory', 'transport', 'state', 'subscription']), source: absolute, target: nativePath })).min(1).max(24),
   bootstrap: z.strictObject({ root: absolute, entrypoint: relative }).optional(),
   limits: z.strictObject({ maxTokens: z.number().int().positive(), wakeTokenCeiling: z.number().int().positive() }),
   overrides: z.strictObject({

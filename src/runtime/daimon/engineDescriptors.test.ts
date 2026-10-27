@@ -8,17 +8,21 @@ import manifest from "./contract-manifest.json" with { type: "json" };
 import mirror from "./engine-descriptors.json" with { type: "json" };
 import { DAIMON_ENGINE_DESCRIPTOR_SOURCE_COMMIT, DAIMON_V5_ENGINE_DESCRIPTORS } from "./engineDescriptors.generated.js";
 import { parseDaimonContractManifest } from "./contractManifest.js";
-import { DAIMON_CONTRACT_MANIFEST_V6_JSON_SCHEMA, DAIMON_CONTRACT_MANIFEST_V6_VERSION } from "./contractManifestSchema.js";
+import { DAIMON_CONTRACT_MANIFEST_V6_JSON_SCHEMA, DAIMON_CONTRACT_MANIFEST_V6_VERSION, DAIMON_CONTRACT_MANIFEST_V7_JSON_SCHEMA, DAIMON_CONTRACT_MANIFEST_V7_VERSION } from "./contractManifestSchema.js";
 import { parseDaimonEngineDescriptors } from "./engineDescriptorSchema.js";
 import { createPiTestNode } from "../pi/testHelpers.js";
 
-type Mutable<T> = { -readonly [K in keyof T]: Mutable<T[K]> };
 const v5 = () => {
   const { engines: _engines, ...legacy } = structuredClone(manifest);
   return { ...legacy, version: "noopolis.daimon.runtime-contract-manifest.v5" };
 };
-const v6 = () => ({ ...structuredClone(manifest),
-  engines: structuredClone(manifest.engines) as Mutable<typeof DAIMON_V5_ENGINE_DESCRIPTORS> });
+const v6 = () => {
+  const { codexSubscriptionRealm: _realm, ...legacy } = structuredClone(manifest);
+  const engines = structuredClone(manifest.engines);
+  return { ...legacy, version: DAIMON_CONTRACT_MANIFEST_V6_VERSION, engines: {
+    ...engines, codex: { ...engines.codex, auth: { ...engines.codex.auth, staging: "portable-file" as const, realm: null } }
+  } };
+};
 afterEach(() => { vi.doUnmock("./contract-manifest.json"); vi.resetModules(); });
 
 describe("Daimon descriptor authority", () => {
@@ -30,7 +34,7 @@ describe("Daimon descriptor authority", () => {
     expect(mirror.sourceCommit).toBe(registry.runtimes.daimon.ref);
     expect(DAIMON_ENGINE_DESCRIPTOR_SOURCE_COMMIT).toBe(mirror.sourceCommit);
     expect(DAIMON_V5_ENGINE_DESCRIPTORS).toEqual(mirror.engines);
-    expect(parseDaimonContractManifest(v5()).engines).toEqual(mirror.engines);
+    expect(parseDaimonContractManifest(v5()).engines).toEqual(v6().engines);
     expect(parseDaimonContractManifest(v5()).supportedEngineKinds).toEqual(["agy", "codex", "grok"]);
   });
 
@@ -38,12 +42,43 @@ describe("Daimon descriptor authority", () => {
     const ajv = new Ajv2020.default({ strict: false });
     const validate = ajv.compile(DAIMON_CONTRACT_MANIFEST_V6_JSON_SCHEMA);
     expect(validate(v6()), JSON.stringify(validate.errors)).toBe(true);
-    expect(manifest.version).toBe(DAIMON_CONTRACT_MANIFEST_V6_VERSION);
+    expect(v6().version).toBe(DAIMON_CONTRACT_MANIFEST_V6_VERSION);
     expect(parseDaimonContractManifest(manifest).engines).toEqual(manifest.engines);
     expect(manifest.engines).toEqual(mirror.engines);
     const malformed = { ...v6(), engines: { ...v6().engines, codex: { ...v6().engines.codex, unknown: true } } };
     expect(validate(malformed)).toBe(false);
     expect(() => parseDaimonContractManifest(malformed)).toThrow(/v6 schema/u);
+  });
+
+  it("accepts v7 and rejects missing, unsafe or unowned Codex account realms", () => {
+    const validate = new Ajv2020.default({ strict: false }).compile(DAIMON_CONTRACT_MANIFEST_V7_JSON_SCHEMA);
+    expect(manifest.version).toBe(DAIMON_CONTRACT_MANIFEST_V7_VERSION);
+    expect(validate(manifest), JSON.stringify(validate.errors)).toBe(true);
+    expect(parseDaimonContractManifest(manifest).codexSubscriptionRealm).toEqual(manifest.codexSubscriptionRealm);
+    const missing: Record<string, unknown> = structuredClone(manifest); delete missing.codexSubscriptionRealm;
+    expect(() => parseDaimonContractManifest(missing)).toThrow(/v7 schema/u);
+    const unsafe = structuredClone(manifest); unsafe.codexSubscriptionRealm.fileMode = 511;
+    expect(() => parseDaimonContractManifest(unsafe)).toThrow(/Codex subscription realm/u);
+    const unowned = { ...structuredClone(manifest), engines: v6().engines };
+    expect(() => parseDaimonContractManifest(unowned)).toThrow(/portable subscription realm/u);
+    const downgrade = { ...v6(), engines: manifest.engines };
+    expect(() => parseDaimonContractManifest(downgrade)).toThrow(/v6 cannot/u);
+  });
+
+  it("binds the portable realm size, credential modes and singleton Codex owner", () => {
+    const oversized = structuredClone(manifest);
+    oversized.engines.codex.auth.maxCredentialBytes = 1_048_576;
+    expect(() => parseDaimonContractManifest(oversized)).toThrow(/descriptors/u);
+    const { fileMode: _fileMode, ...incompleteMaterial } = manifest.engines.codex.credentialMaterial;
+    const incomplete = { ...manifest, engines: { ...manifest.engines,
+      codex: { ...manifest.engines.codex, credentialMaterial: incompleteMaterial } } };
+    expect(() => parseDaimonContractManifest(incomplete)).toThrow(/descriptors/u);
+    const renamed = { ...manifest, engines: { ...manifest.engines,
+      another: { ...manifest.engines.codex, id: "another" },
+      codex: { ...manifest.engines.codex, auth: { ...manifest.engines.codex.auth, staging: "portable-file", realm: null } }
+    }, engineCredentialMaterial: { ...manifest.engineCredentialMaterial, another: manifest.engineCredentialMaterial.codex },
+      supportedEngineKinds: ["agy", "another", "codex", "grok"] };
+    expect(() => parseDaimonContractManifest(renamed)).toThrow(/portable subscription realm/u);
   });
 
   it("does not accept injected descriptors as v5 authority", () => {

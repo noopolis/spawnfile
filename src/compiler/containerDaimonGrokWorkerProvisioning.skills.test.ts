@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from "../runtime/daimon/contractManifest.js";
 import { DAIMON_GROK_WORKER_SKILLS_SAMPLES } from "../runtime/daimon/grokWorkerConfigBytes.js";
 import { daimonGrokWorkerSkillsSha256 } from "../runtime/daimon/grokWorkerSkills.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -16,14 +17,14 @@ const sha256 = (value: unknown) => createHash("sha256").update(typeof value === 
 const withSkills = (base: RuntimeTargetPlan): RuntimeTargetPlan => ({ ...base, grokSkillsByNodeId: { "agent:a": sampleSkills() } });
 
 /**
- * Production digests retain the pre-skills compiler output (commit 9da4cfb).
+ * Production digests include the shared Codex subscription authority deny paths.
  * Training slot digests include the renamed evaluator context mask; its profile
  * bytes and digest were checked against Daimon's public renderer.
  */
 const SKILL_LESS_GOLDEN = {
-  registrations: "8812bbdcad06989866ce8d1c0d98ec5285458a59d3de6b70b2eca1de3a10f6cf",
-  program: "54435a4dc2258fc390c0cb0ff9b8a747a97c7deefffeec89d7e29ab3a29f5f82",
-  serviceV2: "0d59efa052956ed0fb5885d516b3e350a68859a10207a44c2eb98a6e4f6b7dfc",
+  registrations: "0077d8b6fcafea81a8f69c9c551cd16203e1e8ab607a098fc9b681f5dc1c3bf9",
+  program: "837c4277590b31b694879cb4c8968d6e8272f7b0fdab026af563c594722e018d",
+  serviceV2: "ca3de703c3d003e5440d749ea84d037b2425f1f5d0f835164a5accbf778d0599",
   serviceV3: "fed05ea8dc946ca5fab07d9095ce79b5003cab1352b003f6ef576da1cff3060f",
   slotRegistration: "203321f8929fa55749d31613cb10532e7a1a3dd3947dcca737a9bb6714e1e457",
   slotProgram: "502bdb1794e0ddd2f2dd69c51043bd95ed422b58b46c86c280d01fffffea4b58"
@@ -32,8 +33,11 @@ const SKILL_LESS_GOLDEN = {
 describe("Grok worker skills provisioning", () => {
   const base = plan({ "agent:a": "grok", "agent:b": "grok", "agent:c": "codex" });
 
-  it("keeps skill-less production renders unchanged and pins the renamed training slot", () => {
+  it("pins skill-less production realm denials and the renamed training slot", () => {
     const registrations = resolveDaimonGrokRegistrations([base]);
+    for (const registration of registrations) expect(registration.denyPaths).toEqual(expect.arrayContaining([
+      DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath, DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath
+    ]));
     const slot = resolveTrainingGrokRegistration({ agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low", slot: 1, slots: 2, limits: { maxRequests: 8, maxTokens: 100000, timeoutMs: 600000 } });
     expect(slot.denyPaths).toContain("/run/spawnfile-training");
     expect(slot.denyPaths).not.toContain("/run/training");

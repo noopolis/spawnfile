@@ -1,6 +1,6 @@
 {
   "version": "noopolis.spawnfile.daimon-engine-descriptors.v1",
-  "sourceCommit": "5e8bffc10779838e3ff0b6687de06db6b6fde02a",
+  "sourceCommit": "0f2e73b4794f9ad03173b05a99486a5459715d4c",
   "engines": {
     "agy": {
       "auth": {
@@ -81,8 +81,16 @@
         "maxCredentialBytes": 65536,
         "method": "codex",
         "provider": "openai",
-        "realm": null,
-        "staging": "portable-file"
+        "realm": {
+          "agentCredentialRelativePath": ".codex/auth.json",
+          "bootstrapMountPath": "/var/lib/spawnfile/daimon/codex-bootstrap-auth",
+          "bootstrapSourceSlot": "codex-auth",
+          "directoryMode": 448,
+          "durableMountPath": "/var/lib/spawnfile/daimon/codex-subscription-realm",
+          "fileMode": 384,
+          "maxCredentialBytes": 65536
+        },
+        "staging": "portable-realm"
       },
       "authKinds": [
         "subscription"

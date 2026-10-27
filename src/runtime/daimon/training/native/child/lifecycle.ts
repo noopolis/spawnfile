@@ -12,25 +12,29 @@ import { ensureNativeTrialArtifacts, nativeChildArguments, nativeChildEnvironmen
 import { verifyChildSandbox } from './sandbox.js';
 import type { NativeChildExecution } from './types.js';
 import type { GrokSlotFreshnessStore } from '../../services/index.js';
+import { recordNativeStartupClosure } from '../../services/index.js';
 import { childDiagnostics } from './diagnostics.js';
 
 /** One fresh worker process in the caller's existing container; no Docker or remote proof. */
 export async function startOwnedChild(execution: NativeChildExecution, launch: VerifiedNativeLaunch, trialId: string,
   timeoutMs: number, signal?: AbortSignal, startupMs = 60_000, protectedPaths: readonly string[] = []): Promise<NativeExecutionHandle> {
   if (!Number.isSafeInteger(startupMs) || startupMs < 1 || startupMs > 3_600_000) throw new Error('Invalid native startup deadline');
-  signal?.throwIfAborted();
   const startup = new AbortController();
   const abort = () => startup.abort(); signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(abort, Math.min(startupMs, timeoutMs));
+  let launched = false;
   try {
+    signal?.throwIfAborted();
     if (execution.prepare) await bounded(execution.prepare({ launch: structuredClone(launch), trialId, signal: startup.signal }), startup.signal);
     startup.signal.throwIfAborted();
     await validateChildPaths(launch);
     await ensureNativeTrialArtifacts(launch, trialId);
     const env = await nativeChildEnvironment(launch);
     const token = (await readPrivateFile(launch.tokenFile, 4096)).trim();
-    return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths, execution.grokSlots);
-  } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+    return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths,
+      () => { launched = true; }, execution.grokSlots);
+  } catch (error) { throw recordNativeStartupClosure(error, !launched); }
+  finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
 
 /**
@@ -45,7 +49,7 @@ function childSecrets(launch: VerifiedNativeLaunch, env: NodeJS.ProcessEnv, toke
 }
 
 async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
-  token: string, startup: AbortSignal, protectedPaths: readonly string[], grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
+  token: string, startup: AbortSignal, protectedPaths: readonly string[], onSpawn: () => void, grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
   const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token, launch.delivery);
   const diagnostics = await childDiagnostics(nativeTrialArtifactsRoot(launch, trialId), trialId, launch.configSha256,
     childSecrets(launch, env, token));
@@ -54,6 +58,9 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     cwd: dirname(launch.workerRoot), env, detached: group, stdio: ['ignore', 'pipe', 'pipe'],
   });
   const pid = child.pid;
+  // Preparation and synchronous spawn failures own no process. A returned pid
+  // is the boundary after which absence needs the ordinary closure proof.
+  if (pid !== undefined) onSpawn();
   let reaped = false;
   let exited = false; let exitCode: number | null = null; let exitSignal: NodeJS.Signals | null = null; let ready = false; let failure = false; let buffer = ''; let bytes = 0;
   child.once('error', () => { failure = true; });
@@ -235,8 +242,8 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
   } catch (error) {
     // The protected capture lives on the control root, which a training slot puts on tmpfs; the thrown
     // carrier holds the redacted record so the caller can persist the failure class durably.
-    await stop('Native child startup failed');
-    throw diagnostics.startupFailure(error);
+    const outcome = await stop('Native child startup failed');
+    throw recordNativeStartupClosure(diagnostics.startupFailure(error), outcome.state === 'acknowledged' && outcome.quiescence === 'confirmed');
   }
 }
 

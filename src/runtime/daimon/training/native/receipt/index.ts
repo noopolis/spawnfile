@@ -8,3 +8,4 @@ export { grokTrialArtifactsDirectory, nativeTrialArtifactsRoot, nativeTrialLeaf 
 export type { GrokBrokerProjection, GrokBrokerReceipt, GrokSlotPreflight } from './grok.js';
 export { configureNativeTaskClock, nativeTaskClockSchema } from './task-clock.js';
 export type { NativeTaskClock, NativeTaskClockEvidence } from './task-clock.js';
+export { nativeCodexAccount } from './subscription.js';

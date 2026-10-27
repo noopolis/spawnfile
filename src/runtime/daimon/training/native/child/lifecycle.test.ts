@@ -8,6 +8,7 @@ import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
 import { verifyChildSandbox } from './sandbox.js';
 import { grokLaunchFrom } from '../grok-fixtures.js';
+import { acquireNativeAccountLease, nativeStartupClosureConfirmed } from '../../services/index.js';
 import { subjectStartupDiagnostic } from '../../../../../training/index.js';
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
@@ -158,7 +159,8 @@ it('rejects unsupported modes, Docker callback mixing, invalid deadlines and can
   expect(() => createDaimonNativeAdapter({ execution: { kind: 'wrong' as 'child-process' } })).toThrow('Unsupported');
   expect(() => createDaimonNativeAdapter({ execution: { kind: 'child-process' }, docker: vi.fn() })).toThrow('one native execution');
   await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, undefined, 0)).rejects.toThrow('deadline');
-  await expect(startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, AbortSignal.abort())).rejects.toThrow();
+  const aborted = await startOwnedChild({ kind: 'child-process' }, f.launch, f.input.trialId, 1000, AbortSignal.abort()).catch(error => error);
+  expect(aborted).toBeInstanceOf(Error); expect(nativeStartupClosureConfirmed(aborted)).toBe(true);
   await expect(startOwnedChild({ kind: 'child-process', prepare: () => new Promise(() => undefined) }, f.launch, f.input.trialId, 1000, undefined, 10)).rejects.toThrow('preparation cancelled');
 });
 
@@ -238,4 +240,42 @@ it.each(['bad-model', 'bad-effort'])('requires the Grok ready line to match the 
     const codex = await fixture(mode);
     await expect(startOwnedChild({ kind: 'child-process' }, codex.launch, codex.input.trialId, 1000, undefined, 300)).rejects.toThrow();
   }
+});
+
+
+it('releases account admission when preparation throws a primitive before any child exists', async () => {
+  const f = await fixture();
+  await expect(createDaimonNativeAdapter({ execution: { kind: 'child-process', prepare: async () => { throw 'preparation refused'; } } }).start(f.input))
+    .rejects.toThrow('Native startup failed');
+  const release = await acquireNativeAccountLease(f.launch.projections.find(row => row.role === 'subscription')!.source, undefined, 0);
+  release();
+});
+
+// Exercise the real owner boundary rather than annotating a synthetic error as closed.
+it.each(['invalid-token', 'diagnostics-refused', 'spawn-refused'] as const)(
+  'releases account admission after %s fails before a worker process exists', async mode => {
+    const f = await fixture();
+    const account = f.launch.projections.find(row => row.role === 'subscription')!.source;
+    if (mode === 'invalid-token') await writeFile(f.launch.tokenFile, 'short', { mode: 0o600 });
+    if (mode === 'spawn-refused') await writeFile(f.launch.envFile, 'INVALID_ENV=value\0tail\n');
+    const execution = { kind: 'child-process' as const,
+      ...(mode === 'diagnostics-refused' ? { prepare: async () => {
+        const { chmod } = await import('node:fs/promises');
+        await chmod(f.launch.controlRoot, 0o755);
+      } } : {}) };
+    const failure = createDaimonNativeAdapter({ execution }).start(f.input);
+    await expect(failure).rejects.toThrow(mode === 'invalid-token' ? 'authentication token is invalid'
+      : mode === 'diagnostics-refused' ? 'diagnostics require' : /null bytes|NULL/u);
+    await expect(readFile(join(f.launch.controlRoot, 'child-env.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    const next = await acquireNativeAccountLease(account, undefined, 0);
+    next();
+  });
+
+it('retains account fencing when a real spawned worker has unconfirmed startup cleanup', async () => {
+  const f = await fixture('bad-stop');
+  vi.mocked(verifyChildSandbox).mockRejectedValueOnce(new Error('preflight refused'));
+  await expect(createDaimonNativeAdapter({ execution: { kind: 'child-process' } }).start(f.input)).rejects.toThrow('preflight refused');
+  expect(JSON.parse(await readFile(join(f.launch.controlRoot, 'child-env.json'), 'utf8')).pid).toBeGreaterThan(0);
+  await expect(acquireNativeAccountLease(f.launch.projections.find(row => row.role === 'subscription')!.source, undefined, 20))
+    .rejects.toThrow('wait bound');
 });

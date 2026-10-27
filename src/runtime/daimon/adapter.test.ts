@@ -215,10 +215,17 @@ describe("daimonAdapter", () => {
         expect.objectContaining({ engine: { kind: "agy" } })
       ]));
     expect(target.opaqueMountTargets).toEqual([
+      "/var/lib/spawnfile/daimon/codex-bootstrap-auth",
       "/var/lib/spawnfile/daimon/agy-unlock-secret",
       "/var/lib/spawnfile/daimon/grok-bootstrap-auth"
     ]);
     expect(target.persistentMounts).toEqual([
+      {
+        id: "daimon-codex-subscription-realm",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/codex-subscription-realm",
+        reason: "Daimon host codex subscription credential realm"
+      },
       {
         id: "daimon-engine-home-codex-codex",
         mountPath: "<instance-root>/runtime-homes/codex/.codex",
@@ -309,13 +316,19 @@ describe("daimonAdapter", () => {
     expect(entrypoint).not.toMatch(/(?:codex|grok|agy) (?:exec|run)/u);
   });
 
-  it("emits only isolated portable credential homes when no agent uses AGY", async () => {
+  it("emits portable subscription authorities without an AGY keyring", async () => {
     const target = (await daimonAdapter.createContainerTargets!([
       { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode("codex") },
       { emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createDaimonNode("grok", "Grok", "grok") }
     ]))[0]!;
-    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/grok-bootstrap-auth"]);
+    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/codex-bootstrap-auth", "/var/lib/spawnfile/daimon/grok-bootstrap-auth"]);
     expect(target.persistentMounts).toEqual([
+      {
+        id: "daimon-codex-subscription-realm",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/codex-subscription-realm",
+        reason: "Daimon host codex subscription credential realm"
+      },
       {
         id: "daimon-engine-home-codex-codex",
         mountPath: "<instance-root>/runtime-homes/codex/.codex",
@@ -365,6 +378,17 @@ describe("daimonAdapter", () => {
     )).toBe(false);
   });
 
+  it("gives two Codex agents exactly one durable account authority", async () => {
+    const target = (await daimonAdapter.createContainerTargets!(["alpha", "beta"].map(slug => ({
+      emittedFiles: [], id: `agent:${slug}`, kind: "agent" as const, slug, value: createDaimonNode(slug)
+    }))))[0]!;
+    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/codex-bootstrap-auth"]);
+    expect(target.persistentMounts?.filter(mount => mount.id.endsWith("subscription-realm"))).toEqual([{
+      id: "daimon-codex-subscription-realm", lifecycle: "exclusive-reattach",
+      mountPath: "/var/lib/spawnfile/daimon/codex-subscription-realm", reason: "Daimon host codex subscription credential realm"
+    }]);
+  });
+
   it("rejects 33 agents before emitting a partial target", async () => {
     const inputs = Array.from({ length: 33 }, (_, index) => {
       const node = createDaimonNode(`agent-${index}`);
@@ -384,7 +408,7 @@ describe("daimonAdapter", () => {
 
   it("uses the pinned image because it attests the exact compiler contract", async () => {
     const recipe = await createRuntimeInstallRecipe("daimon");
-    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:a8f385f57d06f81b0f64e61b2a455e9753216898eff333174da799c5d0aa7184");
+    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:3e9743eaeb8ebae529e8e2768320695e97dc73bb5d639ffa6e2a479d3db81dbd");
   });
 
   it("lowers schedules while retaining the MCP and non-Moltnet surface boundary", async () => {

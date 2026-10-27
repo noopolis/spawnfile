@@ -4,7 +4,7 @@ import { createWorkerController } from './control.js';
 import { MAX_TRIAL_WAKES, engineWakeTimeoutMs } from './deliveries.js';
 import { assertFreshNativeEvidence } from './evidence/index.js';
 import { assertNativeProfile, verifyNativeWorkerStartup, verifyWorkerPaths } from './profile.js';
-import { configureNativeTaskClock, isGrokLaunch, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
+import { configureNativeTaskClock, isGrokLaunch, nativeCodexAccount, nativeTrialArtifactsRoot, readPrivateFile } from '../receipt/index.js';
 import { loadDaimonRuntime } from './public.js';
 import { createWorkerServer, listenWorker } from './server.js';
 import { persistNativeSandboxProjection } from './sandbox.js';
@@ -57,7 +57,9 @@ export async function runDaimonNativeWorker(args: readonly string[]): Promise<vo
   // Set only after this worker is running. Daimon consumes the loader path for
   // child gates and strips it from engines; this process is never preloaded.
   const taskClock = configureNativeTaskClock(launch.taskClock, options.timeoutMs);
-  const host = createOrganizationRuntimeControlHost(config, { acceptanceStorePath: artifacts, controlToken: token });
+  const account = nativeCodexAccount(launch);
+  const host = createOrganizationRuntimeControlHost(config, { acceptanceStorePath: artifacts, controlToken: token,
+    ...(account ? { subscriptionRealmPaths: { codex: { durablePath: account.realm.target, bootstrapPath: account.bootstrap.target } } } : {}) });
   const controller = createWorkerController(host, config, options, token, launch, taskClock);
   const server = createWorkerServer(controller, token);
   try {

@@ -1,6 +1,7 @@
 import { canonicalWireId } from '../../../../training/index.js';
 import { join } from 'node:path';
-import { nativeTrialArtifactsRoot } from './receipt/index.js';
+import { nativeCodexAccount, nativeTrialArtifactsRoot } from './receipt/index.js';
+import { acquireNativeAccountLease, nativeStartupClosureConfirmed } from '../services/index.js';
 import { admittedNativeEvidence, type NativeTurnEvidence } from './outcome.js';
 import { boundedTransportCall, requestTransportDelivery, transportTerminalBinding, verifyPreparedTransport,
   type NativeExecutionHandle, type NativeTransportDelivery, type PreparedTransportDelivery } from './transport/index.js';
@@ -24,6 +25,7 @@ export interface NativeAdapterOptions { timeoutMs?: number; startupMs?: number; 
 export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): SubjectAdapter {
   const timeoutMs = options.timeoutMs ?? 900_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 86_400_000) throw new Error('Invalid native adapter deadline');
+  if (options.startupMs !== undefined && (!Number.isSafeInteger(options.startupMs) || options.startupMs < 1 || options.startupMs > 3_600_000)) throw new Error('Invalid native startup deadline');
   if (options.execution && options.externalInputs) throw new Error('Child execution requires execution.externalInputs, not Docker externalInputs');
   const sealedUsage = options.sealedUsage;
   const execution = options.execution;
@@ -45,13 +47,17 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
       if (input.signal?.aborted) throw new Error('Native subject start aborted');
       const launch = await loadNativeLaunch(input, !!execution);
       if (launch.delivery === 'transport' && !options.transportDelivery) throw new Error('Transport delivery mode requires a transport delivery provider');
+      const account = nativeCodexAccount(launch);
+      // Admission is cancellable and outside both startup and cognition clocks.
+      const releaseAccount = account ? await acquireNativeAccountLease(account.realm.source, input.signal) : undefined;
       const deadline = Date.now() + timeoutMs;
-      const container: NativeExecutionHandle = execution
+      let container: NativeExecutionHandle;
+      try { container = execution
         ? await startOwnedChild(execution, launch, input.trialId, timeoutMs, input.signal, options.startupMs, input.protectedPaths)
         : await startOwnedContainer(docker, launch, input.trialId, timeoutMs, input.signal, options.startupMs).then(owned => ({
           ...owned, request: <T>(path: Parameters<NativeExecutionHandle['request']>[0], body?: unknown, ms?: number, signal?: AbortSignal) =>
             workerRequest<T>(docker, owned.name, path, body, ms, signal, launch.host.port),
-        }));
+        })); } catch (error) { if (nativeStartupClosureConfirmed(error)) releaseAccount?.(); throw error; }
       const observer = createNativeObserver(input, launch.projections.find(row => row.role === 'home')!.source, launch.agent.id, launch.agent.engine);
       const evidence: NativeTurnEvidence = { schema: 'spawnfile.training.daimon-native.evidence.v1', wakes: [] };
       const admittedDeliveries = new Set<string>();
@@ -60,7 +66,12 @@ export function createDaimonNativeAdapter(options: NativeAdapterOptions = {}): S
       let used = false;
       let stopped = false;
       const sessionCancellation = new AbortController();
-      const stop = async (reason: string) => { stopped = true; sessionCancellation.abort(); return container.stop(reason); };
+      const stop = async (reason: string) => {
+        stopped = true; sessionCancellation.abort();
+        const receipt = await container.stop(reason);
+        if (receipt.state === 'acknowledged' && receipt.quiescence === 'confirmed') releaseAccount?.();
+        return receipt;
+      };
       const deliver = async (turn: {id: string; text: string}, signal: AbortSignal | undefined, controls?: DeliveryControls, observedWakeId = turn.id,
         transport?: PreparedTransportDelivery) => {
           if (stopped || signal?.aborted || input.signal?.aborted) throw new Error('Native subject cancelled before delivery');

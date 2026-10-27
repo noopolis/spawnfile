@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { renderEntrypoint } from "./containerEntrypointRender.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
+import { DAIMON_CODEX_SUBSCRIPTION_REALM, DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import { DAIMON_WAKE_FUSE_DIRECTORY } from "../runtime/daimon/config.js";
 import { DAIMON_ORGANIZATION_STATE_DIRECTORY } from "./containerDaimonBrokerRender.js";
 import {
@@ -193,7 +193,7 @@ describe("renderDaimonUidEntrypoint", () => {
   it("reowns only compiler-authored state, skips opaque mounts, and drops every capability before the existing entrypoint", () => {
     const volumeRoot="/var/lib/spawnfile/resources/teams/example/shared",volumeSentinel=`${volumeRoot}/.spawnfile-resource-identity`,volumeIdentity="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const rendered = renderDaimonUidEntrypoint(
-      [{ ...daimonPlan, persistentMounts: [
+      [{ ...daimonPlan, opaqueMountTargets: [...daimonPlan.opaqueMountTargets!, DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath], persistentMounts: [
         agyRealmMount, agyRuntimeHomeMount, codexEngineHomeMount, grokEngineHomeMount
       ],resources:[{id:"shared",kind:"volume",linkPath:"/var/lib/spawnfile/instances/daimon/daimon-organization/workspace/shared",backingPath:volumeRoot,mount:"./shared",mode:"mutable",sharing:"team",replacementSentinel:volumeSentinel,resolvedIdentity:volumeIdentity} as NonNullable<RuntimeTargetPlan["resources"]>[number]&{replacementSentinel:string;resolvedIdentity:string}] }],
       [agyRealm, agyRuntimeHome, codexEngineHome, grokEngineHome, volumeRoot,"/var/lib/spawnfile/daimon-state"],
@@ -270,7 +270,8 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(rendered).toContain('${finished_pid:-}');
     expect(rendered).toContain("[ -S '/run/daimon-engine-broker/control.sock' ]");
     expect(rendered).not.toMatch(/0\.0\.0\.0:4312[34]/u);
-    expect(rendered).toContain("runtime-homes/codex-one/.daimon-inbound/codex-auth");
+    expect(rendered).not.toContain("runtime-homes/codex-one/.daimon-inbound/codex-auth");
+    expect(rendered).toContain(JSON.stringify(DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath));
     expect(rendered).not.toContain("runtime-homes/grok-two/.daimon-inbound/grok-auth");
     expect(rendered).toContain("/var/lib/spawnfile/daimon/agy-unlock-secret");
     expect(rendered).not.toContain("runtime-homes/agy/.daimon-inbound/agy-auth");

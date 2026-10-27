@@ -1,4 +1,4 @@
-import { COUNCIL_WINDOW_CONFIG_KEY } from '../../../shared/trainingLegacy/index.js';
+import { compatibleIsoDateTimeSchema, COUNCIL_WINDOW_CONFIG_KEY } from '../../../shared/trainingLegacy/index.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import { identifier, parseSchema, parseYaml, rowsSchema, provider } from '../format/index.js';
@@ -23,13 +23,13 @@ export const unitSchema = z.strictObject({
   source_span: z.string().optional(),
 });
 const extractor = z.strictObject({ provider: identifier, model: z.string().min(1),
-  prompt_digest: z.string().regex(/^[a-f0-9]{64}$/), at: z.iso.datetime({ offset: true }) });
+  prompt_digest: z.string().regex(/^[a-f0-9]{64}$/), at: compatibleIsoDateTimeSchema({ offset: true }) });
 export const decompositionSchema = z.strictObject({
   schema: compatibleWireLiteral('spawnfile.training.decomposition.v1'), output: reference,
   context: z.record(identifier, reference).default({}), units: z.array(unitSchema),
   extractors: z.array(extractor).min(1),
   rejected: z.array(z.strictObject({ id, reasons: z.array(z.string()).min(1), unit: unitSchema })).optional(),
-  audit: z.strictObject({ extractor, missed: z.array(unitSchema), at: z.iso.datetime({ offset: true }) }).optional(),
+  audit: z.strictObject({ extractor, missed: z.array(unitSchema), at: compatibleIsoDateTimeSchema({ offset: true }) }).optional(),
 });
 export type AtomicUnit = z.infer<typeof unitSchema>;
 export type Decomposition = z.infer<typeof decompositionSchema>;

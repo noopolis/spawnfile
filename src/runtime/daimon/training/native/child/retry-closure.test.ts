@@ -22,7 +22,7 @@ async function fixture() {
   const f = await launchFixture(); roots.push(f.root);
   f.launch.bootstrap!.entrypoint = 'bootstrap.cjs';
   f.launch.workspace.target = f.launch.workspace.source;
-  for (const row of f.launch.projections) row.target = row.source;
+  for (const row of [...f.launch.projections, ...f.launch.credentials]) row.target = row.source;
   const config = JSON.parse(await readFile(f.launch.config, 'utf8'));
   config.agents[0].workspacePath = f.launch.workspace.target;
   config.agents[0].runtimeHomePath = f.launch.projections[0]!.target;

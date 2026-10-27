@@ -36,7 +36,7 @@ import {
   rollbackCandidateContainer
 } from "./consumeImageLifecycle.js";
 import { createConsumerDockerRunner } from "./dockerRunner.js";
-import { resolveDaimonDockerSecurityArgsForImage } from "./consumeImageDaimonDocker.js";
+import { resolveDaimonRuntimeForImage } from "./consumeImageDaimonDocker.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
 import { parseImageReference } from "./imageRef.js";
@@ -236,6 +236,9 @@ const consumeImageUpLocked = async (
     // config is already baked into the image; this only resolves the credential
     // mounts. Doing it first guarantees an unusable import fails while the live
     // container is still untouched, never mid-swap.
+    const daimonRuntime = await resolveDaimonRuntimeForImage(
+      imageRef, report, runDocker, workDir
+    );
     const authMountArgs = (
       await prepareImageRuntimeAuthMounts({
         authProfile: options.authProfile ?? null,
@@ -243,12 +246,10 @@ const consumeImageUpLocked = async (
           ? {}
           : { daimonContainerCredentialUid: options.daimonContainerCredentialUid }),
         report,
+        daimonEngineDescriptors: daimonRuntime.engineDescriptors,
         tempRoot: workDir
       })
     ).mountArgs;
-    const daimonDockerSecurityArgs = await resolveDaimonDockerSecurityArgsForImage(
-      imageRef, report, runDocker, workDir
-    );
 
     volumeReservation = await acquireExclusiveVolumeReservations(
       report, deploymentName, containerName, imageRef, runDocker
@@ -276,7 +277,7 @@ const consumeImageUpLocked = async (
     }
 
     const runArgs = [
-      "run", "-d", "--name", containerName, ...daimonDockerSecurityArgs, "--env-file", envFilePath
+      "run", "-d", "--name", containerName, ...daimonRuntime.securityArgs, "--env-file", envFilePath
     ];
     for (const port of report.ports) {
       runArgs.push("-p", `${port}:${port}`);

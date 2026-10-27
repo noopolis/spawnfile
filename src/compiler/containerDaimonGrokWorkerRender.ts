@@ -211,6 +211,10 @@ export const resolveDaimonGrokWorkerDenyPaths = (
   const ownRuntimeHome = path.posix.join(instanceRoot, DAIMON_RUNTIME_HOMES_DIRECTORY, nodeSlug(agentId));
   const peers = agents.filter(([id]) => id !== agentId).map(([id]) => nodeSlug(id));
   const daimonOwn = [
+    ...[...new Set(agents.map(([, engine]) => engine))].flatMap((engine) => {
+      const auth = getDaimonEngineDescriptor(engine)?.auth;
+      return auth?.staging === "portable-realm" ? [auth.realm.bootstrapMountPath, auth.realm.durableMountPath] : [];
+    }),
     DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath,
     DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
     ...(agents.some(([, engine]) => getDaimonEngineDescriptor(engine)?.auth.staging === "secret-service") ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath, DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath] : []),

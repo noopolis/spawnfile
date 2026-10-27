@@ -15,8 +15,10 @@ export interface GrokBrokerProjectionOptions {
 export interface NativeRuntimeModule {
   parseWakeAcceptanceRequest?(value: unknown): NativeWakeRequest;
   parseOrganizationRuntimeConfig(value: unknown): NativeConfig;
-  createOrganizationRuntimeControlHost(value: unknown, options: { acceptanceStorePath: string; controlToken: string }): NativeHost;
-  resolveOrganizationCodexSandboxProjection(value: unknown, agentId: string, options: { acceptanceStorePath: string }): Promise<NativeSandboxProjection>;
+  createOrganizationRuntimeControlHost(value: unknown, options: { acceptanceStorePath: string; controlToken: string;
+    subscriptionRealmPaths?: { codex: { durablePath: string; bootstrapPath: string } } }): NativeHost;
+  resolveOrganizationCodexSandboxProjection(value: unknown, agentId: string, options: { acceptanceStorePath: string;
+    subscriptionRealmPaths?: { codex: { durablePath: string; bootstrapPath: string } } }): Promise<NativeSandboxProjection>;
   resolveOrganizationGrokBrokerProjection?(value: unknown, agentId: string, options: GrokBrokerProjectionOptions): unknown;
   grokBrokerProjectionSha256?(projection: unknown): string;
   verifyGrokSlotPreflightReceipt?(value: unknown, projection: unknown, freshness: { expectedNonce: string; minGeneration: number }): unknown;

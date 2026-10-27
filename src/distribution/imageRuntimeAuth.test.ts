@@ -161,7 +161,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       report: daimonReport(), sourceEnvironment: sources.environment,
       tempRoot: await tempDir()
     });
-    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
     expect(result.mountArgs).toContain(`${sources.grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`);
   });
 
@@ -184,7 +184,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       sourceEnvironment: { SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: sources.grok },
       tempRoot: await tempDir()
     });
-    expect(result.mountArgs).toContain(`${path.join(importDir, "auth.json")}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs).toEqual(["-v", `${path.join(importDir, "auth.json")}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`, "-v", `${sources.grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`]);
     expect(result.mountArgs.join("\n")).not.toContain(sources.codex);
   });
 
@@ -199,7 +199,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       authProfile: profile, daimonContainerCredentialUid: callerUid(), report: daimonReport(),
       sourceEnvironment: sources.environment, tempRoot: await tempDir()
     });
-    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
     expect(result.mountArgs.join("\n")).not.toContain(path.join(importDir, "auth.json"));
   });
 
@@ -213,7 +213,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       authProfile: profile, daimonContainerCredentialUid: callerUid(), report: daimonReport(),
       sourceEnvironment: sources.environment, tempRoot: await tempDir()
     });
-    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
   });
 
   it("fails closed when a Daimon image selected profile has no Codex import", async () => {
@@ -279,7 +279,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       report: daimonReport(), sourceEnvironment: sources.environment,
       tempRoot: await tempDir()
     });
-    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
     const after = await lstat(sources.codex);
     expect([after.ino, after.uid, after.mode & 0o777, after.nlink])
       .toEqual([before.ino, before.uid, 0o600, 1]);
@@ -300,7 +300,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
 
   it("rejects redirected Daimon paths and cross-engine slug collisions", async () => {
     const sources = await directDaimonSources();
-    for (const field of ["config_path", "workspace_path"] as const) {
+    for (const field of ["config_path", "workspace_path", "home_path"] as const) {
       const redirected = daimonReport(); redirected.runtime_instances[0]![field] = `/tmp/${field}`;
       await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: redirected, sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/paths are not canonical/u);
     }

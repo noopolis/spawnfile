@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { removeDirectory } from "../filesystem/index.js";
 
+import { daimonImageContractFiles, daimonImageManifestBytes } from "./daimonImageContract.test-fixtures.js";
 import { buildDistributionReport } from "./buildDistributionReport.js";
 import { consumeImageUp } from "./consumeImage.js";
 import { DISTRIBUTION_REPORT_IMAGE_PATH } from "./types.js";
@@ -100,7 +101,8 @@ const dockerSecurityPostureArgs = (args: string[]): string[] =>
 const createFakeDocker = (
   calls: string[][],
   report = imageReport(),
-  configByPath: Record<string, unknown> = { [daimonConfigPath]: daimonConfig() }
+  configByPath: Record<string, unknown> = { [daimonConfigPath]: daimonConfig() },
+  contractFiles = daimonImageContractFiles()
 ) => {
   let startedName: string | null = null;
   return async (args: string[]): Promise<Buffer> => {
@@ -119,6 +121,7 @@ const createFakeDocker = (
     if (copiedPath === DISTRIBUTION_REPORT_IMAGE_PATH) {
       return buildTar(Buffer.from(JSON.stringify(report)), "spawnfile-report.json");
     }
+    if (Object.hasOwn(contractFiles, copiedPath)) return buildTar(contractFiles[copiedPath]!);
     if (Object.prototype.hasOwnProperty.call(configByPath, copiedPath)) {
       const value = configByPath[copiedPath]!;
       return buildTar(Buffer.from(typeof value === "string" ? value : JSON.stringify(value)));
@@ -174,6 +177,70 @@ afterEach(async () => {
 });
 
 describe("Daimon Docker posture for image consumption", () => {
+  it.each([5, 6, 7] as const)("uses image contract v%s for Codex credential ingress", async (version) => {
+    const calls: string[][] = [];
+    const source = process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH!;
+    await consumeImageUp("you/org:v3", {
+      daimonContainerCredentialUid: process.getuid?.(), deploymentName: `contract-v${version}`,
+      runDocker: createFakeDocker(calls, imageReport([daimonInstance("daimon-organization", ["agent:coder", "agent:reviewer"])]),
+        { [daimonConfigPath]: daimonConfig([strictCodexAgent(), strictCodexAgent("agent:reviewer")]) },
+        daimonImageContractFiles(daimonImageManifestBytes(version)))
+    });
+    const mounts = calls.find((call) => call[0] === "run")!.filter((arg) => arg.startsWith(`${source}:`));
+    expect(mounts).toEqual(version === 7 ? [`${source}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`] : [
+      `${source}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`,
+      `${source}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/reviewer/.daimon-inbound/codex-auth:ro`
+    ]);
+    const contractCopies = calls.filter((call) => call[0] === "cp" && call[1]!.includes("/runtime-installs/daimon/"));
+    expect(contractCopies).toHaveLength(3);
+    expect(new Set(contractCopies.map((call) => call[1]!.split(":")[0])).size).toBe(1);
+  });
+
+  it("uses the verified image descriptor for source filename and credential format", async () => {
+    const calls: string[][] = [];
+    const manifest = JSON.parse(daimonImageManifestBytes(6).toString("utf8"));
+    manifest.engines.codex.auth.fileName = "image-auth.json";
+    manifest.engines.codex.auth.format.accessTokenKeys = ["image_access"];
+    manifest.engines.codex.auth.format.refreshTokenKeys = ["image_refresh"];
+    const source = path.join(homeDirectory, "image-auth.json"), oldHome = process.env.CODEX_HOME;
+    const oldSource = process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH;
+    await writeFile(source, JSON.stringify({ tokens: { image_access: "access", image_refresh: "refresh" } }), { mode: 0o600 });
+    delete process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH;
+    process.env.CODEX_HOME = homeDirectory;
+    try {
+      await consumeImageUp("you/org:v3", {
+        daimonContainerCredentialUid: process.getuid?.(), deploymentName: "image-format",
+        runDocker: createFakeDocker(calls, imageReport(), { [daimonConfigPath]: daimonConfig() },
+          daimonImageContractFiles(Buffer.from(`${JSON.stringify(manifest)}\n`)))
+      });
+      expect(calls.find((call) => call[0] === "run")).toContain(
+        `${source}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`
+      );
+    } finally {
+      if (oldHome === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = oldHome;
+      if (oldSource === undefined) delete process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH;
+      else process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH = oldSource;
+    }
+  });
+
+  it.each(["digest", "receipt", "missing", "oversized"])("refuses a %s contract before replacing a deployment", async (fault) => {
+    const calls: string[][] = [], files = daimonImageContractFiles();
+    const root = "/opt/spawnfile/runtime-installs/daimon";
+    if (fault === "digest") files[`${root}/contract-manifest.sha256`] = Buffer.from(`sha256:${"0".repeat(64)}\n`);
+    if (fault === "receipt") files[`${root}/capability-receipt.json`] = Buffer.from(JSON.stringify({
+      version: "spawnfile.daimon-runtime-capability-receipt.v1", manifest_sha256: `sha256:${"0".repeat(64)}`
+    }));
+    if (fault === "missing") delete files[`${root}/contract-manifest.json`];
+    if (fault === "oversized") files[`${root}/contract-manifest.json`] = Buffer.alloc(4 * 1024 * 1024 + 1);
+    await expect(consumeImageUp("you/org:v3", {
+      daimonContainerCredentialUid: process.getuid?.(), deploymentName: `bad-${fault}`,
+      runDocker: createFakeDocker(calls, imageReport(), { [daimonConfigPath]: daimonConfig() }, files)
+    })).rejects.toThrow(/verify Daimon's embedded image contract/u);
+    expect(calls.some((call) => ["rename", "run", "stop"].includes(call[0]!))).toBe(false);
+    const helper = calls.find((call) => call[0] === "create" && call[2]!.startsWith("spawnfile-daimon-config-"))![2]!;
+    expect(calls).toContainEqual(["rm", "-f", helper]);
+  });
+
   it("adds baseline posture and strict Codex native sandbox opts", async () => {
     const calls: string[][] = [];
     await consumeImageUp("you/org:v3", {
