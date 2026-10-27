@@ -184,7 +184,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       sourceEnvironment: { SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: sources.grok },
       tempRoot: await tempDir()
     });
-    expect(result.mountArgs).toContain(`${path.join(importDir, "auth.json")}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
+    expect(result.mountArgs).toEqual(["-v", `${path.join(importDir, "auth.json")}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`, "-v", `${sources.grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`]);
     expect(result.mountArgs.join("\n")).not.toContain(sources.codex);
   });
 
@@ -300,7 +300,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
 
   it("rejects redirected Daimon paths and cross-engine slug collisions", async () => {
     const sources = await directDaimonSources();
-    for (const field of ["config_path", "workspace_path"] as const) {
+    for (const field of ["config_path", "workspace_path", "home_path"] as const) {
       const redirected = daimonReport(); redirected.runtime_instances[0]![field] = `/tmp/${field}`;
       await expect(prepareImageRuntimeAuthMounts({ authProfile: null, report: redirected, sourceEnvironment: sources.environment, tempRoot: await tempDir() })).rejects.toThrow(/paths are not canonical/u);
     }

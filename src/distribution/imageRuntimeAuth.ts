@@ -48,7 +48,7 @@ const daimonInstanceRoot = (
   instance: DistributionReport["runtime_instances"][number]
 ): string => {
   const root = path.posix.join("/var/lib/spawnfile/instances/daimon", instance.id);
-  if (instance.config_path !== path.posix.join(root, "daimon/daimon-organization-runtime.json")
+  if (instance.home_path !== null || instance.config_path !== path.posix.join(root, "daimon/daimon-organization-runtime.json")
     || instance.workspace_path !== path.posix.join(root, "workspace")) {
     throw new SpawnfileError("validation_error", "Daimon image runtime paths are not canonical");
   }
@@ -137,9 +137,6 @@ export const prepareImageRuntimeAuthMounts = async (
   const runtimeHomes = new Set<string>();
 
   for (const instance of input.report.runtime_instances) {
-    if (instance.home_path) {
-      runtimeHomes.add(instance.home_path);
-    }
     if (instance.runtime === "daimon") {
       mountArgs.push(...await prepareDaimonImageAuthMounts(
         instance,
@@ -149,6 +146,7 @@ export const prepareImageRuntimeAuthMounts = async (
       ));
       continue;
     }
+    if (instance.home_path) runtimeHomes.add(instance.home_path);
     if (!input.authProfile) continue;
     const adapter = getRuntimeAdapter(instance.runtime);
     if (!adapter.prepareRuntimeAuth) {
