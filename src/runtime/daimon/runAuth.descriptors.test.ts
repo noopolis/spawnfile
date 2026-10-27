@@ -48,7 +48,7 @@ afterEach(async () => {
 });
 
 describe("prepareDaimonRuntimeAuth descriptors", () => {
-  it("resolves source slots, home overrides, ingress and credential format from descriptors", async () => {
+  it("retains descriptor-defined legacy portable-file ingress and credential format", async () => {
     const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
     const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
     const credentialHome = await createTempDirectory("spawnfile-daimon-descriptor-home-");
@@ -57,12 +57,12 @@ describe("prepareDaimonRuntimeAuth descriptors", () => {
     const original = engines.getDaimonEngineDescriptor;
     const descriptor = original("codex")!;
     const auth = descriptor.auth;
-    if (auth.staging !== "portable-file") throw new Error("expected portable descriptor");
+    if (auth.staging !== "portable-file" && auth.staging !== "portable-realm") throw new Error("expected portable descriptor");
     vi.spyOn(engines, "getDaimonEngineDescriptor").mockImplementation((engine) => engine === "codex" ? {
       ...descriptor,
       credentialMaterial: { ...descriptor.credentialMaterial!, sourceSlot: "custom-auth", sourceRelativePath: ".inbound/subscription" },
       homeEnvironment: "DESCRIPTOR_AUTH_HOME",
-      auth: { ...auth, fileName: "subscription.json", format: {
+      auth: { ...auth, staging: "portable-file", realm: null, fileName: "subscription.json", format: {
         containerKey: "subscription", fallbackToRoot: false,
         accessTokenKeys: ["access"], refreshTokenKeys: ["refresh"]
       } }

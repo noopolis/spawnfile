@@ -53,7 +53,7 @@ test("Daimon Dockerfile manifest literals accept the vendored contract", () => {
   execFileSync(process.execPath, ["--input-type=commonjs", "-e", validators[0]![1]!, manifestPath], { timeout: 5_000 });
 });
 
-test("Daimon Dockerfile accepts v6 descriptors and rejects inventory, broker or version drift", () => {
+test("Daimon Dockerfile accepts v7 descriptors and rejects inventory, broker or version drift", () => {
   const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
   const validator = [...dockerfile.matchAll(/node -e '([^'\n]+)' \$\{RUNTIME_ROOT\}\/contract-manifest\.json/gu)][0]![1]!;
   const raw = JSON.parse(readFileSync(new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url), "utf8"));
@@ -66,9 +66,9 @@ test("Daimon Dockerfile accepts v6 descriptors and rejects inventory, broker or 
     execFileSync(process.execPath, ["--input-type=commonjs", "-e", validator, file], { timeout: 5_000, stdio: "pipe" });
   };
   try {
-    const v6 = { ...raw, version: "noopolis.daimon.runtime-contract-manifest.v6", engines };
+    const v6 = { ...raw, version: "noopolis.daimon.runtime-contract-manifest.v7", engines };
     run(v6);
-    assert.throws(() => run({ ...v6, version: "noopolis.daimon.runtime-contract-manifest.v7" }));
+    assert.throws(() => run({ ...v6, version: "noopolis.daimon.runtime-contract-manifest.v8" }));
     assert.throws(() => run({ ...v6, engines: {} }));
     assert.throws(() => run({ ...v6, supportedEngineKinds: ["codex"] }));
     assert.throws(() => run({ ...v6, engines: { ...engines, codex: { ...engines.codex, id: "other" } } }));
