@@ -7,9 +7,11 @@ const closedStartups = new WeakSet<object>();
 // An unconfirmed native shutdown fences the account until this container exits.
 // Keep ownership strongly reachable; GC must never silently release that fence.
 const activeLeases = new Set<() => void>();
-export function recordNativeStartupClosure<T>(error: T, confirmed: boolean): T {
-  if (confirmed && error !== null && typeof error === 'object') closedStartups.add(error);
-  return error;
+export function recordNativeStartupClosure(error: unknown, confirmed: boolean): unknown {
+  if (!confirmed) return error;
+  const failure = error !== null && typeof error === 'object' ? error : new Error('Native startup failed', { cause: error });
+  closedStartups.add(failure);
+  return failure;
 }
 export const nativeStartupClosureConfirmed = (error: unknown): boolean => error !== null && typeof error === 'object' && closedStartups.has(error);
 

@@ -8,7 +8,7 @@ import { childFixture } from './fixture.js';
 import { startOwnedChild } from './lifecycle.js';
 import { verifyChildSandbox } from './sandbox.js';
 import { grokLaunchFrom } from '../grok-fixtures.js';
-import { nativeStartupClosureConfirmed } from '../../services/index.js';
+import { acquireNativeAccountLease, nativeStartupClosureConfirmed } from '../../services/index.js';
 import { subjectStartupDiagnostic } from '../../../../../training/index.js';
 vi.mock('./sandbox.js', () => ({ verifyChildSandbox: vi.fn(async () => undefined) }));
 const roots: string[] = [];
@@ -240,4 +240,13 @@ it.each(['bad-model', 'bad-effort'])('requires the Grok ready line to match the 
     const codex = await fixture(mode);
     await expect(startOwnedChild({ kind: 'child-process' }, codex.launch, codex.input.trialId, 1000, undefined, 300)).rejects.toThrow();
   }
+});
+
+
+it('releases account admission when preparation throws a primitive before any child exists', async () => {
+  const f = await fixture();
+  await expect(createDaimonNativeAdapter({ execution: { kind: 'child-process', prepare: async () => { throw 'preparation refused'; } } }).start(f.input))
+    .rejects.toThrow('Native startup failed');
+  const release = await acquireNativeAccountLease(f.launch.projections.find(row => row.role === 'subscription')!.source, undefined, 0);
+  release();
 });
