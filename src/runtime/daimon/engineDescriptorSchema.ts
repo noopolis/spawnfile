@@ -84,10 +84,10 @@ export const parseDaimonEngineDescriptors = (value: unknown): DaimonEngineDescri
       || capabilities.secretService !== (auth.staging === "secret-service")
       || capabilities.portableCredential !== (auth.staging !== "secret-service")
       || (auth.staging === "broker-realm") !== (broker !== null)
-      || (auth.staging === "portable-file" && (!credentialMaterial?.sourceSlot || !credentialMaterial.sourceRelativePath || credentialMaterial.directoryMode !== auth.directoryMode || credentialMaterial.fileMode !== auth.fileMode))
+      || ((auth.staging === "portable-file" || auth.staging === "portable-realm") && (!credentialMaterial?.sourceSlot || !credentialMaterial.sourceRelativePath || credentialMaterial.directoryMode !== auth.directoryMode || credentialMaterial.fileMode !== auth.fileMode))
       || (auth.staging === "secret-service" && credentialMaterial !== null)
       || (auth.staging === "broker-realm" && credentialMaterial?.destinationRelativePath !== auth.realm.agentCredentialRelativePath)
-      || (auth.staging === "portable-realm" && (credentialMaterial?.destinationRelativePath !== auth.realm.agentCredentialRelativePath || credentialMaterial?.sourceSlot !== auth.realm.bootstrapSourceSlot))
+      || (auth.staging === "portable-realm" && (auth.maxCredentialBytes !== auth.realm.maxCredentialBytes || credentialMaterial?.destinationRelativePath !== auth.realm.agentCredentialRelativePath || credentialMaterial?.sourceSlot !== auth.realm.bootstrapSourceSlot))
       || (selection.declarationRequiresBroker && broker === null)
       || (broker !== null && (selection.models?.kind !== "enum"
         || JSON.stringify(selection.models.values) !== JSON.stringify(broker.worker.models)

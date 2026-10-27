@@ -12,7 +12,6 @@ import { DAIMON_CONTRACT_MANIFEST_V6_JSON_SCHEMA, DAIMON_CONTRACT_MANIFEST_V6_VE
 import { parseDaimonEngineDescriptors } from "./engineDescriptorSchema.js";
 import { createPiTestNode } from "../pi/testHelpers.js";
 
-type Mutable<T> = { -readonly [K in keyof T]: Mutable<T[K]> };
 const v5 = () => {
   const { engines: _engines, ...legacy } = structuredClone(manifest);
   return { ...legacy, version: "noopolis.daimon.runtime-contract-manifest.v5" };
@@ -64,6 +63,22 @@ describe("Daimon descriptor authority", () => {
     expect(() => parseDaimonContractManifest(unowned)).toThrow(/portable subscription realm/u);
     const downgrade = { ...v6(), engines: manifest.engines };
     expect(() => parseDaimonContractManifest(downgrade)).toThrow(/v6 cannot/u);
+  });
+
+  it("binds the portable realm size, credential modes and singleton Codex owner", () => {
+    const oversized = structuredClone(manifest);
+    oversized.engines.codex.auth.maxCredentialBytes = 1_048_576;
+    expect(() => parseDaimonContractManifest(oversized)).toThrow(/descriptors/u);
+    const { fileMode: _fileMode, ...incompleteMaterial } = manifest.engines.codex.credentialMaterial;
+    const incomplete = { ...manifest, engines: { ...manifest.engines,
+      codex: { ...manifest.engines.codex, credentialMaterial: incompleteMaterial } } };
+    expect(() => parseDaimonContractManifest(incomplete)).toThrow(/descriptors/u);
+    const renamed = { ...manifest, engines: { ...manifest.engines,
+      another: { ...manifest.engines.codex, id: "another" },
+      codex: { ...manifest.engines.codex, auth: { ...manifest.engines.codex.auth, staging: "portable-file", realm: null } }
+    }, engineCredentialMaterial: { ...manifest.engineCredentialMaterial, another: manifest.engineCredentialMaterial.codex },
+      supportedEngineKinds: ["agy", "another", "codex", "grok"] };
+    expect(() => parseDaimonContractManifest(renamed)).toThrow(/portable subscription realm/u);
   });
 
   it("does not accept injected descriptors as v5 authority", () => {

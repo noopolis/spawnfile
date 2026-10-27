@@ -212,7 +212,7 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   if (v7) {
     if (canonicalJson(root.codexSubscriptionRealm) !== canonicalJson(DAIMON_CODEX_SUBSCRIPTION_REALM)) return fail("has unsafe Codex subscription realm material");
     const owners = Object.values(engines).filter((entry) => entry.auth.staging === "portable-realm");
-    if (owners.length !== 1 || canonicalJson(owners[0]?.auth.realm) !== canonicalJson(root.codexSubscriptionRealm)) return fail("has inconsistent portable subscription realm material");
+    if (owners.length !== 1 || owners[0]?.id !== DAIMON_PINNED_PORTABLE_DESCRIPTOR.id || canonicalJson(owners[0]?.auth.realm) !== canonicalJson(root.codexSubscriptionRealm)) return fail("has inconsistent portable subscription realm material");
   }
   if (described) {
     const portable = Object.values(engines).filter((entry) => entry.auth.staging === "portable-file" || entry.auth.staging === "portable-realm");
