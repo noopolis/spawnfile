@@ -93,3 +93,11 @@ for (const field of ["durableMountPath", "bootstrapMountPath", "bootstrapSourceS
     assert.equal(checkImageContract(unsafe), 1);
   });
 }
+
+test("the image requires exactly one portable realm owner and its explicit v7 version", () => {
+  const downgrade = { ...structuredClone(vendored), version: "noopolis.daimon.runtime-contract-manifest.v6" };
+  assert.equal(checkImageContract(downgrade), 1);
+  const missing = structuredClone(vendored) as { engines: Record<string, { auth: { staging: string } }> };
+  missing.engines.codex!.auth.staging = "portable-file";
+  assert.equal(checkImageContract(missing), 1);
+});

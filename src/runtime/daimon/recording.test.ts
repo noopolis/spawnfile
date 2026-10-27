@@ -26,12 +26,12 @@ const recording = (volumes: string[] = [], keep?: string) => ({ record: { volume
 const configFrom = (files: Array<{ path: string; content: string }>) => JSON.parse(files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content);
 
 describe("Daimon wake recording config", () => {
-  it("preserves the complete pre-recording target bytes when recording is off", async () => {
+  it("preserves the complete v7 account-realm target bytes when recording is off", async () => {
     const targets = await createDaimonContainerTargets([input()]);
-    // Preserve the pre-recording payload; additive report-only paths are tested in config.test.ts.
+    // Pin the v7 account-realm payload without adding recording resources.
     const payload = targets.map(({ agentPathsByNodeId: _paths, ...target }) => target);
     expect(createHash("sha256").update(JSON.stringify(payload)).digest("hex"))
-      .toBe("0124c7411d4afb164e4a95627493bc9b3d0ba0be21094ba95443c8fdbecd9465");
+      .toBe("f6b0a5ce6ecbff17ca5dde46e975c41cc5e777febaa175de9643e7b04e50bb58");
     expect(configFrom(targets[0]!.files).agents[0]).not.toHaveProperty("recording");
     expect(targets[0]!.persistentMounts!.some((mount) => mount.id.startsWith("daimon-recording-"))).toBe(false);
   });
