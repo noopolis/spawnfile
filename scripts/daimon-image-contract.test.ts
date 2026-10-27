@@ -14,10 +14,11 @@ const vendored = readJson("../src/runtime/daimon/contract-manifest.json") as Rec
 const { engines: _engines, ...legacy } = vendored;
 const v5 = { ...legacy, version: "noopolis.daimon.runtime-contract-manifest.v5" };
 const mirror = readJson("../src/runtime/daimon/engine-descriptors.json") as {
-  engines: Record<string, { id: string; auth: { staging: string }; credentialMaterial: Material | null }>;
+  engines: Record<string, { id: string; auth: { staging: string; realm?: unknown }; credentialMaterial: Material | null }>;
 };
 const v6 = (portableCount: 1 | 2) => {
   const engines = structuredClone(mirror.engines);
+  for (const engine of Object.values(engines)) if (engine.auth.staging === "portable-realm") engine.auth = { ...engine.auth, staging: "portable-file", realm: null };
   if (portableCount === 2) {
     const portable = Object.values(engines).find(e => e.auth.staging === "portable-file");
     assert.ok(portable?.credentialMaterial);
@@ -50,7 +51,7 @@ const checkImageContract = (value: unknown): number | null => {
   } finally { rmSync(root, { force: true, recursive: true }); }
 };
 
-test("the image accepts the pinned v6 contract", () => {
+test("the image accepts the pinned v7 contract", () => {
   assert.equal(checkImageContract(vendored), 0);
 });
 
@@ -84,3 +85,11 @@ test("the image validates every portable descriptor's material in v6", () => {
     assert.equal(checkImageContract(unsafe), 1, `unsafe matching ${field}`);
   }
 });
+
+for (const field of ["durableMountPath", "bootstrapMountPath", "bootstrapSourceSlot", "agentCredentialRelativePath", "directoryMode", "fileMode", "maxCredentialBytes"]) {
+  test(`the image rejects an unsafe v7 Codex realm ${field}`, () => {
+    const unsafe = structuredClone(vendored);
+    (unsafe.codexSubscriptionRealm as Record<string, unknown>)[field] = field.endsWith("Mode") ? 511 : "wrong";
+    assert.equal(checkImageContract(unsafe), 1);
+  });
+}

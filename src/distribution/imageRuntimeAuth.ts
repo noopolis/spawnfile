@@ -96,6 +96,13 @@ export const prepareDaimonImageAuthMounts = async (
     }
   }
   for (const descriptor of descriptors) {
+    if (descriptor.auth.staging !== "portable-realm") continue;
+    const source = daimonSourcePathForEngine(descriptor.id, environment, authProfile);
+    const ownerUid = await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
+    assertDaimonCredentialContainerOwner(ownerUid, descriptor.id, containerCredentialUid);
+    mounts.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
+  }
+  for (const descriptor of descriptors) {
     if (descriptor.auth.staging !== "broker-realm") continue;
     // Broker bootstrap leaves are read and staged by root, so they deliberately
     // do not require ownership by the eventual organization uid.

@@ -12,11 +12,11 @@ application per agent. It permits only compiler-owned Moltnet public-wake
 attachments; Daimon consumes a generic 0700 private ingress itself. `runtime:
 pi` remains the legacy generated Pi path.
 
-The consumed Daimon manifest declares stable AGY and Grok host-realm volumes
+The consumed Daimon manifest declares stable Codex, AGY and Grok host-realm volumes
 plus their opaque bootstrap slots. This adapter renders those resources but
 never starts a provider CLI, D-Bus, or a turn.
 
-Both host-realm volumes and the per-turn usage ledger carry
+All host-realm volumes and the per-turn usage ledger carry
 `lifecycle: "exclusive-reattach"`. That is not decoration: without it the
 volume name folds in the run id (`createPersistentVolumeName`), so a fresh
 `spawnfile up` gets an empty volume. For the AGY realm that means an empty OS
@@ -70,7 +70,7 @@ samples). The manifest also pins Grok CLI 1.0.34 (URL + sha256 per
 architecture), which the runtime image, the local builder, and generated
 organization images all verify.
 
-The consumed v6 manifest carries engine descriptors, a separate clocked config matrix, slot-routed control protocol v4
+The consumed v7 manifest carries engine descriptors, a separate clocked config matrix, slot-routed control protocol v4
 and projection v3. Training explicitly selects `clocked`; the default production
 matrix is byte-identical. Re-vendoring changes the whole-manifest authority:
 the old published pin must fail compilation until publication and re-pinning,
@@ -101,9 +101,12 @@ catalog default for `grok-4.6` is `high`. `grok` auth is Daimon-owned — it
 never becomes `SPAWNFILE_CLI_AUTH_JSON`, an api-key secret, or a host import.
 AGY still refuses any `execution.model`; Codex refuses Grok auth.
 
-Codex keeps an isolated per-agent credential home. Grok keeps isolated
-per-agent non-auth state but one durable rotating subscription credential
-realm; never fan out Grok refresh authority across writable homes.
+Codex keeps isolated per-agent homes, but its credential authority is one durable
+host realm. The runtime leases that realm across staging, readiness, the whole
+turn and refreshed-credential promotion. Spawnfile mounts one opaque bootstrap
+leaf per engine and an exclusive-reattach realm; never fan out bootstrap auth
+into independently writable agent homes. Grok has its own broker authority;
+AGY shares one native keyring authority.
 
 Memory lowering is `memory.ts`'s `resolveDaimonAgentMemory` (split out of
 `config.ts` to stay inside the 400-line source bound, and re-exported from
@@ -219,13 +222,13 @@ agent while `runtimes.yaml` pins Daimon < 0.2.2 (from its
 so it does not lift the guard.
 
 `engines.ts` resolves the engine vocabulary shared by compilation, auth and
-training from the packaged manifest. `contractManifestSchema.ts` exports the v6
-structural JSON Schema; `engineDescriptorSchema.ts` validates descriptors and
+training from the packaged manifest. `contractManifestSchema.ts` exports the v6 and v7
+structural JSON Schemas; `engineDescriptorSchema.ts` validates descriptors and
 their cross-field relationships. v5 uses the generated
 `engine-descriptors.json`/`.sha256` and `engineDescriptors.generated.ts`, produced
 by `scripts/generate-daimon-engine-descriptors.ts` from static Git objects at the
 registry's exact pin; CI reproduces them. Keep this mirror for v5 compatibility
-and the literal broker/realm ABI types and schemas. The active v6 inventory
+and the literal broker/realm ABI types and schemas. The active v7 inventory
 comes directly from `engines` in the manifest. Engine selection follows capabilities and staging roles, while
 omission defaults, historical wire identities and compiler admission stay local
 policy. Training providers own subscription transport and engine-broker grants;

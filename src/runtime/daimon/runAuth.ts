@@ -40,7 +40,7 @@ const sourceSlotForEngine = (engine: string): string => {
   if (descriptor.auth.staging === "portable-file") {
     return descriptor.credentialMaterial?.sourceSlot ?? fail(`engine ${engine} has no declared credential source slot`);
   }
-  if (descriptor.auth.staging === "broker-realm") return descriptor.auth.realm.bootstrapSourceSlot;
+  if (descriptor.auth.staging === "broker-realm" || descriptor.auth.staging === "portable-realm") return descriptor.auth.realm.bootstrapSourceSlot;
   return descriptor.auth.realm.unlockSourceSlot;
 };
 
@@ -328,12 +328,16 @@ export const prepareDaimonRuntimeAuth = async (
     mountArgs.push("-v", `${sourcePath}:${ingressPath}:ro`);
   }
   // Realm auth is staged once per organization, in the historical mount order.
-  for (const staging of ["broker-realm", "secret-service"] as const) {
+  for (const staging of ["portable-realm", "broker-realm", "secret-service"] as const) {
     for (const engine of new Set(agents.map((agent) => agent.engine.kind))) {
       const descriptor = descriptorForEngine(engine);
       if (descriptor.auth.staging !== staging) continue;
-      const source = daimonSourcePathForEngine(engine);
-      if (descriptor.auth.staging === "broker-realm") {
+      const source = daimonSourcePathForEngine(engine, process.env, input.authProfile);
+      if (descriptor.auth.staging === "portable-realm") {
+        const ownerUid = await assertSafeDaimonSourceFile(source, engine, descriptor.auth.maxCredentialBytes, engine);
+        assertDaimonCredentialContainerOwner(ownerUid, engine, containerCredentialUid);
+        mountArgs.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
+      } else if (descriptor.auth.staging === "broker-realm") {
         const realm = descriptor.auth.realm;
         // The organization uid never reads broker bootstrap material.
         await assertSafeDaimonSourceFile(source, engine, descriptor.auth.maxCredentialBytes, engine);

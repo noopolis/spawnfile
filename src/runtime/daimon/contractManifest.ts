@@ -208,6 +208,7 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   if (!matchesGrokEngineBroker(root.grokEngineBroker)) {
     return fail("has unsafe Grok engine broker material");
   }
+  if (v6 && Object.values(engines).some(entry => entry.auth.staging === "portable-realm")) return fail("v6 cannot declare portable subscription realms");
   if (v7) {
     if (canonicalJson(root.codexSubscriptionRealm) !== canonicalJson(DAIMON_CODEX_SUBSCRIPTION_REALM)) return fail("has unsafe Codex subscription realm material");
     const owners = Object.values(engines).filter((entry) => entry.auth.staging === "portable-realm");

@@ -2,6 +2,7 @@ import path from "node:path";
 import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
 import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
+import { daimonPortableSubscriptionRealms } from "./subscriptionRealms.js";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
@@ -276,6 +277,7 @@ export const createDaimonContainerTargets = async (
     .map((input) => [input.id, daimonAgentSkillsFromResolved(input.value.skills)]));
   const hasAgy = configAgents.some((agent) => getDaimonEngineDescriptor(agent.engine.kind)?.auth.staging === "secret-service");
   const hasGrok = configAgents.some((agent) => daimonEngineHasBroker(agent.engine.kind));
+  const portableRealms = daimonPortableSubscriptionRealms(configAgents.map((agent) => agent.engine.kind));
   const agyRuntimeHomeMounts = configAgents
     .filter((agent) => getDaimonEngineDescriptor(agent.engine.kind)?.auth.staging === "secret-service")
     .map((agent) => ({
@@ -334,13 +336,14 @@ export const createDaimonContainerTargets = async (
       }
     ],
     id: DAIMON_ORGANIZATION_TARGET_ID,
-    ...(hasAgy || hasGrok ? {
+    ...(hasAgy || hasGrok || portableRealms.opaqueMountTargets.length > 0 ? {
       opaqueMountTargets: [
+        ...portableRealms.opaqueMountTargets,
         ...(hasAgy ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath] : []),
         ...(hasGrok ? [DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath] : [])
       ],
     } : {}),
-    persistentMounts: [...portableEngineHomeMounts, ...toolStateMounts, ...recordingMounts, {
+    persistentMounts: [...portableRealms.persistentMounts, ...portableEngineHomeMounts, ...toolStateMounts, ...recordingMounts, {
       id: DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID,
       mountPath: `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`,
       reason: "Daimon organization durable wake acceptance store"
