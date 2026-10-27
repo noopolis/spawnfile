@@ -1,4 +1,4 @@
-import { DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
+import { DAIMON_ENGINE_DESCRIPTORS, DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -164,6 +164,8 @@ const privateModeDirectories = (runtimePlans: RuntimeTargetPlan[], moltnet?: Ent
     .flatMap((plan) => plan.persistentMounts ?? [])
     .filter((mount) => mount.id === DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID
       || mount.id === DAIMON_AGY_SUBSCRIPTION_REALM_MOUNT_ID
+      || Object.values(DAIMON_ENGINE_DESCRIPTORS).some(({ id, auth }) => auth.staging === "portable-realm"
+        && mount.id === `daimon-${id}-subscription-realm` && mount.mount_path === auth.realm.durableMountPath)
       || mount.id.startsWith(DAIMON_AGY_RUNTIME_HOME_MOUNT_ID_PREFIX)
       || mount.id.startsWith(DAIMON_RECORDING_MOUNT_ID_PREFIX)
       || mount.id.startsWith(DAIMON_PORTABLE_ENGINE_HOME_MOUNT_ID_PREFIX))
