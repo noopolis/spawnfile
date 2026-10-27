@@ -31,8 +31,8 @@ export async function startOwnedChild(execution: NativeChildExecution, launch: V
     await ensureNativeTrialArtifacts(launch, trialId);
     const env = await nativeChildEnvironment(launch);
     const token = (await readPrivateFile(launch.tokenFile, 4096)).trim();
-    launched = true;
-    return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths, execution.grokSlots);
+    return await launchChild(launch, trialId, timeoutMs, env, token, startup.signal, protectedPaths,
+      () => { launched = true; }, execution.grokSlots);
   } catch (error) { throw recordNativeStartupClosure(error, !launched); }
   finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }
@@ -49,7 +49,7 @@ function childSecrets(launch: VerifiedNativeLaunch, env: NodeJS.ProcessEnv, toke
 }
 
 async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeoutMs: number, env: NodeJS.ProcessEnv,
-  token: string, startup: AbortSignal, protectedPaths: readonly string[], grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
+  token: string, startup: AbortSignal, protectedPaths: readonly string[], onSpawn: () => void, grokSlots?: GrokSlotFreshnessStore): Promise<NativeExecutionHandle> {
   const http = createNativeHttpClient(`http://${launch.host.bindHost}:${launch.host.port}`, token, launch.delivery);
   const diagnostics = await childDiagnostics(nativeTrialArtifactsRoot(launch, trialId), trialId, launch.configSha256,
     childSecrets(launch, env, token));
@@ -58,6 +58,9 @@ async function launchChild(launch: VerifiedNativeLaunch, trialId: string, timeou
     cwd: dirname(launch.workerRoot), env, detached: group, stdio: ['ignore', 'pipe', 'pipe'],
   });
   const pid = child.pid;
+  // Preparation and synchronous spawn failures own no process. A returned pid
+  // is the boundary after which absence needs the ordinary closure proof.
+  if (pid !== undefined) onSpawn();
   let reaped = false;
   let exited = false; let exitCode: number | null = null; let exitSignal: NodeJS.Signals | null = null; let ready = false; let failure = false; let buffer = ''; let bytes = 0;
   child.once('error', () => { failure = true; });
