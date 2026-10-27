@@ -6,12 +6,12 @@ import { SpawnfileError } from "../../shared/errors.js";
 import { DAIMON_WAKE_MOMENTS, isDaimonWakeMoments } from "./wakeMoments.js";
 import { DAIMON_V5_ENGINE_DESCRIPTORS } from "./engineDescriptors.generated.js";
 import { DAIMON_PINNED_BROKER_DESCRIPTOR, DAIMON_PINNED_PORTABLE_DESCRIPTOR, DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR, parseDaimonEngineDescriptors, type DaimonEngineDescriptors } from "./engineDescriptorSchema.js";
-import { daimonContractManifestV6Schema } from "./contractManifestSchema.js";
+import { daimonContractManifestV6Schema, daimonContractManifestV7Schema } from "./contractManifestSchema.js";
 
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
-  "noopolis.daimon.runtime-contract-manifest.v6" as const;
+  "noopolis.daimon.runtime-contract-manifest.v7" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:9f91388983cc5308137ba0259302b9faec75a9f0e032b2a031b6a774ff3f409f" as const;
+  "sha256:85de96d75cf1e02e0e88bd6e1dcce39a125c1d5b97f1eb9c01911a0d5c3316e8" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
@@ -19,6 +19,7 @@ export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
 export const DAIMON_ENGINE_KINDS = Object.freeze(Object.keys(DAIMON_V5_ENGINE_DESCRIPTORS).sort());
 export const DAIMON_ORGANIZATION_RUNTIME_CONFIG_VERSIONS = ["noopolis.daimon.organization-runtime.v1", "noopolis.daimon.organization-runtime.v2"] as const;
 export const DAIMON_ENGINE_CREDENTIALS = { [DAIMON_PINNED_PORTABLE_DESCRIPTOR.id]: DAIMON_PINNED_PORTABLE_DESCRIPTOR.credentialMaterial } as const;
+export const DAIMON_CODEX_SUBSCRIPTION_REALM = DAIMON_PINNED_PORTABLE_DESCRIPTOR.auth.realm;
 export const DAIMON_GROK_SUBSCRIPTION_REALM = DAIMON_PINNED_BROKER_DESCRIPTOR.auth.realm;
 export const DAIMON_GROK_ENGINE_BROKER = DAIMON_PINNED_BROKER_DESCRIPTOR.broker;
 export const DAIMON_GROK_BROKER_MODELS = DAIMON_GROK_ENGINE_BROKER.worker.models;
@@ -65,6 +66,7 @@ export interface DaimonContractManifest {
   readonly agySubscriptionRealm: typeof DAIMON_AGY_SUBSCRIPTION_REALM;
   readonly consumedConfigFields: readonly string[];
   readonly engineCredentialMaterial: Readonly<Record<string, DaimonCredentialMaterial>>;
+  readonly codexSubscriptionRealm?: typeof DAIMON_CODEX_SUBSCRIPTION_REALM;
   readonly grokSubscriptionRealm: typeof DAIMON_GROK_SUBSCRIPTION_REALM;
   readonly grokEngineBroker: typeof DAIMON_GROK_ENGINE_BROKER;
   readonly supportedEngineKinds: readonly DaimonEngine[];
@@ -76,7 +78,7 @@ export interface DaimonContractManifest {
     concurrentSameAgentTurns: false;
     externalEffectsExactlyOnce: false;
   }>;
-  readonly version: typeof DAIMON_CONTRACT_MANIFEST_VERSION | "noopolis.daimon.runtime-contract-manifest.v5";
+  readonly version: typeof DAIMON_CONTRACT_MANIFEST_VERSION | "noopolis.daimon.runtime-contract-manifest.v6" | "noopolis.daimon.runtime-contract-manifest.v5";
 }
 
 export interface VerifiedDaimonContractManifest {
@@ -157,15 +159,21 @@ const matchesGrokEngineBroker = (value: unknown): value is typeof DAIMON_GROK_EN
 export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifest => {
   const root = asRecord(raw, "root");
   const v6 = root.version === "noopolis.daimon.runtime-contract-manifest.v6";
+  const v7 = root.version === DAIMON_CONTRACT_MANIFEST_VERSION;
+  const described = v6 || v7;
+  if (v7 && !daimonContractManifestV7Schema.safeParse(root).success) return fail("has an invalid v7 schema");
   if (v6 && !daimonContractManifestV6Schema.safeParse(root).success) return fail("has an invalid v6 schema");
-  if (!v6 && Object.hasOwn(root, "engines")) return fail("v5 must use the generated descriptor mirror");
-  const engines = parseDaimonEngineDescriptors(v6 ? root.engines : DAIMON_V5_ENGINE_DESCRIPTORS);
+  if (!described && Object.hasOwn(root, "engines")) return fail("v5 must use the generated descriptor mirror");
+  const legacyEngines = Object.fromEntries(Object.entries(DAIMON_V5_ENGINE_DESCRIPTORS).map(([id, entry]) => [id,
+    entry.auth.staging === "portable-realm" ? { ...entry, auth: { ...entry.auth, staging: "portable-file", realm: null } } : entry
+  ]));
+  const engines = parseDaimonEngineDescriptors(described ? root.engines : legacyEngines);
   const engineKinds = Object.keys(engines).sort();
   const hasWakeMoments = Object.hasOwn(root, "wakeMoments");
   if (hasWakeMoments && !isDaimonWakeMoments(root.wakeMoments)) return fail("has an unsupported wakeMoments contract");
   const configFields = hasWakeMoments ? [...expectedConfigFields, DAIMON_WAKE_MOMENTS.configField] : expectedConfigFields;
   if (
-    (!v6 && root.version !== "noopolis.daimon.runtime-contract-manifest.v5") ||
+    (!described && root.version !== "noopolis.daimon.runtime-contract-manifest.v5") ||
     !Array.isArray(root.supportedEngineKinds) ||
     root.supportedEngineKinds.join("\0") !== engineKinds.join("\0") ||
     !Array.isArray(root.consumedConfigFields) ||
@@ -185,7 +193,7 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
     semantics.activeDeliveryIdempotency !== "unbounded-until-terminal" || semantics.terminalReceiptHorizon !== 2_048 ||
     semantics.recovery !== "at-least-once-with-stable-wake-id" || semantics.concurrentSameAgentTurns !== false || semantics.externalEffectsExactlyOnce !== false) return fail("has unsupported delivery semantics");
   const materials = asRecord(root.engineCredentialMaterial, "engineCredentialMaterial");
-  if (!v6 && !exactKeys(materials, Object.keys(DAIMON_ENGINE_CREDENTIALS))) return fail("has unsupported credential material");
+  if (!described && !exactKeys(materials, Object.keys(DAIMON_ENGINE_CREDENTIALS))) return fail("has unsupported credential material");
   for (const engine of Object.keys(DAIMON_ENGINE_CREDENTIALS) as DaimonPortableEngine[]) {
     if (!matchesCredentialMaterial(materials[engine], DAIMON_ENGINE_CREDENTIALS[engine])) {
       return fail(`has unsafe ${engine} credential material`);
@@ -200,8 +208,13 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   if (!matchesGrokEngineBroker(root.grokEngineBroker)) {
     return fail("has unsafe Grok engine broker material");
   }
-  if (v6) {
-    const portable = Object.values(engines).filter((entry) => entry.auth.staging === "portable-file");
+  if (v7) {
+    if (canonicalJson(root.codexSubscriptionRealm) !== canonicalJson(DAIMON_CODEX_SUBSCRIPTION_REALM)) return fail("has unsafe Codex subscription realm material");
+    const owners = Object.values(engines).filter((entry) => entry.auth.staging === "portable-realm");
+    if (owners.length !== 1 || canonicalJson(owners[0]?.auth.realm) !== canonicalJson(root.codexSubscriptionRealm)) return fail("has inconsistent portable subscription realm material");
+  }
+  if (described) {
+    const portable = Object.values(engines).filter((entry) => entry.auth.staging === "portable-file" || entry.auth.staging === "portable-realm");
     for (const descriptor of portable) {
       if (canonicalJson(materials[descriptor.id]) !== canonicalJson(descriptor.credentialMaterial)) return fail("has inconsistent engine credential material");
     }
@@ -219,7 +232,8 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
     agySubscriptionRealm: Object.freeze({ ...DAIMON_AGY_SUBSCRIPTION_REALM }),
     consumedConfigFields: Object.freeze([...configFields]),
     ...(hasWakeMoments ? { wakeMoments: DAIMON_WAKE_MOMENTS } : {}),
-    engineCredentialMaterial: Object.freeze(v6 ? materials as Record<string, DaimonCredentialMaterial> : { ...DAIMON_ENGINE_CREDENTIALS }),
+    ...(v7 ? { codexSubscriptionRealm: Object.freeze({ ...DAIMON_CODEX_SUBSCRIPTION_REALM }) } : {}),
+    engineCredentialMaterial: Object.freeze(described ? materials as Record<string, DaimonCredentialMaterial> : { ...DAIMON_ENGINE_CREDENTIALS }),
     grokSubscriptionRealm: Object.freeze({ ...DAIMON_GROK_SUBSCRIPTION_REALM }),
     grokEngineBroker: Object.freeze({ ...DAIMON_GROK_ENGINE_BROKER }),
     supportedEngineKinds: Object.freeze(engineKinds),
@@ -228,7 +242,7 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
       activeDeliveryIdempotency: "unbounded-until-terminal", terminalReceiptHorizon: 2_048,
       recovery: "at-least-once-with-stable-wake-id", concurrentSameAgentTurns: false, externalEffectsExactlyOnce: false
     }),
-    version: v6 ? DAIMON_CONTRACT_MANIFEST_VERSION : "noopolis.daimon.runtime-contract-manifest.v5"
+    version: v7 ? DAIMON_CONTRACT_MANIFEST_VERSION : v6 ? "noopolis.daimon.runtime-contract-manifest.v6" : "noopolis.daimon.runtime-contract-manifest.v5"
   });
 };
 

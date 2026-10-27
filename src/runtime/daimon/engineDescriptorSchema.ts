@@ -14,7 +14,7 @@ const literalDataSchema = (value: unknown): z.ZodType => {
 
 const pinned = Object.values(DAIMON_V5_ENGINE_DESCRIPTORS);
 export const DAIMON_PINNED_BROKER_DESCRIPTOR = pinned.find((entry): entry is Extract<typeof pinned[number], { broker: object }> => entry.broker !== null)!;
-export const DAIMON_PINNED_PORTABLE_DESCRIPTOR = pinned.find((entry): entry is Extract<typeof pinned[number], { auth: { staging: "portable-file" } }> => entry.auth.staging === "portable-file")!;
+export const DAIMON_PINNED_PORTABLE_DESCRIPTOR = pinned.find((entry): entry is Extract<typeof pinned[number], { auth: { staging: "portable-file" | "portable-realm" } }> => entry.auth.staging !== "secret-service" && entry.broker === null)!;
 export const DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR = pinned.find((entry): entry is Extract<typeof pinned[number], { auth: { staging: "secret-service" } }> => entry.auth.staging === "secret-service")!;
 export type DaimonEngineBroker = typeof DAIMON_PINNED_BROKER_DESCRIPTOR.broker;
 
@@ -36,6 +36,7 @@ const fileAuth = {
 };
 const auth = z.discriminatedUnion("staging", [
   z.strictObject({ ...fileAuth, staging: z.literal("portable-file"), realm: z.null() }),
+  z.strictObject({ ...fileAuth, staging: z.literal("portable-realm"), realm: literalDataSchema(DAIMON_PINNED_PORTABLE_DESCRIPTOR.auth.realm) as z.ZodType<NonNullable<typeof DAIMON_PINNED_PORTABLE_DESCRIPTOR.auth.realm>> }),
   z.strictObject({ ...fileAuth, staging: z.literal("broker-realm"), realm: literalDataSchema(DAIMON_PINNED_BROKER_DESCRIPTOR.auth.realm) as z.ZodType<typeof DAIMON_PINNED_BROKER_DESCRIPTOR.auth.realm> }),
   z.strictObject({ staging: z.literal("secret-service"), method: z.null(), provider: z.null(),
     realm: literalDataSchema(DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR.auth.realm) as z.ZodType<typeof DAIMON_PINNED_SECRET_SERVICE_DESCRIPTOR.auth.realm>, busEnvironment: environmentName, format: z.null() })
@@ -86,6 +87,7 @@ export const parseDaimonEngineDescriptors = (value: unknown): DaimonEngineDescri
       || (auth.staging === "portable-file" && (!credentialMaterial?.sourceSlot || !credentialMaterial.sourceRelativePath || credentialMaterial.directoryMode !== auth.directoryMode || credentialMaterial.fileMode !== auth.fileMode))
       || (auth.staging === "secret-service" && credentialMaterial !== null)
       || (auth.staging === "broker-realm" && credentialMaterial?.destinationRelativePath !== auth.realm.agentCredentialRelativePath)
+      || (auth.staging === "portable-realm" && (credentialMaterial?.destinationRelativePath !== auth.realm.agentCredentialRelativePath || credentialMaterial?.sourceSlot !== auth.realm.bootstrapSourceSlot))
       || (selection.declarationRequiresBroker && broker === null)
       || (broker !== null && (selection.models?.kind !== "enum"
         || JSON.stringify(selection.models.values) !== JSON.stringify(broker.worker.models)

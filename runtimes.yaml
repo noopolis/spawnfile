@@ -13,7 +13,7 @@
 runtimes:
   daimon:
     remote: git@github.com:noopolis/daimon-harness.git
-    ref: 5e8bffc10779838e3ff0b6687de06db6b6fde02a
+    ref: 0540f67a6981828d9d83d7f5c5e4482121ac18b8
     default_branch: main
     install:
       kind: container_image
