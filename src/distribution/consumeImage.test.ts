@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { downDeployment, readHomeDeploymentRecord, readHomeDeploymentReport } from "../deployment/index.js";
 import { removeDirectory } from "../filesystem/index.js";
 
+import { daimonImageContractFiles } from "./daimonImageContract.test-fixtures.js";
 import { buildDistributionReport } from "./buildDistributionReport.js";
 import { DISTRIBUTION_REPORT_IMAGE_PATH } from "./types.js";
 import type { DistributionPersistentMount } from "./types.js";
@@ -118,6 +119,7 @@ const createFakeDocker = (
   } = {}
 ) => {
   const distributionReport = customReport ?? report();
+  const contractFiles = daimonImageContractFiles();
   const configByPath = options.configByPath ?? { [daimonConfigPath]: daimonConfig() };
   const containers = new Map<string, {
     id: string; labels: Record<string, string>; name: string; running: boolean;
@@ -151,6 +153,7 @@ const createFakeDocker = (
       if (copiedPath === DISTRIBUTION_REPORT_IMAGE_PATH) {
         return buildTar(Buffer.from(JSON.stringify(distributionReport)));
       }
+      if (Object.hasOwn(contractFiles, copiedPath)) return buildTar(contractFiles[copiedPath]!);
       if (Object.prototype.hasOwnProperty.call(configByPath, copiedPath)) {
         const value = configByPath[copiedPath]!;
         return buildTar(
@@ -266,7 +269,7 @@ describe("consumeImageUp", () => {
       runDocker: createFakeDocker(state, daimonReport())
     });
     const run = state.calls.find((call) => call[0] === "run")!;
-    expect(run).toContain(`${codex}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`);
+    expect(run).toContain(`${codex}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
     expect(run).toContain(`${grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`);
   });
 

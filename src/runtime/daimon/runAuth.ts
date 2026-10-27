@@ -13,6 +13,7 @@ import {
   type DaimonEngine
 } from "./contractManifest.js";
 import { DAIMON_ENGINE_DESCRIPTORS, DAIMON_ENGINES, DAIMON_PORTABLE_ENGINE_ID, DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "./engines.js";
+import type { DaimonEngineDescriptor } from "./engineDescriptorSchema.js";
 import { DAIMON_ORGANIZATION_UID } from "./runtimeIdentity.js";
 
 const MAX_OPAQUE_CREDENTIAL_BYTES = 64 * 1024;
@@ -35,8 +36,8 @@ export const daimonSourceEnvironmentName = (slot: string): string =>
 const descriptorForEngine = (engine: string) =>
   getDaimonEngineDescriptor(engine) ?? fail(`has an undeclared engine ${engine}`);
 
-const sourceSlotForEngine = (engine: string): string => {
-  const descriptor = descriptorForEngine(engine);
+const sourceSlotForDescriptor = (descriptor: DaimonEngineDescriptor): string => {
+  const engine = descriptor.id;
   if (descriptor.auth.staging === "portable-file") {
     return descriptor.credentialMaterial?.sourceSlot ?? fail(`engine ${engine} has no declared credential source slot`);
   }
@@ -45,16 +46,16 @@ const sourceSlotForEngine = (engine: string): string => {
 };
 
 export const DAIMON_AGY_UNLOCK_SOURCE_ENV = daimonSourceEnvironmentName(
-  sourceSlotForEngine(DAIMON_SECRET_SERVICE_ENGINE_ID)
+  sourceSlotForDescriptor(descriptorForEngine(DAIMON_SECRET_SERVICE_ENGINE_ID))
 );
 
 export const daimonSourcePathForEngine = (
   engine: string,
   environment: Record<string, string | undefined> = process.env,
-  authProfile: ResolvedAuthProfile | null = null
+  authProfile: ResolvedAuthProfile | null = null,
+  descriptor: DaimonEngineDescriptor = descriptorForEngine(engine)
 ): string => {
-  const descriptor = descriptorForEngine(engine);
-  const declaredSource = environment[daimonSourceEnvironmentName(sourceSlotForEngine(engine))]?.trim();
+  const declaredSource = environment[daimonSourceEnvironmentName(sourceSlotForDescriptor(descriptor))]?.trim();
   if (declaredSource) return declaredSource;
   if (descriptor.auth.staging === "secret-service") {
     return fail(`is missing the operator-authorized ${engine.toUpperCase()} realm unlock artifact`);
@@ -143,7 +144,7 @@ export const assertSafeDaimonSourceFile = async (
   sourcePath: string,
   label: string,
   maxBytes = MAX_OPAQUE_CREDENTIAL_BYTES,
-  portableKind?: string
+  portableKind?: string | DaimonEngineDescriptor
 ): Promise<number> => {
   let entry: Awaited<ReturnType<typeof lstat>>;
   try {
@@ -190,11 +191,11 @@ export const assertSafeDaimonSourceFile = async (
   return callerUid;
 };
 
-const hasRefreshableCredential = (kind: string, bytes: Buffer): boolean => {
+const hasRefreshableCredential = (kind: string | DaimonEngineDescriptor, bytes: Buffer): boolean => {
   let parsed: unknown;
   try { parsed = JSON.parse(bytes.toString("utf8")); } catch { return false; }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
-  const descriptor = descriptorForEngine(kind);
+  const descriptor = typeof kind === "string" ? descriptorForEngine(kind) : kind;
   const format = descriptor.auth.format;
   if (!format) return false;
   const root = parsed as Record<string, unknown>;
@@ -300,7 +301,7 @@ export const prepareDaimonRuntimeAuth = async (
 ): Promise<RuntimeAuthPreparationResult> => {
   const containerCredentialUid = input.containerCredentialUid ?? DAIMON_CREDENTIAL_CONTAINER_UID;
   const allowedSourceEnvironments = new Set(Object.keys(DAIMON_ENGINE_DESCRIPTORS).map((engine) =>
-    daimonSourceEnvironmentName(sourceSlotForEngine(engine))
+    daimonSourceEnvironmentName(sourceSlotForDescriptor(descriptorForEngine(engine)))
   ));
   for (const name of Object.keys(process.env)) {
     if (name.startsWith("SPAWNFILE_DAIMON_SOURCE_") && !allowedSourceEnvironments.has(name)) {

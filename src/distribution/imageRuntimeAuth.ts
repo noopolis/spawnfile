@@ -1,4 +1,5 @@
-import { getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
+import { DAIMON_ENGINE_DESCRIPTORS } from "../runtime/daimon/engines.js";
+import type { DaimonEngineDescriptors } from "../runtime/daimon/engineDescriptorSchema.js";
 import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../auth/index.js";
@@ -27,6 +28,7 @@ export interface ImageRuntimeAuthInput {
    * known to run under a different identity.
    */
   daimonContainerCredentialUid?: number;
+  daimonEngineDescriptors?: DaimonEngineDescriptors;
   report: DistributionReport;
   sourceEnvironment?: Record<string, string | undefined>;
   tempRoot: string;
@@ -59,7 +61,8 @@ export const prepareDaimonImageAuthMounts = async (
   instance: DistributionReport["runtime_instances"][number],
   environment: Record<string, string | undefined>,
   authProfile: ResolvedAuthProfile | null,
-  containerCredentialUid: number = DAIMON_CREDENTIAL_CONTAINER_UID
+  containerCredentialUid: number = DAIMON_CREDENTIAL_CONTAINER_UID,
+  inventory: DaimonEngineDescriptors = DAIMON_ENGINE_DESCRIPTORS
 ): Promise<string[]> => {
   const engines = Object.entries(instance.engine_by_node_id ?? {}).sort(([left], [right]) => left.localeCompare(right));
   if (engines.length === 0) {
@@ -69,7 +72,7 @@ export const prepareDaimonImageAuthMounts = async (
   if (JSON.stringify(engineNodeIds) !== JSON.stringify([...instance.node_ids].sort())) {
     throw new SpawnfileError("validation_error", "Daimon image engine map does not match its declared agents");
   }
-  if (engines.some(([, engine]) => !getDaimonEngineDescriptor(engine))) {
+  if (engines.some(([, engine]) => !Object.hasOwn(inventory, engine))) {
     throw new SpawnfileError("validation_error", "Daimon image report declares an unsupported engine");
   }
   const root = daimonInstanceRoot(instance);
@@ -81,13 +84,13 @@ export const prepareDaimonImageAuthMounts = async (
     slugs.set(slug, nodeId);
   }
   const descriptors = [...new Set(engines.map(([, engine]) => engine))]
-    .map((engine) => getDaimonEngineDescriptor(engine)!);
+    .map((engine) => inventory[engine]!);
   // Keep portable leaves, broker bootstrap, then realm unlock mounts in the
   // existing order while resolving every engine's staging contract from data.
   for (const descriptor of descriptors) {
     if (descriptor.auth.staging !== "portable-file") continue;
-    const source = daimonSourcePathForEngine(descriptor.id, environment, authProfile);
-    const ownerUid = await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
+    const source = daimonSourcePathForEngine(descriptor.id, environment, authProfile, descriptor);
+    const ownerUid = await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor);
     assertDaimonCredentialContainerOwner(ownerUid, descriptor.id, containerCredentialUid);
     for (const [nodeId, engine] of engines) {
       if (engine !== descriptor.id) continue;
@@ -97,8 +100,8 @@ export const prepareDaimonImageAuthMounts = async (
   }
   for (const descriptor of descriptors) {
     if (descriptor.auth.staging !== "portable-realm") continue;
-    const source = daimonSourcePathForEngine(descriptor.id, environment, authProfile);
-    const ownerUid = await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
+    const source = daimonSourcePathForEngine(descriptor.id, environment, authProfile, descriptor);
+    const ownerUid = await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor);
     assertDaimonCredentialContainerOwner(ownerUid, descriptor.id, containerCredentialUid);
     mounts.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
   }
@@ -106,8 +109,8 @@ export const prepareDaimonImageAuthMounts = async (
     if (descriptor.auth.staging !== "broker-realm") continue;
     // Broker bootstrap leaves are read and staged by root, so they deliberately
     // do not require ownership by the eventual organization uid.
-    const source = daimonSourcePathForEngine(descriptor.id, environment);
-    await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
+    const source = daimonSourcePathForEngine(descriptor.id, environment, null, descriptor);
+    await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor);
     mounts.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
   }
   for (const descriptor of descriptors) {
@@ -142,7 +145,8 @@ export const prepareImageRuntimeAuthMounts = async (
         instance,
         input.sourceEnvironment ?? process.env,
         input.authProfile,
-        input.daimonContainerCredentialUid ?? DAIMON_CREDENTIAL_CONTAINER_UID
+        input.daimonContainerCredentialUid ?? DAIMON_CREDENTIAL_CONTAINER_UID,
+        input.daimonEngineDescriptors
       ));
       continue;
     }
