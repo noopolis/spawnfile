@@ -1,6 +1,6 @@
 {
   "version": "noopolis.spawnfile.daimon-engine-descriptors.v1",
-  "sourceCommit": "0f2e73b4794f9ad03173b05a99486a5459715d4c",
+  "sourceCommit": "9eb0560cf44ad02d838eb2dfcf9bd91f353e4a88",
   "engines": {
     "agy": {
       "auth": {
