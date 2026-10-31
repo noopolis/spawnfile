@@ -1,6 +1,6 @@
 {
   "name": "spawnfile",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "description": "Canonical source compiler for autonomous agents and teams.",
   "license": "MIT",
   "type": "module",
