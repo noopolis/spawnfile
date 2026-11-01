@@ -1,19 +1,20 @@
-import { getDaimonEngineDescriptor } from "./engines.js";
+import { daimonGatewayBootstrapMountPath, daimonGatewayedEngines, daimonGatewayRealmPath } from "./gateway.js";
 
-export const daimonPortableSubscriptionRealms = (engines: readonly string[]) => {
-  const realms = [...new Set(engines)].sort().flatMap((engine) => {
-    const descriptor = getDaimonEngineDescriptor(engine);
-    return descriptor?.auth.staging === "portable-realm"
-      ? [{ engine, realm: descriptor.auth.realm }]
-      : [];
-  });
+/**
+ * Realm resources for every gatewayed engine: one exclusive-reattach realm
+ * volume the auth gateway alone owns, and one opaque bootstrap leaf mounted
+ * under the gateway-private root. The volume id is the realm's identity, so a
+ * moved mount path still reattaches the same login.
+ */
+export const daimonGatewayedSubscriptionRealms = (engines: readonly string[]) => {
+  const descriptors = daimonGatewayedEngines(engines);
   return {
-    opaqueMountTargets: realms.map(({ realm }) => realm.bootstrapMountPath),
-    persistentMounts: realms.map(({ engine, realm }) => ({
-      id: `daimon-${engine}-subscription-realm`,
+    opaqueMountTargets: descriptors.map((descriptor) => daimonGatewayBootstrapMountPath(descriptor.auth.realm)),
+    persistentMounts: descriptors.map((descriptor) => ({
+      id: `daimon-${descriptor.id}-subscription-realm`,
       lifecycle: "exclusive-reattach" as const,
-      mountPath: realm.durableMountPath,
-      reason: `Daimon host ${engine} subscription credential realm`
+      mountPath: daimonGatewayRealmPath(descriptor),
+      reason: `Daimon host ${descriptor.id} subscription credential realm`
     }))
   };
 };

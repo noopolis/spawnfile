@@ -101,7 +101,7 @@ describe("prepareDaimonRuntimeAuth", () => {
     const prepared = await prepare(outputDirectory, tempRoot, configPath);
     const mount = prepared.mountArgs[1]!;
     const source = path.join(codexHome, "auth.json");
-    expect(mount).toBe(`${source}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
+    expect(mount).toBe(`${source}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`);
     expect(prepared.launchIdentity).toBeUndefined();
     expect(prepared.mountArgs.join("\n")).not.toContain(tempRoot);
     await expect(lstat(path.join(outputDirectory, "container", "rootfs", `.${home}`, ".daimon-inbound")))
@@ -121,7 +121,7 @@ describe("prepareDaimonRuntimeAuth", () => {
       agents: homes.map((home, index) => ({ id: `agent:${index}`, engine: { kind: "codex" }, runtimeHomePath: home }))
     }));
     const prepared = await prepare(outputDirectory, tempRoot, configPath);
-    expect(prepared.mountArgs).toEqual(["-v", `${source}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`]);
+    expect(prepared.mountArgs).toEqual(["-v", `${source}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`]);
     for (const home of homes) await expect(lstat(path.join(outputDirectory, "container", "rootfs", `.${home}`, ".daimon-inbound")))
       .rejects.toMatchObject({ code: "ENOENT" });
   });
@@ -141,7 +141,7 @@ describe("prepareDaimonRuntimeAuth", () => {
 
     const prepared = await prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile(importedHome));
 
-    expect(prepared.mountArgs).toContain(`${path.join(importedHome, "auth.json")}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
+    expect(prepared.mountArgs).toContain(`${path.join(importedHome, "auth.json")}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`);
     expect(prepared.mountArgs.join("\n")).not.toContain(path.join(ambientHome, "auth.json"));
   });
 
@@ -160,7 +160,7 @@ describe("prepareDaimonRuntimeAuth", () => {
 
     const prepared = await prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile(importedHome));
 
-    expect(prepared.mountArgs).toContain(`${path.join(overrideHome, "auth.json")}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
+    expect(prepared.mountArgs).toContain(`${path.join(overrideHome, "auth.json")}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`);
     expect(prepared.mountArgs.join("\n")).not.toContain(path.join(importedHome, "auth.json"));
   });
 
@@ -176,7 +176,7 @@ describe("prepareDaimonRuntimeAuth", () => {
 
     const prepared = await prepare(outputDirectory, tempRoot, configPath, callerUid(), authProfile());
 
-    expect(prepared.mountArgs).toContain(`${path.join(overrideHome, "auth.json")}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`);
+    expect(prepared.mountArgs).toContain(`${path.join(overrideHome, "auth.json")}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`);
   });
 
   it("fails closed when the selected profile has no Codex import", async () => {
@@ -223,7 +223,7 @@ describe("prepareDaimonRuntimeAuth", () => {
         "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex"
       );
       await expect(prepare(outputDirectory, tempRoot, configPath)).resolves.toMatchObject({
-        mountArgs: ["-v", expect.stringContaining("/daimon/codex-bootstrap-auth:ro")]
+        mountArgs: ["-v", expect.stringContaining("/daimon/gateway-bootstrap/codex-bootstrap-auth:ro")]
       });
     }
   });
@@ -296,9 +296,9 @@ describe("prepareDaimonRuntimeAuth", () => {
 
     expect(prepared.mountArgs).toEqual([
       "-v",
-      `${path.join(credentials[0]!.home, credentials[0]!.file)}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`,
+      `${path.join(credentials[0]!.home, credentials[0]!.file)}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`,
       "-v",
-      `${path.join(credentials[1]!.home, credentials[1]!.file)}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`,
+      `${path.join(credentials[1]!.home, credentials[1]!.file)}:/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth:ro`,
       "-v",
       `${unlock}:/var/lib/spawnfile/daimon/agy-unlock-secret:ro`
     ]);
@@ -369,7 +369,7 @@ describe("prepareDaimonRuntimeAuth", () => {
       host: {}, version: "noopolis.daimon.organization-runtime.v1"
     }));
     await expect(prepare(outputDirectory, tempRoot, grokConfig)).resolves.toMatchObject({
-      mountArgs: ["-v", expect.stringContaining(":/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro")]
+      mountArgs: ["-v", expect.stringContaining(":/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth:ro")]
     });
   });
 
@@ -572,7 +572,7 @@ describe("prepareDaimonRuntimeAuth container credential ownership", () => {
     );
     expect(prepared.mountArgs).toEqual([
       "-v",
-      `${organization.source}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`
+      `${organization.source}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`
     ]);
     const after = await lstat(organization.source);
     expect([after.ino, after.uid, after.mode & 0o777, after.nlink])

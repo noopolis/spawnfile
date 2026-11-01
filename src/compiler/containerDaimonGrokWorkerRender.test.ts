@@ -91,9 +91,11 @@ describe("Daimon Grok worker registrations", () => {
     const denied = a!.denyPaths;
     expect(denied.length).toBeGreaterThan(0);
     expect(denied).toEqual(expect.arrayContaining([
-      "/var/lib/spawnfile/daimon/codex-bootstrap-auth",
+      "/var/lib/spawnfile/daimon/gateway-bootstrap",
       "/var/lib/spawnfile/daimon/codex-subscription-realm",
-      "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
+      "/etc/daimon-gateway",
+      "/run/daimon-gateway",
+      "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm",
       "/var/lib/spawnfile/daimon/grok-subscription-realm",
       "/var/lib/spawnfile/daimon/agy-unlock-secret",
       "/var/lib/spawnfile/daimon/agy-subscription-realm",
@@ -159,7 +161,7 @@ describe("Grok base-profile grant guard and nested-mask refusal", () => {
 
   it("refuses an added ancestor that would cover a Daimon deny entry, since masks cannot nest", () => {
     expect(() => resolveDaimonGrokRegistrations([plan({ persistentMounts: [mount("/var/lib/spawnfile/daimon")] })]))
-      .toThrow(/would cover .*grok-bootstrap-auth; masks cannot nest/u);
+      .toThrow(/would cover .*gateway-bootstrap; masks cannot nest/u);
   });
 
   it("masks the wake-acceptance store through its private parent, never the store itself", () => {

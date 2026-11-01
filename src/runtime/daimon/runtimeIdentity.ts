@@ -18,5 +18,7 @@
  * rather than something the container can repair.
  */
 export const DAIMON_ORGANIZATION_UID = 2_000;
+/** The auth gateway: sole holder of every gatewayed subscription realm. */
+export const DAIMON_GATEWAY_UID = 2_050;
 export const DAIMON_BROKER_UID = 2_100;
 export const DAIMON_FIRST_WORKER_UID = 2_200;

@@ -249,8 +249,8 @@ describe("runtime target plan source identity", () => {
       {
         id: "daimon-grok-subscription-realm",
         lifecycle: "exclusive-reattach",
-        mount_path: "/var/lib/spawnfile/daimon/grok-subscription-realm",
-        reason: "Daimon host Grok subscription credential realm",
+        mount_path: "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm",
+        reason: "Daimon host grok subscription credential realm",
         volume_name: expect.stringMatching(/^spawnfile-exclusive-daimon-grok-subscription-realm-[a-f0-9]{16}$/u)
       },
       {

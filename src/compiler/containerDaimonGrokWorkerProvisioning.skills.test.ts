@@ -22,9 +22,9 @@ const withSkills = (base: RuntimeTargetPlan): RuntimeTargetPlan => ({ ...base, g
  * bytes and digest were checked against Daimon's public renderer.
  */
 const SKILL_LESS_GOLDEN = {
-  registrations: "0077d8b6fcafea81a8f69c9c551cd16203e1e8ab607a098fc9b681f5dc1c3bf9",
-  program: "837c4277590b31b694879cb4c8968d6e8272f7b0fdab026af563c594722e018d",
-  serviceV2: "ca3de703c3d003e5440d749ea84d037b2425f1f5d0f835164a5accbf778d0599",
+  registrations: "14e39a1a00530c97400fc9f59e0dc44136bd467732a220a9e1fc825fb3d06cdb",
+  program: "c33c9982f41aa7abea72d3c8157bf67fd82e584a67122fc821feffa924269ce9",
+  serviceV2: "58d7d717d3b751f4f916504c8ed952f2acac2e9f035b59c44aab89f98b114674",
   serviceV3: "fed05ea8dc946ca5fab07d9095ce79b5003cab1352b003f6ef576da1cff3060f",
   slotRegistration: "203321f8929fa55749d31613cb10532e7a1a3dd3947dcca737a9bb6714e1e457",
   slotProgram: "502bdb1794e0ddd2f2dd69c51043bd95ed422b58b46c86c280d01fffffea4b58"
@@ -36,7 +36,7 @@ describe("Grok worker skills provisioning", () => {
   it("pins skill-less production realm denials and the renamed training slot", () => {
     const registrations = resolveDaimonGrokRegistrations([base]);
     for (const registration of registrations) expect(registration.denyPaths).toEqual(expect.arrayContaining([
-      DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath, DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath
+      "/var/lib/spawnfile/daimon/gateway-bootstrap", DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath, "/etc/daimon-gateway", "/run/daimon-gateway"
     ]));
     const slot = resolveTrainingGrokRegistration({ agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low", slot: 1, slots: 2, limits: { maxRequests: 8, maxTokens: 100000, timeoutMs: 600000 } });
     expect(slot.denyPaths).toContain("/run/spawnfile-training");

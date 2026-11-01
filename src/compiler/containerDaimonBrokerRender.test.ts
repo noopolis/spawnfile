@@ -9,8 +9,11 @@ import { describe, expect, it } from "vitest";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import {
   DAIMON_BROKER_REALM,
+  DAIMON_BROKER_TMPDIR,
   DAIMON_ORGANIZATION_STATE_DIRECTORY,
   renderDaimonBrokerProvisioning,
+  renderDaimonBrokerProvisioningProgram,
+  resolveDaimonGrokRegistrations,
   renderDaimonUsageLedgerProvisioning,
   renderDaimonWorkspaceResourceSecurity
 } from "./containerDaimonBrokerRender.js";
@@ -91,6 +94,18 @@ describe("Daimon broker usage ledger provisioning", () => {
 describe("Daimon root provisioning capability-safe ordering", () => {
   const plan = grokPlan(["agent:grok"]);
   const render = () => renderDaimonBrokerProvisioning([plan]).join("\n");
+  // The broker-held realm survives only in the training slot container; production defers to the gateway.
+  const renderBrokerAuthority = () => renderDaimonBrokerProvisioningProgram(
+    resolveDaimonGrokRegistrations([plan]), [], {}, "remove", undefined, DAIMON_BROKER_TMPDIR, [], "broker"
+  ).join("\n");
+
+  it("stages no Grok credential when the auth gateway owns the login", () => {
+    const program = render();
+    expect(program).not.toContain("grok-bootstrap-auth");
+    expect(program).not.toContain("auth.json");
+    expect(program).not.toContain("credential-journal");
+    expect(program).toContain("fs.chownSync('/var/lib/spawnfile/daimon/grok-subscription-realm', 2100, 2100)");
+  });
 
   it("lets grok write hook state but never replace the sandbox profile", () => {
     const program = render();
@@ -112,7 +127,7 @@ describe("Daimon root provisioning capability-safe ordering", () => {
   });
 
   it("hands the broker realm to its owner after the last atomic credential write", () => {
-    const program = render();
+    const program = renderBrokerAuthority();
     const credentialWrites = program.indexOf("try { const journalPath =");
     const finalOwnership = program.indexOf(
       "fs.chownSync('/var/lib/spawnfile/daimon/grok-subscription-realm', 2100, 2100)",
@@ -135,7 +150,7 @@ describe("Daimon root provisioning capability-safe ordering", () => {
   });
 
   it("modes atomic files and workspace nodes before final ownership", () => {
-    const program = render();
+    const program = renderBrokerAuthority();
 
     expect(program).toContain(
       "fs.fchmodSync(output, 0o600); fs.fchownSync(output, 2100, 2100)"
@@ -146,7 +161,7 @@ describe("Daimon root provisioning capability-safe ordering", () => {
   });
 
   it("restores the journal directory only after credential journal writes", () => {
-    const program = render();
+    const program = renderBrokerAuthority();
     const write = program.indexOf("atomicOwned(journalPath, recovered)");
     const restore = program.indexOf(
       "fs.chmodSync(journalRoot, 0o700); fs.chownSync(journalRoot, 2100, 2100)",
