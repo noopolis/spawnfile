@@ -187,6 +187,7 @@ describe("createDockerRunInvocation", () => {
 
     const codexImport = await registerImportedAuth("dev", "codex");
     const claudeImport = await registerImportedAuth("dev", "claude-code");
+    const grokImport = await registerImportedAuth("dev", "grok");
     await writeUtf8File(path.join(codexImport.directory, "auth.json"), "{\"token\":\"codex\"}\n");
     await writeUtf8File(
       path.join(claudeImport.directory, ".credentials.json"),
@@ -239,6 +240,8 @@ describe("createDockerRunInvocation", () => {
     expect(invocation.args).toContain(
       `${claudeImport.directory}:/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.claude`
     );
+    // A Grok login is the auth gateway's alone: never bind-mounted into a runtime home.
+    expect(invocation.args.join("\n")).not.toContain(grokImport.directory);
 
     const envFile = await readUtf8File(invocation.envFilePath);
     expect(envFile).toContain("ANTHROPIC_API_KEY=profile-ant");

@@ -79,6 +79,15 @@ describe("auth profile store", () => {
     await expect(fileExists(path.join(next.directory, "auth.json"))).resolves.toBe(false);
   });
 
+  it("keeps a Grok import when the profile is loaded again", async () => {
+    await createTempSpawnfileHome();
+    const { directory } = await registerImportedAuth("dev", "grok");
+    await registerImportedAuth("dev", "codex");
+    const loaded = await requireAuthProfile("dev");
+    expect(Object.keys(loaded.imports).sort()).toEqual(["codex", "grok"]);
+    expect(loaded.imports.grok?.path).toBe(directory);
+  });
+
   it("fails when a requested auth profile does not exist", async () => {
     await createTempSpawnfileHome();
 

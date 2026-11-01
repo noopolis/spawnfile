@@ -180,7 +180,8 @@ export const assertDeclaredModelAuthSatisfied = (
   }
 };
 
-const getImportMountTargetName = (kind: keyof ResolvedAuthProfile["imports"]): string =>
+const RUNTIME_HOME_IMPORT_KINDS = ["claude-code", "codex"] as const;
+const getImportMountTargetName = (kind: (typeof RUNTIME_HOME_IMPORT_KINDS)[number]): string =>
   kind === "claude-code" ? ".claude" : ".codex";
 
 const createGeneratedRuntimeSecret = (
@@ -361,12 +362,9 @@ export const resolveAuthMountArgs = async (
   }
 
   const args: string[] = [];
-  for (const [kind, entry] of Object.entries(authProfile.imports) as Array<
-    [
-      keyof ResolvedAuthProfile["imports"],
-      ResolvedAuthProfile["imports"][keyof ResolvedAuthProfile["imports"]]
-    ]
-  >) {
+  // Only runtime-home logins are bind-mounted; a Grok import belongs to the auth gateway alone.
+  for (const kind of RUNTIME_HOME_IMPORT_KINDS) {
+    const entry = authProfile.imports[kind];
     if (!entry) {
       continue;
     }
