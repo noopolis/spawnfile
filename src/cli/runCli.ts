@@ -39,9 +39,6 @@ import {
   syncProjectAuth
 } from "../compiler/index.js";
 import {
-  devActivityProject,
-  devApplyProject,
-  devRestartProject,
   devStopProject,
   devUpProject
 } from "../dev/index.js";
@@ -128,9 +125,6 @@ export interface CliHandlers {
   requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
   upProject: typeof upProject; buildUpReceipt: typeof buildUpReceipt;
   consumeImageUp: typeof consumeImageUp;
-  devActivityProject: typeof devActivityProject;
-  devApplyProject: typeof devApplyProject;
-  devRestartProject: typeof devRestartProject;
   devStopProject: typeof devStopProject;
   devUpProject: typeof devUpProject;
   setProjectPrimaryModel: typeof setProjectPrimaryModel; setProjectRuntime: typeof setProjectRuntime;
@@ -148,7 +142,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   listDeploymentRecords, listHomeDeploymentRecords,
   initProject, listInitTemplates, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
   runProject, setProjectPrimaryModel, setProjectRuntime, upProject, buildUpReceipt, consumeImageUp,
-  devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject,
+  devStopProject, devUpProject,
   setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
 });
 

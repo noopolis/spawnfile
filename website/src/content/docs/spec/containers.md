@@ -317,21 +317,7 @@ The Docker deployment record schema and behavior are defined in `STATUS.md`. Con
 A failed detached start MUST NOT write a record. Redeploying the same deployment name MUST replace the record atomically only after the new detached start succeeds.
 
 `spawnfile dev up` writes the same record shape under `.spawn-dev/deployments/`
-by default. `spawnfile dev apply --agent <id>` reads that record to find the
-running Docker target and container, recompiles into `.spawn-dev` without
-removing records, and mutates the running development container in place. The
-v0.1 hot-apply path is Pi-only: it copies the refreshed Pi app config, the
-selected agent workspace, every matching Moltnet node config, and managed
-Moltnet server configs into the container, then calls the generated Daimon control
-endpoint to load or reload that agent. New-agent Moltnet nodes are started as
-that agent is applied. Existing agents and the container are not restarted.
-Running managed Moltnet servers keep their current in-memory room membership
-until the copied server config is reconciled by an operator-token `moltnet
-apply` or a server restart.
-
-`spawnfile dev activity` uses the same deployment record to read the generated
-Pi app's bounded activity buffer from the running container. It is a runtime
-diagnostic surface, not a Moltnet message reader.
+by default; `spawnfile dev stop` reads it to remove the recorded container.
 
 ### Docker Targets
 
@@ -516,20 +502,15 @@ spawnfile status test/fixtures/multi-runtime-team --out ./bundle/team --live --d
 
 Same flow regardless of project complexity. One compile, one build, one detached run, one live status check.
 
-For interactive Pi org development, use the dev loop:
+For interactive org development, use the dev loop:
 
 ```bash
 spawnfile auth sync test/fixtures/e2e/daimon-org --profile dev --env-file ./.env
 spawnfile dev up test/fixtures/e2e/daimon-org --auth-profile dev --deployment dev
-spawnfile dev apply test/fixtures/e2e/daimon-org --agent new-agent --deployment dev
-spawnfile dev activity test/fixtures/e2e/daimon-org --agent new-agent --deployment dev
+spawnfile dev stop test/fixtures/e2e/daimon-org --deployment dev
 ```
 
 Dev mode uses `.spawn-dev` by default and keeps the deployment record there.
-`dev apply` is intentionally source-backed and Pi-specific in v0.1. It does not
-rebuild the image or restart the container; it updates one generated Daimon agent in
-the running container and starts that agent's Moltnet bridges only when the
-agent is new.
 
 `spawnfile compile` still emits a standard Docker build context, so manual `docker build` remains supported when developers want to inspect or tweak the emitted output before building the image.
 

@@ -211,7 +211,7 @@ Command boundaries:
 - `spawnfile build` runs `compile`, then builds a Docker image from the generated output.
 - `spawnfile run` runs `compile` again to derive current runtime wiring, then starts the selected image with ports, env, auth material, and workspace resources.
 - `spawnfile up` is the local one-command path. It builds the image and then runs it with the same auth and env options as `run`.
-- `spawnfile dev up` starts a detached development deployment under `.spawn-dev`; `spawnfile dev apply --agent <id>` hot-loads one Pi agent into that running container without rebuilding or restarting the rest of the org.
+- `spawnfile dev up` starts a detached development deployment under `.spawn-dev`, on volumes isolated from production; `spawnfile dev stop` removes it.
 - `spawnfile status` reads the authored graph and compile report by default. With `--live`, it reads the detached deployment record and inspects the recorded Docker target.
 
 Managed Moltnet SQLite/JSON stores, durable memory SQLite/JSON stores, workspace `kind: volume` resources, and open-registration agent token directories appear in the compile report as `container.persistent_mounts[]`. `spawnfile run` and `spawnfile up` mount those entries as Docker named volumes so messages, registrations, memory state, workspace volumes, and generated open-mode agent tokens survive container replacement.
@@ -254,25 +254,6 @@ and the command prints the `docker volume rm` needed to remove them
 deliberately.
 
 These mounts carry `lifecycle: "exclusive-reattach"`. Their volume names depend on the project root and the deployment lineage, never on the run id, so removing and recreating the container reattaches the same host volumes rather than provisioning empty ones. A `name` you declare yourself — a resource `name`, or `store.persistence.name` — is used verbatim, so you can pre-create or migrate that volume by exactly that name. The trade-off is that only one live container may hold such a volume at a time: an organization declaring any of them cannot use the concurrent blue/green canary path and must stop the live deployment before starting its replacement.
-
-### Dev Hot Apply
-
-Use dev mode when you are adding or editing Pi agents and want a tight feedback loop:
-
-```bash
-spawnfile auth sync test/fixtures/e2e/daimon-org --profile dev --env-file ./.env
-spawnfile dev up test/fixtures/e2e/daimon-org --auth-profile dev --deployment dev
-spawnfile dev apply test/fixtures/e2e/daimon-org --agent observer --deployment dev
-```
-
-`dev up` is a normal detached Docker deployment, but its default output root is
-`.spawn-dev`. `dev apply` recompiles source into that dev output root without
-deleting the record, copies the selected Pi agent workspace/config, matching
-Moltnet node configs, and managed Moltnet server configs into the recorded
-container, asks the generated Daimon app to load it, and starts only that new
-agent's Moltnet bridges. Existing agents keep running. Running managed Moltnet
-servers keep current room membership until an operator-token `moltnet apply` or
-server restart reconciles the copied server config.
 
 ### Detached Deployments
 
