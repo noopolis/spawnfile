@@ -5,7 +5,7 @@ import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../../../auth/index.js";
 import { DAIMON_GATEWAY_PORT, daimonGatewayBootstrapMountPath, daimonGatewayedEngines, daimonGatewayRealmPath } from "../../../runtime/daimon/gateway.js";
-import { assertSafeDaimonSourceFile, daimonSourcePathForEngine } from "../../../runtime/daimon/runAuth.js";
+import { assertSafeDaimonSourceFile } from "../../../runtime/daimon/runAuth.js";
 import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, SpawnfileError } from "../../../shared/index.js";
 import { createDockerTargetExecutors } from "../../../target/dockerCommandExecutor.js";
 import { removeExactDockerResource } from "../../../target/dockerResources.js";
@@ -55,6 +55,23 @@ const hex = (value: string): string => createHash("sha256").update(value).digest
 const opaque = (value: string) => parseOpaqueTargetHandle(`opaque_${hex(value)}`);
 const LABEL = "spawnfile.training-gateway";
 
+/**
+ * The gatewayed engines whose login the auth profile holds: the run's gateway
+ * serves all of them, so subject and judges may run on any of these engines.
+ */
+export const trainingGatewayLogins = (profile: ResolvedAuthProfile): string[] =>
+  daimonGatewayedEngines(Object.keys(profile.imports)).map(({ id }) => id);
+
+/**
+ * The bootstrap leaf comes only from the profile's own import: a training
+ * gateway never falls back to the operator's personal engine home.
+ */
+const trainingGatewaySource = (profile: ResolvedAuthProfile, engine: string, fileName: string): string => {
+  const imported = (profile.imports as Partial<Record<string, { path: string }>>)[engine];
+  if (!imported) throw new SpawnfileError("validation_error", `Auth profile ${profile.name} has no imported ${engine} login`);
+  return path.join(imported.path, fileName);
+};
+
 /** One durable realm volume per auth profile and engine: the gateway is its sole holder (exclusive flock). */
 export const trainingGatewayRealmVolume = (profile: string, engine: string): string =>
   `spawnfile-training-${slugify(profile) || "profile"}-${engine}-realm`;
@@ -85,7 +102,7 @@ export const startTrainingGateway = async (options: TrainingGatewayOptions): Pro
   const mounts: string[] = [];
   const realmVolumes: string[] = [];
   for (const descriptor of descriptors) {
-    const source = daimonSourcePathForEngine(descriptor.id, process.env, options.authProfile);
+    const source = trainingGatewaySource(options.authProfile, descriptor.id, descriptor.auth.fileName);
     await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
     const volume = trainingGatewayRealmVolume(options.authProfile.name, descriptor.id);
     realmVolumes.push(volume);

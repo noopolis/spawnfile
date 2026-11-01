@@ -73,13 +73,19 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   const docker = options.docker ?? createTrialDocker();
   // Readable and collision-free: trial ids may share long prefixes.
   const slug = `${slugify(options.trialId).slice(0, 32) || "trial"}-${createHash("sha256").update(options.trialId).digest("hex").slice(0, 8)}`;
-  const project = await writeTrialProject(options.agentManifestPath, options.instructions, path.join(options.directory, "project"));
-  const compiled = await compileProject(project, {
-    deploymentLineage: resolveDeploymentLineage(slug, TRAINING_TRIAL_LINEAGE_NAMESPACE),
-    outputDirectory: path.join(options.directory, "out")
-  });
   const image = `spawnfile-training-trial:${slug}`;
-  await buildCompiledProject(project, compiled, { imageTag: image });
+  const compiled = await (async () => {
+    const project = await writeTrialProject(options.agentManifestPath, options.instructions, path.join(options.directory, "project"));
+    const compiled = await compileProject(project, {
+      deploymentLineage: resolveDeploymentLineage(slug, TRAINING_TRIAL_LINEAGE_NAMESPACE),
+      outputDirectory: path.join(options.directory, "out")
+    });
+    await buildCompiledProject(project, compiled, { imageTag: image });
+    return compiled;
+  })().catch(async (error: unknown) => {
+    await rm(options.directory, { recursive: true, force: true });
+    throw error;
+  });
   const instance = compiled.report.container?.runtime_instances.find((entry) => entry.runtime === "daimon");
   const agents = Object.entries(instance?.engine_by_node_id ?? {});
   if (!instance || agents.length !== 1) throw new SpawnfileError("validation_error", "A production-booted trial compiles exactly one Daimon agent");
