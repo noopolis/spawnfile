@@ -327,6 +327,8 @@ export const renderDaimonUidEntrypoint = (
     // this cannot be gated on `resolveDaimonGrokRegistrations`.
     ...renderDaimonUsageLedgerProvisioning(),
     ...(grokRegistrations.length === 0 && !gateway ? [] : renderDaimonStartupSupervision()),
+    // The gateway starts first: the broker's readiness probes it for its Grok key.
+    ...renderDaimonGatewayLaunch(runtimePlans, daimonPlan?.runtimeRoot ?? ""),
     ...(grokRegistrations.length === 0 ? [] : [
       `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${quote(DAIMON_BROKER_REALM)}`,
       `if [ -e ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} ]; then test -f ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} && test ! -L ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown 0:0 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chmod 0600 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; fi`,
@@ -340,7 +342,7 @@ export const renderDaimonUidEntrypoint = (
       "startup_children+=(\"$launcher_pid\")",
       `wait_for_broker_socket ${quote(DAIMON_BROKER_LAUNCHER_SOCKET)} "$launcher_pid" "engine broker launcher"`,
       `wait_for_broker_identity "$launcher_pid" 0 00000000000000c1 "engine broker launcher"`,
-      `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- env TMPDIR=${quote(DAIMON_BROKER_TMPDIR)} ${quote(path.posix.join(daimonPlan?.runtimeRoot ?? "", "bin/daimon-runtime"))} engine-broker serve &`,
+      `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- env TMPDIR=${quote(DAIMON_BROKER_TMPDIR)} ${renderDaimonGatewayRuntimeEnv(runtimePlans)}${quote(path.posix.join(daimonPlan?.runtimeRoot ?? "", "bin/daimon-runtime"))} engine-broker serve &`,
       "broker_pid=$!",
       "startup_children+=(\"$broker_pid\")",
       `wait_for_broker_socket ${quote(DAIMON_BROKER_BACKEND_SOCKET)} "$broker_pid" "engine broker backend"`,
@@ -353,7 +355,6 @@ export const renderDaimonUidEntrypoint = (
       `[ -S ${quote(DAIMON_BROKER_SOCKET)} ] || exit 1`,
       "for child_spec in \"$launcher_pid:0:00000000000000c1\" \"$relay_pid:2100:0000000000000000\" \"$broker_pid:2100:0000000000000000\"; do child=${child_spec%%:*}; rest=${child_spec#*:}; expected_uid=${rest%%:*}; expected_caps=${rest##*:}; observed_uid=$(awk '/^Uid:/{print $2}' \"/proc/$child/status\"); cap_bnd=$(awk '/^CapBnd:/{print $2}' \"/proc/$child/status\"); [ \"$observed_uid\" = \"$expected_uid\" ] && [ \"$cap_bnd\" = \"$expected_caps\" ] || exit 1; done"
     ]),
-    ...renderDaimonGatewayLaunch(runtimePlans, daimonPlan?.runtimeRoot ?? ""),
     `${renderDaimonGatewayRuntimeEnv(runtimePlans)}setpriv --clear-groups --reuid "$uid" --regid "$gid" --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '`,
     "  if [ \"$EUID\" -eq 0 ]; then exit 1; fi",
     "  test \"$(sed -n \"s/^CapEff:[[:space:]]*//p\" /proc/self/status)\" = 0000000000000000",

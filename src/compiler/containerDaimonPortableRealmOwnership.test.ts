@@ -3,13 +3,13 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { DAIMON_CODEX_SUBSCRIPTION_REALM, DAIMON_GROK_SUBSCRIPTION_REALM } from "../runtime/daimon/contractManifest.js";
-import { daimonPortableSubscriptionRealms } from "../runtime/daimon/subscriptionRealms.js";
+import { daimonGatewayedSubscriptionRealms } from "../runtime/daimon/subscriptionRealms.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import { renderDaimonUidEntrypoint, resolveDaimonUidEntrypointOwnershipPlan } from "./containerDaimonUidEntrypointRender.js";
 
 const execFile = promisify(execFileCallback);
 const realm = DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath;
-const portable = daimonPortableSubscriptionRealms(["codex"]);
+const portable = daimonGatewayedSubscriptionRealms(["codex"]);
 const plan: RuntimeTargetPlan = {
   runtimeName: "daimon", runtimeRoot: "/opt/daimon", id: "portable-realm",
   engineByNodeId: { "agent:writer": "codex" }, envFiles: [], modelAuthMethods: {}, modelSecretsRequired: [], targetFiles: [],

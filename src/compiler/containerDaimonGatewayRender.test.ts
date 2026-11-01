@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { DAIMON_CODEX_SUBSCRIPTION_REALM } from "../runtime/daimon/contractManifest.js";
 import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_CONFIG, DAIMON_GATEWAY_KEY_TABLE } from "../runtime/daimon/gateway.js";
-import { daimonPortableSubscriptionRealms } from "../runtime/daimon/subscriptionRealms.js";
+import { daimonGatewayedSubscriptionRealms } from "../runtime/daimon/subscriptionRealms.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
   DAIMON_GATEWAY_UID,
@@ -19,7 +19,7 @@ import { renderDaimonUidEntrypoint } from "./containerDaimonUidEntrypointRender.
 const execFile = promisify(execFileCallback);
 const realm = DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath;
 const plan = (engines: Record<string, string>): RuntimeTargetPlan => {
-  const portable = daimonPortableSubscriptionRealms(Object.values(engines));
+  const portable = daimonGatewayedSubscriptionRealms(Object.values(engines));
   return {
     runtimeName: "daimon", runtimeRoot: "/opt/daimon", id: "gateway",
     engineByNodeId: engines, envFiles: [], modelAuthMethods: {}, modelSecretsRequired: [], targetFiles: [],
@@ -56,6 +56,25 @@ describe("Daimon auth gateway placement", () => {
     expect(entrypoint).not.toMatch(/[0-9a-f]{64}/u);
     expect(entrypoint.indexOf("SPAWNFILE_DAIMON_GATEWAY_PROVISION")).toBeLessThan(entrypoint.indexOf("gateway --config"));
     expect(entrypoint.indexOf("gateway --config")).toBeLessThan(entrypoint.indexOf('DAIMON_GATEWAY_URL=http'));
+  });
+
+  it("gateways a brokered realm too: one org key for both engines, the broker launched after the gateway with that key", () => {
+    const instance = "/var/lib/spawnfile/instances/daimon/daimon-organization";
+    const mixed = { ...plan({ "agent:writer": "codex", "agent:scout": "grok" }), runtimeRoot: "/opt/daimon",
+      instancePaths: { configPath: `${instance}/daimon/config.json`, instanceRoot: instance, workspacePath: `${instance}/workspace` },
+      grokModelByNodeId: { "agent:scout": { model: "grok-4.6", reasoningEffort: "low" } } } as RuntimeTargetPlan;
+    expect(resolveDaimonGatewayRealmPaths([mixed])).toEqual([realm, "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm"]);
+    const provisioning = renderDaimonGatewayProvisioning([mixed]).join("\n");
+    expect(provisioning).toContain('engines: ["codex","grok"]');
+    expect(provisioning).toContain('\\"grok\\":{\\"realm_path\\":\\"/var/lib/spawnfile/daimon/gateway-grok-subscription-realm\\",\\"bootstrap_path\\":\\"/run/daimon-gateway/grok-bootstrap-auth\\",\\"command\\":\\"/usr/local/bin/grok\\",\\"scratch_path\\":\\"/run/daimon-gateway/grok-refresh\\"}');
+    const entrypoint = renderDaimonUidEntrypoint([mixed]);
+    const gateway = entrypoint.indexOf("gateway --config");
+    const broker = entrypoint.indexOf("engine-broker serve &");
+    expect(gateway).toBeGreaterThan(0);
+    expect(broker).toBeGreaterThan(gateway);
+    expect(entrypoint).toContain('DAIMON_GATEWAY_URL=http://127.0.0.1:43200 DAIMON_GATEWAY_KEY="$daimon_gateway_key" \'/opt/daimon/bin/daimon-runtime\' engine-broker serve &');
+    expect(entrypoint).toContain("--reuid 2100 --regid 2100 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r /var/lib/spawnfile/daimon/gateway-grok-subscription-realm");
+    expect(entrypoint).not.toContain("readSecure(bootstrap");
   });
 
   it("provisions realm, key table and bootstrap copy so only the gateway uid can read them", async () => {

@@ -16,9 +16,11 @@ import {
   daimonGatewayBootstrapCopyPath,
   daimonGatewayBootstrapMountPath,
   daimonGatewayedEngines,
+  daimonGatewayRealmPath,
+  daimonGatewayRefreshScratchPath,
   renderDaimonGatewayConfig
 } from "../runtime/daimon/gateway.js";
-import { DAIMON_GATEWAY_UID, DAIMON_ORGANIZATION_UID } from "../runtime/daimon/runtimeIdentity.js";
+import { DAIMON_BROKER_UID, DAIMON_GATEWAY_UID, DAIMON_ORGANIZATION_UID } from "../runtime/daimon/runtimeIdentity.js";
 
 export { DAIMON_GATEWAY_UID };
 export const DAIMON_GATEWAY_STARTUP_TIMEOUT_SECONDS = 60;
@@ -34,7 +36,7 @@ export const resolveDaimonGatewayEngines = (plans: readonly RuntimeTargetPlan[])
 
 /** Persistent realm volumes the gateway, not the organization uid, owns. */
 export const resolveDaimonGatewayRealmPaths = (plans: readonly RuntimeTargetPlan[]): string[] =>
-  resolveDaimonGatewayEngines(plans).map((descriptor) => descriptor.auth.realm.durableMountPath);
+  resolveDaimonGatewayEngines(plans).map(daimonGatewayRealmPath);
 
 /**
  * Root provisioning, before any engine process starts: a fresh 32-byte key per
@@ -51,8 +53,9 @@ export const renderDaimonGatewayProvisioning = (plans: readonly RuntimeTargetPla
   const realms = descriptors.map((descriptor) => ({
     bootstrap: daimonGatewayBootstrapMountPath(descriptor.auth.realm),
     copy: daimonGatewayBootstrapCopyPath(descriptor.auth.realm),
-    durable: descriptor.auth.realm.durableMountPath,
-    maxBytes: descriptor.auth.realm.maxCredentialBytes
+    durable: daimonGatewayRealmPath(descriptor),
+    maxBytes: descriptor.auth.realm.maxCredentialBytes,
+    scratch: daimonGatewayRefreshScratchPath(descriptor) ?? null
   }));
   const program = [
     "const crypto = require('node:crypto'); const fs = require('node:fs'); const { constants } = fs;",
@@ -65,8 +68,10 @@ export const renderDaimonGatewayProvisioning = (plans: readonly RuntimeTargetPla
     "for (const realm of realms) {",
     "  const info = fs.lstatSync(realm.durable); if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('gateway realm is not a directory');",
     "  fs.chownSync(realm.durable, 0, 0); fs.chmodSync(realm.durable, 0o700);",
-    "  for (const name of fs.readdirSync(realm.durable)) { const entry = `${realm.durable}/${name}`, stat = fs.lstatSync(entry); if (!stat.isFile() || stat.nlink !== 1) throw new Error('gateway realm holds an unsafe entry'); fs.chownSync(entry, 0, 0); fs.chmodSync(entry, stat.mode & 0o700); fs.chownSync(entry, gateway, gateway); }",
-    "  fs.chownSync(realm.durable, gateway, gateway);",
+    // Re-own the whole tree: a migrated broker realm also holds its legacy journal and turn directories.
+    "  const reown = (target) => { for (const name of fs.readdirSync(target)) { const entry = `${target}/${name}`, stat = fs.lstatSync(entry); if (stat.isDirectory()) { fs.chownSync(entry, 0, 0); fs.chmodSync(entry, stat.mode & 0o700); reown(entry); } else if (!stat.isFile() || stat.nlink !== 1) throw new Error('gateway realm holds an unsafe entry'); else { fs.chownSync(entry, 0, 0); fs.chmodSync(entry, stat.mode & 0o700); } fs.chownSync(entry, gateway, gateway); } };",
+    "  reown(realm.durable); fs.chownSync(realm.durable, gateway, gateway);",
+    "  if (realm.scratch !== null) { fs.mkdirSync(realm.scratch, { mode: 0o700 }); fs.chownSync(realm.scratch, gateway, gateway); }",
     "  let source; try { source = fs.lstatSync(realm.bootstrap); } catch (error) { if (error.code !== 'ENOENT') throw error; }",
     "  if (source === undefined) continue;",
     "  if (!source.isFile() || source.size < 2 || source.size > realm.maxBytes) throw new Error('gateway bootstrap leaf is unsafe');",
@@ -93,15 +98,18 @@ export const renderDaimonGatewayProvisioning = (plans: readonly RuntimeTargetPla
 
 /**
  * Starts the gateway as its own uid with no capabilities, after proving the
- * organization uid cannot read any gateway-held path, then waits for its uid,
+ * organization uid (and a broker uid) cannot read any gateway-held path, then waits for its uid,
  * bounding set and loopback port. Uses the shared startup supervision helpers.
  */
 export const renderDaimonGatewayLaunch = (plans: readonly RuntimeTargetPlan[], runtimeRoot: string): string[] => {
-  const realmPaths = resolveDaimonGatewayRealmPaths(plans);
-  if (realmPaths.length === 0) return [];
+  const descriptors = resolveDaimonGatewayEngines(plans);
+  if (descriptors.length === 0) return [];
+  const realmPaths = descriptors.map(daimonGatewayRealmPath);
   const hidden = [...realmPaths, DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN];
+  // Neither the organization uid nor a broker (which reaches the gateway only by key) may read the login.
+  const outsiders = [DAIMON_ORGANIZATION_UID, ...(descriptors.some((descriptor) => descriptor.broker !== null) ? [DAIMON_BROKER_UID] : [])];
   return [
-    ...hidden.map((target) => `${drop(DAIMON_ORGANIZATION_UID)} bash -ceu '! test -r ${target} && ! test -x ${target}'`),
+    ...outsiders.flatMap((uid) => hidden.map((target) => `${drop(uid)} bash -ceu '! test -r ${target} && ! test -x ${target}'`)),
     ...realmPaths.map((target) => `${drop(DAIMON_GATEWAY_UID)} bash -ceu 'probe=${target}/.daimon-gateway-probe; umask 077; : > "$probe"; rm "$probe"'`),
     `${drop(DAIMON_GATEWAY_UID)} env -i PATH="$PATH" HOME=/nonexistent LANG=C.UTF-8 ${path.posix.join(runtimeRoot, "bin/daimon-runtime")} gateway --config ${DAIMON_GATEWAY_CONFIG} &`,
     "gateway_pid=$!",

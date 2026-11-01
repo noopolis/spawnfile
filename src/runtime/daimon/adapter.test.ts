@@ -216,8 +216,8 @@ describe("daimonAdapter", () => {
       ]));
     expect(target.opaqueMountTargets).toEqual([
       "/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth",
-      "/var/lib/spawnfile/daimon/agy-unlock-secret",
-      "/var/lib/spawnfile/daimon/grok-bootstrap-auth"
+      "/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth",
+      "/var/lib/spawnfile/daimon/agy-unlock-secret"
     ]);
     expect(target.persistentMounts).toEqual([
       {
@@ -225,6 +225,12 @@ describe("daimonAdapter", () => {
         lifecycle: "exclusive-reattach",
         mountPath: "/var/lib/spawnfile/daimon/codex-subscription-realm",
         reason: "Daimon host codex subscription credential realm"
+      },
+      {
+        id: "daimon-grok-subscription-realm",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm",
+        reason: "Daimon host grok subscription credential realm"
       },
       {
         id: "daimon-engine-home-codex-codex",
@@ -261,12 +267,6 @@ describe("daimonAdapter", () => {
         lifecycle: "exclusive-reattach",
         mountPath: "/var/lib/spawnfile/daimon/wake-fuse",
         reason: "Daimon durable wake-fuse admission ledger"
-      },
-      {
-        id: "daimon-grok-subscription-realm",
-        lifecycle: "exclusive-reattach",
-        mountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
-        reason: "Daimon host Grok subscription credential realm"
       },
       {
         id: "daimon-grok-usage-ledger",
@@ -321,13 +321,19 @@ describe("daimonAdapter", () => {
       { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode("codex") },
       { emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createDaimonNode("grok", "Grok", "grok") }
     ]))[0]!;
-    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth", "/var/lib/spawnfile/daimon/grok-bootstrap-auth"]);
+    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth", "/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth"]);
     expect(target.persistentMounts).toEqual([
       {
         id: "daimon-codex-subscription-realm",
         lifecycle: "exclusive-reattach",
         mountPath: "/var/lib/spawnfile/daimon/codex-subscription-realm",
         reason: "Daimon host codex subscription credential realm"
+      },
+      {
+        id: "daimon-grok-subscription-realm",
+        lifecycle: "exclusive-reattach",
+        mountPath: "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm",
+        reason: "Daimon host grok subscription credential realm"
       },
       {
         id: "daimon-engine-home-codex-codex",
@@ -359,12 +365,6 @@ describe("daimonAdapter", () => {
         lifecycle: "exclusive-reattach",
         mountPath: "/var/lib/spawnfile/daimon/wake-fuse",
         reason: "Daimon durable wake-fuse admission ledger"
-      },
-      {
-        id: "daimon-grok-subscription-realm",
-        lifecycle: "exclusive-reattach",
-        mountPath: "/var/lib/spawnfile/daimon/grok-subscription-realm",
-        reason: "Daimon host Grok subscription credential realm"
       },
       {
         id: "daimon-grok-usage-ledger",

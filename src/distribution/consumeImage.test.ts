@@ -270,7 +270,7 @@ describe("consumeImageUp", () => {
     });
     const run = state.calls.find((call) => call[0] === "run")!;
     expect(run).toContain(`${codex}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`);
-    expect(run).toContain(`${grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`);
+    expect(run).toContain(`${grok}:/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth:ro`);
   });
 
   it("deploys, writes a v2 image record and cached report", async () => {

@@ -238,18 +238,14 @@ describe("renderDaimonUidEntrypoint", () => {
     expect(preflight).toBeGreaterThan(-1);
     expect(preflight).toBeLessThan(rendered.indexOf("node <<'SPAWNFILE_DAIMON_BROKER_PROVISION'"));
     expect(rendered).toContain("/etc/daimon-engine-broker/service.json");
-    expect(rendered).toContain("readSecure(bootstrap, undefined, 'bootstrap')");
-    expect(rendered).toContain("noopolis.daimon.broker-credential-journal.v1");
-    expect(rendered).toContain("journal.state === 'stale'");
-    expect(rendered).toContain("bootstrapDigest === journal.sourceDigest");
-    expect(rendered).toContain("generation: journal.generation + 1");
-    expect(rendered).toContain("state: 'promoted'");
-    expect(rendered).toContain("bootstrapBytes.fill(0)");
+    // The auth gateway owns the Grok login: no broker-side bootstrap, authority or journal staging.
+    expect(rendered).not.toContain("readSecure(bootstrap, undefined, 'bootstrap')");
+    expect(rendered).not.toContain("noopolis.daimon.broker-credential-journal.v1");
     expect(rendered).toContain("ensureExactFile(entry.profilePath, entry.profile, 0o444)");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid -- '/opt/daimon/bin/daimon-engine-broker' &");
     expect(rendered).toContain("--bounding-set=-all,+chown,+setuid,+setgid,+setpcap -- env TMPDIR='/run/daimon-engine-broker/tmp' '/opt/daimon/bin/daimon-engine-broker' --relay &");
     // Shared /tmp is root:2000 1774 in a Grok organization: every non-root process outside group 2000 needs its own TMPDIR.
-    expect(rendered).toContain("--bounding-set=-all -- env TMPDIR='/run/daimon-engine-broker/tmp' '/opt/daimon/bin/daimon-runtime' engine-broker serve &");
+    expect(rendered).toContain("--bounding-set=-all -- env TMPDIR='/run/daimon-engine-broker/tmp' DAIMON_GATEWAY_URL=http://127.0.0.1:43200 DAIMON_GATEWAY_KEY=\"$daimon_gateway_key\" '/opt/daimon/bin/daimon-runtime' engine-broker serve &");
     expect(rendered).toContain("install -d -o 2100 -g 2100 -m 0700 /run/daimon-engine-broker/tmp");
     expect(rendered.match(/--reuid 2100 --regid 2100 [^\n]*daimon-runtime' engine-broker serve/gu)?.every((line) => line.includes("env TMPDIR="))).toBe(true);
     expect(rendered).toContain('"$relay_pid:2100:0000000000000000"');

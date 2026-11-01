@@ -112,7 +112,7 @@ export const prepareDaimonImageAuthMounts = async (
     // do not require ownership by the eventual organization uid.
     const source = daimonSourcePathForEngine(descriptor.id, environment, null, descriptor);
     await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor);
-    mounts.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
+    mounts.push("-v", `${source}:${daimonGatewayBootstrapMountPath(descriptor.auth.realm)}:ro`);
   }
   for (const descriptor of descriptors) {
     if (descriptor.auth.staging !== "secret-service") continue;

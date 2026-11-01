@@ -341,9 +341,9 @@ export const prepareDaimonRuntimeAuth = async (
         mountArgs.push("-v", `${source}:${daimonGatewayBootstrapMountPath(descriptor.auth.realm)}:ro`);
       } else if (descriptor.auth.staging === "broker-realm") {
         const realm = descriptor.auth.realm;
-        // The organization uid never reads broker bootstrap material.
+        // Root stages broker bootstrap material for the gateway; the organization uid never reads it.
         await assertSafeDaimonSourceFile(source, engine, descriptor.auth.maxCredentialBytes, engine);
-        mountArgs.push("-v", `${source}:${realm.bootstrapMountPath}:ro`);
+        mountArgs.push("-v", `${source}:${daimonGatewayBootstrapMountPath(realm)}:ro`);
       } else if (descriptor.auth.staging === "secret-service") {
         const realm = descriptor.auth.realm;
         const label = `${engine.toUpperCase()} realm unlock`;

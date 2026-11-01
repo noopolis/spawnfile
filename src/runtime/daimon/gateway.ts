@@ -33,16 +33,21 @@ export const DAIMON_GATEWAY_BOOTSTRAP_ROOT = "/var/lib/spawnfile/daimon/gateway-
 /** Key-table principal: Daimon reads one gateway key per organization runtime process. */
 export const DAIMON_GATEWAY_PRINCIPAL = "daimon-organization";
 
-/**
- * Whether Spawnfile places a gateway for this engine. The pinned descriptors
- * carry no gateway field yet, so the seam is the staging role: a portable
- * realm is exactly what the gateway owns. Replace with the descriptor's own
- * gateway declaration once Daimon publishes one.
- */
-export type DaimonGatewayedDescriptor = DaimonEngineDescriptor & { auth: Extract<DaimonEngineDescriptor["auth"], { staging: "portable-realm" }> };
+/** Staging kinds whose login is one durable realm seeded from a bootstrap leaf: exactly what the gateway owns. */
+const GATEWAYED_STAGINGS = new Set<DaimonEngineDescriptor["auth"]["staging"]>(["portable-realm", "broker-realm"]);
 
+export type DaimonGatewayedDescriptor = DaimonEngineDescriptor & {
+  auth: Extract<DaimonEngineDescriptor["auth"], { staging: "portable-realm" | "broker-realm" }>;
+};
+
+/**
+ * Whether Spawnfile places a gateway for this engine. The descriptors carry
+ * no gateway field, so the seam is the staging role: every realm-staged login
+ * (portable or brokered) is gatewayed; per-agent files and AGY's secret
+ * service never are. Replace with Daimon's own declaration once published.
+ */
 export const isDaimonGatewayedEngine = (descriptor: DaimonEngineDescriptor | undefined): descriptor is DaimonGatewayedDescriptor =>
-  descriptor?.auth.staging === "portable-realm";
+  descriptor !== undefined && GATEWAYED_STAGINGS.has(descriptor.auth.staging);
 
 export const daimonGatewayedEngines = (engines: Iterable<string>): DaimonGatewayedDescriptor[] =>
   [...new Set(engines)].sort().flatMap((engine) => {
@@ -60,6 +65,22 @@ export const daimonGatewayBootstrapMountPath = (realm: RealmBootstrap): string =
 export const daimonGatewayBootstrapCopyPath = (realm: RealmBootstrap): string =>
   path.posix.join(DAIMON_GATEWAY_RUN, path.posix.basename(realm.bootstrapMountPath));
 
+/**
+ * Where the gateway mounts a realm volume. A brokered engine's descriptor
+ * realm path is also its broker's local turn-state home, so its volume moves
+ * to a sibling `gateway-` path; every other realm keeps its descriptor path.
+ */
+export const daimonGatewayRealmPath = (descriptor: DaimonGatewayedDescriptor): string => {
+  const durable = descriptor.auth.realm.durableMountPath;
+  return descriptor.broker?.credentialHomePath === durable
+    ? path.posix.join(path.posix.dirname(durable), `gateway-${path.posix.basename(durable)}`)
+    : durable;
+};
+
+/** Gateway-private refresh home for a brokered engine, whose CLI refreshes its own login. */
+export const daimonGatewayRefreshScratchPath = (descriptor: DaimonGatewayedDescriptor): string | undefined =>
+  descriptor.broker === null ? undefined : path.posix.join(DAIMON_GATEWAY_RUN, `${descriptor.id}-refresh`);
+
 export const renderDaimonGatewayConfig = (descriptors: readonly DaimonGatewayedDescriptor[]): string =>
   `${JSON.stringify({
     version: DAIMON_GATEWAY_CONFIG_VERSION,
@@ -67,7 +88,11 @@ export const renderDaimonGatewayConfig = (descriptors: readonly DaimonGatewayedD
     port: DAIMON_GATEWAY_PORT,
     key_table_path: DAIMON_GATEWAY_KEY_TABLE,
     ...Object.fromEntries(descriptors.map((descriptor) => [descriptor.id, {
-      realm_path: descriptor.auth.realm.durableMountPath,
-      bootstrap_path: daimonGatewayBootstrapCopyPath(descriptor.auth.realm)
+      realm_path: daimonGatewayRealmPath(descriptor),
+      bootstrap_path: daimonGatewayBootstrapCopyPath(descriptor.auth.realm),
+      ...(descriptor.broker === null ? {} : {
+        command: descriptor.broker.grokExecutablePath,
+        scratch_path: daimonGatewayRefreshScratchPath(descriptor)
+      })
     }]))
   })}\n`;

@@ -22,9 +22,9 @@ const withSkills = (base: RuntimeTargetPlan): RuntimeTargetPlan => ({ ...base, g
  * bytes and digest were checked against Daimon's public renderer.
  */
 const SKILL_LESS_GOLDEN = {
-  registrations: "10a599cddd32022c643bc016c8c301953d246050fcccfa1c6595442c8319f79d",
-  program: "8c100f3d4e0bd345aa7024e5e8999ffa232640c2e82d9ec2c31206ff42281df5",
-  serviceV2: "9676cbf25d5139b28495f942c402ab49247ce7e75dee15b934f38e6d5fa4ce45",
+  registrations: "14e39a1a00530c97400fc9f59e0dc44136bd467732a220a9e1fc825fb3d06cdb",
+  program: "c33c9982f41aa7abea72d3c8157bf67fd82e584a67122fc821feffa924269ce9",
+  serviceV2: "58d7d717d3b751f4f916504c8ed952f2acac2e9f035b59c44aab89f98b114674",
   serviceV3: "fed05ea8dc946ca5fab07d9095ce79b5003cab1352b003f6ef576da1cff3060f",
   slotRegistration: "203321f8929fa55749d31613cb10532e7a1a3dd3947dcca737a9bb6714e1e457",
   slotProgram: "502bdb1794e0ddd2f2dd69c51043bd95ed422b58b46c86c280d01fffffea4b58"

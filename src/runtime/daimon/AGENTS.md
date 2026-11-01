@@ -103,13 +103,18 @@ AGY still refuses any `execution.model`; Codex refuses Grok auth.
 
 `gateway.ts` is the in-container auth gateway contract: env names, fixed
 loopback port, config/key-table paths and versions, and the gatewayed-engine
-seam. The pinned descriptors carry no gateway field yet, so
-`isDaimonGatewayedEngine` keys off `auth.staging === "portable-realm"`; swap it
-for Daimon's own declaration once one is published. A gatewayed engine's
-bootstrap leaf is bind-mounted under `DAIMON_GATEWAY_BOOTSTRAP_ROOT` (root-only
-`0700`) instead of the descriptor's `bootstrapMountPath`, so the organization
-uid cannot read it; the realm volume, its mount path and `auth import` are
-unchanged. The gateway uid is `DAIMON_GATEWAY_UID` in `runtimeIdentity.ts`.
+seam. The descriptors carry no gateway field, so `isDaimonGatewayedEngine`
+keys off the staging role: every realm-staged login (`portable-realm`,
+`broker-realm`) is gatewayed, per-agent files and AGY's secret service never
+are. Swap it for Daimon's own declaration once one is published. A gatewayed
+engine's bootstrap leaf is bind-mounted under `DAIMON_GATEWAY_BOOTSTRAP_ROOT`
+(root-only `0700`) instead of the descriptor's `bootstrapMountPath`, so neither
+the organization nor the broker uid can read it. The Codex realm volume and its
+mount path are unchanged; a brokered realm whose descriptor path is also its
+broker's home mounts at a sibling `gateway-` path (`daimonGatewayRealmPath`),
+same volume id. `auth import` is unchanged. One gateway key per organization,
+shared by the runtime and the broker, is the accepted design. The gateway uid
+is `DAIMON_GATEWAY_UID` in `runtimeIdentity.ts`.
 
 Codex keeps isolated per-agent homes, but its credential authority is one durable
 host realm. The runtime leases that realm across staging, readiness, the whole
@@ -185,10 +190,9 @@ must hold:
   container that lives about fifteen seconds.
 
 The Grok bootstrap leaf is deliberately exempt from the second gate: nothing in
-the organization runtime process reads it (the live Grok path goes through the
-engine broker, which runs under `DAIMON_BROKER_UID` and reads only its durable
-realm), so pinning it to the organization uid would refuse deployments that work
-today.
+the organization runtime process reads it (root copies it for the auth gateway,
+which alone holds the Grok realm), so pinning it to the organization uid would
+refuse deployments that work today.
 
 Materializing the credential host-side instead of checking it is not available:
 copying it to a file owned by uid 2000 needs `CAP_CHOWN`, and the host gate

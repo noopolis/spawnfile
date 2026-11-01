@@ -280,18 +280,27 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   `usageLedgerPath` at the one container ledger, because `spawnfile usage` and
   Daimon's wake fuse read only that file.
 - A Daimon organization with a gatewayed engine (descriptor staging
-  `portable-realm`, today Codex) runs `daimon-runtime gateway` in the container
-  as `DAIMON_GATEWAY_UID` (2050) on `127.0.0.1:43200`
-  (`containerDaimonGatewayRender.ts`). Root generates a fresh 32-byte key on
-  every start (never at compile time), writes only its sha256 to the key table
-  (`root:2050 0440`), re-owns the realm volume to the gateway at `0700`, and
-  copies the bootstrap leaf, whose bind mount sits under the root-only
+  `portable-realm` or `broker-realm`: Codex and Grok) runs `daimon-runtime
+  gateway` in the container as `DAIMON_GATEWAY_UID` (2050) on `127.0.0.1:43200`
+  (`containerDaimonGatewayRender.ts`), before the Grok broker, whose readiness
+  probes it. Root generates a fresh 32-byte key on every start (never at
+  compile time), writes only its sha256 to the key table (`root:2050 0440`),
+  re-owns each realm volume tree to the gateway at `0700`, and copies each
+  bootstrap leaf, whose bind mount sits under the root-only
   `/var/lib/spawnfile/daimon/gateway-bootstrap`, into gateway-owned
-  `/run/daimon-gateway`. The organization uid is probed unable to read any of
-  them, and the runtime launch alone gets `DAIMON_GATEWAY_URL` and
-  `DAIMON_GATEWAY_KEY`. Daimon reads one key per runtime process, so the key
-  table holds one principal (`daimon-organization`), not one per agent.
-  Organizations without a gatewayed engine render byte-identically.
+  `/run/daimon-gateway` (plus a private Grok refresh scratch home there). The
+  organization uid and the broker uid are probed unable to read any of them.
+  Only the organization runtime launch and the broker launch get
+  `DAIMON_GATEWAY_URL` and `DAIMON_GATEWAY_KEY`; workers start with an explicit
+  env and never see the key. One key per organization is the accepted design:
+  Daimon reads one key per process, so the table holds a single principal
+  (`daimon-organization`) scoped to every gatewayed engine present. The Grok
+  realm volume keeps its id (so it reattaches) but mounts at
+  `/var/lib/spawnfile/daimon/gateway-grok-subscription-realm`; the descriptor
+  path stays the broker's plain local turn-state folder and production broker
+  provisioning stages no credential (`credentialAuthority: "gateway"`; the
+  training slot container keeps `"broker"`). Organizations without a gatewayed
+  engine render byte-identically.
 - Declared names are checked for uniqueness across EVERY mount source
   (`containerPersistentMounts.ts`), not just within one source. A
   resource `name: X` and a store `persistence.name: X` used to compile to two

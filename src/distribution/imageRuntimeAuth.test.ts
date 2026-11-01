@@ -162,7 +162,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       tempRoot: await tempDir()
     });
     expect(result.mountArgs).toContain(`${sources.codex}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`);
-    expect(result.mountArgs).toContain(`${sources.grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`);
+    expect(result.mountArgs).toContain(`${sources.grok}:/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth:ro`);
   });
 
   it("uses the selected Codex profile import for Daimon image auth", async () => {
@@ -184,7 +184,7 @@ describe("prepareImageRuntimeAuthMounts", () => {
       sourceEnvironment: { SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: sources.grok },
       tempRoot: await tempDir()
     });
-    expect(result.mountArgs).toEqual(["-v", `${path.join(importDir, "auth.json")}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`, "-v", `${sources.grok}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`]);
+    expect(result.mountArgs).toEqual(["-v", `${path.join(importDir, "auth.json")}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`, "-v", `${sources.grok}:/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth:ro`]);
     expect(result.mountArgs.join("\n")).not.toContain(sources.codex);
   });
 

@@ -93,7 +93,7 @@ describe("Grok worker deny coverage over everything the Daimon container provisi
       MOLTNET_READINESS_DIRECTORY, createMoltnetNetworkStateDirectory("net"), createMoltnetOpenTokenPath("net", "alpha"), "/var/lib/spawnfile/moltnet/servers",
       DAIMON_GROK_ENGINE_BROKER.registrationPath, DAIMON_GROK_ENGINE_BROKER.serviceConfigPath, DAIMON_GROK_ENGINE_BROKER.controlSocketPath,
       DAIMON_GROK_ENGINE_BROKER.backendSocketPath, DAIMON_GROK_ENGINE_BROKER.launcherSocketPath, DAIMON_GROK_ENGINE_BROKER.turnStorePath,
-      DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath, DAIMON_GROK_TURN_USAGE_LEDGER.filePath, DAIMON_WAKE_FUSE_DIRECTORY,
+      "/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth", "/etc/daimon-gateway/keys.json", "/run/daimon-gateway/grok-refresh", DAIMON_GROK_TURN_USAGE_LEDGER.filePath, DAIMON_WAKE_FUSE_DIRECTORY,
       ...registrations.map((entry) => entry.home), "/run/secrets", "/run/spawnfile-secrets/token", "/run/world/evidence"
     ])].filter((entry) => entry.startsWith("/"));
 

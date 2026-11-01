@@ -2,7 +2,7 @@ import path from "node:path";
 import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
 import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
-import { daimonPortableSubscriptionRealms } from "./subscriptionRealms.js";
+import { daimonGatewayedSubscriptionRealms } from "./subscriptionRealms.js";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
@@ -12,7 +12,6 @@ import type { ContainerTarget, ContainerTargetInput, EmittedFile } from "../type
 import {
   DAIMON_AGY_SUBSCRIPTION_REALM,
   DAIMON_ENGINE_CREDENTIALS,
-  DAIMON_GROK_SUBSCRIPTION_REALM,
   DAIMON_GROK_TURN_USAGE_LEDGER
 } from "./contractManifest.js";
 import {
@@ -277,7 +276,7 @@ export const createDaimonContainerTargets = async (
     .map((input) => [input.id, daimonAgentSkillsFromResolved(input.value.skills)]));
   const hasAgy = configAgents.some((agent) => getDaimonEngineDescriptor(agent.engine.kind)?.auth.staging === "secret-service");
   const hasGrok = configAgents.some((agent) => daimonEngineHasBroker(agent.engine.kind));
-  const portableRealms = daimonPortableSubscriptionRealms(configAgents.map((agent) => agent.engine.kind));
+  const portableRealms = daimonGatewayedSubscriptionRealms(configAgents.map((agent) => agent.engine.kind));
   const agyRuntimeHomeMounts = configAgents
     .filter((agent) => getDaimonEngineDescriptor(agent.engine.kind)?.auth.staging === "secret-service")
     .map((agent) => ({
@@ -336,11 +335,10 @@ export const createDaimonContainerTargets = async (
       }
     ],
     id: DAIMON_ORGANIZATION_TARGET_ID,
-    ...(hasAgy || hasGrok || portableRealms.opaqueMountTargets.length > 0 ? {
+    ...(hasAgy || portableRealms.opaqueMountTargets.length > 0 ? {
       opaqueMountTargets: [
         ...portableRealms.opaqueMountTargets,
-        ...(hasAgy ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath] : []),
-        ...(hasGrok ? [DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath] : [])
+        ...(hasAgy ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath] : [])
       ],
     } : {}),
     persistentMounts: [...portableRealms.persistentMounts, ...portableEngineHomeMounts, ...toolStateMounts, ...recordingMounts, {
@@ -352,12 +350,7 @@ export const createDaimonContainerTargets = async (
       lifecycle: "exclusive-reattach" as const,
       mountPath: DAIMON_WAKE_FUSE_DIRECTORY,
       reason: "Daimon durable wake-fuse admission ledger"
-    }, ...(hasGrok ? [{
-        id: "daimon-grok-subscription-realm",
-        lifecycle: "exclusive-reattach" as const,
-        mountPath: DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
-        reason: "Daimon host Grok subscription credential realm"
-      }] : []), {
+    }, {
         // Non-run-scoped for the same reason as the durable memory mounts (see
         // durableMemoryVolumeName in src/compiler/memoryArtifacts.ts): a
         // run-scoped volume means every `spawnfile up` starts a new empty

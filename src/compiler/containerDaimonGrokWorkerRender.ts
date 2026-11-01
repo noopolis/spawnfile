@@ -1,4 +1,4 @@
-import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN, isDaimonGatewayedEngine } from "../runtime/daimon/gateway.js";
+import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN, daimonGatewayRealmPath, isDaimonGatewayedEngine } from "../runtime/daimon/gateway.js";
 import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import path from "node:path";
 
@@ -214,12 +214,12 @@ export const resolveDaimonGrokWorkerDenyPaths = (
   const daimonOwn = [
     ...[...new Set(agents.map(([, engine]) => engine))].flatMap((engine) => {
       const descriptor = getDaimonEngineDescriptor(engine);
-      // A gatewayed realm's bootstrap leaf sits under the root-only gateway root; mask that root and the gateway's own state.
+      // A gatewayed bootstrap leaf sits under the root-only gateway root; mask that root, the realm and the gateway's state.
       return isDaimonGatewayedEngine(descriptor)
-        ? [DAIMON_GATEWAY_BOOTSTRAP_ROOT, descriptor.auth.realm.durableMountPath, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN]
+        ? [DAIMON_GATEWAY_BOOTSTRAP_ROOT, daimonGatewayRealmPath(descriptor), DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN]
         : [];
     }),
-    DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath,
+    // The broker's local turn-state home (it holds no credential in gateway mode).
     DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,
     ...(agents.some(([, engine]) => getDaimonEngineDescriptor(engine)?.auth.staging === "secret-service") ? [DAIMON_AGY_SUBSCRIPTION_REALM.unlockMountPath, DAIMON_AGY_SUBSCRIPTION_REALM.durableMountPath] : []),
     daimonGrokAcceptanceStoreDenyPath(instanceRoot),

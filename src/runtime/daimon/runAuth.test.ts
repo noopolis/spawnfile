@@ -298,7 +298,7 @@ describe("prepareDaimonRuntimeAuth", () => {
       "-v",
       `${path.join(credentials[0]!.home, credentials[0]!.file)}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`,
       "-v",
-      `${path.join(credentials[1]!.home, credentials[1]!.file)}:/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro`,
+      `${path.join(credentials[1]!.home, credentials[1]!.file)}:/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth:ro`,
       "-v",
       `${unlock}:/var/lib/spawnfile/daimon/agy-unlock-secret:ro`
     ]);
@@ -369,7 +369,7 @@ describe("prepareDaimonRuntimeAuth", () => {
       host: {}, version: "noopolis.daimon.organization-runtime.v1"
     }));
     await expect(prepare(outputDirectory, tempRoot, grokConfig)).resolves.toMatchObject({
-      mountArgs: ["-v", expect.stringContaining(":/var/lib/spawnfile/daimon/grok-bootstrap-auth:ro")]
+      mountArgs: ["-v", expect.stringContaining(":/var/lib/spawnfile/daimon/gateway-bootstrap/grok-bootstrap-auth:ro")]
     });
   });
 
