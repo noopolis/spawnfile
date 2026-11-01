@@ -80,7 +80,7 @@ async function productionSources(directory: string): Promise<string[]> {
 
 describe("Daimon engine ownership boundary", () => {
   it("keeps compiler, auth, distribution and shared engine dispatch descriptor-driven", async () => {
-    // Pi's engines and codex-exec's standalone subject belong to other runtimes.
+    // Pi's engines belong to other runtimes.
     // Auth method/provider IDs, profile lifecycle and frozen wire content are
     // Spawnfile policy; selectors for those are deliberately not engine dispatch.
     const files = (await Promise.all(["compiler", "auth", "distribution", "shared"]

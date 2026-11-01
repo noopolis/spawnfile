@@ -5,11 +5,8 @@ import path from "node:path";
 import { verifyTrainingCodexBootstrap } from './trainingCodexAuthority.js';
 
 /**
- * Grok is deliberately absent. `spawnfile.training-container.v3` holds the one
- * dedicated training Grok login in a broker-owned realm volume seeded from a
- * read-only bootstrap leaf, and judges spend it through short inference grants
- * (D2). Staging a Grok credential into a shared runtime home would put a
- * rotating login where the evaluator and the image both reach it.
+ * Grok is deliberately absent: a training run's Grok login lives in its auth
+ * gateway's realm volume, never in a staged runtime home.
  */
 export type TrainingAuthProvider = "codex" | "claude";
 export interface TrainingAuthStageOptions {

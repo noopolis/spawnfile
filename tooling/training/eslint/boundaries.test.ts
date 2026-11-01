@@ -57,11 +57,8 @@ test('core stays neutral and optional runtime integration remains behind its own
   for (const specifier of ['spawnfile', 'simfile/internal', '@noopolis/mneme', '@noopolis/daimon/pi', '@noopolis/daimon/internal']) {
     expect(await f.check(`import '${specifier}';`)).toEqual([expect.objectContaining({ messageId: 'runtime' })]);
   }
-  expect(await f.check("const packageName = '@noopolis/daimon/pi'; export async function load() { return import(packageName); }",
-    'src/adapters/daimon/public.ts')).toEqual([]);
-  expect(await f.check("import '@noopolis/daimon/runtime';", 'src/adapters/daimon-native/worker/host.ts')).toEqual([]);
-  for (const specifier of ['@noopolis/daimon/pi', '@noopolis/daimon/src/runtime', '@noopolis/mneme', 'spawnfile']) {
-    expect(await f.check(`import '${specifier}';`, 'src/adapters/daimon-native/worker/host.ts'))
+  for (const specifier of ['@noopolis/daimon/pi', '@noopolis/daimon/runtime', '@noopolis/mneme', 'spawnfile']) {
+    expect(await f.check(`import '${specifier}';`, 'src/adapters/daimon/booted/adapter.ts'))
       .toEqual([expect.objectContaining({ messageId: 'runtime' })]);
   }
   expect(await f.check("import '@noopolis/daimon/runtime';", 'src/experiments/training/host.ts'))

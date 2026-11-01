@@ -95,7 +95,7 @@ newsroom optimization acceptance run.
 The names under `models` are reusable references. Judges and the optimizer select
 a primary name and ordered fallback names. A fallback must differ from the primary
 and every referenced model must exist. Provider names currently accepted by this
-schema are `claude-subscription`, `codex-subscription`, `grok-subscription`, `grok-broker` and `ollama`; only Ollama accepts
+schema are `claude-subscription`, `codex-subscription`, `grok-subscription` and `ollama`; only Ollama accepts
 an endpoint. Endpoints cannot contain credentials, queries or fragments. Model names
 are provider-specific strings, not a claim that a particular model is installed.
 
@@ -104,18 +104,6 @@ explicit `medium`; the process never inherits effort from local Grok configurati
 Use separate named model entries to give focused judges and prompt optimization
 different efforts. Effort changes invalidate exact judge reuse. Other providers
 reject this field until their adapters support it.
-
-`grok-broker` runs judges and the optimizer through short Daimon broker inference
-grants instead of a desktop login; training containers select it. Its `model` is one
-of `grok-4.6`, `grok-4.5` or `grok-build`, and `reasoning_effort` (`low`, `medium` or
-`high`) is required. The container supplies `SPAWNFILE_TRAINING_GROK_BROKER_CONTROL_SOCKET` (the
-broker control socket) and `SPAWNFILE_TRAINING_GROK_GRANT_HOME_ROOT` (a private evaluator
-directory for per-call Grok homes, owned by the training user with mode 0700); without them, without an installed Daimon, or when
-Daimon's client config no longer matches Spawnfile training's pin, every call fails closed. A
-route may not mix `grok-broker` with `grok-subscription`. A stale broker realm fails
-`auth-stale` immediately: later routes on the same broker are skipped, while an
-authored fallback on another provider (for example Claude) may still run. Usage is
-recorded by Training per call with source `grok-broker-grant.result.usage.lower-bound`.
 
 Judge templates declare Jinja source; parsing validates their shape, while the
 evaluation layer owns rendering and rejects unsupported template behavior before

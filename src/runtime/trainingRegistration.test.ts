@@ -12,7 +12,6 @@ it('leaves training adapters unloaded for compilation and resolves them only at 
   const entries = await loadRuntimeRegistry();
   expect(loading.count).toBe(0);
   expect(entries.find(entry => entry.name === 'daimon')!.training!.subject).toBeTypeOf('function');
-  expect(hasRuntimeAdapter('codex-exec')).toBe(false);
   const subjects = await createTrainingSubjects(entries);
   expect(loading.count).toBe(1);
   expect(Object.keys(subjects)).toEqual(['daimon']);
