@@ -31,6 +31,9 @@
  * containing none of those four characters both forms are identical.
  */
 
+import { DAIMON_GATEWAY_URL_ENV } from "../runtime/daimon/gateway.js";
+import { isDaimonGatewayRealmMountId } from "../runtime/daimon/subscriptionRealms.js";
+
 export const EPHEMERAL_STATE_OPT_OUT_ENV = "SPAWNFILE_ALLOW_EPHEMERAL_STATE";
 
 export interface BackedMountRequirement {
@@ -94,7 +97,8 @@ export const createBackedMountChecks = (
   return [...byPath.values()]
     .sort((left, right) => left.mount_path.localeCompare(right.mount_path))
     .map((mount) =>
-      `require_backed_mount ${shellQuote(mount.id)} ${shellQuote(escapeMountInfoPath(mount.mount_path))} ${shellQuote(mount.mount_path)} ${shellQuote(mount.volume_name)}`
+      // An organization booted against an external auth gateway mounts no realm.
+      `${isDaimonGatewayRealmMountId(mount.id) ? `[ -n "\${${DAIMON_GATEWAY_URL_ENV}:-}" ] || ` : ""}require_backed_mount ${shellQuote(mount.id)} ${shellQuote(escapeMountInfoPath(mount.mount_path))} ${shellQuote(mount.mount_path)} ${shellQuote(mount.volume_name)}`
     );
 };
 

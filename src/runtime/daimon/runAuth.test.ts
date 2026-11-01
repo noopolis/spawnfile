@@ -108,6 +108,21 @@ describe("prepareDaimonRuntimeAuth", () => {
       .rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  it("stages no realm leaf, and never looks for one, when an external auth gateway is supplied at boot", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    // No credential exists anywhere: an in-container placement would refuse this run.
+    process.env.CODEX_HOME = await createTempDirectory("spawnfile-daimon-codex-empty-");
+    const configPath = await writeConfig(outputDirectory, "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex");
+    const prepared = await prepareDaimonRuntimeAuth({
+      authProfile: null, containerCredentialUid: callerUid(), env: { DAIMON_GATEWAY_URL: "http://gateway:43200" },
+      instance: { config_path: configPath, home_path: null, id: "daimon-organization", model_auth_methods: {}, model_secrets_required: [], runtime: "daimon" },
+      outputDirectory, tempRoot
+    });
+    expect(prepared.mountArgs).toEqual([]);
+    await expect(prepare(outputDirectory, tempRoot, configPath)).rejects.toThrow();
+  });
+
   it("mounts one account bootstrap for two agents, without per-agent credential copies", async () => {
     const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
     const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");

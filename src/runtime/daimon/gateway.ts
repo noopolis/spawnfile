@@ -81,10 +81,11 @@ export const daimonGatewayRealmPath = (descriptor: DaimonGatewayedDescriptor): s
 export const daimonGatewayRefreshScratchPath = (descriptor: DaimonGatewayedDescriptor): string | undefined =>
   descriptor.broker === null ? undefined : path.posix.join(DAIMON_GATEWAY_RUN, `${descriptor.id}-refresh`);
 
-export const renderDaimonGatewayConfig = (descriptors: readonly DaimonGatewayedDescriptor[]): string =>
+/** `host` is loopback in-container; the training sidecar binds its private network (`0.0.0.0`). */
+export const renderDaimonGatewayConfig = (descriptors: readonly DaimonGatewayedDescriptor[], host = DAIMON_GATEWAY_HOST): string =>
   `${JSON.stringify({
     version: DAIMON_GATEWAY_CONFIG_VERSION,
-    host: DAIMON_GATEWAY_HOST,
+    host,
     port: DAIMON_GATEWAY_PORT,
     key_table_path: DAIMON_GATEWAY_KEY_TABLE,
     ...Object.fromEntries(descriptors.map((descriptor) => [descriptor.id, {

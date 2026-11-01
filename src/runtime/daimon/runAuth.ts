@@ -1,4 +1,4 @@
-import { daimonGatewayBootstrapMountPath } from "./gateway.js";
+import { DAIMON_GATEWAY_URL_ENV, daimonGatewayBootstrapMountPath } from "./gateway.js";
 import os from "node:os";
 import path from "node:path";
 import { constants } from "node:fs";
@@ -330,7 +330,9 @@ export const prepareDaimonRuntimeAuth = async (
     mountArgs.push("-v", `${sourcePath}:${ingressPath}:ro`);
   }
   // Realm auth is staged once per organization, in the historical mount order.
-  for (const staging of ["portable-realm", "broker-realm", "secret-service"] as const) {
+  // An external auth gateway supplied at boot holds every gatewayed login itself.
+  const externalGateway = Boolean(input.env[DAIMON_GATEWAY_URL_ENV]);
+  for (const staging of externalGateway ? ["secret-service"] as const : ["portable-realm", "broker-realm", "secret-service"] as const) {
     for (const engine of new Set(agents.map((agent) => agent.engine.kind))) {
       const descriptor = descriptorForEngine(engine);
       if (descriptor.auth.staging !== staging) continue;
