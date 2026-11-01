@@ -30,9 +30,9 @@ describe("public Daimon host fixture", () => {
     expect(agent.containerPaths.home).toBe(config.agents[0].runtimeHomePath);
     expect(agent.containerPaths.skillRoots).toEqual([".agents", ".codex"].map(root => `${config.agents[0].workspacePath}/${root}/skills`));
     const dockerfile = await readUtf8File(path.join(outputDirectory, "Dockerfile"));
-    expect(dockerfile).toContain("COPY --from=noopolis/spawnfile-runtime-daimon@sha256:40badb0eca3b332aa23ac8eef45f9f07e739dc51aed825ee4ca496542a3e0697 ");
-    expect(dockerfile).toContain('amd64) expected="sha256:6558ccd7a9d4aa0dfc49dd5bd664002c11eea4b1e9d6bbf061a6d9b74a9b123d"');
-    expect(dockerfile).toContain('arm64) expected="sha256:0c66a9d3e1bc65ac2b8b8fdb7e3c327ed026ac8e7b8c2365fdd7aabe2f74f727"');
+    expect(dockerfile).toContain("COPY --from=noopolis/spawnfile-runtime-daimon@sha256:eed57f422ebb94f3bc19385d9a2a60d099bd8e955d4d95886a37cc6a5ae07cd6 ");
+    expect(dockerfile).toContain('amd64) expected="sha256:8c51027bc374c560229cf73671ba6e68da40870e45ecfb7b09046d02ea4c8abf"');
+    expect(dockerfile).toContain('arm64) expected="sha256:e250b202dbb467c2ff9b98bb44f4fd3e9a21b42d7818aa07d3fddb7934410de5"');
   });
 
   it("compiles against an explicit local identity without changing production registry pins", async () => {
@@ -66,7 +66,7 @@ describe("public Daimon host fixture", () => {
       `COPY --from=${LOCAL_DAIMON_IMAGE_REPOSITORY}@${digest("c")} `
     );
     expect(dockerfile).toContain(digest("a"));
-    expect(dockerfile).not.toContain("sha256:40badb0eca3b332aa23ac8eef45f9f07e739dc51aed825ee4ca496542a3e0697");
+    expect(dockerfile).not.toContain("sha256:eed57f422ebb94f3bc19385d9a2a60d099bd8e955d4d95886a37cc6a5ae07cd6");
     await expect((await import("node:fs/promises")).readFile(path.join(outputDirectory, "spawnfile-report.json"), "utf8").then(JSON.parse)).resolves.toMatchObject({
       container: { local_daimon_runtime: { registry_authority: "127.0.0.1:54321", image_reference: `${LOCAL_DAIMON_IMAGE_REPOSITORY}@${digest("c")}` } }
     });
