@@ -20,21 +20,21 @@ const plan: RuntimeTargetPlan = {
 };
 
 describe("portable subscription realm ownership", () => {
-  it("secures declared portable realms without changing broker ownership or accepting a mismatched mount", () => {
+  it("leaves a gatewayed realm to the gateway uid and never to the organization uid", () => {
     const broker = DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath;
     const ownership = resolveDaimonUidEntrypointOwnershipPlan([{
       ...plan, persistentMounts: [...plan.persistentMounts!,
-        { id: "daimon-grok-subscription-realm", mount_path: broker, volume_name: "broker", reason: "broker" },
-        { ...plan.persistentMounts![0]!, mount_path: "/var/lib/spawnfile/unrelated" }
+        { id: "daimon-grok-subscription-realm", mount_path: broker, volume_name: "broker", reason: "broker" }
       ]
     }], [realm, broker]);
-    expect(ownership.privateModeDirectories).toContain(realm);
+    expect(ownership.privateModeDirectories).not.toContain(realm);
+    expect(ownership.stateRoots).not.toContain(realm);
     expect(ownership.privateModeDirectories).not.toContain(broker);
-    expect(ownership.privateModeDirectories).not.toContain("/var/lib/spawnfile/unrelated");
-    expect(ownership.privateModeDirectories).not.toContain(DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath);
+    expect(portable.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth"]);
+    expect(portable.opaqueMountTargets).not.toContain(DAIMON_CODEX_SUBSCRIPTION_REALM.bootstrapMountPath);
   });
 
-  it("repairs an actual fresh Docker volume from 0755 and preserves private authority state on restart", async () => {
+  it("does not touch a realm volume in the organization ownership pass", async () => {
     const volume = `spawnfile-portable-realm-mode-${process.pid}-${Date.now().toString(36)}`;
     const ownership = resolveDaimonUidEntrypointOwnershipPlan([plan], [realm]);
     const rendered = renderDaimonUidEntrypoint([plan], [realm]);
@@ -48,19 +48,15 @@ describe("portable subscription realm ownership", () => {
         "--env", `SPAWNFILE_TEST_OWNERSHIP=${Buffer.from(program).toString("base64")}`,
         "node:24-bookworm-slim", "bash", "-ceu", [
           `test "$(stat -c '%u:%g:%a' '${realm}')" = 0:0:755`,
-          `printf preserved > '${realm}/checkpoint'`,
           `install -d -m 711 ${directories.map(directory => `'${directory}'`).join(" ")}`,
           `printf '{}\\n' > '${plan.instancePaths.configPath}'`,
           'printf %s "$SPAWNFILE_TEST_OWNERSHIP" | base64 -d > /tmp/ownership.cjs',
-          ...["first", "restart"].flatMap(label => [
-            `node /tmp/ownership.cjs 2000 ${ownership.stateRoots.map(root => `'${root}'`).join(" ")}`,
-            `printf '${label}=%s state=%s\\n' "$(stat -c '%u:%g:%a' '${realm}')" "$(cat '${realm}/checkpoint')"`,
-            `test "$(stat -c '%u:%g:%a' '${path.posix.dirname(realm)}')" = 0:0:711`
-          ])
+          `node /tmp/ownership.cjs 2000 ${ownership.stateRoots.map(root => `'${root}'`).join(" ")}`,
+          `printf 'realm=%s\\n' "$(stat -c '%u:%g:%a' '${realm}')"`,
+          `test "$(stat -c '%u:%g:%a' '${path.posix.dirname(realm)}')" = 0:0:711`
         ].join("\n")
       ], { timeout: 30_000 });
-      expect(stdout).toContain("first=2000:2000:700 state=preserved");
-      expect(stdout).toContain("restart=2000:2000:700 state=preserved");
+      expect(stdout).toContain("realm=0:0:755");
     } finally {
       await execFile("docker", ["volume", "rm", "--force", volume]).catch(() => undefined);
     }

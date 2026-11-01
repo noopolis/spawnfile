@@ -45,6 +45,8 @@ src/compiler/
 ├── containerDaimonGrokWorkerRender.ts # Brokered Grok registrations: pinned worker config, sandbox deny list, service.json v2
 ├── containerDaimonGrokWorkerProvisioning.ts # Root program lines for the attested worker GROK_HOME layout and canonical-path checks
 ├── containerDaimonGrokTaskClock.ts # Slot-specific shared root clock and socket provisioning
+├── containerDaimonGatewayRender.ts # In-container Daimon auth gateway: per-start key, key table, realm re-own to the gateway uid, launch
+├── containerDaimonStartupSupervision.ts # Root readiness waits and EXIT-trap cleanup shared by broker and gateway startup
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
@@ -277,6 +279,19 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   script never restates a Grok agent's runtime home mode. Production registrations all point
   `usageLedgerPath` at the one container ledger, because `spawnfile usage` and
   Daimon's wake fuse read only that file.
+- A Daimon organization with a gatewayed engine (descriptor staging
+  `portable-realm`, today Codex) runs `daimon-runtime gateway` in the container
+  as `DAIMON_GATEWAY_UID` (2050) on `127.0.0.1:43200`
+  (`containerDaimonGatewayRender.ts`). Root generates a fresh 32-byte key on
+  every start (never at compile time), writes only its sha256 to the key table
+  (`root:2050 0440`), re-owns the realm volume to the gateway at `0700`, and
+  copies the bootstrap leaf, whose bind mount sits under the root-only
+  `/var/lib/spawnfile/daimon/gateway-bootstrap`, into gateway-owned
+  `/run/daimon-gateway`. The organization uid is probed unable to read any of
+  them, and the runtime launch alone gets `DAIMON_GATEWAY_URL` and
+  `DAIMON_GATEWAY_KEY`. Daimon reads one key per runtime process, so the key
+  table holds one principal (`daimon-organization`), not one per agent.
+  Organizations without a gatewayed engine render byte-identically.
 - Declared names are checked for uniqueness across EVERY mount source
   (`containerPersistentMounts.ts`), not just within one source. A
   resource `name: X` and a store `persistence.name: X` used to compile to two

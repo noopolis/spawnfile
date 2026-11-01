@@ -1,3 +1,4 @@
+import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN, isDaimonGatewayedEngine } from "../runtime/daimon/gateway.js";
 import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import path from "node:path";
 
@@ -212,8 +213,11 @@ export const resolveDaimonGrokWorkerDenyPaths = (
   const peers = agents.filter(([id]) => id !== agentId).map(([id]) => nodeSlug(id));
   const daimonOwn = [
     ...[...new Set(agents.map(([, engine]) => engine))].flatMap((engine) => {
-      const auth = getDaimonEngineDescriptor(engine)?.auth;
-      return auth?.staging === "portable-realm" ? [auth.realm.bootstrapMountPath, auth.realm.durableMountPath] : [];
+      const descriptor = getDaimonEngineDescriptor(engine);
+      // A gatewayed realm's bootstrap leaf sits under the root-only gateway root; mask that root and the gateway's own state.
+      return isDaimonGatewayedEngine(descriptor)
+        ? [DAIMON_GATEWAY_BOOTSTRAP_ROOT, descriptor.auth.realm.durableMountPath, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN]
+        : [];
     }),
     DAIMON_GROK_SUBSCRIPTION_REALM.bootstrapMountPath,
     DAIMON_GROK_SUBSCRIPTION_REALM.durableMountPath,

@@ -101,6 +101,16 @@ catalog default for `grok-4.6` is `high`. `grok` auth is Daimon-owned — it
 never becomes `SPAWNFILE_CLI_AUTH_JSON`, an api-key secret, or a host import.
 AGY still refuses any `execution.model`; Codex refuses Grok auth.
 
+`gateway.ts` is the in-container auth gateway contract: env names, fixed
+loopback port, config/key-table paths and versions, and the gatewayed-engine
+seam. The pinned descriptors carry no gateway field yet, so
+`isDaimonGatewayedEngine` keys off `auth.staging === "portable-realm"`; swap it
+for Daimon's own declaration once one is published. A gatewayed engine's
+bootstrap leaf is bind-mounted under `DAIMON_GATEWAY_BOOTSTRAP_ROOT` (root-only
+`0700`) instead of the descriptor's `bootstrapMountPath`, so the organization
+uid cannot read it; the realm volume, its mount path and `auth import` are
+unchanged. The gateway uid is `DAIMON_GATEWAY_UID` in `runtimeIdentity.ts`.
+
 Codex keeps isolated per-agent homes, but its credential authority is one durable
 host realm. The runtime leases that realm across staging, readiness, the whole
 turn and refreshed-credential promotion. Spawnfile mounts one opaque bootstrap

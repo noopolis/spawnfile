@@ -201,7 +201,7 @@ describe("renderDaimonUidEntrypoint", () => {
     );
 
     expect(rendered).toContain("uid=2000");
-    expect(rendered).toContain("for fixed_uid in 2000 2100 2200");
+    expect(rendered).toContain("for fixed_uid in 2000 2100 2050 2200");
     expect(rendered).toContain("Buffer.alloc(692)");
     expect(rendered).toContain("/etc/daimon-engine-broker/registrations.bin");
     expect(rendered).toContain("http://127.0.0.1:43123/v1");

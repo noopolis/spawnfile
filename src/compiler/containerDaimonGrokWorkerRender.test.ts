@@ -91,8 +91,10 @@ describe("Daimon Grok worker registrations", () => {
     const denied = a!.denyPaths;
     expect(denied.length).toBeGreaterThan(0);
     expect(denied).toEqual(expect.arrayContaining([
-      "/var/lib/spawnfile/daimon/codex-bootstrap-auth",
+      "/var/lib/spawnfile/daimon/gateway-bootstrap",
       "/var/lib/spawnfile/daimon/codex-subscription-realm",
+      "/etc/daimon-gateway",
+      "/run/daimon-gateway",
       "/var/lib/spawnfile/daimon/grok-bootstrap-auth",
       "/var/lib/spawnfile/daimon/grok-subscription-realm",
       "/var/lib/spawnfile/daimon/agy-unlock-secret",

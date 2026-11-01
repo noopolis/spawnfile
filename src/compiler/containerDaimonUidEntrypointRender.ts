@@ -1,4 +1,4 @@
-import { DAIMON_ENGINE_DESCRIPTORS, DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
+import { DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
 import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -33,42 +33,20 @@ import {
   resolveDaimonGrokRegistrations
 } from "./containerDaimonBrokerRender.js";
 
+import { renderDaimonStartupSupervision } from "./containerDaimonStartupSupervision.js";
+import {
+  DAIMON_GATEWAY_UID,
+  renderDaimonGatewayLaunch,
+  renderDaimonGatewayProvisioning,
+  renderDaimonGatewayRuntimeEnv,
+  resolveDaimonGatewayRealmPaths
+} from "./containerDaimonGatewayRender.js";
+export { DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS, renderDaimonBrokerSocketWait } from "./containerDaimonStartupSupervision.js";
+
 export const DAIMON_AUTHORIZED_UID_ENV = "SPAWNFILE_DAIMON_AUTHORIZED_UID";
 export const DAIMON_RUNTIME_UID = DAIMON_ORGANIZATION_UID;
 export const DAIMON_UID_ENTRYPOINT_PATH = "/opt/spawnfile/daimon-uid-entrypoint.sh";
 export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
-export const DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS = 60;
-
-export const renderDaimonBrokerSocketWait = (
-  timeoutSeconds = DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS,
-  pollSeconds = 0.1
-): string[] => [
-  `broker_startup_timeout_seconds=${timeoutSeconds}`,
-  `broker_startup_poll_seconds=${pollSeconds}`,
-  "broker_startup_started=$SECONDS",
-  "broker_process_status_root=/proc",
-  "wait_for_broker_socket() {",
-  "  socket=$1; child=$2; label=$3",
-  "  while [ ! -S \"$socket\" ]; do",
-  "    if ! kill -0 \"$child\" 2>/dev/null; then set +e; wait \"$child\"; child_status=$?; set -e; echo \"$label exited before readiness (status $child_status)\" >&2; return 1; fi",
-  "    if [ $((SECONDS - broker_startup_started)) -ge \"$broker_startup_timeout_seconds\" ]; then echo \"$label readiness timed out after ${broker_startup_timeout_seconds}s\" >&2; return 1; fi",
-  "    sleep \"$broker_startup_poll_seconds\"",
-  "  done",
-  "}",
-  "wait_for_broker_identity() {",
-  "  child=$1; expected_uid=$2; expected_caps=$3; label=$4",
-  "  while kill -0 \"$child\" 2>/dev/null; do",
-  "    status_path=$broker_process_status_root/$child/status",
-  "    observed_uid=$(awk '/^Uid:/{print $2}' \"$status_path\" 2>/dev/null || true)",
-  "    observed_caps=$(awk '/^CapBnd:/{print $2}' \"$status_path\" 2>/dev/null || true)",
-  "    if [ \"$observed_uid\" = \"$expected_uid\" ] && [ \"$observed_caps\" = \"$expected_caps\" ]; then return 0; fi",
-  "    if [ $((SECONDS - broker_startup_started)) -ge \"$broker_startup_timeout_seconds\" ]; then echo \"$label identity readiness timed out after ${broker_startup_timeout_seconds}s\" >&2; return 1; fi",
-  "    sleep \"$broker_startup_poll_seconds\"",
-  "  done",
-  "  set +e; wait \"$child\"; child_status=$?; set -e; echo \"$label exited before identity readiness (status $child_status)\" >&2; return 1",
-  "}"
-];
-
 const SPAWNFILE_PRIVATE_STATE_ROOT = "/var/lib/spawnfile";
 /**
  * `/var/lib/spawnfile/daimon` hosts several independently-owned children —
@@ -141,7 +119,8 @@ const writableStateRoots = (
 ].filter((root) => root.startsWith("/")
   && root !== DAIMON_BROKER_REALM
   && root !== DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath
-  && root !== DAIMON_WAKE_FUSE_DIRECTORY).sort();
+  && root !== DAIMON_WAKE_FUSE_DIRECTORY
+  && !resolveDaimonGatewayRealmPaths(runtimePlans).includes(root)).sort();
 
 const privateDirectoriesThrough = (target: string): string[] => {
   if (
@@ -164,8 +143,6 @@ const privateModeDirectories = (runtimePlans: RuntimeTargetPlan[], moltnet?: Ent
     .flatMap((plan) => plan.persistentMounts ?? [])
     .filter((mount) => mount.id === DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID
       || mount.id === DAIMON_AGY_SUBSCRIPTION_REALM_MOUNT_ID
-      || Object.values(DAIMON_ENGINE_DESCRIPTORS).some(({ id, auth }) => auth.staging === "portable-realm"
-        && mount.id === `daimon-${id}-subscription-realm` && mount.mount_path === auth.realm.durableMountPath)
       || mount.id.startsWith(DAIMON_AGY_RUNTIME_HOME_MOUNT_ID_PREFIX)
       || mount.id.startsWith(DAIMON_RECORDING_MOUNT_ID_PREFIX)
       || mount.id.startsWith(DAIMON_PORTABLE_ENGINE_HOME_MOUNT_ID_PREFIX))
@@ -298,6 +275,9 @@ export const renderDaimonUidEntrypoint = (
       .filter((runtimeRoot) => runtimeRoot.startsWith("/opt/spawnfile/runtime-installs/")))
   ].sort();
   const volumeIdentityFiles = resolveDaimonVolumeIdentityFiles(runtimePlans);
+  const grokRegistrations = resolveDaimonGrokRegistrations(runtimePlans);
+  const gateway = resolveDaimonGatewayRealmPaths(runtimePlans).length > 0;
+  const gatewayPid = gateway ? '"${gateway_pid:-}" ' : "";
   return [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
@@ -323,14 +303,16 @@ export const renderDaimonUidEntrypoint = (
       ownershipPlan.privateFiles,
       ownershipPlan.privateModeDirectories,
       ownershipPlan.creatablePrivateDirectories,
-      resolveDaimonGrokRegistrations(runtimePlans).length > 0
+      grokRegistrations.length > 0
     ),
     "SPAWNFILE_DAIMON_OWNERSHIP",
-    `for fixed_uid in ${DAIMON_ORGANIZATION_UID} ${DAIMON_BROKER_UID} ${resolveDaimonGrokRegistrations(runtimePlans).map((entry) => entry.uid).join(" ")}; do`,
+    `for fixed_uid in ${DAIMON_ORGANIZATION_UID} ${DAIMON_BROKER_UID}${gateway ? ` ${DAIMON_GATEWAY_UID}` : ""} ${grokRegistrations.map((entry) => entry.uid).join(" ")}; do`,
     '  if ! getent group "$fixed_uid" >/dev/null; then groupadd -K GID_MIN=1 --gid "$fixed_uid" "daimon-$fixed_uid"; fi',
     '  if ! getent passwd "$fixed_uid" >/dev/null; then useradd -K UID_MIN=1 --no-create-home --no-log-init --uid "$fixed_uid" --gid "$fixed_uid" --home-dir /nonexistent --shell /usr/sbin/nologin "daimon-$fixed_uid"; fi',
     "done",
-    ...(resolveDaimonGrokRegistrations(runtimePlans).length === 0 ? [] : renderDaimonGrokHostPreflight()),
+    ...(grokRegistrations.length === 0 ? [] : renderDaimonGrokHostPreflight()),
+    // Before broker provisioning: a Grok worker's deny list masks the gateway's paths, which must exist.
+    ...renderDaimonGatewayProvisioning(runtimePlans),
     ...renderDaimonBrokerProvisioning(runtimePlans),
     'if ! getent passwd "$uid" >/dev/null; then',
     '  runtime_identity="daimon-$uid"',
@@ -344,17 +326,13 @@ export const renderDaimonUidEntrypoint = (
     // organization-uid runtime process below, not the (Grok-only) broker, so
     // this cannot be gated on `resolveDaimonGrokRegistrations`.
     ...renderDaimonUsageLedgerProvisioning(),
-    ...(resolveDaimonGrokRegistrations(runtimePlans).length === 0 ? [] : [
-      ...renderDaimonBrokerSocketWait(),
-      "startup_children=()",
-      "cleanup_broker_startup() { status=$?; trap - EXIT; for child in \"${startup_children[@]}\"; do kill -TERM \"$child\" 2>/dev/null || true; wait \"$child\" 2>/dev/null || true; done; return \"$status\"; }",
-      "trap cleanup_broker_startup EXIT",
-      "trap 'exit 143' TERM INT HUP",
+    ...(grokRegistrations.length === 0 && !gateway ? [] : renderDaimonStartupSupervision()),
+    ...(grokRegistrations.length === 0 ? [] : [
       `install -d -o ${DAIMON_BROKER_UID} -g ${DAIMON_BROKER_UID} -m 0700 ${quote(DAIMON_BROKER_REALM)}`,
       `if [ -e ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} ]; then test -f ${quote(`${DAIMON_BROKER_REALM}/auth.json`)} && test ! -L ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown 0:0 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chmod 0600 ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; chown ${DAIMON_BROKER_UID}:${DAIMON_BROKER_UID} ${quote(`${DAIMON_BROKER_REALM}/auth.json`)}; fi`,
       `setpriv --clear-groups --reuid ${DAIMON_BROKER_UID} --regid ${DAIMON_BROKER_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${DAIMON_BROKER_REALM}/.daimon-ancestry-probe; umask 077; : > "$probe"; rm "$probe"'`,
       `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${DAIMON_BROKER_REALM}'`,
-      ...resolveDaimonGrokRegistrations(runtimePlans).map((entry) =>
+      ...grokRegistrations.map((entry) =>
         `setpriv --clear-groups --reuid ${entry.uid} --regid ${entry.uid} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r ${DAIMON_BROKER_REALM}'`
       ),
       `setpriv --inh-caps=-all --ambient-caps=-all --bounding-set=-all,+chown,+setuid,+setgid -- ${quote(DAIMON_BROKER_EXECUTABLE)} &`,
@@ -375,7 +353,8 @@ export const renderDaimonUidEntrypoint = (
       `[ -S ${quote(DAIMON_BROKER_SOCKET)} ] || exit 1`,
       "for child_spec in \"$launcher_pid:0:00000000000000c1\" \"$relay_pid:2100:0000000000000000\" \"$broker_pid:2100:0000000000000000\"; do child=${child_spec%%:*}; rest=${child_spec#*:}; expected_uid=${rest%%:*}; expected_caps=${rest##*:}; observed_uid=$(awk '/^Uid:/{print $2}' \"/proc/$child/status\"); cap_bnd=$(awk '/^CapBnd:/{print $2}' \"/proc/$child/status\"); [ \"$observed_uid\" = \"$expected_uid\" ] && [ \"$cap_bnd\" = \"$expected_caps\" ] || exit 1; done"
     ]),
-    "setpriv --clear-groups --reuid \"$uid\" --regid \"$gid\" --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '",
+    ...renderDaimonGatewayLaunch(runtimePlans, daimonPlan?.runtimeRoot ?? ""),
+    `${renderDaimonGatewayRuntimeEnv(runtimePlans)}setpriv --clear-groups --reuid "$uid" --regid "$gid" --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '`,
     "  if [ \"$EUID\" -eq 0 ]; then exit 1; fi",
     "  test \"$(sed -n \"s/^CapEff:[[:space:]]*//p\" /proc/self/status)\" = 0000000000000000",
     "  exec \"$@\"",
@@ -383,15 +362,16 @@ export const renderDaimonUidEntrypoint = (
     "runtime_pid=$!",
     "trap - EXIT TERM INT HUP",
     "stopping=0",
-    "stop_children() { stopping=1; kill -TERM \"$runtime_pid\" 2>/dev/null || true; for child in \"${relay_pid:-}\" \"${broker_pid:-}\" \"${launcher_pid:-}\"; do [ -z \"$child\" ] || kill -TERM \"$child\" 2>/dev/null || true; done; }",
+    `stop_children() { stopping=1; kill -TERM "$runtime_pid" 2>/dev/null || true; for child in ${gatewayPid}"\${relay_pid:-}" "\${broker_pid:-}" "\${launcher_pid:-}"; do [ -z "$child" ] || kill -TERM "$child" 2>/dev/null || true; done; }`,
     "trap stop_children TERM INT HUP",
     'watch_pids=("$runtime_pid")',
-    ...(resolveDaimonGrokRegistrations(runtimePlans).length === 0 ? [] : ['watch_pids+=("$relay_pid" "$broker_pid" "$launcher_pid")']),
+    ...(grokRegistrations.length === 0 ? [] : ['watch_pids+=("$relay_pid" "$broker_pid" "$launcher_pid")']),
+    ...(gateway ? ['watch_pids+=("$gateway_pid")'] : []),
     "finished_pid=",
     'set +e; wait -n -p finished_pid "${watch_pids[@]}"; status=$?; set -e',
     'if [ "${finished_pid:-}" != "$runtime_pid" ]; then status=1; fi',
     'kill -TERM "$runtime_pid" 2>/dev/null || true',
-    "for child in \"${relay_pid:-}\" \"${broker_pid:-}\" \"${launcher_pid:-}\"; do [ -z \"$child\" ] || { kill -TERM \"$child\" 2>/dev/null || true; wait \"$child\" 2>/dev/null || true; }; done",
+    `for child in "\${relay_pid:-}" "\${broker_pid:-}" "\${launcher_pid:-}"${gatewayPid ? ` ${gatewayPid.trim()}` : ""}; do [ -z "$child" ] || { kill -TERM "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; }; done`,
     'wait "$runtime_pid" 2>/dev/null || true',
     "exit \"$status\""
   ].join("\n") + "\n";

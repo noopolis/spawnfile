@@ -1,3 +1,4 @@
+import { daimonGatewayBootstrapMountPath } from "./gateway.js";
 import os from "node:os";
 import path from "node:path";
 import { constants } from "node:fs";
@@ -337,7 +338,7 @@ export const prepareDaimonRuntimeAuth = async (
       if (descriptor.auth.staging === "portable-realm") {
         const ownerUid = await assertSafeDaimonSourceFile(source, engine, descriptor.auth.maxCredentialBytes, engine);
         assertDaimonCredentialContainerOwner(ownerUid, engine, containerCredentialUid);
-        mountArgs.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
+        mountArgs.push("-v", `${source}:${daimonGatewayBootstrapMountPath(descriptor.auth.realm)}:ro`);
       } else if (descriptor.auth.staging === "broker-realm") {
         const realm = descriptor.auth.realm;
         // The organization uid never reads broker bootstrap material.

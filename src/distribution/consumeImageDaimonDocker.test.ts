@@ -187,7 +187,7 @@ describe("Daimon Docker posture for image consumption", () => {
         daimonImageContractFiles(daimonImageManifestBytes(version)))
     });
     const mounts = calls.find((call) => call[0] === "run")!.filter((arg) => arg.startsWith(`${source}:`));
-    expect(mounts).toEqual(version === 7 ? [`${source}:/var/lib/spawnfile/daimon/codex-bootstrap-auth:ro`] : [
+    expect(mounts).toEqual(version === 7 ? [`${source}:/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth:ro`] : [
       `${source}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/coder/.daimon-inbound/codex-auth:ro`,
       `${source}:/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/reviewer/.daimon-inbound/codex-auth:ro`
     ]);

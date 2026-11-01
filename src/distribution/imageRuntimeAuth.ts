@@ -1,3 +1,4 @@
+import { daimonGatewayBootstrapMountPath } from "../runtime/daimon/gateway.js";
 import { DAIMON_ENGINE_DESCRIPTORS } from "../runtime/daimon/engines.js";
 import type { DaimonEngineDescriptors } from "../runtime/daimon/engineDescriptorSchema.js";
 import path from "node:path";
@@ -103,7 +104,7 @@ export const prepareDaimonImageAuthMounts = async (
     const source = daimonSourcePathForEngine(descriptor.id, environment, authProfile, descriptor);
     const ownerUid = await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor);
     assertDaimonCredentialContainerOwner(ownerUid, descriptor.id, containerCredentialUid);
-    mounts.push("-v", `${source}:${descriptor.auth.realm.bootstrapMountPath}:ro`);
+    mounts.push("-v", `${source}:${daimonGatewayBootstrapMountPath(descriptor.auth.realm)}:ro`);
   }
   for (const descriptor of descriptors) {
     if (descriptor.auth.staging !== "broker-realm") continue;

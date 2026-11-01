@@ -215,7 +215,7 @@ describe("daimonAdapter", () => {
         expect.objectContaining({ engine: { kind: "agy" } })
       ]));
     expect(target.opaqueMountTargets).toEqual([
-      "/var/lib/spawnfile/daimon/codex-bootstrap-auth",
+      "/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth",
       "/var/lib/spawnfile/daimon/agy-unlock-secret",
       "/var/lib/spawnfile/daimon/grok-bootstrap-auth"
     ]);
@@ -321,7 +321,7 @@ describe("daimonAdapter", () => {
       { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode("codex") },
       { emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createDaimonNode("grok", "Grok", "grok") }
     ]))[0]!;
-    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/codex-bootstrap-auth", "/var/lib/spawnfile/daimon/grok-bootstrap-auth"]);
+    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth", "/var/lib/spawnfile/daimon/grok-bootstrap-auth"]);
     expect(target.persistentMounts).toEqual([
       {
         id: "daimon-codex-subscription-realm",
@@ -382,7 +382,7 @@ describe("daimonAdapter", () => {
     const target = (await daimonAdapter.createContainerTargets!(["alpha", "beta"].map(slug => ({
       emittedFiles: [], id: `agent:${slug}`, kind: "agent" as const, slug, value: createDaimonNode(slug)
     }))))[0]!;
-    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/codex-bootstrap-auth"]);
+    expect(target.opaqueMountTargets).toEqual(["/var/lib/spawnfile/daimon/gateway-bootstrap/codex-bootstrap-auth"]);
     expect(target.persistentMounts?.filter(mount => mount.id.endsWith("subscription-realm"))).toEqual([{
       id: "daimon-codex-subscription-realm", lifecycle: "exclusive-reattach",
       mountPath: "/var/lib/spawnfile/daimon/codex-subscription-realm", reason: "Daimon host codex subscription credential realm"

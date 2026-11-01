@@ -31,7 +31,7 @@ describe("Daimon wake recording config", () => {
     // Pin the v7 account-realm payload without adding recording resources.
     const payload = targets.map(({ agentPathsByNodeId: _paths, ...target }) => target);
     expect(createHash("sha256").update(JSON.stringify(payload)).digest("hex"))
-      .toBe("f6b0a5ce6ecbff17ca5dde46e975c41cc5e777febaa175de9643e7b04e50bb58");
+      .toBe("aaf776fcb62e01b3e6d3fca92edcac258f574067dd6c139c0d73b5aead6eb49e");
     expect(configFrom(targets[0]!.files).agents[0]).not.toHaveProperty("recording");
     expect(targets[0]!.persistentMounts!.some((mount) => mount.id.startsWith("daimon-recording-"))).toBe(false);
   });
