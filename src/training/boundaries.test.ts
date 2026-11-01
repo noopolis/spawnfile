@@ -169,7 +169,7 @@ test.each([
   ['src/compiler/runtime/check.ts', "import '../../training/index.js';"],
   ['src/runtime/common.ts', "import '../training/index.js';"],
   ['src/runtime/daimon/adapter.ts', "import '../../training/index.js';"],
-  ['src/runtime/pi/adapter.ts', "export * from '../../training/index.js';"],
+  ['src/runtime/openclaw/adapter.ts', "export * from '../../training/index.js';"],
   ['src/runtime/codex-exec/training-extra/check.ts', "import '../../../training/index.js';"],
   ['src/runtime/daimon/other/training/check.ts', "import '../../../../training/index.js';"],
   ['src/runtime/trainingSubjectsExtra.ts', "import '../training/index.js';"],

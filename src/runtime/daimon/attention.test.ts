@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createPiTestNode } from "../pi/testHelpers.js";
+import { createDaimonTestNode } from "./testHelpers.js";
 import { daimonAdapter } from "./adapter.js";
 import { DAIMON_CONFIG_FILE } from "./config.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
@@ -23,7 +23,7 @@ const attest = async (): Promise<void> => {
   process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = file;
 };
 const compile = async (attention?: unknown) => {
-  const node = createPiTestNode({ runtime: { name: "daimon", options: attention === undefined ? {} : { attention } } });
+  const node = createDaimonTestNode({ runtime: { name: "daimon", options: attention === undefined ? {} : { attention } } });
   const compiled = await daimonAdapter.compileAgent(node);
   const [target] = await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: "agent:reader", kind: "agent", slug: "reader", value: node }]);
   return JSON.parse(target!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content);

@@ -19,7 +19,7 @@ import type {
   ResolvedMemoryAccess,
   ResolvedMemoryBank
 } from "../../compiler/types.js";
-import { createPiTestNode } from "../pi/testHelpers.js";
+import { createDaimonTestNode } from "./testHelpers.js";
 
 import { daimonAdapter } from "./adapter.js";
 import {
@@ -62,7 +62,7 @@ const createAccess = (bank: ResolvedMemoryBank): ResolvedMemoryAccess => ({
 const createDaimonNode = (
   overrides: Partial<ResolvedAgentNode> = {}
 ): ResolvedAgentNode =>
-  createPiTestNode({
+  createDaimonTestNode({
     name: "Keeper",
     runtime: { name: "daimon", options: { engine: "codex" } },
     source: AGENT_SOURCE,
@@ -178,7 +178,7 @@ describe("Daimon memory lowering", () => {
   });
 
   it("never restates a Grok agent's runtime home mode, which its worker's group must traverse for spills", async () => {
-    const [target] = await createDaimonContainerTargets([{ emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createPiTestNode({
+    const [target] = await createDaimonContainerTargets([{ emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createDaimonTestNode({
       execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } },
       runtime: { name: "daimon", options: { engine: "grok" } }
     }) }, { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode() }]);
@@ -195,13 +195,13 @@ describe("Daimon memory lowering", () => {
   });
 
   it("hands only a skill-declaring Grok agent's skills to the broker render, in Daimon's engine-neutral form", async () => {
-    const grok = (slug: string, skills?: ResolvedAgentNode["skills"]) => ({ emittedFiles: [], id: `agent:${slug}`, kind: "agent" as const, slug, value: createPiTestNode({
+    const grok = (slug: string, skills?: ResolvedAgentNode["skills"]) => ({ emittedFiles: [], id: `agent:${slug}`, kind: "agent" as const, slug, value: createDaimonTestNode({
       execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } },
       runtime: { name: "daimon", options: { engine: "grok" } }, ...(skills ? { skills } : {})
     }) });
     const [target] = await createDaimonContainerTargets([grok("grok"), grok("bare", []),
       { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode() }]);
-    const note = createPiTestNode().skills[0]!;
+    const note = createDaimonTestNode().skills[0]!;
     expect(target!.grokSkillsByNodeId).toEqual({ "agent:grok": [{ name: note.name, files: [{ path: "SKILL.md", content: note.content }] }] });
     const [unskilled] = await createDaimonContainerTargets([grok("bare", [])]);
     expect(unskilled).not.toHaveProperty("grokSkillsByNodeId");

@@ -10,7 +10,7 @@ import { DAIMON_ENGINE_DESCRIPTOR_SOURCE_COMMIT, DAIMON_V5_ENGINE_DESCRIPTORS } 
 import { parseDaimonContractManifest } from "./contractManifest.js";
 import { DAIMON_CONTRACT_MANIFEST_V6_JSON_SCHEMA, DAIMON_CONTRACT_MANIFEST_V6_VERSION, DAIMON_CONTRACT_MANIFEST_V7_JSON_SCHEMA, DAIMON_CONTRACT_MANIFEST_V7_VERSION } from "./contractManifestSchema.js";
 import { parseDaimonEngineDescriptors } from "./engineDescriptorSchema.js";
-import { createPiTestNode } from "../pi/testHelpers.js";
+import { createDaimonTestNode } from "./testHelpers.js";
 
 const v5 = () => {
   const { engines: _engines, ...legacy } = structuredClone(manifest);
@@ -168,7 +168,7 @@ describe("Daimon descriptor authority", () => {
     expect(engines.getDaimonEngineDescriptor("agy")?.training.subject.supported).toBe(false);
     expect(daimonAdapter.validateRuntimeOptions!({ engine: "grok" })[0]!.message).toBe("Daimon runtime option engine must be one of agy, codex, new-broker");
     expect(daimonAdapter.validateRuntimeOptions!({ engine: "new-broker" })).toEqual([]);
-    const node = createPiTestNode({ runtime: { name: "daimon", options: { engine: "new-broker", turn_limits: { max_requests: 12 } } },
+    const node = createDaimonTestNode({ runtime: { name: "daimon", options: { engine: "new-broker", turn_limits: { max_requests: 12 } } },
       execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } } });
     const targets = await createDaimonContainerTargets([{ emittedFiles: [], id: "agent:test", kind: "agent", slug: "test", value: node }]);
     expect(targets[0]!.engineByNodeId).toEqual({ "agent:test": "new-broker" });

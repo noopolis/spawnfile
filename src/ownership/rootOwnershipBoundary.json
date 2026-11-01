@@ -82,12 +82,6 @@
       "destination": "src/compiler/worldBindings.test.ts"
     },
     {
-      "path": "src/compiler/worldBindingsContainer.test.ts",
-      "owner": "Spawnfile",
-      "disposition": "retain",
-      "destination": "src/compiler/worldBindingsContainer.test.ts"
-    },
-    {
       "path": "src/deployment/dockerManager.test.ts",
       "owner": "Spawnfile",
       "disposition": "retain",
