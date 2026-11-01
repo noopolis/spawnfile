@@ -6,6 +6,7 @@ import { prepareTraining } from "../compiler/training/preparation/index.js";
 import { readBoundedJson } from "../compiler/training/preparation/inputs.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { CliStreams } from "./runCli.js";
+import { runBootedTraining, usesBootedTraining } from "./trainingBooted.js";
 
 export interface RunTrainingOptions {
   context: TrainingContext;
@@ -15,6 +16,8 @@ export interface RunTrainingOptions {
   repairMeasurements?: string; repairWitness?: string;
   trainingImage?: string;
   trainingConfig?: string;
+  /** Auth profile whose login a production-booted run's gateway holds. */
+  authProfile?: string;
   timeoutMs: number;
   streams: CliStreams;
   signal?: AbortSignal;
@@ -50,6 +53,7 @@ export const runTraining = async (options: RunTrainingOptions): Promise<number> 
     }
   }
   if (options.repairMeasurements) throw failure("Measurement repair requires the v2 preparation declaration");
+  if (!options.dryRun && usesBootedTraining(options)) return runBootedTraining(options);
   if (!options.dryRun) {
     if (!options.trainingImage || !options.trainingConfig) throw failure("Actual training requires --training-image and --training-config; host execution is disabled");
     return launchTrainingContainer({ image: options.trainingImage, configPath: options.trainingConfig,

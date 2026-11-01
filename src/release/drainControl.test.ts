@@ -44,7 +44,7 @@ describe("controlHelperArgs", () => {
   it("runs curl in the target's network namespace with the token on stdin, never in argv", () => {
     const args = controlHelperArgs(target, "POST", "/v2/drain");
     expect(args.slice(0, 9)).toEqual(["--context", "prod", "run", "--rm", "-i", "--pull", "never", "--network", "container:abc"]);
-    expect(args).toContain("@-");
+    expect(args.slice(args.indexOf("--config"), args.indexOf("--config") + 2)).toEqual(["--config", "-"]);
     expect(args.at(-1)).toBe("http://127.0.0.1:19700/v2/drain");
     expect(args.join(" ")).not.toContain("secret-token");
   });
@@ -147,7 +147,7 @@ describe("helperControlCall", () => {
     const docker = await fakeDocker(`cat > ${capture}; echo "$@" > ${capture}.args; printf '{"ok":true}\\n200'`);
     const response = await helperControlCall({ ...target, dockerCommand: docker }, "POST", "/v2/drain");
     expect(response).toEqual({ body: "{\"ok\":true}", status: 200 });
-    expect(await readFile(capture, "utf8")).toBe("Authorization: Bearer secret-token\n");
+    expect(await readFile(capture, "utf8")).toBe('header = "Authorization: Bearer secret-token"\n');
     expect(await readFile(`${capture}.args`, "utf8")).not.toContain("secret-token");
   });
 

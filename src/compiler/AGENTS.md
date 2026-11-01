@@ -45,7 +45,7 @@ src/compiler/
 ├── containerDaimonGrokWorkerRender.ts # Brokered Grok registrations: pinned worker config, sandbox deny list, service.json v2
 ├── containerDaimonGrokWorkerProvisioning.ts # Root program lines for the attested worker GROK_HOME layout and canonical-path checks
 ├── containerDaimonGrokTaskClock.ts # Slot-specific shared root clock and socket provisioning
-├── containerDaimonGatewayRender.ts # In-container Daimon auth gateway: per-start key, key table, realm re-own to the gateway uid, launch
+├── containerDaimonGatewayRender.ts # Daimon auth gateway placements: in-container (per-start key, realm re-own, launch) or external at boot, and the training sidecar script
 ├── containerDaimonStartupSupervision.ts # Root readiness waits and EXIT-trap cleanup shared by broker and gateway startup
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
@@ -301,6 +301,12 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   provisioning stages no credential (`credentialAuthority: "gateway"`; the
   training slot container keeps `"broker"`). Organizations without a gatewayed
   engine render byte-identically.
+  The placement is decided at boot: with `DAIMON_GATEWAY_URL` (and
+  `DAIMON_GATEWAY_KEY`) in the container env, an external gateway serves the
+  organization (the training sidecar): no key is generated, no gateway starts,
+  the realm's backed-mount check is skipped, `createDockerRunInvocation`
+  mounts no gatewayed realm and the Daimon auth adapter stages no realm leaf.
+  The runtime and broker get the same two variables either way.
 - Declared names are checked for uniqueness across EVERY mount source
   (`containerPersistentMounts.ts`), not just within one source. A
   resource `name: X` and a store `persistence.name: X` used to compile to two

@@ -27,6 +27,7 @@ import {
 } from "../deployment/index.js";
 import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
+import { DAIMON_GATEWAY_URL_ENV, isDaimonGatewayRealmMountId } from "../runtime/daimon/index.js";
 
 import {
   compileProject,
@@ -105,6 +106,7 @@ export const createDockerRunInvocation = async (
     dockerContext?: string;
     dockerHost?: string;
     envFilePath?: string;
+    network?: string; // a user-defined network to join (a training run's private gateway network)
   } = {}
 ): Promise<DockerRunInvocation> => {
   const containerReport = compileResult.report.container;
@@ -169,6 +171,7 @@ export const createDockerRunInvocation = async (
     }
 
     args.push("--name", containerName);
+    if (options.network) args.push("--network", options.network);
 
     if (hasDaimon) {
       args.push(
@@ -193,7 +196,10 @@ export const createDockerRunInvocation = async (
     // reattached volume that already holds state is untouched by dropping it.
     // (Target/secrets volumes under src/target/* keep `volume-nocopy`: no
     // image content backs those paths and they must stay opaque.)
-    for (const mount of containerReport.persistent_mounts ?? []) {
+    // An external auth gateway in the run env holds every gatewayed realm; the org mounts none.
+    const persistentMounts = (containerReport.persistent_mounts ?? [])
+      .filter((mount) => !env[DAIMON_GATEWAY_URL_ENV] || !isDaimonGatewayRealmMountId(mount.id));
+    for (const mount of persistentMounts) {
       args.push(
         "--mount",
         `type=volume,source=${mount.volume_name},target=${mount.mount_path}`
@@ -226,8 +232,8 @@ export const createDockerRunInvocation = async (
       dockerContext: options.dockerContext ?? null,
       dockerHost: options.dockerHost ?? null,
       envFilePath,
-      ...((containerReport.persistent_mounts ?? []).some((mount) => mount.lifecycle === "exclusive-reattach") ? {
-        exclusiveReattachVolumes: (containerReport.persistent_mounts ?? [])
+      ...(persistentMounts.some((mount) => mount.lifecycle === "exclusive-reattach") ? {
+        exclusiveReattachVolumes: persistentMounts
           .filter((mount) => mount.lifecycle === "exclusive-reattach")
           .map((mount) => mount.volume_name)
           .sort()

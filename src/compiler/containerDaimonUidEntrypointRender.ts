@@ -367,7 +367,8 @@ export const renderDaimonUidEntrypoint = (
     "trap stop_children TERM INT HUP",
     'watch_pids=("$runtime_pid")',
     ...(grokRegistrations.length === 0 ? [] : ['watch_pids+=("$relay_pid" "$broker_pid" "$launcher_pid")']),
-    ...(gateway ? ['watch_pids+=("$gateway_pid")'] : []),
+    // An external gateway (training sidecar) leaves no local gateway to watch.
+    ...(gateway ? ['[ -z "${gateway_pid:-}" ] || watch_pids+=("$gateway_pid")'] : []),
     "finished_pid=",
     'set +e; wait -n -p finished_pid "${watch_pids[@]}"; status=$?; set -e',
     'if [ "${finished_pid:-}" != "$runtime_pid" ]; then status=1; fi',

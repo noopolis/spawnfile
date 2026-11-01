@@ -12,6 +12,7 @@ import {
   renderDaimonGatewayLaunch,
   renderDaimonGatewayProvisioning,
   renderDaimonGatewayRuntimeEnv,
+  renderDaimonGatewaySidecarScript,
   resolveDaimonGatewayRealmPaths
 } from "./containerDaimonGatewayRender.js";
 import { renderDaimonUidEntrypoint } from "./containerDaimonUidEntrypointRender.js";
@@ -48,14 +49,38 @@ describe("Daimon auth gateway placement", () => {
     expect(entrypoint).toContain(`for fixed_uid in 2000 2100 ${DAIMON_GATEWAY_UID} `);
     expect(entrypoint).toContain(`setpriv --clear-groups --reuid ${DAIMON_GATEWAY_UID} --regid ${DAIMON_GATEWAY_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- env -i PATH="$PATH" HOME=/nonexistent LANG=C.UTF-8 /opt/daimon/bin/daimon-runtime gateway --config ${DAIMON_GATEWAY_CONFIG} &`);
     expect(entrypoint).toContain(`wait_for_broker_identity "$gateway_pid" ${DAIMON_GATEWAY_UID} 0000000000000000 "auth gateway"`);
-    expect(entrypoint).toContain('DAIMON_GATEWAY_URL=http://127.0.0.1:43200 DAIMON_GATEWAY_KEY="$daimon_gateway_key" setpriv --clear-groups --reuid "$uid"');
+    expect(entrypoint).toContain('DAIMON_GATEWAY_URL="$daimon_gateway_url" DAIMON_GATEWAY_KEY="$daimon_gateway_key" setpriv --clear-groups --reuid "$uid"');
     expect(entrypoint).toContain('watch_pids+=("$gateway_pid")');
     expect(entrypoint).toContain(`! test -r ${realm} && ! test -x ${realm}`);
     expect(entrypoint).toContain(`! test -r ${DAIMON_GATEWAY_BOOTSTRAP_ROOT}`);
     // The realm is never handed to the organization uid, and no key is compiled in.
     expect(entrypoint).not.toMatch(/[0-9a-f]{64}/u);
     expect(entrypoint.indexOf("SPAWNFILE_DAIMON_GATEWAY_PROVISION")).toBeLessThan(entrypoint.indexOf("gateway --config"));
-    expect(entrypoint.indexOf("gateway --config")).toBeLessThan(entrypoint.indexOf('DAIMON_GATEWAY_URL=http'));
+    expect(entrypoint.indexOf("gateway --config")).toBeLessThan(entrypoint.indexOf('DAIMON_GATEWAY_URL="$daimon_gateway_url" DAIMON_GATEWAY_KEY="$daimon_gateway_key" setpriv'));
+  });
+
+  it("boots against an external gateway supplied at boot: no provisioning, no local gateway, the same agent contract", async () => {
+    const script = [...renderDaimonGatewayProvisioning([codex]), ...renderDaimonGatewayLaunch([codex], "/opt/daimon"),
+      'printf "external=%s url=%s key=%s\\n" "$daimon_gateway_external" "$daimon_gateway_url" "$daimon_gateway_key"',
+      'env | grep "^DAIMON_GATEWAY" || echo unexported'].join("\n");
+    const external = await execFile("bash", ["-ceu", script], { env: { PATH: process.env.PATH, DAIMON_GATEWAY_URL: "http://gw:43200", DAIMON_GATEWAY_KEY: "k".repeat(32) } });
+    // Neither the key generation, the state provisioning nor the gateway launch ran (each needs root and Linux).
+    expect(external.stdout).toBe(`external=1 url=http://gw:43200 key=${"k".repeat(32)}\nunexported\n`);
+    await expect(execFile("bash", ["-ceu", script], { env: { PATH: process.env.PATH, DAIMON_GATEWAY_URL: "http://gw:43200" } }))
+      .rejects.toThrow("DAIMON_GATEWAY_KEY must accompany DAIMON_GATEWAY_URL");
+    const entrypoint = renderDaimonUidEntrypoint([codex], [realm], undefined, codex.persistentMounts);
+    expect(entrypoint).toContain('[ -n "${DAIMON_GATEWAY_URL:-}" ] || require_backed_mount \'daimon-codex-subscription-realm\'');
+    expect(entrypoint).toContain('[ -z "${gateway_pid:-}" ] || watch_pids+=("$gateway_pid")');
+  });
+
+  it("renders the training sidecar: the same state provisioning bound to its network, with the run key supplied and unset", () => {
+    const script = renderDaimonGatewaySidecarScript(["codex", "agy"], "/opt/daimon");
+    expect(script).toContain('daimon_gateway_key=${SPAWNFILE_DAIMON_GATEWAY_KEY:?the gateway sidecar needs its run key}\nunset SPAWNFILE_DAIMON_GATEWAY_KEY');
+    expect(script).toContain('\\"host\\":\\"0.0.0.0\\"');
+    expect(script).toContain(`exec setpriv --clear-groups --reuid ${DAIMON_GATEWAY_UID} --regid ${DAIMON_GATEWAY_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- env -i PATH="$PATH" HOME=/nonexistent LANG=C.UTF-8 /opt/daimon/bin/daimon-runtime gateway --config ${DAIMON_GATEWAY_CONFIG}`);
+    expect(script.indexOf("SPAWNFILE_DAIMON_GATEWAY_PROVISION")).toBeLessThan(script.indexOf("unset daimon_gateway_key"));
+    expect(script).not.toMatch(/[0-9a-f]{64}/u);
+    expect(() => renderDaimonGatewaySidecarScript(["agy"], "/opt/daimon")).toThrow("gatewayed engine");
   });
 
   it("gateways a brokered realm too: one org key for both engines, the broker launched after the gateway with that key", () => {
@@ -72,7 +97,7 @@ describe("Daimon auth gateway placement", () => {
     const broker = entrypoint.indexOf("engine-broker serve &");
     expect(gateway).toBeGreaterThan(0);
     expect(broker).toBeGreaterThan(gateway);
-    expect(entrypoint).toContain('DAIMON_GATEWAY_URL=http://127.0.0.1:43200 DAIMON_GATEWAY_KEY="$daimon_gateway_key" \'/opt/daimon/bin/daimon-runtime\' engine-broker serve &');
+    expect(entrypoint).toContain('DAIMON_GATEWAY_URL="$daimon_gateway_url" DAIMON_GATEWAY_KEY="$daimon_gateway_key" \'/opt/daimon/bin/daimon-runtime\' engine-broker serve &');
     expect(entrypoint).toContain("--reuid 2100 --regid 2100 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu '! test -r /var/lib/spawnfile/daimon/gateway-grok-subscription-realm");
     expect(entrypoint).not.toContain("readSecure(bootstrap");
   });

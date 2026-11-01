@@ -34,4 +34,22 @@ describe("createDockerRunInvocation persistent volume mounts",()=>{
     expect(invocation.args.join("\n")).not.toContain("volume-nocopy");
     expect(invocation.args).not.toContain("spawnfile-state:/var/lib/spawnfile/state");
   });
+
+  it("boots against an external gateway: joins the given network and mounts no gatewayed realm",async()=>{
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const os = await import("node:os"), path = await import("node:path");
+    const envFilePath = path.join(await mkdtemp(path.join(os.tmpdir(), "spawnfile-gw-env-")), "run.env");
+    await writeFile(envFilePath, "DAIMON_GATEWAY_URL=http://gateway:43200\nDAIMON_GATEWAY_KEY=" + "k".repeat(32) + "\n", { mode: 0o600 });
+    const realm = { id: "daimon-codex-subscription-realm", lifecycle: "exclusive-reattach" as const, mount_path: "/var/lib/spawnfile/daimon/codex-subscription-realm", reason: "realm", volume_name: "spawnfile-realm" };
+    const withRealm = { ...report, container: { ...report.container!, persistent_mounts: [...report.container!.persistent_mounts!, realm] } };
+    const compiled = { organizationReadinessEvidence: readiness, outputDirectory: "/tmp/spawnfile-run-out", report: withRealm, reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json" };
+    const external = await createDockerRunInvocation(compiled, "spawnfile-test", { envFilePath, network: "training-gw" });
+    expect(external.args.slice(external.args.indexOf("--network"), external.args.indexOf("--network") + 2)).toEqual(["--network", "training-gw"]);
+    expect(external.args.join("\n")).not.toContain("spawnfile-realm");
+    expect(external.args).toContain("type=volume,source=spawnfile-state,target=/var/lib/spawnfile/state");
+    expect(external.exclusiveReattachVolumes).toBeUndefined();
+    const local = await createDockerRunInvocation(compiled, "spawnfile-test");
+    expect(local.args).toContain("type=volume,source=spawnfile-realm,target=/var/lib/spawnfile/daimon/codex-subscription-realm");
+    expect(local.args).not.toContain("--network");
+  });
 });

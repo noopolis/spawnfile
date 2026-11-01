@@ -1,28 +1,18 @@
-import { spawn } from "node:child_process";
-
-import { DAIMON_CONTROL_PORT } from "../runtime/daimon/config.js";
+import {
+  DAIMON_CONTROL_CALL_TIMEOUT_MS,
+  DaimonControlError,
+  daimonControlHelperArgs,
+  daimonHelperControlCall,
+  parseDaimonControlHelperOutput,
+  type DaimonControlResponse,
+  type DaimonControlTarget
+} from "../runtime/daimon/control.js";
 
 import { ReleaseError } from "./types.js";
 
-/**
- * The running organization's control plane, reached the way every other
- * Spawnfile probe reaches a container's loopback: an ephemeral helper from the
- * same image inside the target's network namespace. The bearer token goes to
- * curl on stdin (`-H @-`), never on a command line another host process could
- * read.
- */
-export interface RuntimeControlTarget {
-  containerRef: string;
-  dockerArgs: readonly string[];
-  dockerCommand: string;
-  imageRef: string;
-  token: string;
-}
-
-export interface ControlResponse {
-  body: string;
-  status: number;
-}
+/** The running organization's control plane, through the shared Daimon control client. */
+export type RuntimeControlTarget = DaimonControlTarget;
+export type ControlResponse = DaimonControlResponse;
 
 export type ControlCall = (
   target: RuntimeControlTarget,
@@ -30,71 +20,19 @@ export type ControlCall = (
   route: string
 ) => Promise<ControlResponse>;
 
-export const CONTROL_CALL_TIMEOUT_MS = 60_000;
-const MAX_CONTROL_OUTPUT_BYTES = 1024 * 1024;
+export const CONTROL_CALL_TIMEOUT_MS = DAIMON_CONTROL_CALL_TIMEOUT_MS;
+export const controlHelperArgs = daimonControlHelperArgs;
 
-export const controlHelperArgs = (target: RuntimeControlTarget, method: "GET" | "POST", route: string): string[] => [
-  ...target.dockerArgs,
-  "run", "--rm", "-i", "--pull", "never",
-  "--network", `container:${target.containerRef}`,
-  "--entrypoint", "curl",
-  target.imageRef,
-  "-sS", "--max-time", "15", "-X", method, "-H", "@-",
-  "--output", "-", "--write-out", "\\n%{http_code}",
-  `http://127.0.0.1:${DAIMON_CONTROL_PORT}${route}`
-];
-
-const redact = (text: string, token: string): string =>
-  (token ? text.split(token).join("[redacted]") : text).replace(/\s+/gu, " ").slice(0, 240);
+const asRelease = (error: unknown): never => {
+  throw error instanceof DaimonControlError ? new ReleaseError("drain-failed", error.message) : error;
+};
 
 export const parseHelperOutput = (stdout: string): ControlResponse => {
-  const match = /\n(\d{3})$/u.exec(stdout);
-  if (!match || match.index === undefined) {
-    throw new ReleaseError("drain-failed", "the runtime control helper returned no HTTP status");
-  }
-  return { body: stdout.slice(0, match.index), status: Number(match[1]) };
+  try { return parseDaimonControlHelperOutput(stdout); } catch (error) { return asRelease(error); }
 };
 
 export const helperControlCall: ControlCall = (target, method, route) =>
-  new Promise<ControlResponse>((resolve, reject) => {
-    const child = spawn(target.dockerCommand, controlHelperArgs(target, method, route), {
-      stdio: ["pipe", "pipe", "pipe"]
-    });
-    const out: Buffer[] = [];
-    let bytes = 0;
-    let stderr = "";
-    let settled = false;
-    const finish = (error: Error | null, value?: ControlResponse): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (error) reject(error); else resolve(value!);
-    };
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(new ReleaseError("drain-failed", `runtime control ${method} ${route} timed out`));
-    }, CONTROL_CALL_TIMEOUT_MS);
-    child.stdout.on("data", (chunk: Buffer) => {
-      bytes += chunk.length;
-      if (bytes > MAX_CONTROL_OUTPUT_BYTES) {
-        child.kill("SIGKILL");
-        finish(new ReleaseError("drain-failed", `runtime control ${method} ${route} answered more than the output bound`));
-        return;
-      }
-      out.push(chunk);
-    });
-    child.stderr.on("data", (chunk: Buffer) => { stderr = `${stderr}${chunk.toString("utf8")}`.slice(-2000); });
-    child.once("error", (error) => finish(new ReleaseError("drain-failed", `cannot start the runtime control helper: ${error.message}`)));
-    child.once("close", (code) => {
-      if (code !== 0) {
-        finish(new ReleaseError("drain-failed", `runtime control ${method} ${route} failed (exit ${code ?? "signal"}): ${redact(stderr, target.token)}`));
-        return;
-      }
-      try { finish(null, parseHelperOutput(Buffer.concat(out).toString("utf8"))); } catch (error) { finish(error as Error); }
-    });
-    child.stdin.on("error", () => undefined);
-    child.stdin.end(`Authorization: Bearer ${target.token}\n`);
-  });
+  daimonHelperControlCall(target, method, route).catch(asRelease);
 
 export type DrainState = "draining" | "drained" | null;
 

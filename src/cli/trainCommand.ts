@@ -22,6 +22,7 @@ export const registerTrainCommand = (
     .option("--agent <id>", "Canonical agent id or unambiguous short name (inferred for one agent)")
     .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
     .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
+    .option("--auth-profile <name>", "Login for production-booted Daimon trials (held by the run's auth gateway)")
     .option("--plan", "Print the resolved training authoring plan without executing training")
     .option("--materialize <example>", "Rewind an authored example into --out without running training")
     .option("--history <directory>", "Local recorded history for --materialize")
@@ -99,15 +100,17 @@ export const registerTrainCommand = (
     if (!lowered && options.dryRun !== true && typeof options.out !== "string") {
       throw new SpawnfileError("validation_error", "Actual training requires --out when no training targets are declared");
     }
-    if (!lowered && options.dryRun !== true && typeof options.trainingConfig !== "string") {
+    const context = await handlers.createTrainingContext(inputPath, { agent: plan.agent.id, packageVersion });
+    // Daimon subjects train as production-booted trials: the container per trial is the isolation.
+    if (!lowered && options.dryRun !== true && typeof options.trainingConfig !== "string" && context.agent.runtime !== "daimon") {
       throw new SpawnfileError("validation_error", "Actual training requires --training-config when no training targets are declared; host execution is disabled");
     }
-    const context = await handlers.createTrainingContext(inputPath, { agent: plan.agent.id, packageVersion });
     if (lowered) await handlers.allocateTrainingOutputParent(lowered.execution.output);
     setExitCode(await handlers.runTraining({ context, args: lowered?.execution.args ?? args, execution: lowered?.execution,
       repairMeasurements: options.repairMeasurements as string | undefined, repairWitness: options.repairWitness as string | undefined,
       trainingImage: lowered?.trainingImage ?? options.trainingImage as string | undefined,
       trainingConfig: lowered?.trainingConfig ?? options.trainingConfig as string | undefined,
+      authProfile: options.authProfile as string | undefined,
       dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));
   });
