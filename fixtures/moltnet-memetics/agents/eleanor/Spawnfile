@@ -4,20 +4,17 @@ name: eleanor
 description: "Eleanor is a Jungian self-like managing partner coordinating law office operations."
 
 runtime:
-  name: pi
+  name: daimon
   options:
-    engine: grok
+    engine: codex
 
 execution:
   model:
     primary:
-      provider: local
-      name: grok-cli
+      provider: openai
+      name: gpt-5.4-mini
       auth:
-        method: none
-      endpoint:
-        compatibility: openai
-        base_url: http://127.0.0.1:11434/v1
+        method: codex
   sandbox:
     mode: workspace
 

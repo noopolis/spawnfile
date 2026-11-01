@@ -4,7 +4,7 @@ name: selene-shadow
 description: "Selene inner archetype (grounding profile)"
 
 runtime:
-  name: pi
+  name: daimon
   options:
     engine: codex
 

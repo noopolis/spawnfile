@@ -3,18 +3,18 @@ kind: agent
 name: localist
 description: "Pi agent configured for a local OpenAI-compatible model"
 
-runtime: pi
+runtime:
+  name: daimon
+  options:
+    engine: codex
 
 execution:
   model:
     primary:
-      provider: local
-      name: llama3.2
+      provider: openai
+      name: gpt-5.4-mini
       auth:
-        method: none
-      endpoint:
-        compatibility: openai
-        base_url: http://host.docker.internal:11434/v1
+        method: codex
   sandbox:
     mode: workspace
 

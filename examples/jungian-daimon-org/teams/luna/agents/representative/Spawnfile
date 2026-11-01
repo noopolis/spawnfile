@@ -4,7 +4,7 @@ name: luna-representative
 description: "Luna representative (Codex engine)"
 
 runtime:
-  name: pi
+  name: daimon
   options:
     engine: codex
 

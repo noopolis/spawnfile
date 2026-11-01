@@ -4,10 +4,17 @@ name: watcher
 description: "Deterministic scripted watcher agent for spawnfile's own lifecycle smoke."
 
 runtime:
-  name: pi
+  name: daimon
   options:
-    engine: scripted
-    engine_command: ../../harness/lifecycle-engine.mjs
+    engine: codex
+
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4-mini
+      auth:
+        method: codex
 
 schedule:
   kind: cron
