@@ -14,7 +14,7 @@ src/release/
 ├── runRelease.ts      # The orchestration: order, no-op decision, failure and deferral reporting
 ├── swap.ts            # Runtime drainability check, drain, pre-deploy confirmation, deploy
 ├── drainPhase.ts      # Drain marker, drain/wait/resume around a release, interrupted-drain recovery
-├── drainControl.ts    # Daimon control API client (drain, resume, availability) via a same-image curl helper
+├── drainControl.ts    # Drain, resume and availability over the shared Daimon control client (`../runtime/daimon/control.ts`)
 ├── releaseDocker.ts   # Release image tags, container inspection, settle, image pruning
 ├── ledger.ts          # Release ledger, append-only log, per-deployment lock, atomic JSON writes
 ├── pending.ts         # Deferral record: notify once when a release has waited too long

@@ -101,6 +101,12 @@ catalog default for `grok-4.6` is `high`. `grok` auth is Daimon-owned — it
 never becomes `SPAWNFILE_CLI_AUTH_JSON`, an api-key secret, or a host import.
 AGY still refuses any `execution.model`; Codex refuses Grok auth.
 
+`control.ts` is the one client for a running organization's control API
+(port 19700): an ephemeral same-image curl helper in the container's network
+namespace, with the bearer token and any JSON body passed as a curl config on
+stdin, never argv. `spawnfile release` and production-booted training trials
+both use it.
+
 `gateway.ts` is the in-container auth gateway contract: env names, fixed
 loopback port, config/key-table paths and versions, and the gatewayed-engine
 seam. The descriptors carry no gateway field, so `isDaimonGatewayedEngine`
