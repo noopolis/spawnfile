@@ -56,14 +56,7 @@ export interface ContainerTarget {
   /** Adapter-owned paths, using the same placeholders as emitted configuration. */
   agentPathsByNodeId?: Record<string, ContainerTargetAgentPaths>;
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
-  /**
-   * Optional node id -> resolved engine kind map (currently only populated by
-   * `src/runtime/pi/adapter.ts`'s `createContainerTargets`, e.g. `{"agent:
-   * eleanor": "scripted"}`). Threaded through `RuntimeTargetPlan` into
-   * `ContainerRuntimeInstanceReport.engine_by_node_id` for compile-report
-   * disclosure (Piece 5, Slice B) — adapters with no engine concept simply
-   * omit it.
-   */
+  /** Adapter-resolved engine kinds by node id, carried into the compile report. */
   engineByNodeId?: Record<string, string>;
   envFiles?: ContainerTargetEnvFile[];
   /** Daimon only: each brokered Grok agent's declared model and reasoning effort, which select its pinned worker config. */

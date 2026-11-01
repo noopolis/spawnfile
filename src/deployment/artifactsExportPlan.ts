@@ -110,29 +110,13 @@ const planMnemeFiles = (
     }));
   });
 
-/** Daimon: per pi/daimon runtime instance, per agent it covers, the turn-causal telemetry
- * stream at `runtime/agents/<slug>/telemetry/causal.jsonl` under the instance root (see
- * `ecosystem/daimon/src/observability/causalEvents.ts`). As of Piece 4b, that directory is
- * a run-scoped durable volume (`daimonTelemetryArtifacts.ts`, mirroring how
- * `moltnetArtifacts.ts` mounts the Moltnet causal directory), resolved here via each
- * instance's `telemetry_mount_ids` (node id -> persistent mount id). This is the real
- * relaxation of the export-before-teardown invariant (Decision 21) for daimon truth:
- * `spawnfile down` (without `--volumes`) can run BEFORE `spawnfile artifacts export`, and
- * export still recovers every agent's causal.jsonl from its named volume.
- *
- * The `instance.home_path`-keyed branch below is a legacy fallback for a compile report
- * written before Piece 4b (no `telemetry_mount_ids` yet) — it reads the old container-local
- * path with `docker cp`, which only works while the container is still live. Any report
- * produced by this compiler build always populates `telemetry_mount_ids` for a pi/daimon
- * instance, so that branch never fires today; it exists only so an out-of-date report
- * doesn't silently export zero daimon files. Optional either way: a fresh instance that
- * never woke has no telemetry file yet. */
+/** Plans optional Daimon causal telemetry exports from declared mounts or a legacy instance home. */
 const planDaimonFiles = (
   report: CompileReport,
   mounts: Map<string, ContainerPersistentMountReport>
 ): PlannedExportFile[] =>
   (report.container?.runtime_instances ?? [])
-    .filter((instance) => instance.runtime === "pi" || instance.runtime === "daimon")
+    .filter((instance) => instance.runtime === "daimon")
     .flatMap((instance) =>
       (instance.node_ids ?? []).flatMap((nodeId): PlannedExportFile[] => {
         const slug = agentSlugFromNodeId(nodeId);

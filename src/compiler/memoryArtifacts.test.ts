@@ -83,40 +83,40 @@ const createBank = (
 
 describe("createMemoryArtifactBundle", () => {
   it("maps transport by runtime name", () => {
-    const piNode = createPlanNode("agent:pi-agent", "pi-agent", "pi", "/tmp/pi/Spawnfile");
+    const daimonNode = createPlanNode("agent:daimon-agent", "daimon-agent", "daimon", "/tmp/daimon/Spawnfile");
     const picoclawNode = createPlanNode("agent:mcp-agent", "mcp-agent", "picoclaw", "/tmp/picoclaw/Spawnfile");
     const openclawNode = createPlanNode("agent:openclaw-agent", "openclaw-agent", "openclaw", "/tmp/openclaw/Spawnfile");
     const unknownNode = createPlanNode("agent:unsupported-agent", "unsupported-agent", "other-runtime", "/tmp/other/Spawnfile");
 
-    const bank = createBank("/tmp/pi/Spawnfile", "shared", {
+    const bank = createBank("/tmp/daimon/Spawnfile", "shared", {
       kind: "sqlite",
       persistence: { mode: "durable" },
-      path: "/var/lib/spawnfile/memory/pi/shared/memory.sqlite"
+      path: "/var/lib/spawnfile/memory/daimon/shared/memory.sqlite"
     });
 
     const memoryAccess: ResolvedMemoryAccess[] = [
-      { agentSource: piNode.value.source, declaringKind: "agent", source: bank.source, bank },
+      { agentSource: daimonNode.value.source, declaringKind: "agent", source: bank.source, bank },
       { agentSource: picoclawNode.value.source, declaringKind: "agent", source: bank.source, bank },
       { agentSource: openclawNode.value.source, declaringKind: "agent", source: bank.source, bank },
       { agentSource: unknownNode.value.source, declaringKind: "agent", source: bank.source, bank }
     ];
 
     const bundle = createMemoryArtifactBundle(
-      createPlan([piNode, picoclawNode, openclawNode, unknownNode], memoryAccess)
+      createPlan([daimonNode, picoclawNode, openclawNode, unknownNode], memoryAccess)
     );
 
     expect(bundle.memories).toHaveLength(1);
     expect(bundle.memories[0]).toMatchObject({
       id: "shared",
-      declaring_node_id: "agent:pi-agent",
+      declaring_node_id: "agent:daimon-agent",
       accessible_node_ids: [
+        "agent:daimon-agent",
         "agent:mcp-agent",
         "agent:openclaw-agent",
-        "agent:pi-agent",
         "agent:unsupported-agent"
       ],
       transport_by_node_id: {
-        "agent:pi-agent": "direct",
+        "agent:daimon-agent": "direct",
         "agent:mcp-agent": "mcp",
         "agent:openclaw-agent": "mcp",
         "agent:unsupported-agent": "unsupported"
@@ -146,22 +146,22 @@ describe("createMemoryArtifactBundle", () => {
   });
 
   it("reports CLI-backed Daimon engines as direct memory transports", () => {
-    const piNode = createPlanNode(
+    const daimonNode = createPlanNode(
       "agent:codex-agent",
       "codex-agent",
-      "pi",
-      "/tmp/pi/Spawnfile",
+      "daimon",
+      "/tmp/daimon/Spawnfile",
       { engine: "codex" }
     );
-    const bank = createBank("/tmp/pi/Spawnfile", "shared", {
+    const bank = createBank("/tmp/daimon/Spawnfile", "shared", {
       kind: "sqlite",
       persistence: { mode: "durable" },
-      path: "/var/lib/spawnfile/memory/pi/shared/memory.sqlite"
+      path: "/var/lib/spawnfile/memory/daimon/shared/memory.sqlite"
     });
 
     const bundle = createMemoryArtifactBundle(
-      createPlan([piNode], [
-        { agentSource: piNode.value.source, declaringKind: "agent", source: bank.source, bank }
+      createPlan([daimonNode], [
+        { agentSource: daimonNode.value.source, declaringKind: "agent", source: bank.source, bank }
       ])
     );
 
@@ -226,18 +226,18 @@ describe("createMemoryArtifactBundle", () => {
     });
   });
 
-  it("reports degraded transport for a pi agent with a memory-kind bank", () => {
-    const piNode = createPlanNode("agent:pi-agent", "pi-agent", "pi", "/tmp/pi/Spawnfile");
-    const bank = createBank("/tmp/pi/Spawnfile", "volatile", { kind: "memory" });
+  it("reports degraded transport for a daimon agent with a memory-kind bank", () => {
+    const daimonNode = createPlanNode("agent:daimon-agent", "daimon-agent", "daimon", "/tmp/daimon/Spawnfile");
+    const bank = createBank("/tmp/daimon/Spawnfile", "volatile", { kind: "memory" });
 
     const bundle = createMemoryArtifactBundle(
-      createPlan([piNode], [
-        { agentSource: piNode.value.source, declaringKind: "agent", source: bank.source, bank }
+      createPlan([daimonNode], [
+        { agentSource: daimonNode.value.source, declaringKind: "agent", source: bank.source, bank }
       ])
     );
 
     expect(bundle.memories[0]?.transport_by_node_id).toEqual({
-      "agent:pi-agent": "degraded"
+      "agent:daimon-agent": "degraded"
     });
   });
 
@@ -261,7 +261,6 @@ describe("createMemoryArtifactBundle", () => {
     // memory block, so reporting `direct` would make the report disagree
     // with what was actually emitted.
     const daimonNode = createPlanNode("agent:daimon-agent", "daimon-agent", "daimon", "/tmp/daimon/Spawnfile");
-    const piNode = createPlanNode("agent:pi-agent", "pi-agent", "pi", "/tmp/pi/Spawnfile");
     const bank = createBank("/tmp/daimon/Spawnfile", "scratch", {
       kind: "sqlite",
       persistence: { mode: "ephemeral" },
@@ -269,16 +268,14 @@ describe("createMemoryArtifactBundle", () => {
     });
 
     const bundle = createMemoryArtifactBundle(
-      createPlan([daimonNode, piNode], [
-        { agentSource: daimonNode.value.source, declaringKind: "agent", source: bank.source, bank },
-        { agentSource: piNode.value.source, declaringKind: "agent", source: bank.source, bank }
+      createPlan([daimonNode], [
+        { agentSource: daimonNode.value.source, declaringKind: "agent", source: bank.source, bank }
       ])
     );
 
     expect(bundle.mounts).toHaveLength(0);
     expect(bundle.memories[0]?.transport_by_node_id).toEqual({
-      "agent:daimon-agent": "degraded",
-      "agent:pi-agent": "degraded"
+      "agent:daimon-agent": "degraded"
     });
   });
 
@@ -299,8 +296,8 @@ describe("createMemoryArtifactBundle", () => {
   });
 
   it("adds durable sqlite mounts and mount IDs", () => {
-    const declaring = createPlanNode("agent:assistant", "assistant", "pi", "/tmp/pi/Spawnfile");
-    const bank = createBank("/tmp/pi/Spawnfile", "journal", {
+    const declaring = createPlanNode("agent:assistant", "assistant", "daimon", "/tmp/daimon/Spawnfile");
+    const bank = createBank("/tmp/daimon/Spawnfile", "journal", {
       kind: "sqlite",
       persistence: {
         mode: "durable",
@@ -341,13 +338,13 @@ describe("createMemoryArtifactBundle", () => {
    * mount between them.
    */
   it("rejects two distinct banks that resolve to the same durable directory", () => {
-    const declaring = createPlanNode("agent:assistant", "assistant", "pi", "/tmp/pi/Spawnfile");
-    const first = createBank("/tmp/pi/Spawnfile", "journal", {
+    const declaring = createPlanNode("agent:assistant", "assistant", "daimon", "/tmp/daimon/Spawnfile");
+    const first = createBank("/tmp/daimon/Spawnfile", "journal", {
       kind: "sqlite",
       persistence: { mode: "durable" },
       path: "/var/lib/spawnfile/memory/assistant/journal.sqlite"
     });
-    const second = createBank("/tmp/pi/Spawnfile", "notes", {
+    const second = createBank("/tmp/daimon/Spawnfile", "notes", {
       kind: "json",
       persistence: { mode: "durable" },
       path: "/var/lib/spawnfile/memory/assistant/notes.jsonl"
@@ -367,15 +364,15 @@ describe("createMemoryArtifactBundle", () => {
    * the team boundary can reach it. `examples/daimon-org` ships exactly this.
    */
   it("shares one durable mount when the same bank is declared in two scopes", () => {
-    const orgAgent = createPlanNode("agent:mapper", "mapper", "pi", "/tmp/pi/Spawnfile");
-    const teamAgent = createPlanNode("agent:reviewer", "reviewer", "pi", "/tmp/pi/team/Spawnfile");
+    const orgAgent = createPlanNode("agent:mapper", "mapper", "daimon", "/tmp/daimon/Spawnfile");
+    const teamAgent = createPlanNode("agent:reviewer", "reviewer", "daimon", "/tmp/daimon/team/Spawnfile");
     const store = {
       kind: "json" as const,
       persistence: { mode: "durable" as const },
       path: "/var/lib/spawnfile/memory/org/shared-recall.jsonl"
     };
-    const orgBank = createBank("/tmp/pi/Spawnfile", "shared-recall", store);
-    const teamBank = createBank("/tmp/pi/team/Spawnfile", "shared-recall", store);
+    const orgBank = createBank("/tmp/daimon/Spawnfile", "shared-recall", store);
+    const teamBank = createBank("/tmp/daimon/team/Spawnfile", "shared-recall", store);
 
     const bundle = createMemoryArtifactBundle(
       createPlan([orgAgent, teamAgent], [
@@ -397,8 +394,8 @@ describe("createMemoryArtifactBundle", () => {
    * organization redeployed tomorrow remembered nothing.
    */
   it("names durable memory volumes by deployment lineage, not by run id", () => {
-    const declaring = createPlanNode("agent:assistant", "assistant", "pi", "/tmp/pi/Spawnfile");
-    const bank = createBank("/tmp/pi/Spawnfile", "journal", {
+    const declaring = createPlanNode("agent:assistant", "assistant", "daimon", "/tmp/daimon/Spawnfile");
+    const bank = createBank("/tmp/daimon/Spawnfile", "journal", {
       kind: "sqlite",
       persistence: { mode: "durable" },
       path: "/var/lib/spawnfile/memory/assistant/journal.sqlite"
@@ -419,7 +416,7 @@ describe("createMemoryArtifactBundle", () => {
         lifecycle: "exclusive-reattach",
         mount_path: "/var/lib/spawnfile/memory/assistant",
         reason: "durable memory stores under /var/lib/spawnfile/memory/assistant",
-        volume_name: createExclusiveReattachVolumeName("/tmp/pi/Spawnfile\u0000production", mountId)
+        volume_name: createExclusiveReattachVolumeName("/tmp/daimon/Spawnfile\u0000production", mountId)
       }
     ]);
     expect(withRunId.mounts).toEqual(withoutRunId.mounts);
@@ -430,37 +427,37 @@ describe("createMemoryArtifactBundle", () => {
   });
 
   it("skips durable mounts for ephemeral sqlite/json stores and non-file stores", () => {
-    const piNode = createPlanNode("agent:assistant", "assistant", "pi", "/tmp/pi/Spawnfile");
+    const daimonNode = createPlanNode("agent:assistant", "assistant", "daimon", "/tmp/daimon/Spawnfile");
 
-    const sqliteEphemeral = createBank("/tmp/pi/Spawnfile", "chat", {
+    const sqliteEphemeral = createBank("/tmp/daimon/Spawnfile", "chat", {
       kind: "sqlite",
       persistence: { mode: "ephemeral" },
       path: "/tmp/chat.sqlite"
     });
-    const memoryOnly = createBank("/tmp/pi/Spawnfile", "volatile", { kind: "memory" });
-    const postgres = createBank("/tmp/pi/Spawnfile", "remote", {
+    const memoryOnly = createBank("/tmp/daimon/Spawnfile", "volatile", { kind: "memory" });
+    const postgres = createBank("/tmp/daimon/Spawnfile", "remote", {
       kind: "postgres",
       dsn_secret: "PG_DSN"
     });
 
     const bundle = createMemoryArtifactBundle(
-      createPlan([piNode], [
+      createPlan([daimonNode], [
         {
-          agentSource: piNode.value.source,
+          agentSource: daimonNode.value.source,
           declaringKind: "agent",
-          source: piNode.value.source,
+          source: daimonNode.value.source,
           bank: sqliteEphemeral
         },
         {
-          agentSource: piNode.value.source,
+          agentSource: daimonNode.value.source,
           declaringKind: "agent",
-          source: piNode.value.source,
+          source: daimonNode.value.source,
           bank: memoryOnly
         },
         {
-          agentSource: piNode.value.source,
+          agentSource: daimonNode.value.source,
           declaringKind: "agent",
-          source: piNode.value.source,
+          source: daimonNode.value.source,
           bank: postgres
         }
       ])

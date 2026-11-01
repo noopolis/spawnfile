@@ -43,7 +43,7 @@ const configPath = (name: string): string =>
 const agent = (id: string, source: string, network: string, room: string): CompilePlan["nodes"][number] => ({
   id,
   kind: "agent",
-  runtimeName: "pi",
+  runtimeName: "picoclaw",
   slug: id.slice("agent:".length),
   value: {
     description: "RAW_MODEL_SENTINEL",
@@ -55,7 +55,7 @@ const agent = (id: string, source: string, network: string, room: string): Compi
     name: id,
     policyMode: null,
     policyOnDegrade: null,
-    runtime: { name: "pi", options: { RAW_MODEL_OPTION_SENTINEL: "RAW_MODEL_VALUE_SENTINEL" } },
+    runtime: { name: "picoclaw", options: { RAW_MODEL_OPTION_SENTINEL: "RAW_MODEL_VALUE_SENTINEL" } },
     secrets: [{ name: "RAW_CREDENTIAL_ID_SENTINEL", value: "RAW_CREDENTIAL_SECRET_SENTINEL" }] as never,
     skills: [],
     source,
@@ -85,8 +85,8 @@ const team = (): CompilePlan["nodes"][number] => ({
     kind: "team",
     lead: null,
     members: [
-      { id: "zeta", kind: "agent", nodeSource: "agent-zeta", runtimeName: "pi" },
-      { id: "alpha", kind: "agent", nodeSource: "agent-alpha", runtimeName: "pi" }
+      { id: "zeta", kind: "agent", nodeSource: "agent-zeta", runtimeName: "picoclaw" },
+      { id: "alpha", kind: "agent", nodeSource: "agent-alpha", runtimeName: "picoclaw" }
     ],
     mode: "swarm",
     name: "Readiness Team",
@@ -115,7 +115,7 @@ const plan = (): CompilePlan => ({
     externalParticipants: [{ authoredParticipantKey: "world", kind: "service", memberId: "world", principalId: "system:world" }]
   },
   root: "root",
-  runtimes: { pi: { nodeIds: ["agent:zeta", "agent:alpha"] } }
+  runtimes: { picoclaw: { nodeIds: ["agent:zeta", "agent:alpha"] } }
 });
 
 const worldBindings = (): MutableWorldBindings => {

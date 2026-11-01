@@ -189,7 +189,7 @@ describe("planArtifactExports", () => {
           model_auth_methods: {},
           model_secrets_required: [],
           node_ids: ["agent:eleanor", "team:root"],
-          runtime: "pi",
+          runtime: "daimon",
           telemetry_mount_ids: { "agent:eleanor": "agent-eleanor-daimon-telemetry" }
         }
       ]
@@ -245,7 +245,7 @@ describe("planArtifactExports", () => {
     ]);
   });
 
-  it("does not plan daimon telemetry for a non-pi/daimon runtime instance", () => {
+  it("does not plan daimon telemetry for a non-Daimon runtime instance", () => {
     const report = baseReport(baseContainer({
       runtime_instances: [
         {
@@ -263,7 +263,7 @@ describe("planArtifactExports", () => {
     expect(planArtifactExports(report)).toEqual([]);
   });
 
-  it("skips a pi runtime instance with no telemetry mount and no home_path", () => {
+  it("skips a daimon runtime instance with no telemetry mount and no home_path", () => {
     const report = baseReport(baseContainer({
       runtime_instances: [
         {
@@ -273,7 +273,7 @@ describe("planArtifactExports", () => {
           model_auth_methods: {},
           model_secrets_required: [],
           node_ids: ["agent:eleanor"],
-          runtime: "pi"
+          runtime: "daimon"
         }
       ]
     }));
@@ -291,7 +291,7 @@ describe("planArtifactExports", () => {
           model_auth_methods: {},
           model_secrets_required: [],
           node_ids: ["agent:eleanor"],
-          runtime: "pi"
+          runtime: "daimon"
         }
       ]
     }));

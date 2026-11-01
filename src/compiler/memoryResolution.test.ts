@@ -32,7 +32,7 @@ const agent = (name: string): ResolvedAgentNode => ({
   name,
   policyMode: null,
   policyOnDegrade: null,
-  runtime: { name: "pi", options: {} },
+  runtime: { name: "picoclaw", options: {} },
   secrets: [],
   skills: [],
   source: `/org/${name}/Spawnfile`,
@@ -64,7 +64,7 @@ const plan = (
     ...agents.map((value) => ({
       id: `agent:${value.name}`,
       kind: "agent" as const,
-      runtimeName: "pi",
+      runtimeName: "picoclaw",
       slug: value.name,
       value
     }))
@@ -149,7 +149,7 @@ describe("memory resolution", () => {
       alpha.name
     );
     const group = team([
-      { id: "alpha", kind: "agent", nodeSource: alpha.source, runtimeName: "pi" },
+      { id: "alpha", kind: "agent", nodeSource: alpha.source, runtimeName: "picoclaw" },
       { id: "nested", kind: "team", nodeSource: "/org/nested/Spawnfile", runtimeName: null }
     ]);
     group.memory = resolveDeclaredMemoryBanks([
@@ -169,7 +169,7 @@ describe("memory resolution", () => {
   it("leaves plans without banks unchanged and rejects unresolved member access", () => {
     const alpha = agent("alpha");
     const empty = plan(team([
-      { id: "alpha", kind: "agent", nodeSource: alpha.source, runtimeName: "pi" }
+      { id: "alpha", kind: "agent", nodeSource: alpha.source, runtimeName: "picoclaw" }
     ]), [alpha]);
     resolvePlanMemoryAccess(empty);
     expect(empty.memoryAccess).toBeUndefined();

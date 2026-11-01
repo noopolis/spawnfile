@@ -61,17 +61,7 @@ export const SLICE_CHECKS: AcceptanceCheckDeclaration[] = [
     "Memory write is recalled by the same agent",
     ["B0", "B59", "B70"]
   ),
-  // B70 evidence for this check no longer comes from a live E2E harness.
-  // The former `memoryAblation.ts` (`npm run test:e2e:daimon-memory-ablation`)
-  // was deleted as redundant: its on/off/shuffled recall-mode assertions are
-  // now proven in-process by @noopolis/mneme's own `runtime.test.ts`/
-  // `recallMode.test.ts`, plus the generated-code seam (does
-  // `MNEME_RECALL_MODE` actually gate what lands in the CLI-engine prompt
-  // `createCliEnginePrompt` builds?) by this repo's own
-  // `src/runtime/pi/appCliSource.test.ts` ("wired to the real @noopolis/mneme
-  // memory runtime" describe block). The check id/title/refs stay as-is —
-  // this is still a real, required slice check — only the evidence source
-  // changed from a live-process E2E run to unit-test results.
+  // B70 recall-mode behavior is covered by Mneme runtime unit tests.
   requiredCheck(
     "slice-memory-ablation",
     "Memory ablation measurably degrades recall",

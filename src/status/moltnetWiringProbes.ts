@@ -27,8 +27,6 @@ export interface CollectMoltnetWiringProbeOptions {
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
 const MOLTNET_NODE_CONFIG_VERSION = "moltnet.node.v1";
-// src/compiler/moltnetRuntimeConfig.ts:108 — pi/daimon attachments both lower to kind "pi".
-const CONTROL_URL_PATTERN = /^http:\/\/127\.0\.0\.1:\d+\/agents\/[a-z0-9-]+\/wake$/u;
 
 const WIRING_KEYS = [
   "network.wiring.node_config",
@@ -150,20 +148,7 @@ const collectControlUrlObservations = (plans: ReadNodePlan[]): StatusObservation
       const kind = attachment.runtime?.kind;
       const agentId = typeof attachment.agent?.id === "string" ? attachment.agent.id : "unknown-agent";
 
-      if (kind === "pi") {
-        const controlUrl = attachment.runtime?.control_url;
-        const valid = typeof controlUrl === "string" && CONTROL_URL_PATTERN.test(controlUrl);
-        observations.push(createObservation({
-          key: "network.wiring.control_url",
-          message: valid
-            ? `${agentId} control_url ${String(controlUrl)} matches the expected loopback wake pattern`
-            : typeof controlUrl === "string"
-              ? `${agentId} control_url "${controlUrl}" does not match the expected loopback wake pattern`
-              : `${agentId} pi attachment is missing control_url`,
-          severity: valid ? "ok" : "error",
-          subject
-        }));
-      } else if (kind === "picoclaw") {
+      if (kind === "picoclaw") {
         const configPath = attachment.runtime?.config_path;
         const valid = typeof configPath === "string" && configPath.length > 0;
         observations.push(createObservation({

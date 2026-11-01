@@ -3,13 +3,12 @@ import { Command } from "commander";
 import { isSpawnfileError, type ModelAuthMethod } from "../shared/index.js";
 
 import {
-  runDaimonMemoryRecallCli,
   runJungianSelfOrgCli,
   runMixedRuntimeMemoryWiringCli,
   runOllamaEmbeddingsProbeCli
 } from "./cliMemory.js";
 import { runMoltnetMemeticsCli, runMoltnetTeamChatCli } from "./cliMoltnet.js";
-import { runDaimonOrgCli, runLifecycleSmokeCli, runOperationalSmokeCli } from "./cliSmoke.js";
+import { runLifecycleSmokeCli, runOperationalSmokeCli } from "./cliSmoke.js";
 import { runDistributionImageE2E } from "./distributionImage.js";
 import { runDistributionRoundtripE2E } from "./distributionRoundtrip.js";
 import { runDockerAuthE2E } from "./dockerAuth.js";
@@ -21,8 +20,6 @@ const collect = (value: string, previous: string[]): string[] => [...previous, v
 
 const dispatchNamedCommand = async (name: string | undefined, argv: string[]): Promise<boolean> => {
   const commands = new Map<string, (args: string[]) => Promise<void>>([
-    ["daimon-memory-recall", runDaimonMemoryRecallCli],
-    ["daimon-org", runDaimonOrgCli],
     ["jungian-self-org", runJungianSelfOrgCli],
     ["lifecycle-smoke", runLifecycleSmokeCli],
     ["mixed-runtime-memory", runMixedRuntimeMemoryWiringCli],

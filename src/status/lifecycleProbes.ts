@@ -24,8 +24,7 @@ export interface CollectLifecycleProbeOptions {
 }
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
-// B62 Option B (src/runtime/pi/appControlSource.ts): the operator-only
-// mutating wake route and its fail-closed gate env/marker.
+// Operator wake route and its fail-closed gate markers.
 const PI_OPERATOR_ROUTE_MARKER = "/spawnfile/agents/";
 const PI_CONTROL_TOKEN_ENV = "SPAWNFILE_PI_CONTROL_TOKEN";
 const PI_FAIL_CLOSED_MARKER = "no operator token configured (";
@@ -33,9 +32,7 @@ const PI_FAIL_CLOSED_MARKER = "no operator token configured (";
 // the compiled entrypoint only when the compile-host process env carried a
 // run id (see src/runtime/common.ts's resolveNoopolisRunId).
 const NOOPOLIS_RUN_ID_MARKER = "NOOPOLIS_RUN_ID=";
-// Both adapter names lower to the same generated Pi runtime app
-// (src/runtime/pi/adapter.ts); the daimon adapter is a `{...piAdapter, name: "daimon"}` spread.
-const PI_LIKE_RUNTIMES = new Set(["daimon", "pi"]);
+const PI_LIKE_RUNTIMES = new Set(["daimon"]);
 
 const LIFECYCLE_KEYS = [
   "lifecycle.instance.coverage",
@@ -158,7 +155,7 @@ const collectWakeOperatorObservations = async (
     if (!PI_LIKE_RUNTIMES.has(instance.runtime)) {
       observations.push(createObservation({
         key: "lifecycle.wake.operator",
-        message: `${instance.id} uses runtime ${instance.runtime}; the B62 operator wake route is Pi/Daimon-specific and was not checked`,
+        message: `${instance.id} uses runtime ${instance.runtime}; the B62 operator wake route is Daimon-specific and was not checked`,
         severity: "unknown",
         subject
       }));

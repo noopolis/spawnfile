@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import { renderDockerfile } from "./containerArtifactsRender.js";
@@ -10,16 +10,16 @@ import {
 
 const createRuntimePlan = (): RuntimeTargetPlan => ({
   envFiles: [],
-  id: "pi-target",
+  id: "picoclaw-target",
   instancePaths: {
-    configPath: "/var/lib/spawnfile/pi/config.json",
-    homePath: "/var/lib/spawnfile/pi/home",
-    workspacePath: "/var/lib/spawnfile/pi/workspace"
+    configPath: "/var/lib/spawnfile/picoclaw/config.json",
+    homePath: "/var/lib/spawnfile/picoclaw/home",
+    workspacePath: "/var/lib/spawnfile/picoclaw/workspace"
   },
   meta: {
-    configFileName: "pi-app.json",
+    configFileName: "config.json",
     instancePaths: {
-      configPathTemplate: "<instance-root>/pi-app.json",
+      configPathTemplate: "<instance-root>/config.json",
       homePathTemplate: "<instance-root>/home",
       workspacePathTemplate: "<instance-root>/workspace"
     },
@@ -29,18 +29,13 @@ const createRuntimePlan = (): RuntimeTargetPlan => ({
   },
   modelAuthMethods: {},
   modelSecretsRequired: [],
-  runtimeName: "pi",
-  runtimeRoot: "/opt/spawnfile/runtime-installs/pi",
+  runtimeName: "picoclaw",
+  runtimeRoot: "/opt/spawnfile/runtime-installs/picoclaw",
   targetFiles: []
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
 });
 
 describe("Docker build context ignore safety", () => {
   it("keeps every rendered context source visible across supported configurations", async () => {
-    vi.stubEnv("SPAWNFILE_PI_RUNTIME_BASE_IMAGE", "");
     const plan = createRuntimePlan();
     const configurations = [
       {
@@ -53,14 +48,6 @@ describe("Docker build context ignore safety", () => {
           hasStagedMoltnetBinaries: true
         }),
         name: "moltnet with staged binaries"
-      },
-      {
-        dockerfile: await renderDockerfile([plan], {
-          runtimePackageOverrides: {
-            "@noopolis/daimon": { filename: "noopolis-daimon-test.tgz" }
-          }
-        }),
-        name: "runtime package override"
       },
       {
         dockerfile: await renderDockerfile([plan], {
@@ -89,8 +76,7 @@ describe("Docker build context ignore safety", () => {
       ).toEqual([]);
     }
     expect(configurations[1]!.dockerfile).toContain("COPY moltnet-bin/");
-    expect(configurations[2]!.dockerfile).toContain("COPY container/vendor/");
-    expect(configurations[3]!.dockerfile).toContain("COPY world-bindings.json");
+    expect(configurations[2]!.dockerfile).toContain("COPY world-bindings.json");
   });
 
   it("reports an ignored COPY source and skips multi-stage or remote sources", () => {

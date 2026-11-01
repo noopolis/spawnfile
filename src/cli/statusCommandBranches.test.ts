@@ -16,11 +16,11 @@ const createView = (): OrganizationView => ({
     id: "agent:assistant",
     kind: "agent",
     name: "assistant",
-    runtimeName: "pi",
+    runtimeName: "picoclaw",
     slug: "assistant",
     source: "/tmp/Spawnfile"
   },
-  runtimes: [{ name: "pi", nodeIds: ["agent:assistant"] }]
+  runtimes: [{ name: "picoclaw", nodeIds: ["agent:assistant"] }]
 });
 
 describe("status command branch contracts", () => {

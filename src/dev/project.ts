@@ -155,7 +155,7 @@ const selectPiAgent = async (
   workspacePath: string;
 }> => {
   const instance = compileResult.report.container?.runtime_instances.find(
-    (candidate) => candidate.id === "pi-app" && ["daimon", "pi"].includes(candidate.runtime)
+    (candidate) => candidate.id === "pi-app" && candidate.runtime === "daimon"
   );
   if (!instance?.config_path || !instance.workspace_path || !instance.home_path) {
     throw new SpawnfileError(

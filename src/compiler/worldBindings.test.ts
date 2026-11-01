@@ -48,7 +48,7 @@ const agent = (name: string, source: string): ResolvedAgentNode => ({
   name,
   policyMode: null,
   policyOnDegrade: null,
-  runtime: { name: "pi", options: { engine: "pi" } },
+  runtime: { name: "picoclaw", options: {} },
   secrets: [],
   skills: [],
   source,
@@ -70,8 +70,8 @@ const plan = (root = "/org/Spawnfile"): CompilePlan => {
     kind: "team",
     lead: null,
     members: [
-      { id: "red", kind: "agent", nodeSource: redSource, runtimeName: "pi" },
-      { id: "blue", kind: "agent", nodeSource: blueSource, runtimeName: "pi" }
+      { id: "red", kind: "agent", nodeSource: redSource, runtimeName: "picoclaw" },
+      { id: "blue", kind: "agent", nodeSource: blueSource, runtimeName: "picoclaw" }
     ],
     mode: "swarm",
     name: "football",
@@ -87,8 +87,8 @@ const plan = (root = "/org/Spawnfile"): CompilePlan => {
     ],
     nodes: [
       { id: "team:football", kind: "team", runtimeName: null, slug: "football", value: team },
-      { id: "runtime:red", kind: "agent", runtimeName: "pi", slug: "display-red", value: agent("Red Display", redSource) },
-      { id: "runtime:blue", kind: "agent", runtimeName: "pi", slug: "display-blue", value: agent("Blue Display", blueSource) }
+      { id: "runtime:red", kind: "agent", runtimeName: "picoclaw", slug: "display-red", value: agent("Red Display", redSource) },
+      { id: "runtime:blue", kind: "agent", runtimeName: "picoclaw", slug: "display-blue", value: agent("Blue Display", blueSource) }
     ],
     organizationIdentity: {
       agentMembers: [
@@ -100,7 +100,7 @@ const plan = (root = "/org/Spawnfile"): CompilePlan => {
       ]
     },
     root,
-    runtimes: { pi: { nodeIds: ["runtime:red", "runtime:blue"] } }
+    runtimes: { picoclaw: { nodeIds: ["runtime:red", "runtime:blue"] } }
   };
 };
 

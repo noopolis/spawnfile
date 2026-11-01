@@ -8,7 +8,7 @@ import type { RuntimeTargetPlan } from "../../compiler/containerArtifactsTypes.j
 import type { ResolvedWorkspaceResource } from "../../compiler/workspaceResources.js";
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import type { ContainerTargetInput } from "../types.js";
-import { createPiTestNode } from "../pi/testHelpers.js";
+import { createDaimonTestNode } from "./testHelpers.js";
 import { daimonAdapter } from "./adapter.js";
 import { createDaimonContainerTargets, DAIMON_CONFIG_FILE } from "./config.js";
 import { assertDaimonRecordingIsolation, daimonRecordingDirectory } from "./recording.js";
@@ -19,7 +19,7 @@ const resource = (id: string, sharing: "per_agent" | "team" = "per_agent"): Reso
 });
 const input = (slug = "writer", overrides: Partial<ResolvedAgentNode> = {}): ContainerTargetInput & { value: ResolvedAgentNode } => ({
   emittedFiles: [], id: `agent:${slug}`, kind: "agent", slug,
-  value: createPiTestNode({ name: "Writer", runtime: { name: "daimon", options: { engine: "codex" } },
+  value: createDaimonTestNode({ name: "Writer", runtime: { name: "daimon", options: { engine: "codex" } },
     source: "/tmp/writer/Spawnfile", ...overrides })
 });
 const recording = (volumes: string[] = [], keep?: string) => ({ record: { volumes, ...(keep ? { keep } : {}) }, graders: {}, targets: [] });

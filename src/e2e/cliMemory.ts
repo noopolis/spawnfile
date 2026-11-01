@@ -1,7 +1,6 @@
 import { Command } from "commander";
 
 import {
-  runDaimonMemoryRecallE2E,
   runJungianSelfOrgE2E,
   runMixedRuntimeMemoryWiringE2E,
   type MemoryE2EResult
@@ -20,7 +19,7 @@ const runMemoryCli = async (
     description: string;
     name: string;
     resultName: string;
-    run: typeof runDaimonMemoryRecallE2E;
+    run: typeof runMixedRuntimeMemoryWiringE2E;
   }
 ): Promise<void> => {
   const command = new Command();
@@ -39,14 +38,6 @@ const runMemoryCli = async (
   });
   printMemoryResult(input.resultName, result);
 };
-
-export const runDaimonMemoryRecallCli = async (argv: string[]): Promise<void> =>
-  runMemoryCli(argv, {
-    description: "Run the opt-in legacy Pi recall compile/probe E2E (historical command name)",
-    name: "spawnfile-e2e daimon-memory-recall",
-    resultName: "Legacy Pi memory recall E2E",
-    run: runDaimonMemoryRecallE2E
-  });
 
 export const runMixedRuntimeMemoryWiringCli = async (argv: string[]): Promise<void> =>
   runMemoryCli(argv, {

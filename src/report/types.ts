@@ -19,10 +19,7 @@ export interface ContainerRuntimeInstanceReport {
   /** Per-agent paths for shared runtime instances; all paths are container absolute. */
   agent_paths?: Record<string, { workspace_path: string; home_path: string | null; skill_roots: string[] }>;
   config_path: string;
-  /** Per pi/daimon agent (keyed by node id, e.g. "agent:eleanor"): the resolved pi
-   * engine kind (see `PI_ENGINE_KINDS` in `src/runtime/pi/appTemplate.ts`, e.g.
-   * "scripted"), so a scripted-engine run is disclosable on the compile report rather
-   * than an invisible test-only branch. Only pi/daimon runtime instances populate this. */
+  /** Adapter-resolved engine kinds by agent node id. */
   engine_by_node_id?: Record<string, string>;
   home_path: string | null;
   id: string;
@@ -32,8 +29,8 @@ export interface ContainerRuntimeInstanceReport {
   node_ids?: string[];
   published_port?: number | null;
   runtime: string;
-  /** Per pi/daimon agent (keyed by node id, e.g. "agent:eleanor"): the id of its daimon
-   * telemetry persistent mount (see `daimonTelemetryArtifacts.ts`), so
+  /** Per daimon agent (keyed by node id, e.g. "agent:eleanor"): the id of its daimon
+   * telemetry persistent mount, so
    * `artifactsExportPlan.ts` can egress `causal.jsonl` from that agent's durable volume
    * instead of `docker cp`ing it out of the (possibly already-gone) live container. */
   telemetry_mount_ids?: Record<string, string>;

@@ -12,7 +12,6 @@ describe("runtime install selection", () => {
     await expect(listInstallSelectionRuntimes()).resolves.toEqual([
       "daimon",
       "openclaw",
-      "pi",
       "picoclaw"
     ]);
   });
@@ -57,19 +56,6 @@ describe("runtime install selection", () => {
       runtimeRef: "v0.3.1",
       selectionSource: "runtime_registry_install",
       tag: "0.3.1"
-    });
-  });
-
-  it("resolves Pi install selection from the pinned npm package", async () => {
-    await expect(resolveRuntimeInstallSelection("pi")).resolves.toEqual({
-      ecosystem: "node",
-      installHint: "Install pinned Pi SDK dependencies inside the generated runtime app.",
-      kind: "npm",
-      packageName: "@earendil-works/pi-coding-agent",
-      runtimeName: "pi",
-      runtimeRef: "v0.79.10",
-      selectionSource: "runtime_registry_install",
-      version: "0.79.10"
     });
   });
 

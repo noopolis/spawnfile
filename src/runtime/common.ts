@@ -94,7 +94,7 @@ export const createDocumentFiles = (
 
 /**
  * Skill roots for the runtimes whose declared skills are read by an external
- * coding-agent CLI engine (`daimon` and `pi`). `.codex/skills` is Codex's own
+ * coding-agent CLI engine (`daimon`). `.codex/skills` is Codex's own
  * workspace discovery root; `.agents/skills` is the generic cross-engine root
  * that grok, agy, and every other file-reading CLI engine use. Both entries
  * are required and the two emitted files are byte-identical on purpose — this

@@ -79,7 +79,7 @@ describe("runtime common helpers", () => {
   });
 
   it("pins the CLI-engine skill roots to the roots Moltnet installs its own skill into", () => {
-    // resolveMoltnetWorkspaceLayout("daimon"|"pi") installs the Moltnet skill
+    // resolveMoltnetWorkspaceLayout("daimon") installs the Moltnet skill
     // into exactly these two roots, and that skill demonstrably reaches the
     // engine in a running container. Declared skills must land in the same
     // places or no engine ever discovers them.

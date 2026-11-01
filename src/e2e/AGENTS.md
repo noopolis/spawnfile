@@ -16,8 +16,7 @@ src/e2e/
 ├── operationalSmokePicoclaw.ts # PicoClaw-specific operational smoke helpers
 ├── operationalSmokeStatus.ts # Assertions for operational spawnfile status --live JSON output
 ├── lifecycleSmoke.ts # spawnfile up/artifacts-export/down --json lifecycle smoke against a minimal SCRIPTED fixture — zero transcript/turn/behavior assertions (Decision 20/21, Slice B Piece 5 step 5); the coverage safety net that replaced officeSim*.ts/autonomousOfficeSim*.ts once the office-sim scenario itself migrated to ecosystem/simfile
-├── daimonOrg.ts    # Historical-name legacy generated-Pi app smoke with real Codex auth — interim live-model regression check (Slice B note below)
-├── memoryIntegration.ts # Compile/report memory wiring checks for legacy Pi, PicoClaw, and Jungian fixtures
+├── memoryIntegration.ts # Compile/report memory wiring checks for Daimon, PicoClaw, and Jungian fixtures
 ├── memoryIntegrationSupport.ts # Shared helpers for memory integration E2Es
 ├── ollamaProbe.ts      # Optional local Ollama embeddings probe
 ├── preflight.ts        # Local readiness report surface and B18 adapter
@@ -29,7 +28,6 @@ src/e2e/
 ├── preflightTypes.ts   # Shared preflight report/check option types and ids
 ├── runtimePrompts.ts   # Runtime-specific readiness and prompt checks
 ├── runtimePackageOverrides.ts # Explicit dependency overrides for unreleased runtime E2Es (local-rootfs `applyRuntimePackageOverrides` + `assertRuntimePackageOverrideDistsBuilt` shared by the container-build override request map)
-├── runtimeRootfsPaths.ts # Shared local-rootfs path/memory-path-rewrite helpers for generated-app E2Es
 ├── scenarios.ts        # Supported E2E scenario matrix
 ├── moltnetWireTypes.ts # Generic Moltnet wire-protocol shapes shared by every bespoke driver (MoltnetE2ELogger, MoltnetRoom, MoltnetAgentSummary, MoltnetMessage, MoltnetApiClient), with deprecated MoltnetTeamChat*-named aliases kept for back-compat. Scenario-specific types stay next to their scenario (moltnetTeamChatTypes.ts, moltnetMemeticsTypes.ts)
 ├── moltnetE2ESupport.ts # Generic Docker/Moltnet boot+observe plumbing extracted out of moltnetTeamChat.ts so every driver (team-chat, memetics, lifecycle-smoke) can reuse it without depending on any one bespoke scenario module: createMoltnetHttpClient, poll/PollOptions, waitForRoom, waitForAgents, waitForRuntimeReadiness, runDockerCommand, resolveAuthProfile, cleanup, formatHistory, healthPathForRuntime, assertExactRoomMembers, and the MoltnetRoomTarget/DockerCommandRunner/MoltnetE2EDependencies types. moltnetTeamChat.ts re-imports and re-exports these — a single definition, no duplication
@@ -55,9 +53,7 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
 ## Rules
 
-- Generic volume cleanup refuses recording memory before any teardown. The local-rootfs
-  `daimon-org` harness refuses current/prior recording reports unless
-  `--discard-recorded-memory` is explicit, including before compile cleans prior output.
+- Generic volume cleanup refuses recording memory before any teardown.
   Pure recording-cleanup tests inject commands; they never invoke Docker or credentials.
 
 - Keep Docker/process orchestration here, not in compiler modules.
@@ -89,58 +85,9 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
 - A passing live agent communication run prints `Moltnet team-chat E2E passed (...)`. This means the generated container started Moltnet, attached the bridges, woke the OpenClaw/Codex agents, and observed both the parent request/ACK and child ACK messages.
 - **Interim live-model regression check (Slice B), do not delete:** `moltnetTeamChat.ts` (plus `moltnetTeamChatBusyTurn.ts` and `moltnetTeamChatB20.ts`, which share its plumbing) proves a busy-turn burst gets one real reply carrying every queued marker — genuinely unfakeable live-model behavior, not something a fake-engine unit test can stand in for. This is kept as-is pending the compose-and-observe pipeline (Spawnfile org + Simfile world, composed and observed read-only from `simfile`, per the project direction to delete bespoke orchestration harnesses once the platform gap they work around is fixed rather than reimplement them there). Do not touch its shared plumbing while it's still the only thing exercising this path.
-- The historical-name Daimon-org E2E compiles `examples/daimon-org`, which is now an explicit legacy `runtime: pi` fixture. It injects real Codex OAuth into the generated Pi home, runs the generated Pi app twice, and asserts that two agents wrote through a shared workspace resource and recorded/recalled Mneme memory. It does not exercise the public Daimon organization host. **Interim live-model regression check (Slice B), do not delete:** two real Codex agents actually writing to a shared workspace path is unfakeable live-model behavior, kept as-is pending the same compose-and-observe pipeline noted above. Pi currently requires Node 22.19+; a known-good command is:
-
-  ```bash
-  PATH="$HOME/.nvm/versions/node/v22.22.1/bin:$PATH" \
-    npm run test:e2e:daimon-org -- --keep-artifacts
-  ```
-
-- **Slice A redundancy removal (test-ownership Decision 20):** the former
-  `daimonCliMemory.ts`/`daimonCliMemoryTraces.ts` (generated Daimon CLI-engine
-  memory/dream smoke, `npm run test:e2e:daimon-cli-memory`), `memoryAblation.ts`/
-  `memoryAblationEngines.ts`/`memoryAblationSeed.ts` (B70 on/off/shuffled
-  recall-mode ablation, `npm run test:e2e:daimon-memory-ablation`), and
-  `allRuntimeMemoryDream.ts`/`allRuntimeMemoryDreamCli.ts` (a thin wrapper
-  running the CLI-memory E2E plus `memoryIntegration.ts`'s mixed-runtime wiring
-  check together, `npm run test:e2e:all-runtime-memory-dream`) were deleted:
-  every mechanic they proved is now covered by an in-process test, with no
-  coverage lost.
-  - Turn causal stamping (`turn.input.submitted`/`turn.output.completed`
-    around the CLI engine call) → `src/runtime/pi/appCliSource.test.ts`
-    ("CliEngineAgentHandle turn causal stamping").
-  - Generated turn-trace shape/secret-redaction → `src/runtime/pi/appActivitySource.test.ts`.
-  - The turn-trace↔activity-event JOIN (`agent.turn.started`/`.completed`
-    sharing `wake_id`/`wake_kind`/`trace_path` with the trace file) →
-    `src/runtime/pi/appCoreSource.test.ts` (new; this generated file had no
-    test before).
-  - Recalled-memory-text-lands-in-the-generated-prompt, and `MNEME_RECALL_MODE`
-    on/off/shuffled gating what lands there → `src/runtime/pi/appCliSource.test.ts`
-    ("CliEngineAgentHandle wired to the real @noopolis/mneme memory runtime";
-    new — wires the real `@noopolis/mneme` `createMemoryRuntime` through the
-    generated `CliEngineAgentHandle`, the one B70 assertion mneme's own tests
-    below can't reach because they don't know `createCliEnginePrompt` exists).
-  - B70 recall-mode selection/audit correctness itself (candidate ranking,
-    token-budget selection, shuffled decoy substitution, kernel search/locate
-    gating) → `@noopolis/mneme`'s own `runtime.test.ts`/`recallMode.test.ts`
-    (`ecosystem/mneme`), unaffected by this deletion.
-  - `readMemoryAblationEvidence`/`memoryAblationEvidence.ts` had no consumer
-    anywhere else in this repo (only `memoryAblation.ts` and its own test
-    imported it), so it was deleted alongside rather than kept as a dangling
-    reader. The `slice-memory-ablation` acceptance check
-    (`src/e2e/acceptance/profiles.ts`) stays declared — it is repointed, with
-    an inline comment, at the unit tests above instead of the deleted E2E run.
-  - `daimonCliMemoryTraces.ts`'s `getGeneratedInstanceRoot`/
-    `GeneratedMemoryEvent`, its only pieces still genuinely used elsewhere at
-    the time (by the since-deleted `autonomousOfficeSim.ts`), moved to
-    `autonomousOfficeSimHarnessSupport.ts` before this file was deleted; that
-    module (and everything importing it) was itself deleted whole in the
-    Piece 5 office-sim-monolith retirement above, with no further consumer.
-
 - Memory wiring E2Es are compile/report checks, not mocked model conversations. They compile the mixed-runtime and Jungian fixtures, assert Moltnet topology, assert memory capability reporting, and inspect generated memory transport outcomes. The generated-app E2Es above are the ones that execute runtime turns. Known-good commands are:
 
   ```bash
-  npm run test:e2e:daimon-memory-recall -- --fixture examples/mixed-runtime-org
   npm run test:e2e:mixed-runtime-memory -- --fixture examples/mixed-runtime-org
   npm run test:e2e:jungian-self-org -- --fixture examples/jungian-daimon-org
   ```
@@ -159,80 +106,6 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
   ```
 
 - After any interrupted live run, clean up the isolated container/image and confirm the developer's active containers are still present: `docker rm -f spawnfile-team-chat-retry || true`, `docker image rm -f spawnfile-team-chat-retry || true`, then `docker ps --format '{{.Names}} {{.Ports}}'`.
-
-- The moltnet-memetics E2E (`runMoltnetMemeticsE2E`, `moltnetMemetics.ts`) drives
-  one real Eleanor<->Sam conversation through a real Docker container running a
-  compiled `fixtures/moltnet-memetics` fixture: two `runtime: pi`
-  (`engine: codex`) agents, one managed Moltnet network/room (`memetics_lab`/
-  `eleanor-home`), both with `wake: mentions` — an agent only wakes when a
-  room message @mentions their id, so turn-taking is explicit rather than
-  both agents waking in parallel off every message. The fixture's `pi` runtime install
-  recipe pins the published `Daimon@0.1.2` and
-  `@noopolis/mneme@0.1.1` releases. Local package overrides remain an explicit
-  development option and are never inferred from checkout layout. Both agents
-  use the same real-Codex
-  model shape as `daimon-org`'s agents (`provider: openai`, `auth.method:
-  codex`, no `endpoint`) so `preparePiRuntimeAuth`
-  (`src/runtime/pi/runAuth.ts`) mounts real Codex OAuth into
-  `.pi/agent/auth.json` at container start — unlike `daimonOrg.ts`, this
-  harness never writes rootfs auth files directly; it goes through the same
-  `syncProjectAuth` + `createDockerRunInvocation` path as `moltnet-team-chat`.
-  It reuses `moltnetE2ESupport.ts`'s exported `createMoltnetHttpClient`, `poll`,
-  `waitForRoom`, `waitForAgents`, `waitForRuntimeReadiness`,
-  `runDockerCommand`, `resolveAuthProfile`, `cleanup`, and `formatHistory`
-  (also re-exported from `moltnetTeamChat.ts` for back-compat) rather than
-  reimplementing Docker/Moltnet orchestration. The Pi/Daimon
-  runtime's control server answers `/healthz` (not OpenClaw's `/api/agents`
-  fallback), which is why `healthPathForRuntime` now maps both `pi` and
-  `daimon` to `/healthz`. The harness seeds one operator message into
-  `eleanor-home` mentioning only `@eleanor` and carrying a high-entropy
-  sentinel token (default `ORCHID-417`, override with `--seed-token`) as a
-  real negotiation to finalize with Sam (propose two specifics, get his
-  agreement) rather than a bare confirmation, then drives/observes the room
-  through `moltnetMemeticsExchange.ts`'s `waitForConversationExchange`
-  until the full multi-turn exchange is complete — not just Eleanor's first
-  reply and Sam's first reply — because each agent's own persona/`AGENTS.md`
-  instructs it to @mention the teammate it wants to respond (what wakes the
-  next agent under `wake: mentions`, with the bridge auto-publishing each
-  reply back into the room — no relay is built here) and Eleanor's persona
-  explicitly closes the negotiation in a 3rd turn after Sam's pushback.
-  Completion is the first of: the target agent-turn count is reached
-  (`--target-turns`, default 4, clamped to a minimum of 3 so the close can
-  never be truncated), a quiet period elapses with no new agent message
-  after the last one (`--quiet-grace-ms`, default 35s — longer than one
-  grok turn, ~20-25s — so a wake already in flight is never torn down
-  mid-generation), or the overall `--timeout-ms` is hit. The pure
-  turn-cap/quiet-timeout/timeout decision (`evaluateExchangeCompletion`)
-  is isolated from the polling loop so it is unit-tested without fake
-  timers. Only after the exchange concludes does the harness — before
-  container cleanup — write a kept run folder
-  (`--out`, else a fresh `mkdtemp`, never auto-removed) containing
-  `transcript.jsonl`, `transcript.md`, and a best-effort `docker cp` of each
-  agent's `runtime/agents/<slug>/` directory (per-agent
-  `telemetry/causal.jsonl` causal events plus the real Codex CLI's redirected
-  `codex-home/.codex` tree and `codex-<timestamp>.txt` last-message capture)
-  from `<instance-root>/runtime/agents` (`instance-root` = the parent of the
-  compiled instance's `home_path`). A passing run prints `Moltnet memetics
-  E2E passed (...)`. Same isolated-port discipline as `moltnet-team-chat`:
-  copy the fixture to a temp directory and rewrite its Moltnet port before
-  running on a developer machine, e.g.:
-
-  ```bash
-  tmp="$(mktemp -d /tmp/spawnfile-memetics.XXXXXX)"
-  cp -R fixtures/moltnet-memetics/. "$tmp"
-  perl -pi -e 's/8787/21092/g' "$tmp/Spawnfile"
-  npm run test:e2e:moltnet-memetics -- \
-    --fixture "$tmp" \
-    --base-url http://127.0.0.1:21092 \
-    --container-name spawnfile-memetics-retry \
-    --image-tag spawnfile-memetics-retry \
-    --out /tmp/moltnet-memetics-run \
-    --keep-artifacts \
-    --timeout-ms 300000 \
-    --poll-interval-ms 3000 \
-    --target-turns 4 \
-    --quiet-grace-ms 35000
-  ```
 
 - **Lifecycle smoke (Slice B, Piece 5 step 5) — `lifecycleSmoke.ts`,
   `npm run test:e2e:lifecycle-smoke`:** proves the documented
@@ -259,20 +132,3 @@ replaces this folder's own e2e coverage of the up/export/down lifecycle.
 
   A passing run prints `Lifecycle smoke E2E passed (...)`. Uses an isolated
   Moltnet port (`19961`) never a developer's active port.
-
-- `fixtures/support/scripted-engine/office-engine.mjs` (Slice B, Piece 5
-  step 1) is a standalone script speaking the pi runtime's `scripted` engine
-  argv contract (`--prompt-file <path> --cwd <workspacePath>`, reply text on
-  stdout) — see `src/runtime/pi/AGENTS.md`'s `appCliEnginesSource.ts`/
-  `appScriptedEngine.ts` notes for the platform side. The office-sim scenario
-  that originally motivated it has since moved to
-  `ecosystem/simfile/fixtures/sims/office-sim` (its own copy of this script);
-  this copy stays because two unrelated unit tests
-  (`src/runtime/pi/adapter.test.ts`, `src/compiler/containerArtifacts.test.ts`)
-  reference `fixtures/support/scripted-engine` directly as a generic
-  fixture proving the pi adapter's `scripted` engine kind.
-  `src/e2e/officeEngineScript.test.ts` spawns the standalone script as a child
-  process and asserts its stdout against inlined constants (the screenplay
-  text has no TypeScript source of truth left to import from since
-  `officeSimEngines.ts` was deleted), so the two copies cannot silently drift
-  apart undetected.

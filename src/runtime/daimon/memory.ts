@@ -18,7 +18,7 @@ type DaimonMemoryAccess = NonNullable<ResolvedAgentNode["memoryAccess"]>[number]
  * Daimon's organization runtime accepts exactly one `memory` block per agent
  * (`OrganizationRuntimeMemory` = `{ runtimeHomePath, source?, tokenBudget? }`),
  * so lowering picks one declared bank deterministically, the same way the
- * legacy generated-Pi emitter does in `../pi/appAgentConfig.ts`.
+ * legacy generated-Pi emitter did.
  */
 const memoryAccessKey = (access: DaimonMemoryAccess): string =>
   `${access.source}:${access.bank.id}`;

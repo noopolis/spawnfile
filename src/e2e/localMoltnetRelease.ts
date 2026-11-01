@@ -181,7 +181,7 @@ const parseStamp = (raw: string): LocalMoltnetReleaseStamp | undefined => {
 /**
  * Defaults `SPAWNFILE_MOLTNET_RELEASE_DIR` to this checkout's local Moltnet
  * release dir (asserting the arch tarball is built AND stamped pi-bridge-capable
- * with a matching content hash) so every pi-runtime e2e stages the pinned
+ * with a matching content hash) so every runtime e2e stages the pinned
  * pi-supporting Moltnet by default, with no per-run env. Verifies an explicit
  * `SPAWNFILE_MOLTNET_RELEASE_DIR` before leaving it untouched. Returns the release dir
  * in effect.

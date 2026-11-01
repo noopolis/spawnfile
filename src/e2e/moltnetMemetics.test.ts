@@ -94,17 +94,17 @@ const createBuildResult = (outputDirectory: string, imageTag: string): BuildProj
       runtime_homes: [],
       runtime_instances: [
         {
-          config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
-          home_path: "/var/lib/spawnfile/instances/pi/pi-app/home",
-          id: "pi-app",
+          config_path: "/var/lib/spawnfile/instances/daimon/organization/pi/pi-app.json",
+          home_path: "/var/lib/spawnfile/instances/daimon/organization/home",
+          id: "organization",
           model_auth_methods: { openai: "codex" },
           model_secrets_required: [],
           node_ids: ["agent:eleanor", "agent:sam"],
-          runtime: "pi"
+          runtime: "daimon"
         }
       ],
       runtime_secrets_required: [],
-      runtimes_installed: ["pi"],
+      runtimes_installed: ["daimon"],
       secrets_required: []
     },
     diagnostics: [],

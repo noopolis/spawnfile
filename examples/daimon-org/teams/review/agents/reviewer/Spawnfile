@@ -3,7 +3,10 @@ kind: agent
 name: reviewer
 description: "Reviews generated shared workspace notes."
 
-runtime: pi
+runtime:
+  name: daimon
+  options:
+    engine: codex
 
 execution:
   model:

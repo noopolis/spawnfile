@@ -1,9 +1,9 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 
-export const createPiTestNode = (
+export const createDaimonTestNode = (
   overrides: Partial<ResolvedAgentNode> = {}
 ): ResolvedAgentNode => ({
-  description: "Pi test agent",
+  description: "Daimon test agent",
   docs: [
     {
       content: "# Instructions\n",
@@ -27,7 +27,7 @@ export const createPiTestNode = (
   name: "assistant",
   policyMode: null,
   policyOnDegrade: null,
-  runtime: { name: "pi", options: {} },
+  runtime: { name: "daimon", options: {} },
   secrets: [],
   skills: [
     {

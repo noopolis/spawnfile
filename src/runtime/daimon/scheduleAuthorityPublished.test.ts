@@ -12,7 +12,7 @@ vi.mock("../install.js", () => ({
 const { hasDaimonScheduleAuthority, assertDaimonScheduleAuthority } = await import("./scheduleAuthority.js");
 const { assertDaimonAttentionAuthority } = await import("./attention.js");
 const { daimonAdapter } = await import("./adapter.js");
-const { createPiTestNode } = await import("../pi/testHelpers.js");
+const { createDaimonTestNode } = await import("./testHelpers.js");
 
 const published = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   capabilityReceipts: { amd64: digest("b"), arm64: digest("c") },
@@ -54,7 +54,7 @@ describe("published Daimon image authority", () => {
   it("refuses attention and schedules through real target creation for an incompatible pin", async () => {
     selection.current = published({ contractManifestSha256: digest("e") });
     for (const [options, schedule] of [[{ attention: {} }, undefined], [{}, { kind: "every", every: "1m", prompt: "work" }]] as const) {
-      const node = createPiTestNode({ runtime: { name: "daimon", options: { ...options } }, ...(schedule ? { schedule: { ...schedule } } : {}) });
+      const node = createDaimonTestNode({ runtime: { name: "daimon", options: { ...options } }, ...(schedule ? { schedule: { ...schedule } } : {}) });
       const compiled = await daimonAdapter.compileAgent(node);
       await expect(daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: "agent:x", kind: "agent", slug: "x", value: node }]))
         .rejects.toThrow(/does not attest/u);

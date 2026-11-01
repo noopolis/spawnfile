@@ -65,7 +65,6 @@ This is not for coding assistants, chat CLIs, or one-shot tools. Those may share
 |---------|----------|--------|
 | [OpenClaw](https://github.com/openclaw/openclaw) | Node.js | Active |
 | [PicoClaw](https://github.com/sipeed/picoclaw) | Go | Active |
-| [Pi](https://github.com/earendil-works/pi) | TypeScript | Active |
 | [OpenFang](https://github.com/RightNow-AI/openfang) | Rust | Exploratory |
 | [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Node.js | Exploratory |
 | [OpenCode](https://github.com/anomalyco/opencode) | TypeScript | Exploratory |

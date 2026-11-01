@@ -25,7 +25,7 @@ export const createRuntimeReadinessWait = (plan: RuntimeTargetPlan, pidVariable:
     ];
   }
 
-  if (!["openclaw", "pi"].includes(plan.runtimeName)) return [];
+  if (!["openclaw"].includes(plan.runtimeName)) return [];
 
   return [
     "attempts=0",

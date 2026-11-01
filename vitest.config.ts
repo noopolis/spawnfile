@@ -74,7 +74,7 @@ export default defineConfig({
     environment: "node",
     projects: [
       { extends: true, test: { name: "spawnfile", include: ["src/**/*.test.ts"],
-        exclude: [...configDefaults.exclude, ...sourceGateTests, "src/training/**", "src/runtime/daimon/training/**", "src/runtime/codex-exec/**", "src/runtime/pi/appControlDeliveryMetadata.test.ts"],
+        exclude: [...configDefaults.exclude, ...sourceGateTests, "src/training/**", "src/runtime/daimon/training/**", "src/runtime/codex-exec/**"],
         sequence: { groupOrder: 0 } } },
       { extends: true, test: { name: "training", include: ["src/training/**/*.test.ts", "src/runtime/daimon/training/**/*.test.ts", "src/runtime/codex-exec/**/*.test.ts", "tooling/training/**/*.test.ts"],
         exclude: [...configDefaults.exclude, ...sourceGateTests, ...realBridgeTests], testTimeout: 15_000, hookTimeout: 15_000,
@@ -85,10 +85,6 @@ export default defineConfig({
         pool: "forks", poolOptions: { forks: { singleFork: true } }, testTimeout: 15_000, hookTimeout: 15_000, sequence: { groupOrder: 2 } } }
     ],
     // Whole-src scans and durable filesystem I/O can outlive the 5s default under full-fork load.
-    testTimeout: 30_000,
-    exclude: [
-      // This is a node:test suite, which is incompatible with the Vitest runner; npm run test:node runs it.
-      "src/runtime/pi/appControlDeliveryMetadata.test.ts"
-    ]
+    testTimeout: 30_000
   }
 });

@@ -73,7 +73,6 @@ The active v0.1 adapters are:
 | `daimon` | Immutable generic runtime image | One public `noopolis.daimon.organization-runtime.v1` host for up to 32 agents |
 | `openclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
 | `picoclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
-| `pi` | npm package | Legacy Spawnfile-generated Pi application path |
 
 ### Active Runtime Capability Matrix
 
@@ -151,10 +150,6 @@ enforcement, the memory bank is `unsupported`, not merely degraded. A runtime
 may report declared memory as `degraded` when it emits no live memory tool and
 keeps the bank report-only. If it can preserve storage but not a requested
 index or consolidation mode, that specific capability is `degraded`.
-
-`runtime: pi` remains the separate legacy generated-Pi implementation. Its
-generated engine, auth, scheduler, MCP, and Moltnet behavior is not part of
-the `runtime: daimon` public-host contract and must not be inferred from it.
 
 ### Daimon attention policy
 

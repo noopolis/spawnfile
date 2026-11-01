@@ -61,8 +61,7 @@ src/audit/
 Each fixture directory doubles as both a "compiled-output dir" (`Dockerfile`,
 `entrypoint.sh`, `runtime/app.mjs`) and a "ledger dir" (`ledger.jsonl`,
 `expected-denials.json`) — the shape `auditCli.ts --fixtures <dir>` expects.
-`runtime/app.mjs` is the actual output of `renderPiControlSource()`
-(src/runtime/pi/appControlSource.ts), copied verbatim; `Dockerfile` and
+`runtime/app.mjs` is a frozen generated control-source fixture; `Dockerfile` and
 `entrypoint.sh` are small hand-authored fixtures that reuse the real
 `require_env`/`require_file` bash function bodies from
 `containerEntrypointRender.ts`, not a full `spawnfile compile` output —

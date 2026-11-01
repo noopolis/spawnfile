@@ -3,13 +3,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
-import { createPiTestNode } from "../pi/testHelpers.js";
+import { createDaimonTestNode } from "./testHelpers.js";
 
 import { daimonAdapter } from "./adapter.js";
 import { createDaimonContainerTargets } from "./config.js";
 import { DAIMON_GROK_SKILLS_MIN_VERSION, daimonGrokSkillsError, pinnedDaimonRuntimeVersion } from "./grokSkillsSupport.js";
 
-const grokNode = (skills?: ResolvedAgentNode["skills"]): ResolvedAgentNode => createPiTestNode({
+const grokNode = (skills?: ResolvedAgentNode["skills"]): ResolvedAgentNode => createDaimonTestNode({
   execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } },
   name: "grokker", runtime: { name: "daimon", options: { engine: "grok" } }, ...(skills ? { skills } : {})
 });

@@ -11,12 +11,7 @@ import { buildCompilePlan } from "./buildCompilePlan.js";
 import type { CompilePlan, CompilePlanNode, ResolvedAgentNode } from "./types.js";
 import type { UpProjectResult } from "./upProject.js";
 
-/**
- * Extracts the `{agent, cron}` pairs an up-receipt's `compiled_schedule` field carries
- * (Decision 21 Piece 4) — the raw material for simfile's wake-diff denominator oracle.
- * Only `kind: "cron"` schedules are represented; `every`/`disabled` schedules have no
- * cron-fire cadence to diff against sim-time and are intentionally omitted, not zeroed.
- */
+/** Reads adapter-resolved engine kinds from the compiled report for the up receipt. */
 export const resolveCompiledSchedule = (plan: CompilePlan): CompiledScheduleEntry[] =>
   plan.nodes
     .filter((node): node is CompilePlanNode & { value: ResolvedAgentNode } => node.kind === "agent")
@@ -26,17 +21,7 @@ export const resolveCompiledSchedule = (plan: CompilePlan): CompiledScheduleEntr
     })
     .sort((left, right) => left.agent.localeCompare(right.agent));
 
-/**
- * Extracts `{agent, engine}` pairs (Piece 5, Slice B) — disclosure ground truth for the
- * run-manifest's `pinned-engine` field, so a `scripted` (or any non-default) pi engine is
- * visibly disclosed rather than an invisible test-only branch. Reads
- * `report.container.runtime_instances[].engine_by_node_id`, the single source of truth
- * `containerArtifacts.ts` already stamps from the pi adapter's own resolved engine kinds
- * (see `src/runtime/pi/adapter.ts`'s `createContainerTargets`) — deliberately not
- * re-derived from a fresh `buildCompilePlan` walk (unlike `resolveCompiledSchedule` above),
- * since that would recompute the exact same fact from pi-adapter-internal logic
- * (`resolvePiEngine`) that compiler code has no business reaching into directly.
- */
+/** Reads adapter-resolved engine kinds from the compiled report for the up receipt. */
 export const resolveCompiledEngines = (
   report: UpProjectResult["report"]
 ): CompiledEngineEntry[] =>

@@ -20,7 +20,7 @@ interface PrivateDirectoryPlan {
 const plans = (report: CompileReport): readonly PrivateDirectoryPlan[] =>
   (report.container?.runtime_instances ?? [])
     .filter((instance) =>
-      (instance.runtime === "pi" || instance.runtime === "daimon")
+      instance.runtime === "daimon"
       && instance.home_path !== null)
     .flatMap((instance) => {
       const instanceRoot = path.posix.dirname(instance.home_path!);

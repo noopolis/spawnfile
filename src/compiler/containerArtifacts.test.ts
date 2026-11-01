@@ -12,8 +12,6 @@ import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import { createExclusiveReattachVolumeName } from "../shared/index.js";
 import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 import { picoClawAdapter } from "../runtime/picoclaw/adapter.js";
-import { piAdapter } from "../runtime/pi/adapter.js";
-import { createPiTestNode } from "../runtime/pi/testHelpers.js";
 
 const createPlan = (runtimeNames: string[]): CompilePlan => ({
   edges: [],
@@ -1134,37 +1132,6 @@ describe("createContainerArtifacts", () => {
       "Container target openclaw-shared declares conflicting package definitions for apt package curl"
     );
   });
-
-  it("records engine: scripted for a pi runtime instance on the compile report (Piece 5 disclosure)", async () => {
-    const fixtureRoot = fileURLToPath(
-      new URL("../../fixtures/support/scripted-engine", import.meta.url)
-    );
-    const node = createPiTestNode({
-      name: "eleanor",
-      runtime: { name: "pi", options: { engine: "scripted", engine_command: "office-engine.mjs" } },
-      source: path.join(fixtureRoot, "Spawnfile")
-    });
-    const compiled = await piAdapter.compileAgent(node);
-
-    const result = await createContainerArtifacts(createPlan(["pi"]), [
-      {
-        emittedFiles: compiled.files,
-        id: "agent:eleanor",
-        kind: "agent",
-        runtimeName: "pi",
-        slug: "eleanor",
-        value: node
-      }
-    ]);
-
-    expect(result.report.runtime_instances).toEqual([
-      expect.objectContaining({
-        engine_by_node_id: { "agent:eleanor": "scripted" },
-        id: "pi-app",
-        runtime: "pi"
-      })
-    ]);
-  });
 });
 
 describe("createContainerArtifacts distribution contract", () => {
@@ -1337,12 +1304,6 @@ describe("createContainerArtifacts distribution contract", () => {
 
     const thrown: unknown = await compileWith(daimonPlans, releasedIdentity).catch((error: unknown) => error);
 
-    expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
-  });
-
-  it("leaves a pi-only Moltnet attachment on a pi-bridge release alone", async () => {
-    const piPlans = moltnetWith([{ configPath: "/etc/spawnfile/moltnet/pi.json", networkId: "lab" }]);
-    const thrown: unknown = await compileWith(piPlans, piBridgeRelease).catch((error: unknown) => error);
     expect(thrown instanceof Error ? thrown.message : "").not.toContain("daimon-bridge");
   });
 });

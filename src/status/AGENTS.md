@@ -54,8 +54,8 @@ disk reader (`status --out <dir>`) or a stub that always resolves `null`
 
 **Cardinal rule, same as `src/audit/`: absent input is `unknown`, never
 `ok`.** A probe that has nothing to check — no compile report, no compiled
-output directory, an unreadable/missing file, a non-pi runtime for the
-pi-only wake-operator check, or a compile that simply never declared
+output directory, an unreadable/missing file, a non-Daimon runtime for the
+Daimon wake-operator check, or a compile that simply never declared
 Moltnet — reports `unknown` (or, for `moltnetWiringProbes.ts`, legitimately
 emits zero observations for a key when the compile report itself declares
 zero Moltnet node plans/servers — there is nothing to enumerate, not a
@@ -73,14 +73,14 @@ New `spawnfile.status.v1` observation keys (all `source: "compile_report"`):
 - `lifecycle.instance.paths` (subject: `runtime-instance:<id>`) — `configPath`
   missing → `error`; `homePath`/`workspacePath` missing → `warn`.
 - `lifecycle.wake.operator` (subject: `runtime-instance:<id>`, B62) — for
-  pi/daimon instances only, reads the emitted `runtime/app.mjs` under
+  daimon instances only, reads the emitted `runtime/app.mjs` under
   `<out>/container/rootfs${RUNTIME_INSTALL_ROOT}/<runtime>/app.mjs`
   (`src/runtime/container.ts`'s `RUNTIME_INSTALL_ROOT`, a runtime-scoped —
-  not per-instance — install root; see `src/runtime/pi/adapter.ts:106`) and
+  not per-instance install root) and
   asserts it contains the `/spawnfile/agents/` operator route,
   `SPAWNFILE_PI_CONTROL_TOKEN`, and the fail-closed rejection text
-  (`src/runtime/pi/appControlSource.ts`). Unreadable file → `error`;
-  non-pi/daimon runtime → `unknown` ("not checked"); no compiled output
+  Unreadable file → `error`;
+  non-daimon runtime → `unknown` ("not checked"); no compiled output
   directory at all → `unknown`.
 - `lifecycle.run_id` (subject: `compile`, B93) — the compiled
   `container/entrypoint` script (`entrypointPath` on the loaded report)
@@ -97,10 +97,7 @@ New `spawnfile.status.v1` observation keys (all `source: "compile_report"`):
   `version: "moltnet.node.v1"` (`src/compiler/moltnetNodeConfig.ts`).
   Unreadable/malformed/wrong-version → `error`.
 - `network.wiring.control_url` (subject: `network:<networkId>`) — for each
-  parsed node config's attachment, a `pi`-kind runtime (pi and daimon both
-  lower to `kind: "pi"`, `src/compiler/moltnetRuntimeConfig.ts:108`) must
-  have a `control_url` matching
-  `^http://127\.0\.0\.1:\d+/agents/[a-z0-9-]+/wake$`; a `picoclaw`-kind
+  parsed node config's attachment, a `picoclaw`-kind
   runtime must have a non-empty `config_path`. Other kinds are not checked
   here. Malformed/missing → `error`.
 - `network.wiring.network_resolves` (subject: `network:<networkId>`) — each

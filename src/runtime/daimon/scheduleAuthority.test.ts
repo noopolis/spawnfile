@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const LOCAL_DAIMON_IMAGE_REPOSITORY = "127.0.0.1:54321/noopolis/spawnfile-runtime-daimon";
 import type { ResolvedAgentNode } from "../../compiler/types.js";
-import { createPiTestNode } from "../pi/testHelpers.js";
+import { createDaimonTestNode } from "./testHelpers.js";
 import { daimonAdapter } from "./adapter.js";
 import { DAIMON_CONFIG_FILE } from "./config.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
@@ -25,7 +25,7 @@ const identity = async (manifestSha256: string = DAIMON_CONTRACT_MANIFEST_SHA256
   return file;
 };
 const scheduledTarget = async (kind: "every" | "disabled" = "every") => {
-  const node = createPiTestNode({ runtime: { name: "daimon", options: {} }, schedule: kind === "every" ? { kind, every: "1m", prompt: "work" } : { kind } });
+  const node = createDaimonTestNode({ runtime: { name: "daimon", options: {} }, schedule: kind === "every" ? { kind, every: "1m", prompt: "work" } : { kind } });
   const compiled = await daimonAdapter.compileAgent(node);
   return await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: "agent:scheduled", kind: "agent", slug: "scheduled", value: node }]);
 };
@@ -34,14 +34,14 @@ afterEach(async () => { delete process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTI
 
 describe("Daimon schedule image authority", () => {
   it("accepts the checked-in published pin, whose receipts attest the compiler's contract manifest", async () => {
-    await expect(daimonAdapter.compileAgent(createPiTestNode({
+    await expect(daimonAdapter.compileAgent(createDaimonTestNode({
       runtime: { name: "daimon", options: {} }, schedule: { every: "1m", kind: "every" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
       expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
     ]) });
     const targets = await scheduledTarget();
     expect(JSON.parse(targets[0]!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).version).toBe("noopolis.daimon.organization-runtime.v2");
-    const node = createPiTestNode({ runtime: { name: "daimon", options: {} } });
+    const node = createDaimonTestNode({ runtime: { name: "daimon", options: {} } });
     const compiled = await daimonAdapter.compileAgent(node);
     const unscheduled = await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: "agent:v1", kind: "agent", slug: "v1", value: node }]);
     expect(JSON.parse(unscheduled[0]!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content).version).toBe("noopolis.daimon.organization-runtime.v1");
@@ -50,7 +50,7 @@ describe("Daimon schedule image authority", () => {
   it("supports active and disabled v2 states only with the canonical local receipt authority", async () => {
     process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity();
     for (const kind of ["every", "disabled"] as const) {
-      const node = createPiTestNode({ runtime: { name: "daimon", options: {} }, schedule: kind === "every" ? { kind, every: "1m", prompt: "work" } : { kind } });
+      const node = createDaimonTestNode({ runtime: { name: "daimon", options: {} }, schedule: kind === "every" ? { kind, every: "1m", prompt: "work" } : { kind } });
       const compiled = await daimonAdapter.compileAgent(node);
       expect(compiled.capabilities).toEqual(expect.arrayContaining([
         expect.objectContaining({
@@ -69,7 +69,7 @@ describe("Daimon schedule image authority", () => {
   it("lowers schedule.jitter_seconds into the v2 config for cron and every schedules, and omits it when absent", async () => {
     process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity();
     const configFor = async (schedule: NonNullable<ResolvedAgentNode["schedule"]>, slug: string) => {
-      const node = createPiTestNode({ runtime: { name: "daimon", options: {} }, schedule });
+      const node = createDaimonTestNode({ runtime: { name: "daimon", options: {} }, schedule });
       const compiled = await daimonAdapter.compileAgent(node);
       const targets = await daimonAdapter.createContainerTargets!([{ emittedFiles: compiled.files, id: `agent:${slug}`, kind: "agent", slug, value: node }]);
       return JSON.parse(targets[0]!.files.find((file) => file.path === DAIMON_CONFIG_FILE)!.content);

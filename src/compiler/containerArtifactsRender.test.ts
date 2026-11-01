@@ -467,24 +467,24 @@ describe("renderDockerfile", () => {
 
   it("renders runtime post-rootfs commands after copying generated files", async () => {
     const { renderDockerfile } = await loadRenderModule({
-      pi: {
-        commands: ["mkdir -p /opt/runtime/pi"],
+      picoclaw: {
+        commands: ["mkdir -p /opt/runtime/picoclaw"],
         copyCommands: [],
-        runtimeName: "pi",
-        runtimeRoot: "/opt/runtime/pi"
+        runtimeName: "picoclaw",
+        runtimeRoot: "/opt/runtime/picoclaw"
       }
     });
 
     const dockerfile = await renderDockerfile([
-      createRuntimePlan("pi", {
+      createRuntimePlan("picoclaw", {
         meta: {
-          configFileName: "pi-app.json",
+          configFileName: "config.json",
           instancePaths: {
-            configPathTemplate: "<instance-root>/pi-app.json",
+            configPathTemplate: "<instance-root>/config.json",
             homePathTemplate: "<instance-root>/home",
             workspacePathTemplate: "<instance-root>/workspace"
           },
-          postRootfsCommands: ["cd /opt/runtime/pi && npm install --omit=dev"],
+          postRootfsCommands: ["cd /opt/runtime/picoclaw && npm install --omit=dev"],
           standaloneBaseImage: "node:24-bookworm-slim",
           startCommand: ["node", "<runtime-root>/app.mjs"],
           systemDeps: []
@@ -493,27 +493,27 @@ describe("renderDockerfile", () => {
     ]);
 
     expect(dockerfile.indexOf("COPY container/rootfs/ /")).toBeLessThan(
-      dockerfile.indexOf("RUN cd /opt/runtime/pi && npm install --omit=dev")
+      dockerfile.indexOf("RUN cd /opt/runtime/picoclaw && npm install --omit=dev")
     );
   });
 
   it("uses prebuilt runtime base images without reinstalling provided runtime deps", async () => {
     const { renderDockerfile } = await loadRenderModule({
-      pi: {
-        baseImage: "noopolis/spawnfile-pi-runtime:test",
-        commands: ["mkdir -p /opt/runtime/pi"],
+      picoclaw: {
+        baseImage: "noopolis/spawnfile-picoclaw-runtime:test",
+        commands: ["mkdir -p /opt/runtime/picoclaw"],
         copyCommands: [],
-        runtimeName: "pi",
-        runtimeRoot: "/opt/runtime/pi"
+        runtimeName: "picoclaw",
+        runtimeRoot: "/opt/runtime/picoclaw"
       }
     });
 
     const dockerfile = await renderDockerfile([
-      createRuntimePlan("pi", {
+      createRuntimePlan("picoclaw", {
         meta: {
-          configFileName: "pi-app.json",
+          configFileName: "config.json",
           instancePaths: {
-            configPathTemplate: "<instance-root>/pi-app.json",
+            configPathTemplate: "<instance-root>/config.json",
             homePathTemplate: "<instance-root>/home",
             workspacePathTemplate: "<instance-root>/workspace"
           },
@@ -524,10 +524,10 @@ describe("renderDockerfile", () => {
       })
     ]);
 
-    expect(dockerfile).toContain("FROM noopolis/spawnfile-pi-runtime:test");
-    expect(dockerfile).toContain("RUN mkdir -p /opt/runtime/pi");
+    expect(dockerfile).toContain("FROM noopolis/spawnfile-picoclaw-runtime:test");
+    expect(dockerfile).toContain("RUN mkdir -p /opt/runtime/picoclaw");
     expect(dockerfile).not.toContain("apt-get install -y --no-install-recommends bash curl git");
-    expect(dockerfile).not.toContain("npm install --omit=dev --no-fund --no-audit @earendil-works/pi-coding-agent");
+    expect(dockerfile).not.toContain("npm install --omit=dev");
   });
 
   it("copies runtime artifact images into mixed-runtime builds", async () => {
@@ -553,9 +553,9 @@ describe("renderDockerfile", () => {
     const dockerfile = await renderDockerfile([
       createRuntimePlan("daimon", {
         meta: {
-          configFileName: "pi-app.json",
+          configFileName: "config.json",
           instancePaths: {
-            configPathTemplate: "<instance-root>/pi-app.json",
+            configPathTemplate: "<instance-root>/config.json",
             homePathTemplate: "<instance-root>/home",
             workspacePathTemplate: "<instance-root>/workspace"
           },
@@ -1129,20 +1129,20 @@ describe("createRootfsFiles", () => {
 
   it("maps runtime-scoped files into the runtime install root", async () => {
     const { createRootfsFiles } = await loadRenderModule({
-      pi: {
+      picoclaw: {
         commands: [],
         copyCommands: [],
-        runtimeName: "pi",
-        runtimeRoot: "/opt/runtime/pi"
+        runtimeName: "picoclaw",
+        runtimeRoot: "/opt/runtime/picoclaw"
       }
     });
 
     const files = createRootfsFiles([
-      createRuntimePlan("pi", {
-        runtimeRoot: "/opt/runtime/pi",
+      createRuntimePlan("picoclaw", {
+        runtimeRoot: "/opt/runtime/picoclaw",
         targetFiles: [
           {
-            content: "console.log('pi')\n",
+            content: "console.log('picoclaw')\n",
             path: "runtime/app.mjs"
           }
         ]
@@ -1151,8 +1151,8 @@ describe("createRootfsFiles", () => {
 
     expect(files).toEqual([
       {
-        content: "console.log('pi')\n",
-        path: "container/rootfs/opt/runtime/pi/app.mjs"
+        content: "console.log('picoclaw')\n",
+        path: "container/rootfs/opt/runtime/picoclaw/app.mjs"
       }
     ]);
   });

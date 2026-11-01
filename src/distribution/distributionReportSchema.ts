@@ -61,7 +61,7 @@ const runtimeInstanceSchema = z.object({
   node_ids: z.array(z.string()),
   published_port: portSchema.nullable(),
   runtime: z.string().min(1),
-  // node id -> persistent mount id for per-agent telemetry; every pi/Daimon
+  // node id -> persistent mount id for per-agent telemetry; every Daimon
   // image this compiler builds carries it, so a strict schema without it
   // refused image-mode `up` of the compiler's own output.
   telemetry_mount_ids: z.record(z.string().min(1), instanceIdSchema).optional(),

@@ -45,7 +45,6 @@ const transportFromRuntime = (
   bank: ResolvedMemoryAccess["bank"]
 ): ContainerMemoryTransport => {
   switch (runtimeName) {
-    case "pi":
     case "daimon":
       // Mneme runs in-process for these runtimes (no MCP subprocess), but
       // whether that in-process runtime is reachable -- and whether it

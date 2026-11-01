@@ -94,13 +94,7 @@ export const prepareRuntimeAuthMounts = async (
   tempRoot: string,
   containerCredentialUid?: number
 ): Promise<PreparedRunAuth> => {
-  // No early return when `authProfile` is null: an adapter's
-  // `prepareRuntimeAuth` may still have host-credential staging to do that
-  // does not depend on an imported Spawnfile auth profile (e.g. the Pi
-  // adapter mounting the host's `~/.grok`/`~/.codex`/antigravity CLI homes
-  // for a real-engine org — see `src/runtime/pi/runAuth.ts`). Each adapter is
-  // responsible for treating a `null` `authProfile` as "no profile-derived
-  // imports available" rather than failing.
+  // Adapters receive null profiles so they can handle runtime-owned credentials.
   const coveredModelSecrets = new Set<string>();
   let launchIdentity: RuntimeAuthPreparationResult["launchIdentity"];
   const mountArgs: string[] = [];
@@ -367,18 +361,6 @@ export const resolveAuthMountArgs = async (
   }
 
   const args: string[] = [];
-  // Pi owns its model and CLI-engine auth projection in preparePiRuntimeAuth.
-  // Mounting the generic imported home onto the same destination would create
-  // duplicate Docker mount points and bypass the adapter's minimal-file staging.
-  const piRuntimeHomes = new Set(
-    containerReport.runtime_instances
-      .filter((instance) => instance.runtime === "pi")
-      .map((instance) => instance.home_path)
-      .filter((homePath): homePath is string => homePath !== null)
-  );
-  const genericRuntimeHomes = containerReport.runtime_homes
-    .filter((runtimeHome) => !piRuntimeHomes.has(runtimeHome));
-
   for (const [kind, entry] of Object.entries(authProfile.imports) as Array<
     [
       keyof ResolvedAuthProfile["imports"],
@@ -395,7 +377,7 @@ export const resolveAuthMountArgs = async (
       );
     }
 
-    for (const runtimeHome of genericRuntimeHomes) {
+    for (const runtimeHome of containerReport.runtime_homes) {
       args.push("-v", `${entry.path}:${path.posix.join(runtimeHome, getImportMountTargetName(kind))}`);
     }
   }

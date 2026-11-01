@@ -162,7 +162,7 @@ export const runDockerCommand: DockerCommandRunner = async (dockerCommand, args)
 export const healthPathForRuntime = (runtimeName: string): string =>
   runtimeName === "openclaw" ? "/healthz"
     : runtimeName === "picoclaw" ? "/health"
-    : runtimeName === "pi" || runtimeName === "daimon" ? "/healthz"
+    : runtimeName === "daimon" ? "/healthz"
     : "/api/agents";
 export const waitForRuntimeReadiness = async (instances: ContainerRuntimeInstanceReport[], containerName: string, dockerCommand: string, runCommand: DockerCommandRunner, options: PollOptions): Promise<void> => {
   const counts = new Map<string, number>();

@@ -679,20 +679,20 @@ describe("status command", () => {
         },
         runtime_instances: [
           {
-            config_path: "/instances/pi/agent-analyst/pi/pi-app.json",
-            home_path: "/instances/pi/agent-analyst/home",
-            id: "pi-analyst",
+            config_path: "/instances/daimon/agent-analyst/pi/pi-app.json",
+            home_path: "/instances/daimon/agent-analyst/home",
+            id: "daimon-analyst",
             internal_port: 19690,
             node_ids: ["agent:analyst"],
-            runtime: "pi",
-            workspace_path: "/instances/pi/agent-analyst/workspace"
+            runtime: "daimon",
+            workspace_path: "/instances/daimon/agent-analyst/workspace"
           }
         ]
       },
       diagnostics: [],
       generated_at: "2026-06-11T00:00:00.000Z",
       nodes: [
-        { capabilities: [], diagnostics: [], id: "agent:analyst", kind: "agent", runtime: "pi" }
+        { capabilities: [], diagnostics: [], id: "agent:analyst", kind: "agent", runtime: "daimon" }
       ],
       output_directory: outputDirectory,
       root: "/project/Spawnfile",
@@ -714,7 +714,7 @@ describe("status command", () => {
       attachments: [
         {
           agent: { id: "analyst", name: "Analyst" },
-          runtime: { control_url: "http://127.0.0.1:19690/agents/analyst/wake", kind: "pi" }
+          runtime: { control_url: "http://127.0.0.1:19690/agents/analyst/wake", kind: "daimon" }
         }
       ],
       moltnet: { base_url: "http://127.0.0.1:8787", network_id: "local_lab" },
@@ -728,7 +728,7 @@ describe("status command", () => {
       "opt",
       "spawnfile",
       "runtime-installs",
-      "pi"
+      "daimon"
     );
     await ensureDirectory(piAppDirectory);
     await writeUtf8File(path.join(piAppDirectory, "app.mjs"), [
@@ -795,48 +795,6 @@ describe("status command", () => {
       key: "lifecycle.instance.coverage",
       severity: "error",
       subject: "agent:analyst"
-    }));
-  });
-
-  it("flips network.wiring.control_url to error when a node config's control_url is mangled", async () => {
-    const outputDirectory = await createOutputDirectory();
-    await writeLifecycleWiringFixture(outputDirectory);
-    const nodeConfigFile = path.join(
-      outputDirectory,
-      "container",
-      "rootfs",
-      "var",
-      "lib",
-      "spawnfile",
-      "moltnet",
-      "nodes",
-      "root-local_lab-analyst.json"
-    );
-    await writeUtf8File(nodeConfigFile, JSON.stringify({
-      attachments: [
-        {
-          agent: { id: "analyst", name: "Analyst" },
-          runtime: { control_url: "not-a-real-url", kind: "pi" }
-        }
-      ],
-      moltnet: { base_url: "http://127.0.0.1:8787", network_id: "local_lab" },
-      version: "moltnet.node.v1"
-    }));
-    const { streams, stdout } = createStreams();
-
-    const exitCode = await runCli(["status", "/project", "--out", outputDirectory, "--json"], {
-      handlers: { buildOrganizationView: vi.fn(async () => createView()) },
-      streams
-    });
-    const parsed = JSON.parse(stdout.join("\n")) as {
-      observations: Array<{ key: string; severity: string; subject: string }>;
-    };
-
-    expect(exitCode).toBe(1);
-    expect(parsed.observations).toContainEqual(expect.objectContaining({
-      key: "network.wiring.control_url",
-      severity: "error",
-      subject: "network:local_lab"
     }));
   });
 
@@ -1069,7 +1027,7 @@ describe("executeStatusCommand home store", () => {
     expect(byKey("lifecycle.instance.runtime").every((entry) => entry.severity === "ok")).toBe(true);
     expect(byKey("lifecycle.instance.paths").every((entry) => entry.severity === "ok")).toBe(true);
 
-    // wake.operator: picoclaw is not pi/daimon, so it is unknown regardless
+    // wake.operator: picoclaw is not daimon, so it is unknown regardless
     // of any compiled output tree.
     expect(byKey("lifecycle.wake.operator").every((entry) => entry.severity === "unknown")).toBe(true);
 

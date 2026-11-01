@@ -16,7 +16,7 @@ import { createMoltnetNodeConfigContent } from "../../compiler/moltnetNodeConfig
 import { resolveRuntimeConfig } from "../../compiler/moltnetRuntimeConfig.js";
 import type { CompilePlan } from "../../compiler/types.js";
 import { createRuntimeInstallRecipe } from "../container.js";
-import { createPiTestNode } from "../pi/testHelpers.js";
+import { createDaimonTestNode } from "./testHelpers.js";
 
 import { daimonAdapter } from "./adapter.js";
 import {
@@ -26,7 +26,7 @@ import {
 } from "./config.js";
 
 const createDaimonNode = (id: string, name = id, engine = "codex") => {
-  const node = createPiTestNode({
+  const node = createDaimonTestNode({
     name,
     runtime: { name: "daimon", options: { engine } },
     source: `/tmp/agent/${id}/Spawnfile`
@@ -413,22 +413,22 @@ describe("daimonAdapter", () => {
 
   it("lowers schedules while retaining the MCP and non-Moltnet surface boundary", async () => {
     await expect(daimonAdapter.compileAgent(createDaimonNode("schedule", "Schedule"))).resolves.toBeDefined();
-    await expect(daimonAdapter.compileAgent(createPiTestNode({
+    await expect(daimonAdapter.compileAgent(createDaimonTestNode({
       runtime: { name: "daimon", options: {} },
       schedule: { every: "1m", kind: "every", prompt: "work" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
       expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
     ]) });
-    await expect(daimonAdapter.compileAgent(createPiTestNode({
+    await expect(daimonAdapter.compileAgent(createDaimonTestNode({
       runtime: { name: "daimon", options: {} },
       schedule: { kind: "disabled" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([
       expect.objectContaining({ key: "agent.schedule", outcome: "supported" })
     ]) });
-    await expect(daimonAdapter.compileAgent(createPiTestNode({
+    await expect(daimonAdapter.compileAgent(createDaimonTestNode({
       runtime: { name: "daimon", options: { engine: "grok" } }
     }))).rejects.toThrow("must use provider xai with auth.method grok");
-    await expect(daimonAdapter.compileAgent(createPiTestNode({
+    await expect(daimonAdapter.compileAgent(createDaimonTestNode({
       runtime: { name: "daimon", options: { engine: "agy" } }
     }))).rejects.toThrow("must omit Spawnfile execution.model");
     expect(() => daimonAdapter.assertSupportedSurfaces?.({ moltnet: [{ network: "test" }] } as any)).not.toThrow();

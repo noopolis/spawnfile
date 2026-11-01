@@ -10,8 +10,8 @@ import type { CompilePlan, ResolvedAgentNode, ResolvedTeamNode } from "./types.j
 const plan = (slot = "red"): CompilePlan => ({
   edges: [{ from: "root", kind: "team_member", label: slot, to: "agent" }], root: "/org/Spawnfile.yaml",
   nodes: [
-    { id: "root", kind: "team", runtimeName: null, slug: "root", value: { kind: "team", source: "/org/Spawnfile.yaml", name: "tiny-football", description: "", external: [], mode: "swarm", lead: null, members: [{ id: slot, kind: "agent", nodeSource: "/org/red.yaml", runtimeName: "pi" }], shared: { env: {}, mcpServers: [], secrets: [], skills: [] }, networks: [{ id: "pitch", name: "pitch", provider: "moltnet", rooms: [], server: undefined }], externalParticipants: [{ id: "world", kind: "service", surfaces: { moltnet: [{ network: "pitch", auth: { token_id: "world" }, dms: { enabled: true } }] } }] } as never },
-    { id: "agent", kind: "agent", runtimeName: "pi", slug: "agent", value: { kind: "agent", source: "/org/red.yaml", name: "red", surfaces: { moltnet: [{ network: "pitch", dms: { enabled: true } }] } } as never }
+    { id: "root", kind: "team", runtimeName: null, slug: "root", value: { kind: "team", source: "/org/Spawnfile.yaml", name: "tiny-football", description: "", external: [], mode: "swarm", lead: null, members: [{ id: slot, kind: "agent", nodeSource: "/org/red.yaml", runtimeName: "picoclaw" }], shared: { env: {}, mcpServers: [], secrets: [], skills: [] }, networks: [{ id: "pitch", name: "pitch", provider: "moltnet", rooms: [], server: undefined }], externalParticipants: [{ id: "world", kind: "service", surfaces: { moltnet: [{ network: "pitch", auth: { token_id: "world" }, dms: { enabled: true } }] } }] } as never },
+    { id: "agent", kind: "agent", runtimeName: "picoclaw", slug: "agent", value: { kind: "agent", source: "/org/red.yaml", name: "red", surfaces: { moltnet: [{ network: "pitch", dms: { enabled: true } }] } } as never }
   ], runtimes: {}
 });
 
@@ -76,9 +76,9 @@ describe("organization identity", () => {
   it("is source, name, runtime, and edge-order independent", () => {
     const first = plan();
     const root = rootOf(first);
-    root.members.push({ id: "blue", kind: "agent", nodeSource: "/org/blue.yaml", runtimeName: "pi" });
+    root.members.push({ id: "blue", kind: "agent", nodeSource: "/org/blue.yaml", runtimeName: "picoclaw" });
     first.edges.unshift({ from: "root", kind: "team_member", label: "blue", to: "blue" });
-    first.nodes.push({ id: "blue", kind: "agent", runtimeName: "pi", slug: "z", value: { kind: "agent", name: "display-blue", source: "/org/blue.yaml" } as never });
+    first.nodes.push({ id: "blue", kind: "agent", runtimeName: "picoclaw", slug: "z", value: { kind: "agent", name: "display-blue", source: "/org/blue.yaml" } as never });
 
     const second = structuredClone(first);
     second.root = "/different/absolute/root/Spawnfile.yaml";
@@ -116,7 +116,7 @@ describe("organization identity", () => {
     expect(() => resolveOrganizationIdentity(nestedDeclaration)).toThrow(/root team/u);
 
     const agentAlias = plan();
-    rootOf(agentAlias).members.push({ id: "blue", kind: "agent", nodeSource: redOf(agentAlias).source, runtimeName: "pi" });
+    rootOf(agentAlias).members.push({ id: "blue", kind: "agent", nodeSource: redOf(agentAlias).source, runtimeName: "picoclaw" });
     agentAlias.edges.push({ from: "root", kind: "team_member", label: "blue", to: "agent" });
     expect(() => resolveOrganizationIdentity(agentAlias)).toThrow(/multiple organization paths/u);
 
@@ -178,8 +178,8 @@ describe("organization identity", () => {
     for (let index = 0; index < 129; index += 1) {
       const id = `a${String(index).padStart(3, "0")}`;
       const source = `/org/${id}.yaml`;
-      wideRoot.members.push({ id, kind: "agent", nodeSource: source, runtimeName: "pi" });
-      wide.nodes.push({ id, kind: "agent", runtimeName: "pi", slug: id, value: { kind: "agent", name: id, source } as never });
+      wideRoot.members.push({ id, kind: "agent", nodeSource: source, runtimeName: "picoclaw" });
+      wide.nodes.push({ id, kind: "agent", runtimeName: "picoclaw", slug: id, value: { kind: "agent", name: id, source } as never });
       wide.edges.push({ from: "root", kind: "team_member", label: id, to: id });
     }
     expect(() => resolveOrganizationIdentity(wide)).toThrow(/too many agent members/u);
@@ -205,7 +205,7 @@ describe("organization identity", () => {
     extra.nodes.push({
       id: "extra",
       kind: "agent",
-      runtimeName: "pi",
+      runtimeName: "picoclaw",
       slug: "extra",
       value: { kind: "agent", name: "extra", source: "/org/extra.yaml" } as never
     });
@@ -221,7 +221,7 @@ describe("organization identity", () => {
           id: "extra",
           kind: "agent",
           nodeSource: "/org/extra.yaml",
-          runtimeName: "pi"
+          runtimeName: "picoclaw"
         }],
         name: "detached",
         source: "/org/detached.yaml"
@@ -237,7 +237,7 @@ describe("organization identity", () => {
 
     const missing = plan();
     const root = missing.nodes[0]?.value as ResolvedTeamNode;
-    root.members.push({ id: "blue", kind: "agent", nodeSource: "/org/blue.yaml", runtimeName: "pi" });
+    root.members.push({ id: "blue", kind: "agent", nodeSource: "/org/blue.yaml", runtimeName: "picoclaw" });
     expect.soft(() => resolveOrganizationIdentity(missing)).toThrow(/cardinality|edge/u);
   });
 
@@ -248,7 +248,7 @@ describe("organization identity", () => {
     current.nodes.push({
       id: "helper",
       kind: "agent",
-      runtimeName: "pi",
+      runtimeName: "picoclaw",
       slug: "helper",
       value: {
         kind: "agent",
@@ -347,9 +347,9 @@ describe("organization identity", () => {
     const root = rootOf(filtered);
     for (const [id, network, enabled] of [["blue", "pitch", false], ["green", "other", true]] as const) {
       const source = `/org/${id}.yaml`;
-      root.members.push({ id, kind: "agent", nodeSource: source, runtimeName: "pi" });
+      root.members.push({ id, kind: "agent", nodeSource: source, runtimeName: "picoclaw" });
       filtered.edges.push({ from: "root", kind: "team_member", label: id, to: id });
-      filtered.nodes.push({ id, kind: "agent", runtimeName: "pi", slug: id, value: {
+      filtered.nodes.push({ id, kind: "agent", runtimeName: "picoclaw", slug: id, value: {
         kind: "agent", name: id, source,
         surfaces: { moltnet: [{ dms: { enabled }, memberId: null, network, teamSource: null }] }
       } as never });
@@ -382,7 +382,7 @@ describe("organization identity", () => {
   it("derives the no-external agent graph while leaving external auth inactive", () => {
     const current = plan();
     rootOf(current).externalParticipants = undefined;
-    current.nodes.push({ id: "legacy-extra", kind: "agent", runtimeName: "pi", slug: "legacy-extra", value: { kind: "agent", name: "legacy-extra", source: "/legacy/extra" } as never });
+    current.nodes.push({ id: "legacy-extra", kind: "agent", runtimeName: "picoclaw", slug: "legacy-extra", value: { kind: "agent", name: "legacy-extra", source: "/legacy/extra" } as never });
     current.organizationIdentity = resolveOrganizationIdentity(current);
     expect(current.organizationIdentity).toMatchObject({
       agentMembers: [{ memberId: "red", principalId: "agent:red" }], externalParticipants: [],

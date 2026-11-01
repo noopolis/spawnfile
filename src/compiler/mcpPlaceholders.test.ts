@@ -6,8 +6,8 @@ import { openClawAdapter } from "../runtime/openclaw/adapter.js";
 
 import { expandSourceWorkspacePathTemplate } from "./containerTargetResources.js";
 import { resolveMcpServerPlaceholders, resolvePlanMcpPlaceholders, type McpPlaceholderContext } from "./mcpPlaceholders.js";
-import type { CompilePlanNode } from "./types.js";
-import { createPiTestNode } from "../runtime/pi/testHelpers.js";
+import type { CompilePlanNode, ResolvedAgentNode } from "./types.js";
+
 
 const context: McpPlaceholderContext = {
   agentId: "agent:writer",
@@ -71,11 +71,14 @@ describe("expandSourceWorkspacePathTemplate", () => {
 
 describe("resolvePlanMcpPlaceholders", () => {
   it("uses the node slug and id, not the manifest name, for duplicate-named agents", () => {
-    const value = createPiTestNode({
+    const value: ResolvedAgentNode = {
+      description: "", docs: [], env: {}, execution: undefined, kind: "agent",
+      policyMode: null, policyOnDegrade: null, secrets: [], skills: [],
+      source: "/tmp/agent/Spawnfile", subagents: [],
       mcpServers: [server({ args: ["${workspace}/s.mjs"], env: { ID: "${agent.id}", NAME: "${agent.name}" } })],
       name: "writer",
       runtime: { name: "daimon", options: {} }
-    });
+    };
     const node = { id: "agent:writer#a1b2c3", kind: "agent", runtimeName: "daimon", slug: "writer-a1b2c3", value } as CompilePlanNode;
 
     resolvePlanMcpPlaceholders([node]);
