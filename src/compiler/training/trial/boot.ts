@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, isDaimonGatewayRealmMountId } from "../../../runtime/daimon/index.js";
+import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, getDaimonEngineDescriptor, isDaimonGatewayRealmMountId } from "../../../runtime/daimon/index.js";
 import { daimonHelperControlCall, type DaimonControlCall, type DaimonControlTarget } from "../../../runtime/daimon/control.js";
 import { RUNTIME_INSTALL_ROOT } from "../../../runtime/container.js";
 import { parseUsageLedger, type UsageRecord } from "../../../runtime/usageLedger.js";
@@ -84,7 +84,10 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   const agents = Object.entries(instance?.engine_by_node_id ?? {});
   if (!instance || agents.length !== 1) throw new SpawnfileError("validation_error", "A production-booted trial compiles exactly one Daimon agent");
   const [agentId] = agents[0]!;
-  const homePath = instance.agent_paths?.[agentId]?.home_path;
+  const home = instance.agent_paths?.[agentId]?.home_path;
+  // The engine writes its own session records under its home inside the agent's runtime home.
+  const engineHome = getDaimonEngineDescriptor(agents[0]![1])?.homeDirectory;
+  const sessionsPath = home && engineHome !== undefined ? path.posix.join(home, engineHome, "sessions") : null;
   const dispose = async (): Promise<void> => {
     await docker(["image", "rm", "-f", image]).catch(() => undefined);
     await rm(options.directory, { recursive: true, force: true });
@@ -123,7 +126,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
           }
           return call(target, "GET", "/v2/availability").then((response) => response.status === 200, () => false);
         }, bootOptions.readyTimeoutMs ?? 180_000, "trial organization readiness", 1_000);
-        return createBootedTrial({ agentId, call, container, docker, homePath: homePath ?? null, target, teardown });
+        return createBootedTrial({ agentId, call, container, docker, sessionsPath, target, teardown });
       } catch (error) {
         await teardown();
         throw error;
@@ -139,7 +142,7 @@ const readLedger = async (docker: TrialDocker, container: string): Promise<Usage
 
 const createBootedTrial = (input: {
   agentId: string; call: DaimonControlCall; container: string; docker: TrialDocker;
-  homePath: string | null; target: DaimonControlTarget; teardown: () => Promise<void>;
+  sessionsPath: string | null; target: DaimonControlTarget; teardown: () => Promise<void>;
 }): BootedTrial => {
   let seenRows = 0;
   return {
@@ -173,15 +176,15 @@ const createBootedTrial = (input: {
         acceptanceId: id, code: receipt.code ?? null, executionId: receipt.execution_id ?? null, usage,
         state: TERMINAL.has(receipt.state ?? "") ? receipt.state as TrialWake["state"] : "timeout",
         text: receipt.text ?? "",
-        transcript: input.homePath === null ? null : await readTranscript(input.docker, input.container, input.homePath)
+        transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath)
       };
     }
   };
 };
 
-/** The newest Codex-style session record under the agent's runtime home, bounded. */
-const readTranscript = async (docker: TrialDocker, container: string, homePath: string): Promise<string | null> => {
-  const newest = await docker(["exec", container, "sh", "-c", 'find "$1" -name "*.jsonl" -type f -printf "%T@ %p\\n" 2>/dev/null | sort -n | tail -1 | cut -d" " -f2-', "sh", homePath]).catch(() => "");
+/** The engine's newest session record, bounded. */
+const readTranscript = async (docker: TrialDocker, container: string, sessionsPath: string): Promise<string | null> => {
+  const newest = await docker(["exec", container, "sh", "-c", 'find "$1" -name "*.jsonl" -type f -printf "%T@ %p\\n" 2>/dev/null | sort -n | tail -1 | cut -d" " -f2-', "sh", sessionsPath]).catch(() => "");
   if (!newest) return null;
   const text = await docker(["exec", container, "head", "-c", String(MAX_TRANSCRIPT_BYTES), newest]).catch(() => "");
   return text || null;
