@@ -23,9 +23,6 @@ const mutations = [
   { file: 'src/training/inference/evaluator/provider.ts', before: 'return { TYPESAFE_API_KEY: key };',
     after: 'process.env.TYPESAFE_API_KEY = key; return { TYPESAFE_API_KEY: key };',
     test: 'src/training/inference/evaluator/evaluator.test.ts', title: 'loads the key only into evaluator transport' },
-  { file: 'src/runtime/daimon/training/native/child/arguments.ts', before: 'const env: NodeJS.ProcessEnv = { HOME: home.target };',
-    after: 'const env: NodeJS.ProcessEnv = { ...process.env, HOME: home.target };',
-    test: 'src/runtime/daimon/training/native/child/evaluator-environment.test.ts', title: 'never inherits the evaluator' },
 ];
 it('kills each evaluator admission, request, spend, receipt and secret-isolation mutant with its behavioral test', async () => {
   const source = resolve('.'), root = await mkdtemp(join(tmpdir(), 'evaluator-mutations-'));

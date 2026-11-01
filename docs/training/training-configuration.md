@@ -95,7 +95,7 @@ newsroom optimization acceptance run.
 The names under `models` are reusable references. Judges and the optimizer select
 a primary name and ordered fallback names. A fallback must differ from the primary
 and every referenced model must exist. Provider names currently accepted by this
-schema are `claude-subscription`, `codex-subscription`, `grok-subscription` and `ollama`; only Ollama accepts
+schema are `claude-subscription`, `codex-subscription`, `grok-subscription`, `grok-broker` and `ollama`; only Ollama accepts
 an endpoint. Endpoints cannot contain credentials, queries or fragments. Model names
 are provider-specific strings, not a claim that a particular model is installed.
 
@@ -104,6 +104,11 @@ explicit `medium`; the process never inherits effort from local Grok configurati
 Use separate named model entries to give focused judges and prompt optimization
 different efforts. Effort changes invalidate exact judge reuse. Other providers
 reject this field until their adapters support it.
+
+`grok-broker` still validates (`model` one of `grok-4.6`, `grok-4.5` or `grok-build`,
+required `reasoning_effort` `low`, `medium` or `high`) so historical datasets and
+measurement identities stay readable, but its broker grants lived in the removed
+training container: every call fails `unavailable`. Use `grok-subscription`.
 
 Judge templates declare Jinja source; parsing validates their shape, while the
 evaluation layer owns rendering and rejects unsupported template behavior before
