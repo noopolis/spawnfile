@@ -62,7 +62,7 @@ export function createTrainingProviderRegistry(): InferenceProviderRegistry {
   return { ...defaultInferenceProviders, brokerAdmissionLabel: 'grok-broker',
     // Registration order preserves the historical authored-provider diagnostic.
     providers: { 'claude-subscription': { ...defaultInferenceProviders.providers['claude-subscription']!, validate: (model, path) => validate(model, path, 'none') },
-      'codex-subscription': codex, 'grok-subscription': grok, 'grok-broker': broker, 'agy-subscription': agy, ollama: {
+      'codex-subscription': codex, 'grok-subscription': grok, 'grok-broker': broker, ollama: {
       ...defaultInferenceProviders.providers.ollama!,
       validate(model, path) {
         // Preserve the historical host-composed configuration diagnostic outside the neutral core.
@@ -74,5 +74,5 @@ export function createTrainingProviderRegistry(): InferenceProviderRegistry {
         }
         defaultInferenceProviders.providers.ollama!.validate(model, path);
       },
-    } } };
+    }, 'agy-subscription': agy } };
 }
