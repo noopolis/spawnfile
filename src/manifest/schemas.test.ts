@@ -1138,7 +1138,7 @@ describe("manifestSchema", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
       name: "writer",
-      runtime: "pi",
+      runtime: "picoclaw",
       memory: [
         {
           id: "self",
@@ -1163,7 +1163,7 @@ describe("manifestSchema", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
       name: "writer",
-      runtime: "pi",
+      runtime: "picoclaw",
       memory: [
         {
           id: "self",
@@ -1187,7 +1187,7 @@ describe("manifestSchema", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
       name: "writer",
-      runtime: "pi",
+      runtime: "picoclaw",
       memory: [
         {
           id: "self",
@@ -1212,7 +1212,7 @@ describe("manifestSchema", () => {
     const result = manifestSchema.safeParse({
       kind: "agent",
       name: "writer",
-      runtime: "pi",
+      runtime: "picoclaw",
       memory: [
         {
           id: "self",

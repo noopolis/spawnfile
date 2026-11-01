@@ -27,7 +27,7 @@ const agent = (id: string, name = "assistant"): ResolvedAgentNode => ({
   name,
   policyMode: null,
   policyOnDegrade: null,
-  runtime: { name: "pi", options: {} },
+  runtime: { name: "picoclaw", options: {} },
   secrets: [],
   skills: [],
   source: `/org/${id}/Spawnfile`,
@@ -92,8 +92,8 @@ const plan = (): CompilePlan => {
     moltnetRoomMemberships: [],
     nodes: [
       { id: "team:root", kind: "team", runtimeName: null, slug: "root", value: root },
-      { id: "agent:alpha", kind: "agent", runtimeName: "pi", slug: "alpha", value: alpha },
-      { id: "agent:beta", kind: "agent", runtimeName: "pi", slug: "beta", value: beta },
+      { id: "agent:alpha", kind: "agent", runtimeName: "picoclaw", slug: "alpha", value: alpha },
+      { id: "agent:beta", kind: "agent", runtimeName: "picoclaw", slug: "beta", value: beta },
       { id: "team:nested", kind: "team", runtimeName: null, slug: "nested", value: nested }
     ],
     root: root.source,

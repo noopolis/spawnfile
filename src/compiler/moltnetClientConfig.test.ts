@@ -16,7 +16,7 @@ import { generateMoltnetArtifacts, type MoltnetArtifacts } from "./moltnetArtifa
 import type { ResolvedAgentNode } from "./types.js";
 
 const actor = (id: "blue" | "red") => ({
-  id, runtime: "pi" as const, workspace: { docs: { system: `${id}.md` } },
+  id, runtime: "picoclaw" as const, workspace: { docs: { system: `${id}.md` } },
   surfaces: { moltnet: [{ network: "pitch", auth: { token_id: id }, rooms: { field: {} }, dms: { enabled: true } }] }
 });
 const b31Manifest = manifestSchema.parse({
@@ -75,7 +75,7 @@ const createArtifacts = (): MoltnetArtifacts => ({
   ]
 });
 
-const createAgent = (runtime: "openclaw" | "picoclaw" | "pi"): ResolvedAgentNode => ({
+const createAgent = (runtime: "openclaw" | "picoclaw" | "daimon"): ResolvedAgentNode => ({
   description: "",
   docs: [],
   env: {},
@@ -132,8 +132,8 @@ describe("moltnetClientConfig", () => {
     });
   });
 
-  it("resolves the Codex-style workspace skill layout for pi", () => {
-    expect(resolveMoltnetWorkspaceLayout("pi", "orchestrator")).toEqual({
+  it("resolves the Codex-style workspace skill layout for daimon", () => {
+    expect(resolveMoltnetWorkspaceLayout("daimon", "orchestrator")).toEqual({
       clientConfigPath: "workspace/.moltnet/config.json",
       cliRuntime: "codex",
       skillPaths: [
@@ -143,9 +143,9 @@ describe("moltnetClientConfig", () => {
       workspaceRootPath: "workspace"
     });
 
-    const files = createMoltnetClientConfigFiles(createAgent("pi"), createArtifacts());
+    const files = createMoltnetClientConfigFiles(createAgent("daimon"), createArtifacts());
     expect(files.map((file) => file.path)).toEqual(["workspace/.moltnet/config.json"]);
-    expect(files[0]?.content).toContain('"runtime": "pi"');
+    expect(files[0]?.content).toContain('"runtime": "daimon"');
   });
 
   it("returns no files when the agent has no moltnet attachments", () => {

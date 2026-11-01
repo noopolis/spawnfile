@@ -369,9 +369,9 @@ describe("upProject organization handoff", () => {
     ] };
     result.report.container.runtime_instances = [
       { config_path: "z", home_path: null, id: "runtime-z", model_auth_methods: {},
-        model_secrets_required: [], runtime: "pi" },
+        model_secrets_required: [], runtime: "picoclaw" },
       { config_path: "a", home_path: null, id: "runtime-a", model_auth_methods: {},
-        model_secrets_required: [], runtime: "pi" }
+        model_secrets_required: [], runtime: "picoclaw" }
     ];
     vi.mocked(buildProject).mockResolvedValue(result);
     vi.mocked(createDockerRunInvocation).mockResolvedValue({

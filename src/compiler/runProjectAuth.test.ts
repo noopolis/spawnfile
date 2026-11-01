@@ -20,7 +20,6 @@ import {
   assertDeclaredModelAuthSatisfied,
   assertMoltnetCredentialValuesDistinct,
   prepareRuntimeAuthMounts,
-  resolveAuthMountArgs,
   resolveRunEnvironment
 } from "./runProjectAuth.js";
 
@@ -89,41 +88,6 @@ describe("prepareRuntimeAuthMounts", () => {
     });
   });
 
-  it("still stages a real-engine host CLI home (e.g. grok) for a pi instance when no auth profile is provided", async () => {
-    // This is the composed real-engine regression case: `spawnfile up` (via
-    // the simfile driver) never passes `--auth-profile`, since simfile's
-    // charter forbids it from handling auth. The Pi adapter's optional
-    // grok/codex/antigravity CLI-home staging (mirroring the e2e harness's
-    // `stageGrokHome`) must not be gated behind an auth profile that has
-    // nothing to do with those host credentials.
-    const grokHome = await createTempDirectory("spawnfile-grok-home-");
-    const tempRoot = await createTempDirectory("spawnfile-run-auth-");
-    const previousGrokHome = process.env.GROK_HOME;
-    process.env.GROK_HOME = grokHome;
-    await writeUtf8File(path.join(grokHome, "auth.json"), "{\"token\":\"grok\"}\n");
-
-    try {
-      const prepared = await prepareRuntimeAuthMounts(
-        "/tmp/out",
-        createContainerReport("pi"),
-        null,
-        {},
-        tempRoot
-      );
-
-      expect(prepared.coveredModelSecrets).toEqual(new Set());
-      const grokMount = prepared.mountArgs.find((value) => value.endsWith("/.grok"));
-      expect(grokMount).toBeDefined();
-      expect(grokMount).toContain(`:${"/var/lib/spawnfile/instances/pi/instance/home"}/.grok`);
-    } finally {
-      if (previousGrokHome === undefined) {
-        delete process.env.GROK_HOME;
-      } else {
-        process.env.GROK_HOME = previousGrokHome;
-      }
-    }
-  });
-
   it("delegates runtime auth preparation to adapters with declared auth methods", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     const outputDirectory = await createTempDirectory("spawnfile-openclaw-out-");
@@ -179,19 +143,6 @@ describe("prepareRuntimeAuthMounts", () => {
   });
 });
 
-describe("resolveAuthMountArgs", () => {
-  it("leaves the Pi runtime home to the Pi auth adapter", async () => {
-    const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
-    process.env.SPAWNFILE_HOME = spawnfileHome;
-    await registerImportedAuth("dev", "codex");
-    const homePath = "/var/lib/spawnfile/instances/pi/instance/home";
-
-    await expect(resolveAuthMountArgs({
-      ...createContainerReport("pi"),
-      runtime_homes: [homePath]
-    }, await requireAuthProfile("dev"))).resolves.toEqual([]);
-  });
-});
 
 describe("assertDeclaredModelAuthSatisfied", () => {
   it("allows API-key-only projects without an auth profile", () => {
@@ -270,7 +221,7 @@ describe("assertDeclaredModelAuthSatisfied", () => {
 
 describe("assertMoltnetCredentialValuesDistinct", () => {
   const report = {
-    ...createContainerReport("pi"),
+    ...createContainerReport("openclaw"),
     moltnet: {
       node_plans: [],
       server_plans: [{

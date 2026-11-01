@@ -94,13 +94,7 @@ export const prepareRuntimeAuthMounts = async (
   tempRoot: string,
   containerCredentialUid?: number
 ): Promise<PreparedRunAuth> => {
-  // No early return when `authProfile` is null: an adapter's
-  // `prepareRuntimeAuth` may still have host-credential staging to do that
-  // does not depend on an imported Spawnfile auth profile (e.g. the Pi
-  // adapter mounting the host's `~/.grok`/`~/.codex`/antigravity CLI homes
-  // for a real-engine org — see `src/runtime/pi/runAuth.ts`). Each adapter is
-  // responsible for treating a `null` `authProfile` as "no profile-derived
-  // imports available" rather than failing.
+  // Adapters receive null profiles so they can handle runtime-owned credentials.
   const coveredModelSecrets = new Set<string>();
   let launchIdentity: RuntimeAuthPreparationResult["launchIdentity"];
   const mountArgs: string[] = [];

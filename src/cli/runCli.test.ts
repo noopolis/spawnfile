@@ -702,9 +702,9 @@ describe("runCli", () => {
     const stdout: string[] = [];
     const devUpProject = vi.fn(async () => ({
       authProfileName: "dev",
-      containerName: "spawnfile-pi-dev",
+      containerName: "spawnfile-daimon-dev",
       deploymentRecordPath: "/tmp/org/.spawn-dev/deployments/dev.json",
-      imageTag: "spawnfile-pi-dev",
+      imageTag: "spawnfile-daimon-dev",
       organizationReadinessEvidence: genericOrganizationReadinessEvidence,
       outputDirectory: "/tmp/org/.spawn-dev",
       report: {
@@ -753,8 +753,8 @@ describe("runCli", () => {
       },
     );
     expect(stdout).toEqual([
-      "dev deployment: spawnfile-pi-dev",
-      "image: spawnfile-pi-dev",
+      "dev deployment: spawnfile-daimon-dev",
+      "image: spawnfile-daimon-dev",
       "compiled to /tmp/org/.spawn-dev",
       "record: /tmp/org/.spawn-dev/deployments/dev.json",
     ]);
@@ -765,7 +765,7 @@ describe("runCli", () => {
     const devApplyProject = vi.fn(async () => ({
       agentId: "agent:observer",
       bridgeStarted: true,
-      containerName: "spawnfile-pi-dev",
+      containerName: "spawnfile-daimon-dev",
       deploymentName: "dev",
       existingAgent: false,
       outputDirectory: "/tmp/org/.spawn-dev",
@@ -802,7 +802,7 @@ describe("runCli", () => {
     );
     expect(stdout).toEqual([
       "applied agent agent:observer",
-      "container: spawnfile-pi-dev",
+      "container: spawnfile-daimon-dev",
       "bridge: started",
     ]);
   });
@@ -812,7 +812,7 @@ describe("runCli", () => {
     const devRestartProject = vi.fn(async () => ({
       agentId: "agent:mapper",
       bridgeStarted: false,
-      containerName: "spawnfile-pi-dev",
+      containerName: "spawnfile-daimon-dev",
       deploymentName: "dev",
       existingAgent: true,
       outputDirectory: "/tmp/org/.spawn-dev",
@@ -844,7 +844,7 @@ describe("runCli", () => {
     });
     expect(stdout).toEqual([
       "restarted agent agent:mapper",
-      "container: spawnfile-pi-dev",
+      "container: spawnfile-daimon-dev",
       "bridge: unchanged",
     ]);
   });
@@ -852,7 +852,7 @@ describe("runCli", () => {
   it("prints dev activity as JSON lines", async () => {
     const stdout: string[] = [];
     const devActivityProject = vi.fn(async () => ({
-      containerName: "spawnfile-pi-dev",
+      containerName: "spawnfile-daimon-dev",
       deploymentName: "dev",
       events: [
         {
@@ -923,7 +923,7 @@ describe("runCli", () => {
   it("stops a dev deployment", async () => {
     const stdout: string[] = [];
     const devStopProject = vi.fn(async () => ({
-      containerName: "spawnfile-pi-dev",
+      containerName: "spawnfile-daimon-dev",
       deploymentName: "dev",
       outputDirectory: "/tmp/org/.spawn-dev",
     }));
@@ -945,7 +945,7 @@ describe("runCli", () => {
     });
     expect(stdout).toEqual([
       "stopped dev deployment dev",
-      "container: spawnfile-pi-dev",
+      "container: spawnfile-daimon-dev",
     ]);
   });
 

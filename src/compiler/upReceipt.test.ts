@@ -120,20 +120,20 @@ describe("resolveCompiledEngines", () => {
         ...createReport().container!,
         runtime_instances: [
           {
-            config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
-            engine_by_node_id: { "agent:sam": "grok", "agent:eleanor": "scripted" },
-            home_path: "/var/lib/spawnfile/instances/pi/pi-app/home",
-            id: "pi-app",
+            config_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon-organization-runtime.json",
+            engine_by_node_id: { "agent:sam": "grok", "agent:eleanor": "codex" },
+            home_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/home",
+            id: "daimon-organization",
             model_auth_methods: {},
             model_secrets_required: [],
-            runtime: "pi"
+            runtime: "daimon"
           }
         ]
       }
     };
 
     expect(resolveCompiledEngines(report)).toEqual([
-      { agent: "agent:eleanor", engine: "scripted" },
+      { agent: "agent:eleanor", engine: "codex" },
       { agent: "agent:sam", engine: "grok" }
     ]);
   });
@@ -322,13 +322,13 @@ describe("buildUpReceipt", () => {
         ...upResult.report.container!,
         runtime_instances: [
           {
-            config_path: "/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json",
-            engine_by_node_id: { "agent:eleanor": "scripted" },
-            home_path: "/var/lib/spawnfile/instances/pi/pi-app/home",
-            id: "pi-app",
+            config_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon-organization-runtime.json",
+            engine_by_node_id: { "agent:eleanor": "codex" },
+            home_path: "/var/lib/spawnfile/instances/daimon/daimon-organization/home",
+            id: "daimon-organization",
             model_auth_methods: {},
             model_secrets_required: [],
-            runtime: "pi"
+            runtime: "daimon"
           }
         ]
       }
@@ -336,7 +336,7 @@ describe("buildUpReceipt", () => {
 
     const receipt = await buildUpReceipt(fixtureDirectory, upResult);
 
-    expect(receipt.engines).toEqual([{ agent: "agent:eleanor", engine: "scripted" }]);
+    expect(receipt.engines).toEqual([{ agent: "agent:eleanor", engine: "codex" }]);
   });
 
   it("preserves an explicit local dual-bridge Moltnet identity without relabeling it as public", async () => {

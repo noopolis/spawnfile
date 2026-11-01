@@ -128,7 +128,7 @@ it.each(["ref", "build"])("refuses mismatched Codex preparation subjects before 
   await f.save();
   for (const [runtime, engine, policy, mode] of [
     ["daimon", "grok", "workspace-no-network", "workspace"],
-    ["pi", "codex", "workspace-no-network", "workspace"],
+    ["openclaw", "codex", "workspace-no-network", "workspace"],
     ["daimon", "codex", null, "workspace"],
     ["daimon", "codex", "workspace-no-network", "unrestricted"]
   ] as const) {

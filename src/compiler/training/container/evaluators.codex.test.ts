@@ -49,7 +49,7 @@ it("refuses mismatched Codex isolation subjects before any Docker process call",
   const f = await setup();
   for (const [runtime, engine, policy, mode] of [
     ["daimon", "grok", "workspace-no-network", "workspace"],
-    ["pi", "codex", "workspace-no-network", "workspace"],
+    ["openclaw", "codex", "workspace-no-network", "workspace"],
     ["daimon", "codex", null, "workspace"],
     ["daimon", "codex", "workspace-no-network", "unrestricted"]
   ] as const) {

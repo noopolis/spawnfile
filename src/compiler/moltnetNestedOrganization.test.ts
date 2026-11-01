@@ -41,7 +41,7 @@ const childManifest = manifestSchema.parse({
   kind: "team",
   members: [{
     id: "red",
-    runtime: "pi",
+    runtime: "picoclaw",
     surfaces: {
       moltnet: [{
         auth: { token_id: "red" },
@@ -169,7 +169,7 @@ describe("nested B31 Moltnet organization composition", () => {
       kind: "team",
       members: [{
         id: "red",
-        runtime: "pi",
+        runtime: "picoclaw",
         surfaces: { moltnet: [{ network: "pitch", rooms: { field: {} } }] },
         workspace: { docs: { system: "./red.md" } }
       }],

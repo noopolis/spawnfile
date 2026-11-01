@@ -62,11 +62,11 @@ const createView = (): OrganizationView => ({
     id: "agent:assistant",
     kind: "agent",
     name: "assistant",
-    runtimeName: "pi",
+    runtimeName: "picoclaw",
     slug: "assistant",
     source: "/tmp/Spawnfile"
   },
-  runtimes: [{ name: "pi", nodeIds: ["agent:assistant"] }]
+  runtimes: [{ name: "picoclaw", nodeIds: ["agent:assistant"] }]
 });
 
 const setupHomeRecords = async (names: string[]) => {
@@ -82,7 +82,7 @@ const setupHomeRecords = async (names: string[]) => {
     modelAuthMethods: {},
     moltnetNetworks: [],
     organization: {
-      agents: [{ id: "agent:assistant", name: "assistant", runtime: "pi", teams: [] }],
+      agents: [{ id: "agent:assistant", name: "assistant", runtime: "picoclaw", teams: [] }],
       project: "status-test",
       teams: []
     },

@@ -291,17 +291,17 @@ describe("buildProject", () => {
 
     const result = await buildProject(path.join(examplesRoot, "moltnet-team-chat"), {
       buildRunner,
-      dockerContext: "remote-pi",
+      dockerContext: "remote-daimon",
       dockerCommand,
       outputDirectory
     });
 
     expect(result.imageTag).toBe("spawnfile-moltnet-team-chat");
     expect(buildRunner).toHaveBeenCalledWith({
-      args: ["--context", "remote-pi", "build", "-t", result.imageTag, "."],
+      args: ["--context", "remote-daimon", "build", "-t", result.imageTag, "."],
       command: dockerCommand,
       cwd: outputDirectory,
-      dockerContext: "remote-pi",
+      dockerContext: "remote-daimon",
       imageTag: result.imageTag
     });
 

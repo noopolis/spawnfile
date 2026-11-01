@@ -13,7 +13,7 @@ const agent = (runtime: string, recording = true) => ({
   workspace: { resources: [{ id: "state", kind: "volume", mode: "mutable", mount: "./state" }] }
 });
 
-it.each(["openclaw", "picoclaw", "pi"])("rejects recording for %s with the exact agent and runtime", async (runtime) => {
+it.each(["openclaw", "picoclaw"])("rejects recording for %s with the exact agent and runtime", async (runtime) => {
   const root = await trainingProject({ Spawnfile: agent(runtime) });
   await expect(compileProject(root)).rejects.toMatchObject({ code: "validation_error",
     message: expect.stringMatching(new RegExp(`agent:writer.*runtime ${runtime}`, "u")) });

@@ -19,12 +19,12 @@ vi.mock("./moltnetBinaries.js", async (importOriginal) => {
   );
   return {
     ...actual,
-    stageMoltnetBinaries: (outputDirectory: string, options: Parameters<
+    stageMoltnetBinaries: async (outputDirectory: string, options: Parameters<
       typeof actual.stageMoltnetBinaries
-    >[1]) => stageTrustedTestMoltnetRelease(
-      outputDirectory,
-      options
-    )
+    >[1]) => ({
+      ...await stageTrustedTestMoltnetRelease(outputDirectory, options),
+      capabilities: ["daimon-bridge", "pi-bridge"] as const
+    })
   };
 });
 
@@ -68,7 +68,7 @@ describe("mixed runtime org fixture", () => {
     await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
   });
 
-  it("compiles OpenClaw, PicoClaw, and legacy Pi agents into one container plan", async () => {
+  it("compiles OpenClaw, PicoClaw, and Daimon agents into one container plan", async () => {
     const previousCli = process.env.SPAWNFILE_MOLTNET_CLI;
     const previousReleaseDir = process.env.SPAWNFILE_MOLTNET_RELEASE_DIR;
     process.env.SPAWNFILE_MOLTNET_CLI = await createFakeMoltnetCli();
@@ -82,7 +82,7 @@ describe("mixed runtime org fixture", () => {
       });
       const container = result.report.container;
 
-      expect(container?.runtimes_installed).toEqual(["openclaw", "pi", "picoclaw"]);
+      expect(container?.runtimes_installed).toEqual(["daimon", "openclaw", "picoclaw"]);
       expect(container?.runtime_instances.map((instance) => ({
         id: instance.id,
         methods: instance.model_auth_methods,
@@ -102,10 +102,10 @@ describe("mixed runtime org fixture", () => {
           runtime: "openclaw"
         },
         {
-          id: "pi-app",
-          methods: { local: "none" },
+          id: "daimon-organization",
+          methods: {},
           nodes: ["agent:localist"],
-          runtime: "pi"
+          runtime: "daimon"
         }
       ]);
       expect(container?.moltnet?.node_plans.map((plan) => plan.network_id).sort()).toEqual([
@@ -114,24 +114,13 @@ describe("mixed runtime org fixture", () => {
         "mixed_lab"
       ]);
 
-      const piConfig = JSON.parse(
-        await readUtf8File(path.join(
-          outputDirectory,
-          "container/rootfs/var/lib/spawnfile/instances/pi/pi-app/pi/pi-app.json"
-        ))
-      );
-      const modelsConfig = JSON.parse(
-        await readUtf8File(path.join(
-          outputDirectory,
-          "container/rootfs/var/lib/spawnfile/instances/pi/pi-app/home/.pi/agent/models.json"
-        ))
-      );
-      const provider = piConfig.agents[0]?.model.provider as string;
-      expect(provider).toMatch(/^local-openai-llama3-2-[a-f0-9]{8}$/);
-      expect(modelsConfig.providers[provider]).toMatchObject({
-        api: "openai-completions",
-        apiKey: "ollama",
-        baseUrl: "http://host.docker.internal:11434/v1"
+      const daimonConfig = JSON.parse(await readUtf8File(path.join(
+        outputDirectory,
+        "container/rootfs/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/daimon-organization-runtime.json"
+      )));
+      expect(daimonConfig.agents[0]).toMatchObject({
+        id: "agent:localist",
+        engine: { kind: "codex" }
       });
       expect(process.env.SPAWNFILE_MOLTNET_RELEASE_DIR).toBe(previousReleaseDir);
     } finally {

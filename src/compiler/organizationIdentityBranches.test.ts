@@ -41,7 +41,7 @@ const createPlan = (): CompilePlan => ({
             id: "member",
             kind: "agent",
             nodeSource: "/project/member.yaml",
-            runtimeName: "pi",
+            runtimeName: "picoclaw",
           },
         ],
         mode: "swarm",
@@ -90,7 +90,7 @@ const createPlan = (): CompilePlan => ({
     {
       id: "agent",
       kind: "agent",
-      runtimeName: "pi",
+      runtimeName: "picoclaw",
       slug: "member",
       value: {
         kind: "agent",

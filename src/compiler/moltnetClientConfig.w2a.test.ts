@@ -8,7 +8,7 @@ import { createMoltnetNodeConfigContent } from "./moltnetNodeConfig.js";
 import type { CompilePlan, ResolvedAgentNode, ResolvedMoltnetAttachment } from "./types.js";
 
 const createAgent = (
-  runtime: "openclaw" | "pi",
+  runtime: "openclaw" | "picoclaw",
   surfaces: ResolvedAgentNode["surfaces"]
 ): ResolvedAgentNode => ({
   description: "",
