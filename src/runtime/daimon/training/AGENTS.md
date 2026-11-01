@@ -1,6 +1,6 @@
 # Daimon training subjects
 
-`legacy/` owns the public Pi facade subject; `native/` owns prepared container and child subjects. `index.ts` supplies the subject factory and optional hostInference grant authority to composition.
+`legacy/` owns the public Pi facade subject; `native/` owns prepared container and child subjects; `booted/` maps the SubjectAdapter onto production-booted trial organizations (the path `spawnfile train` takes for Daimon subjects without a training config). `index.ts` supplies the subject factory and optional hostInference grant authority to composition.
 
 Container-only carve-out: dynamic package specifiers for @noopolis/daimon/pi and @noopolis/daimon/runtime live only below this folder. They load lazily inside training containers where Daimon is installed, like the generated Pi app; importing the registration on the host must never load Daimon. No host dependency on Daimon is permitted.
 

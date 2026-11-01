@@ -160,3 +160,30 @@ export const renderDaimonGatewayRuntimeEnv = (plans: readonly RuntimeTargetPlan[
   resolveDaimonGatewayEngines(plans).length === 0
     ? ""
     : `${DAIMON_GATEWAY_URL_ENV}="$${URL_VARIABLE}" ${DAIMON_GATEWAY_KEY_ENV}="$${KEY_VARIABLE}" `;
+
+/** The training sidecar answers on its run's private network under this alias. */
+export const DAIMON_GATEWAY_SIDECAR_ALIAS = "daimon-gateway";
+export const DAIMON_GATEWAY_SIDECAR_URL = `http://${DAIMON_GATEWAY_SIDECAR_ALIAS}:${DAIMON_GATEWAY_PORT}`;
+/** Env name carrying the run's 64-hex gateway key into the sidecar's root shell; unset before anything else starts. */
+export const DAIMON_GATEWAY_SIDECAR_KEY_ENV = "SPAWNFILE_DAIMON_GATEWAY_KEY";
+
+/**
+ * Root script for the sidecar placement: the same binary, state provisioning
+ * and uid as the in-container gateway, bound to the run's private network
+ * instead of loopback, with the run's key supplied rather than generated.
+ * Trials reach it at {@link DAIMON_GATEWAY_SIDECAR_URL} with that key.
+ */
+export const renderDaimonGatewaySidecarScript = (engines: readonly string[], runtimeRoot: string): string => {
+  const descriptors = daimonGatewayedEngines(engines);
+  if (descriptors.length === 0) throw new Error("the auth gateway sidecar needs at least one gatewayed engine");
+  return [
+    "set -euo pipefail",
+    `if ! getent group ${DAIMON_GATEWAY_UID} >/dev/null; then groupadd -K GID_MIN=1 --gid ${DAIMON_GATEWAY_UID} daimon-${DAIMON_GATEWAY_UID}; fi`,
+    `if ! getent passwd ${DAIMON_GATEWAY_UID} >/dev/null; then useradd -K UID_MIN=1 --no-create-home --no-log-init --uid ${DAIMON_GATEWAY_UID} --gid ${DAIMON_GATEWAY_UID} --home-dir /nonexistent --shell /usr/sbin/nologin daimon-${DAIMON_GATEWAY_UID}; fi`,
+    `${KEY_VARIABLE}=\${${DAIMON_GATEWAY_SIDECAR_KEY_ENV}:?the gateway sidecar needs its run key}`,
+    `unset ${DAIMON_GATEWAY_SIDECAR_KEY_ENV}`,
+    ...renderDaimonGatewayStateProvisioning(descriptors, "0.0.0.0"),
+    `unset ${KEY_VARIABLE}`,
+    `exec ${drop(DAIMON_GATEWAY_UID)} env -i PATH="$PATH" HOME=/nonexistent LANG=C.UTF-8 ${path.posix.join(runtimeRoot, "bin/daimon-runtime")} gateway --config ${DAIMON_GATEWAY_CONFIG}`
+  ].join("\n") + "\n";
+};

@@ -89,6 +89,15 @@ it("requires isolated actual training and validates repair authority before invo
   expect(core).not.toHaveBeenCalled();
 });
 
+it("trains a Daimon subject as production-booted trials, which need the login a gateway will hold", async () => {
+  const daimon = { agent: { id: "agent:a", runtime: "daimon" }, documents: [], project: { root: "/p" } } as unknown as RunTrainingOptions["context"];
+  await expect(runTraining({ ...options(), context: daimon, dryRun: false, args: ["--out", "/o"] })).rejects.toThrow("requires --auth-profile");
+  await expect(runTraining({ ...options(), context: daimon, dryRun: false, authProfile: "p", args: [] })).rejects.toThrow("requires --out");
+  await expect(runTraining({ ...options(), context: { ...daimon, agent: { id: "agent:a", runtime: "openclaw" } } as unknown as RunTrainingOptions["context"], dryRun: false }))
+    .rejects.toThrow("host execution is disabled");
+  expect(core).not.toHaveBeenCalled();
+});
+
 it("routes v4 image declarations through preparation validation before any training", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-v4-")); roots.push(root);
   const file = path.join(root, "launch.json");

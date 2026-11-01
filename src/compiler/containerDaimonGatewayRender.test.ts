@@ -12,6 +12,7 @@ import {
   renderDaimonGatewayLaunch,
   renderDaimonGatewayProvisioning,
   renderDaimonGatewayRuntimeEnv,
+  renderDaimonGatewaySidecarScript,
   resolveDaimonGatewayRealmPaths
 } from "./containerDaimonGatewayRender.js";
 import { renderDaimonUidEntrypoint } from "./containerDaimonUidEntrypointRender.js";
@@ -70,6 +71,16 @@ describe("Daimon auth gateway placement", () => {
     const entrypoint = renderDaimonUidEntrypoint([codex], [realm], undefined, codex.persistentMounts);
     expect(entrypoint).toContain('[ -n "${DAIMON_GATEWAY_URL:-}" ] || require_backed_mount \'daimon-codex-subscription-realm\'');
     expect(entrypoint).toContain('[ -z "${gateway_pid:-}" ] || watch_pids+=("$gateway_pid")');
+  });
+
+  it("renders the training sidecar: the same state provisioning bound to its network, with the run key supplied and unset", () => {
+    const script = renderDaimonGatewaySidecarScript(["codex", "agy"], "/opt/daimon");
+    expect(script).toContain('daimon_gateway_key=${SPAWNFILE_DAIMON_GATEWAY_KEY:?the gateway sidecar needs its run key}\nunset SPAWNFILE_DAIMON_GATEWAY_KEY');
+    expect(script).toContain('\\"host\\":\\"0.0.0.0\\"');
+    expect(script).toContain(`exec setpriv --clear-groups --reuid ${DAIMON_GATEWAY_UID} --regid ${DAIMON_GATEWAY_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- env -i PATH="$PATH" HOME=/nonexistent LANG=C.UTF-8 /opt/daimon/bin/daimon-runtime gateway --config ${DAIMON_GATEWAY_CONFIG}`);
+    expect(script.indexOf("SPAWNFILE_DAIMON_GATEWAY_PROVISION")).toBeLessThan(script.indexOf("unset daimon_gateway_key"));
+    expect(script).not.toMatch(/[0-9a-f]{64}/u);
+    expect(() => renderDaimonGatewaySidecarScript(["agy"], "/opt/daimon")).toThrow("gatewayed engine");
   });
 
   it("gateways a brokered realm too: one org key for both engines, the broker launched after the gateway with that key", () => {
