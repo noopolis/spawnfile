@@ -1,5 +1,4 @@
-import { compatibleIsoDateTimeSchema } from '../../../shared/trainingLegacy/index.js';
-import { COUNCIL_WINDOW_CONFIG_KEY } from '../../contracts/index.js';
+import { compatibleIsoDateTimeSchema, COUNCIL_WINDOW_CONFIG_KEY } from '../../../shared/trainingLegacy/index.js';
 import { compatibleWireLiteral } from '../../contracts/index.js';
 import { z } from 'zod';
 import { identifier, parseSchema, parseYaml, rowsSchema, provider } from '../format/index.js';

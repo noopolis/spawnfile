@@ -24,3 +24,4 @@ export const createTrainingInference: typeof inference.createTrainingInference =
 export type { InferenceProviderRegistry };
 
 export const commandCheckpoint: typeof checkpoint = (args, inputs, dependencies, context, repair) => checkpoint(args, inputs, { ...dependencies, inferenceProviders: dependencies.inferenceProviders ?? createTrainingProviderRegistry() }, context, repair);
+export { bindBootedJudges, createBootedJudgeInference } from '../../../src/runtime/daimon/training/booted/index.js';

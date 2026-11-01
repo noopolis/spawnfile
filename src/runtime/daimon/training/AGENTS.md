@@ -6,7 +6,10 @@ lives in `src/compiler/training/trial/`). `index.ts` registers the Daimon subjec
 so the core accepts `--runtime daimon` for planning and dry-run; its factory
 refuses, because only `spawnfile train` can supply a run's launcher.
 
-`providers/` owns the parent-process inference routes graders and evaluators use:
-`codex-subscription/` and `grok-subscription/`, over the operator's saved logins.
-They belong here because this runtime owns the engines. No host dependency on
-the Daimon package is permitted.
+Judges are booted too. `booted/judge.ts` is the one subscription inference
+provider behind every Daimon engine id in the training and grader registries: it
+wakes the run's warm, tool-free judge organization for its engine (launched by
+`src/compiler/training/trial/launcher.ts`, bound for the run by
+`src/cli/trainingBooted.ts`), validates the reply against the requested schema, and
+refuses a wake whose transcript shows tool activity. Outside `spawnfile train` it
+refuses. No host engine CLI and no personal login is ever used.

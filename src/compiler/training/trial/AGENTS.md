@@ -27,7 +27,13 @@ gateway sidecar. The training core drives it through the engine-neutral
   the trials join, and a dedicated egress network only the gateway sits on.
   Nothing is published to the host. `restart` replaces the sidecar in place
   with the same key and networks.
-- `launcher.ts` is one run: lazily starts the gateway from the first trial's
-  image, boots trials against it, and `close` stops it.
+- `judge.ts` writes a judge's tool-free one-agent declaration (no skills, MCP,
+  memory, surfaces or schedule), pinning model and effort only where the engine's
+  descriptor makes model selection configurable.
+- `launcher.ts` is one run: lazily starts the gateway from the first image,
+  boots trials against it, keeps one warm judge per engine, model and effort
+  (booted through the same trial path), and `close` tears the judges down and
+  stops the gateway. The gateway holds every gatewayed login the run's auth
+  profile imported, read only from the profile, never a personal engine home.
 - Trial organizations never federate or run schedules, and hold no login: an
   external `DAIMON_GATEWAY_URL` at boot means no realm is mounted or staged.

@@ -1,7 +1,7 @@
 import { createClaudeInference } from '../training/index.js';
 import { configureGraderProviders, type GraderProviderRegistry, type GraderTeacher,
   type ProviderAvailabilityWindow } from '../training/contracts/index.js';
-import { CONTAINED_TEACHER_POLICY, EMPTY_TOOLS_TEACHER_POLICY } from '../training/contracts/index.js';
+import { CONTAINED_TEACHER_POLICY, EMPTY_TOOLS_TEACHER_POLICY } from '../shared/trainingLegacy/index.js';
 import { createBootedJudgeInference } from './daimon/training/booted/index.js';
 
 export const defaultGrokWindow: ProviderAvailabilityWindow = { start: '20:30', end: '06:30', timeZone: 'Europe/Berlin' };
