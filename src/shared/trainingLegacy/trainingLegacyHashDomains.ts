@@ -19,6 +19,7 @@ export const INFERENCE_POLICY_VERSIONS = Object.freeze({
   'grok-broker': 'paideia.grok-broker-grant-response.v1',
   'claude-subscription': 'paideia.claude-attested-response.v3',
   'codex-subscription': 'paideia.codex-contained-response.v1',
+  'agy-subscription': 'spawnfile.agy-booted-judge-response.v1',
   ollama: 'paideia.ollama-attested-response.v2',
 });
 export const LABEL_PROMPT_VERSION = 'paideia.grader-label-prompt.v1';

@@ -1,4 +1,4 @@
-import { COUNCIL_WINDOW_OPTION_KEY, COUNCIL_WINDOW_CONFIG_KEY } from '../../../../shared/trainingLegacy/index.js';
+import { COUNCIL_WINDOW_OPTION_KEY, COUNCIL_WINDOW_CONFIG_KEY } from '../../../contracts/index.js';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stableDigest } from '../../../graders/index.js';

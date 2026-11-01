@@ -1,4 +1,4 @@
-import { COUNCIL_WINDOW_OPTION_KEY } from '../../../shared/trainingLegacy/index.js';
+import { COUNCIL_WINDOW_OPTION_KEY } from '../../contracts/index.js';
 import { COUNCIL_SEED, graderProviderRegistry } from '../../contracts/index.js';
 import type { InferenceFailureKind } from '../../contracts/index.js';
 import { randomBytes } from 'node:crypto';

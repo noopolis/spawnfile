@@ -1,4 +1,4 @@
-import { COUNCIL_WINDOW_OPTION_KEY } from '../../../shared/trainingLegacy/index.js';
+import { COUNCIL_WINDOW_OPTION_KEY } from '../../contracts/index.js';
 import type { ProviderAvailabilityWindow } from '../../contracts/index.js';
 import type { InferenceProvider, Usage, InferenceAttempt, InferenceFailureKind, InferenceDiagnostic } from '../../contracts/index.js';
 import type { CheckInstance } from '../decomposition/index.js';
