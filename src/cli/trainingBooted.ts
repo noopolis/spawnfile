@@ -12,10 +12,6 @@ const flag = (args: readonly string[], name: string): string | undefined => {
   return index < 0 ? undefined : args[index + 1];
 };
 
-/** Whether `spawnfile train` runs this subject as production-booted trials instead of an isolated training image. */
-export const usesBootedTraining = (options: Pick<RunTrainingOptions, "context" | "trainingConfig">): boolean =>
-  options.trainingConfig === undefined && options.context.agent?.runtime === "daimon";
-
 /**
  * Production-booted training for a Daimon subject: the training core and the
  * grader run here, and every trial is the subject's own compiled organization

@@ -10,7 +10,6 @@ specs/
 ├── CONTAINERS.md            # Container compilation spec
 ├── RUNTIMES.md              # Runtime registry, version pinning, adapter lifecycle
 ├── TRAINING.md              # Canonical source context and bundled training execution
-├── TRAINING_CONTAINERS.md   # Single-container training launch boundary
 ├── CAUSAL.md                # Shared causal wire and Stele read/verify contract
 ├── RELEASE.md               # Drained release: identity no-op, drain/resume, ledger, notifier
 ├── ECOSYSTEM_RUNTIME_BOUNDARIES.md # Cross-project runtime authority and enforcement gates
@@ -38,7 +37,7 @@ Documents in `research/` are informative — they inform decisions but are not b
 - Do not let retained research documents drift from the implemented compiler.
 - Update cross-references when files are renamed or moved.
 
-- TRAINING.md specifies both authoring plans and their execution lowering, including conventional declarations, override precedence and the protected integration receipt.
+- TRAINING.md specifies both authoring plans and their execution lowering, including override precedence and the execution receipt.
 - Direct launch output rules preserve canonical paths and disjoint mounts; preparation declarations and lowered launch configurations have distinct shapes.
 - Authored execution requires an explicit image consumer capability and dataset byte pins; dry-run never implies runtime compatibility.
 - Packaged builds declare receipt support on `image.build.integration.execution`; absent support clears inherited image capability, and declared support participates in recipe/cache verification.

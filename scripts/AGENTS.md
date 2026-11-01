@@ -66,8 +66,3 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
 - Run the relevant network-disabled Docker provenance gate when changing
   archive content, Docker staging, dependency installation, or builder behavior.
 
-- `publish-training-native.ts` renders `runtime-images/training-native/Dockerfile`
-  via `training-native-image.ts`, reusing `src/runtime/daimonInstall.ts`. Run
-  with `node --import tsx` after installing dependencies. Only root registry
-  pins are accepted; both architectures are required, publication is serialized
-  across refs, and existing tags always refuse (no force/latest).

@@ -71,8 +71,8 @@ architecture), which the runtime image, the local builder, and generated
 organization images all verify.
 
 The consumed v7 manifest carries engine descriptors, a separate clocked config matrix, slot-routed control protocol v4
-and projection v3. Training explicitly selects `clocked`; the default production
-matrix is byte-identical. Re-vendoring changes the whole-manifest authority:
+and projection v3. Spawnfile renders only the unclocked production matrix; the
+clocked matrix stays vendored with the manifest. Re-vendoring changes the whole-manifest authority:
 the old published pin must fail compilation until publication and re-pinning,
 even for an unclocked organization. Never weaken the image or schedule/attention
 receipt gates to bridge that release gap.

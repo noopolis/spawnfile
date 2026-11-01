@@ -90,10 +90,6 @@ jobs:
           SPAWNFILE_DAIMON_SOURCE_DIR: ${{ github.workspace }}/.tmp/daimon-source
         run: env -u TYPESAFE_API_KEY npm run vendor:daimon-engine-descriptors -- --check
 
-      - name: Build pinned Daimon for training parity tests
-        working-directory: .tmp/daimon-source
-        run: env -u TYPESAFE_API_KEY npm ci && env -u TYPESAFE_API_KEY npm run build
-
       - name: Audit runtime dependencies
         run: npm audit --omit=dev --audit-level=high
 
@@ -129,9 +125,6 @@ jobs:
         run: npm run test:boundaries
 
       - name: Coverage
-        env:
-          # Parity loads built modules; recovery separately reads pinned Git source.
-          SPAWNFILE_DAIMON_CHECKOUT: ${{ github.workspace }}/.tmp/daimon-source
         run: env -u TYPESAFE_API_KEY npm run coverage
 
   training-python:

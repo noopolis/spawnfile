@@ -138,27 +138,6 @@ Daimon supports Moltnet as a client surface today:
 
 Daimon rejects Discord, Slack, Telegram, WhatsApp, Webhook, and portable HTTP surfaces in v0.1. Those surfaces require runtime-native channel clients that the generated app does not own yet.
 
-In dev mode, `spawnfile dev apply --agent <id>` can hot-add a Daimon agent and start its Moltnet bridge without restarting the rest of the org. Running managed Moltnet servers keep current room membership until an operator-token `moltnet apply` or server restart reconciles the copied server config.
-
-## Activity Diagnostics
-
-The generated Daimon app exposes a bounded `spawnfile.activity.v1` activity stream on its internal control server. Activity events are runtime diagnostics, not Moltnet messages, and they do not expose hidden reasoning. They report operational facts such as queued wakes, turn starts, runtime event types, output completions, turn completions, and failures.
-
-```bash
-spawnfile dev activity . --agent mapper --tail 20
-```
-
-The command prints JSON lines from the current activity buffer. The same control server also exposes raw endpoints inside the container:
-
-```text
-GET /spawnfile/activity
-GET /spawnfile/activity/stream
-GET /spawnfile/agents/<agent>/activity
-GET /spawnfile/agents/<agent>/activity/stream
-```
-
-The `activity/stream` endpoints are Server-Sent Events and can be tailed with `curl -N` through `docker exec` when deeper live debugging is needed.
-
 ## What The Adapter Emits
 
 For a Daimon runtime group:

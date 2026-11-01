@@ -1891,9 +1891,6 @@ spawnfile train [path] [--agent <node-id>] --train <dataset> --test <dataset> --
 spawnfile status [path | <image-ref>] [--out <dir>] [--live] [--deployment <name>] [--image] [--pull] [--pull-check]
 spawnfile up [path | <image-ref>] [--out <dir>] [--auth-profile <name>] [--runtime-env-file <file>] [--detach] [--deployment <name>] [--context <name>] [--image] [--pull]
 spawnfile dev up [path] [--out <dir>] [--auth-profile <name>] [--runtime-env-file <file>] [--deployment <name>] [--context <name>]
-spawnfile dev apply [path] --agent <id> [--out <dir>] [--deployment <name>]
-spawnfile dev restart [path] --agent <id> [--out <dir>] [--deployment <name>]
-spawnfile dev activity [path] [--agent <id>] [--tail <count>] [--out <dir>] [--deployment <name>]
 spawnfile dev stop [path] [--out <dir>] [--deployment <name>]
 spawnfile build [path] [--out <dir>] [--tag <image>] [--context <name>]
 spawnfile run [path] [--out <dir>] [--tag <image>] [--auth-profile <name>] [--runtime-env-file <file>] [--detach] [--deployment <name>] [--context <name>]
@@ -2120,24 +2117,7 @@ from normal `.spawn/` output and defaults to `.spawn-dev/`.
 - MUST accept the same auth, env-file, deployment, Docker context, Docker command, image tag, and container-name options as project-mode `spawnfile up`
 - MUST NOT support image-reference deployments in v0.1
 
-`spawnfile dev apply --agent <id>`
-
-- MUST target a project-backed dev deployment record
-- MUST recompile source into the dev output directory without deleting the deployment record
-- MUST hot-apply exactly one agent selected by id, slug, or name
-- For Pi runtime agents, MUST copy the updated generated Pi app config, selected agent workspace, every matching Moltnet node config, and managed Moltnet server configs into the recorded running container, then call the generated Pi control endpoint to load the agent
-- For a new Pi agent with Moltnet node configs, MUST start only that agent's Moltnet node processes; existing agents and the container MUST NOT be restarted
-- For an existing Pi agent, MUST reload the in-memory Pi agent and MUST NOT start a duplicate Moltnet node
-- Running managed Moltnet servers keep their current in-memory room membership until the copied server config is reconciled through an operator-token `moltnet apply` or a server restart
-- MUST fail clearly for unsupported runtimes or deployments without a live Pi control endpoint
-
-`spawnfile dev activity` reads the generated Pi app's bounded
-`spawnfile.activity.v1` buffer from the running dev container and prints JSON
-lines. It MAY filter by agent id, slug, or name, and MUST NOT read Moltnet
-message bodies or expose hidden reasoning.
-
-`spawnfile dev restart --agent <id>` reloads an already-running agent through the
-same hot-apply path. `spawnfile dev stop` stops the recorded dev container. Dev
+`spawnfile dev stop` stops the recorded dev container. Dev
 mode is for local and remote Docker development loops; production rollouts still
 use `spawnfile up`/`publish` and deployment-manager records.
 

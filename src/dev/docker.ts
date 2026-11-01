@@ -2,11 +2,6 @@ import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
 import {
-  compileProject,
-  normalizeDockerArchitecture,
-  type CompileProjectResult
-} from "../compiler/index.js";
-import {
   dockerContextNameForTarget,
   dockerHostValueForTarget,
   type DeploymentRecord
@@ -42,28 +37,6 @@ export const firstContainerName = (record: DeploymentRecord): string => {
   return name;
 };
 
-export const compileForDevApply = async (
-  inputPath: string,
-  outputDirectory: string,
-  record: DeploymentRecord,
-  dockerCommand: string,
-  execFileImpl: DevExecFile
-): Promise<CompileProjectResult> => {
-  const dockerContext = dockerContextNameForTarget(record.target) ?? undefined;
-  const architecture = dockerContext
-    ? normalizeDockerArchitecture((await execFileImpl(
-        dockerCommand,
-        ["--context", dockerContext, "info", "--format", "{{.Architecture}}"],
-        { timeout: 10_000 }
-      )).stdout)
-    : undefined;
-  return compileProject(inputPath, {
-    clean: false,
-    containerArchitecture: architecture,
-    outputDirectory
-  });
-};
-
 export const runDocker = async (
   command: string,
   args: string[],
@@ -72,67 +45,4 @@ export const runDocker = async (
 ): Promise<string> => {
   const { stdout } = await execFileImpl(command, args, { timeout });
   return stdout;
-};
-
-export const copyIntoContainer = async (
-  dockerCommand: string,
-  dockerPrefix: string[],
-  source: string,
-  destination: string,
-  execFileImpl: DevExecFile
-): Promise<void> => {
-  await runDocker(dockerCommand, [...dockerPrefix, "cp", source, destination], execFileImpl, 60_000);
-};
-
-export const ensureContainerDirectories = async (
-  dockerCommand: string,
-  dockerPrefix: string[],
-  containerName: string,
-  paths: string[],
-  execFileImpl: DevExecFile
-): Promise<void> => {
-  if (paths.length === 0) {
-    return;
-  }
-  await runDocker(
-    dockerCommand,
-    [
-      ...dockerPrefix,
-      "exec",
-      "--user",
-      "root",
-      containerName,
-      "mkdir",
-      "-p",
-      ...paths
-    ],
-    execFileImpl
-  );
-};
-
-export const chownContainerPaths = async (
-  dockerCommand: string,
-  dockerPrefix: string[],
-  containerName: string,
-  paths: string[],
-  execFileImpl: DevExecFile
-): Promise<void> => {
-  if (paths.length === 0) {
-    return;
-  }
-  await runDocker(
-    dockerCommand,
-    [
-      ...dockerPrefix,
-      "exec",
-      "--user",
-      "root",
-      containerName,
-      "chown",
-      "-R",
-      "spawnfile:spawnfile",
-      ...paths
-    ],
-    execFileImpl
-  );
 };

@@ -2,7 +2,7 @@ import { createClaudeInference } from '../training/index.js';
 import { configureGraderProviders, type GraderProviderRegistry, type GraderTeacher,
   type ProviderAvailabilityWindow } from '../training/contracts/index.js';
 import { CONTAINED_TEACHER_POLICY, EMPTY_TOOLS_TEACHER_POLICY } from '../shared/trainingLegacy/index.js';
-import { createCodexInference } from './codex-exec/training/providers/codex-subscription/index.js';
+import { createCodexInference } from './daimon/training/providers/codex-subscription/index.js';
 import { createGrokInference } from './daimon/training/providers/grok-subscription/index.js';
 
 export const defaultGrokWindow: ProviderAvailabilityWindow = { start: '20:30', end: '06:30', timeZone: 'Europe/Berlin' };

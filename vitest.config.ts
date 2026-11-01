@@ -12,7 +12,7 @@ const realBridgeTests = [
   "src/training/cli/training/protocol.test.ts",
   "src/training/cli/training/resume.test.ts",
   "src/training/experiments/training/routing.test.ts",
-  "src/runtime/codex-exec/training/providers/codex-subscription/strict-schema-proposal.test.ts",
+  "src/runtime/daimon/training/providers/codex-subscription/strict-schema-proposal.test.ts",
   "src/training/optimization/checkpoint.test.ts",
   "src/training/optimization/population.test.ts",
   "src/training/optimization/runner-home.test.ts",
@@ -33,7 +33,7 @@ const sourceGateTests = [
 // Vitest supports perFile only globally. Exact-file glob thresholds preserve
 // Training's floor without applying per-file thresholds to existing Spawnfile code.
 const trainingThresholds = Object.fromEntries(globSync(
-  ["src/training/**/*.ts", "src/runtime/daimon/training/**/*.ts", "src/runtime/codex-exec/**/*.ts", "tooling/training/**/*.ts"],
+  ["src/training/**/*.ts", "src/runtime/daimon/training/**/*.ts", "tooling/training/**/*.ts"],
   { cwd: fileURLToPath(new URL(".", import.meta.url)),
     exclude: ["**/*.test.ts", "**/*.d.ts", "src/training/copyAssets.ts"] },
 ).map(file => [file, { branches: 90, functions: 90, lines: 90, statements: 90 }]));
@@ -74,9 +74,9 @@ export default defineConfig({
     environment: "node",
     projects: [
       { extends: true, test: { name: "spawnfile", include: ["src/**/*.test.ts"],
-        exclude: [...configDefaults.exclude, ...sourceGateTests, "src/training/**", "src/runtime/daimon/training/**", "src/runtime/codex-exec/**"],
+        exclude: [...configDefaults.exclude, ...sourceGateTests, "src/training/**", "src/runtime/daimon/training/**"],
         sequence: { groupOrder: 0 } } },
-      { extends: true, test: { name: "training", include: ["src/training/**/*.test.ts", "src/runtime/daimon/training/**/*.test.ts", "src/runtime/codex-exec/**/*.test.ts", "tooling/training/**/*.test.ts"],
+      { extends: true, test: { name: "training", include: ["src/training/**/*.test.ts", "src/runtime/daimon/training/**/*.test.ts", "tooling/training/**/*.test.ts"],
         exclude: [...configDefaults.exclude, ...sourceGateTests, ...realBridgeTests], testTimeout: 15_000, hookTimeout: 15_000,
         sequence: { groupOrder: 0 } } },
       { extends: true, test: { name: "source-gates", include: sourceGateTests,

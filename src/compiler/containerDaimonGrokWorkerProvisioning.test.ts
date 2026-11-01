@@ -9,54 +9,11 @@ import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerCon
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import { renderDaimonGrokHostPreflight, renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
 import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./containerDaimonGrokWorkerRender.js";
-import { trainingSlotDirectories } from "./training/broker/provisioning.js";
-import { resolveTrainingGrokRegistration } from "./training/broker/registration.js";
-import { TRAINING_BROKER_SOCKET_PATHS, TRAINING_OPTIONAL_DENY_DIRECTORIES } from "./training/broker/paths.js";
-import { DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerConfigBytes.js";
 
 import { BROKER, INSTANCE, plan, run, seedFor, type Node } from "./containerDaimonGrokWorkerProvisioning.test-helper.js";
 
 describe("Grok worker home provisioning", () => {
   const registrations = resolveDaimonGrokRegistrations([plan({ "agent:a": "grok", "agent:b": "grok", "agent:c": "codex" })]);
-
-  it("executes clocked training provisioning with exact clock ownership and modes, including a restrictive umask", () => {
-    const entry = resolveTrainingGrokRegistration({ agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low" });
-    const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
-    const seed = { ...seedFor([entry], [...TRAINING_BROKER_SOCKET_PATHS]), "/run/daimon-engine-broker": { gid: BROKER, mode: 0o731 } };
-    const lines = renderDaimonGrokWorkerProvisioning([entry], {}, TRAINING_OPTIONAL_DENY_DIRECTORIES);
-    const previous = process.umask(0o077);
-    let nodes: Map<string, Node>;
-    try { nodes = run([entry], seed, lines); } finally { process.umask(previous); }
-    expect(nodes.get(`${entry.grokHome}/config.toml`)).toMatchObject({
-      content: DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES["grok-4.6"].low, uid: 0, gid: 0, mode: 0o444
-    });
-    expect(nodes.get(clock.directoryPath)).toMatchObject({ kind: "dir", uid: 2100, gid: 2100, mode: 0o755 });
-    expect(nodes.get(clock.timestampFilePath)).toMatchObject({ kind: "file", content: "+0\n", uid: 2100, gid: 2100, mode: 0o644 });
-    for (const socket of TRAINING_BROKER_SOCKET_PATHS) expect(nodes.get(socket)).toMatchObject({ kind: "socket", uid: 2100, gid: 2100, mode: 0o600 });
-    expect(() => run([entry], { ...seed, "/run/daimon-engine-broker": { gid: BROKER, mode: 0o730 } }, lines)).toThrow(/task clock ancestor/u);
-  });
-
-  it("provisions four clocked registrations with each slot's own clock and digest", () => {
-    const entries = Array.from({ length: 4 }, (_, slot) => resolveTrainingGrokRegistration({
-      agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low", slot, slots: 4
-    }));
-    const seed = { ...seedFor(entries, [...TRAINING_BROKER_SOCKET_PATHS]),
-      ...Object.fromEntries(entries.flatMap(entry => trainingSlotDirectories(entry.slot)).map(directory => [directory.path,
-        { kind: "dir" as const, uid: directory.uid, gid: directory.gid, mode: Number.parseInt(directory.mode, 8) }])),
-      "/run/daimon-engine-broker": { gid: BROKER, mode: 0o731 } };
-    const lines = renderDaimonGrokWorkerProvisioning(entries, { version: "v3" }, TRAINING_OPTIONAL_DENY_DIRECTORIES);
-    const nodes = run(entries, seed, lines);
-    for (const entry of entries) {
-      const clock = DAIMON_GROK_ENGINE_BROKER.worker.taskClock;
-      const file = clock.slotFilePattern.replace("{slot}", String(entry.slot));
-      const directory = clock.slotDirectoryPattern.replace("{slot}", String(entry.slot));
-      expect(nodes.get(file)).toMatchObject({ kind: "file", uid: 2100, gid: 2100, mode: 0o644, content: "+0\n" });
-      expect(nodes.get(directory)).toMatchObject({ kind: "dir", uid: 2100, gid: 2100, mode: 0o755 });
-      expect(nodes.get(`${entry.grokHome}/config.toml`)!.content).toBe(entry.config);
-      expect(entry.config).toContain(file);
-    }
-    expect(new Set(entries.map(entry => entry.configSha256)).size).toBe(4);
-  });
 
   it("provisions Daimon's attested layout: sticky root:worker homes and root-owned read-only turn files", () => {
     const nodes = run(registrations, seedFor(registrations));

@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -18,49 +18,20 @@ vi.mock("../compiler/moltnetBinaries.js", async (importOriginal) => {
 });
 
 import {
-  ensureDirectory,
   removeDirectory,
   writeUtf8File
 } from "../filesystem/index.js";
 import { type DeploymentRecord, writeDeploymentRecord } from "../deployment/index.js";
 
-import { devActivityProject, devApplyProject, devRestartProject, devStopProject, devUpProject } from "./index.js";
+import { devStopProject, devUpProject } from "./index.js";
 
 const temporaryDirectories: string[] = [];
-const previousMoltnetCli = process.env.SPAWNFILE_MOLTNET_CLI;
 const previousOpenAIKey = process.env.OPENAI_API_KEY;
 
 const createTempDirectory = async (prefix: string): Promise<string> => {
   const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
   temporaryDirectories.push(directory);
   return directory;
-};
-
-const createFakeMoltnetCli = async (): Promise<string> => {
-  const directory = await createTempDirectory("spawnfile-dev-moltnet-");
-  const cliPath = path.join(directory, "moltnet.cjs");
-  await writeUtf8File(
-    cliPath,
-    [
-      "#!/usr/bin/env node",
-      "const fs = require('node:fs');",
-      "const path = require('node:path');",
-      "const args = process.argv.slice(2);",
-      "if (args[0] === 'version') process.exit(0);",
-      "if (args[0] === 'skill' && args[1] === 'install') {",
-      "  const runtime = args[args.indexOf('--runtime') + 1];",
-      "  const workspace = args[args.indexOf('--workspace') + 1];",
-      "  const targets = runtime === 'codex'",
-      "    ? [path.join(workspace, '.agents/skills/moltnet/SKILL.md'), path.join(workspace, '.codex/skills/moltnet/SKILL.md')]",
-      "    : [path.join(workspace, 'skills/moltnet/SKILL.md')];",
-      "  for (const target of targets) { fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, '# Moltnet\\n'); }",
-      "  process.exit(0);",
-      "}",
-      "process.exit(1);"
-    ].join("\n") + "\n"
-  );
-  await chmod(cliPath, 0o755);
-  return cliPath;
 };
 
 const seedDeploymentRecord = async (
@@ -130,11 +101,6 @@ const createMinimalProject = async (): Promise<string> => {
 };
 
 afterEach(async () => {
-  if (previousMoltnetCli === undefined) {
-    delete process.env.SPAWNFILE_MOLTNET_CLI;
-  } else {
-    process.env.SPAWNFILE_MOLTNET_CLI = previousMoltnetCli;
-  }
   if (previousOpenAIKey === undefined) {
     delete process.env.OPENAI_API_KEY;
   } else {
@@ -143,8 +109,7 @@ afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => removeDirectory(directory)));
 });
 
-describe("devApplyProject", () => {
-
+describe("dev commands", () => {
   it("stops the recorded dev deployment container", async () => {
     const projectDirectory = await createTempDirectory("spawnfile-dev-stop-");
     await writeUtf8File(
@@ -176,8 +141,7 @@ describe("devApplyProject", () => {
   it("requires an existing dev deployment record", async () => {
     const projectDirectory = await createMinimalProject();
     await expect(
-      devApplyProject(projectDirectory, {
-        agent: "solo",
+      devStopProject(projectDirectory, {
         outputDirectory: path.join(projectDirectory, ".spawn-dev")
       })
     ).rejects.toThrow(/No dev deployment records/);
@@ -245,70 +209,6 @@ describe("devApplyProject", () => {
         outputDirectory
       })
     ).resolves.toMatchObject({ deploymentName: "dev" });
-  });
-
-  it("reads the Pi activity buffer from the running dev container", async () => {
-    const projectDirectory = await createMinimalProject();
-    const outputDirectory = path.join(projectDirectory, ".spawn-dev");
-    await seedDeploymentRecord(outputDirectory, projectDirectory);
-    const execFile = vi.fn(async (_file: string, args: string[]) => {
-      expect(args).toEqual([
-        "--host",
-        "unix:///var/run/docker.sock",
-        "exec",
-        "spawnfile-openclaw-dev",
-        "curl",
-        "-fsS",
-        "http://127.0.0.1:19690/spawnfile/activity?agent=mapper&tail=5"
-      ]);
-      return {
-        stderr: "",
-        stdout: JSON.stringify({
-          events: [
-            {
-              agent_id: "agent:mapper",
-              sequence: 1,
-              type: "agent.turn.started",
-              version: "spawnfile.activity.v1"
-            }
-          ]
-        })
-      };
-    });
-
-    await expect(devActivityProject(projectDirectory, {
-      agent: "mapper",
-      deploymentName: "dev",
-      execFile,
-      outputDirectory,
-      tail: 5
-    })).resolves.toMatchObject({
-      containerName: "spawnfile-openclaw-dev",
-      deploymentName: "dev",
-      events: [
-        expect.objectContaining({
-          agent_id: "agent:mapper",
-          type: "agent.turn.started"
-        })
-      ],
-      outputDirectory
-    });
-  });
-
-  it("rejects malformed Pi activity endpoint responses", async () => {
-    const projectDirectory = await createMinimalProject();
-    const outputDirectory = path.join(projectDirectory, ".spawn-dev");
-    await seedDeploymentRecord(outputDirectory, projectDirectory);
-    const execFile = vi.fn(async () => ({
-      stderr: "",
-      stdout: JSON.stringify({ status: "ok" })
-    }));
-
-    await expect(devActivityProject(projectDirectory, {
-      deploymentName: "dev",
-      execFile,
-      outputDirectory
-    })).rejects.toThrow(/events array/);
   });
 
   it("starts a detached dev deployment in .spawn-dev by default", async () => {

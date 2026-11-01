@@ -1,19 +1,15 @@
 # Dev Commands
 
-This folder owns interactive development workflows that operate on already-running
-Spawnfile deployments.
+This folder owns the `spawnfile dev` development deployment workflow.
 
-`project.ts` contains the public command handlers used by the CLI for hot
-agent apply workflows. `activity.ts` reads the bounded runtime activity buffer
-from a running dev container. `docker.ts` contains Docker target resolution,
-copying, ownership fixes, and compile architecture probing. Keep workflow logic
-in this folder, not in CLI command handlers.
+`project.ts` contains the public command handlers used by the CLI (`dev up`,
+`dev stop`). `docker.ts` contains Docker target resolution for a recorded dev
+deployment. Keep workflow logic in this folder, not in CLI command handlers.
 
 Dev mode is intentionally narrower than the normal lifecycle commands:
 
 - It defaults to `.spawn-dev`.
 - It targets project-backed Docker deployments.
-- It mutates a running dev container without rebuilding or restarting it.
 - Its durable volumes are namespaced away from production's. `devUpProject`
   passes `DEV_DEPLOYMENT_LINEAGE_NAMESPACE` to `upProject`, which folds it into
   the deployment lineage that derived `exclusive-reattach` volume names hash

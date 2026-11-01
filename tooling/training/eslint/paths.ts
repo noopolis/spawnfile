@@ -18,16 +18,14 @@ export function pathParts(root: string, filename: string): string[] {
     return parts[2] === 'viewer' ? parts.slice(2) : ['src', ...parts.slice(2)];
   }
   if (parts[0] === 'src' && parts[1] === 'runtime' && parts[3] === 'training') {
-    const adapter = parts[2] === 'codex-exec' ? ['codex', ...parts.slice(4)]
-      : [parts[4] === 'native' ? 'daimon-native' : 'daimon', ...parts.slice(5)];
-    return ['src', 'adapters', ...adapter];
+    return ['src', 'adapters', parts[2]!, ...parts.slice(5)];
   }
   return parts[0] === 'tooling' && parts[1] === 'training' ? ['tooling', ...parts.slice(2)] : parts;
 }
 
 export function implementationDirectories(root: string): string[] {
   return existsSync(path.join(root, 'src/training'))
-    ? ['src/training', 'src/runtime/daimon/training', 'src/runtime/codex-exec/training', 'tooling/training'] : [...implementationRoots];
+    ? ['src/training', 'src/runtime/daimon/training', 'tooling/training'] : [...implementationRoots];
 }
 
 export function inside(root: string, filename: string): boolean {

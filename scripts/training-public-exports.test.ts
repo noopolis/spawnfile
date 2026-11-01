@@ -9,8 +9,8 @@ import { promisify } from 'node:util';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const execute = promisify(execFile);
-// Frozen consumer imports at 94eda1d98dce21a71e4caa73f71e60e98f1a72eb,
-// including re-exports and deep test imports. Keep the expected names independent
+// Consumer imports frozen at 94eda1d98dce21a71e4caa73f71e60e98f1a72eb, minus the
+// container-mode and native-subject surfaces production-booted training removed. Keep the expected names independent
 // of the implementation barrels so deleting an export fails this test.
 const surface = {
   "core": {
@@ -40,37 +40,6 @@ const surface = {
       "TrainingConfiguration"
     ]
   },
-  "daimon": {
-    "values": [
-      "createDaimonNativeAdapter",
-      "parseNativeLaunch",
-      "createExperimentSlotFreshness",
-      "loadNativeLaunch",
-      "nativeChildArguments",
-      "nativeTrialArtifactsRoot",
-      "assertNativeEngineConfig",
-      "bindTrialPathsToSlot",
-      "nativeSubjectScratch",
-      "nativeTrialInputsRoot",
-      "verifyNativeWorkerStartup",
-      "prepareNativeSubject",
-      "verifyExternalSource",
-      "nativeChildEnvironment"
-    ],
-    "types": [
-      "NativeLaunch",
-      "NativeTurnEvidence",
-      "TerminalEvidence",
-      "NativeTransportDelivery",
-      "ProvisionedSubject",
-      "GrokSlotFreshnessStore",
-      "NativeSubjectEngine",
-      "SubjectProvisioner",
-      "NativeChildExternalInputs",
-      "NativeAdapterOptions",
-      "NativeMount"
-    ]
-  },
   "auth": {
     "values": [
       "stageTrainingAuth"
@@ -85,14 +54,9 @@ const surface = {
       "resolveTrainingPlan",
       "lowerTrainingMoments",
       "trainingExecutionSchema",
-      "trainingExecutionIdentity",
-      "parseTrainingMappedPreparation",
-      "TRAINING_FAKETIME_LIBRARY_PATH",
       "compareInstants",
       "inspectMoltnetSqlite",
-      "assertTrainingSubjectDeclaration",
       "resolveCompiledAgent",
-      "leaseTrainingSubject",
       "createTrainingPlan",
       "materializeTrainingCase",
       "materializedMomentSchema",
@@ -100,15 +64,10 @@ const surface = {
       "leakCheckSchema",
       "leakCheckTrainingMoment",
       "taskClockSchema",
-      "trainingSlotsDocument",
-      "lowerTrainingExecution",
-      "trainingPreparationSchema",
-      "prepareTrainingEvaluators"
+      "lowerTrainingExecution"
     ],
     "types": [
       "TrainingPlan",
-      "TrainingSubjectLease",
-      "LeaseTrainingSubjectOptions",
       "MaterializedMoment",
       "LeakCheck"
     ]
@@ -172,7 +131,7 @@ const before = ['SIGINT', 'SIGTERM'].map(name => process.listenerCount(name));
 for (const [subpath, names] of ${JSON.stringify(Object.entries(surface).map(([name, api]) => [specifier(name), api.values]))}) {
   const api = await import(subpath);
   for (const name of names) {
-    const kind = name === 'TRAINING_FAKETIME_LIBRARY_PATH' ? 'string' : /Schema$/.test(name) ? 'object' : 'function';
+    const kind = /Schema$/.test(name) ? 'object' : 'function';
     assert.equal(typeof api[name], kind, subpath + ': ' + name);
   }
   if (subpath.startsWith('spawnfile/training/')) assert.deepEqual(Object.keys(api).sort(), names.toSorted());

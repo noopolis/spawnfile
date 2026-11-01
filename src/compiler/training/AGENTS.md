@@ -1,7 +1,6 @@
 # Canonical Training Context
 
-- `container/` owns the single-container actual-training launch; no model process runs on the host.
-- `trial/` owns production-booted trials for Daimon subjects: one compiled organization container per trial, sharing one auth gateway sidecar per run.
+- `trial/` owns actual training: production-booted trials for Daimon subjects, one compiled organization container per trial, sharing one auth gateway sidecar per run. There is no other training launch.
 - `contract.ts` owns the strict, versioned public JSON handoff to the training core.
 - `context.ts` resolves the full compiler graph and pins source files without compiling or launching it.
 - `resolution.ts` merges direct-member training metadata during traversal and preserves declaring sources.
@@ -16,16 +15,11 @@
 
 - `selection.ts` shares exact-ID/unambiguous-short-name selection across context and authoring.
 - `output.ts` chooses a durable default namespace outside every declared input; it ascends past project ancestors and keeps projects distinct.
-- `execution.ts` lowers authored inputs, convention-based container declarations and explicit overrides; allocates canonical output parents separately; defines/maps the protected execution receipt. It never executes hooks or reads auth contents.
-- Lowering distinguishes preparation declarations by version and image shape; lowered v1/v4 launch configs require an explicit immutable image.
+- `execution.ts` lowers authored inputs and explicit overrides into training CLI arguments; allocates canonical output parents separately; defines the execution receipt. It never executes hooks or reads auth contents.
 - `execution.mutation.test.ts` deletes one key property at a time in an isolated source copy, restores it before the next runner, and requires that mutant's labelled assertion to fail; it never rewrites the working tree.
-- Execution carries dataset byte pins captured with parsed moments; path mapping preserves hashes. Compatible images explicitly advertise the execution contract; mounting a receipt alone never establishes compatibility.
-- `contract.ts` also owns shared execution version/capability constants so image authoring and launch share one wire identity without a preparation/execution import cycle; `execution.ts` preserves their public exports.
+- Execution carries dataset byte pins captured with parsed moments.
 
 - `moments.ts` lowers every unique authored role/dataset/example through rewind, persists refusal reports and explicit training datasets, and exposes fresh trial rewind with identity checks. Preparation hooks are declared names; org semantics stay in registered private integrations.
 - Register each lowering entry before timestamp normalization; normalization failures are per-example refusals with null lineage, and later examples must still run.
 - `compiledAgent.ts` validates the consumed compile-report projection and resolves exact agent IDs or names to host and container paths. Shared runtimes publish adapter-owned per-agent paths; missing associations refuse rather than infer layouts.
-- Public exports include the fixed training-image faketime library path and the offline SQLite inspector with ordered room/sender filtering.
-
-- `subjectLease.ts` is the public engine-neutral subject lease. Integrations name an engine, agent and slot; Spawnfile supplies every container path, projection input, credential ingress and the recycle. Grok resolves its projection through `broker/projection.ts`'s `resolveTrainingSlotProjection`, the same call the root entrypoint binds into the receipt, and must never re-derive a deny list or digest. Unknown engines refuse.
-- `subjectDeclaration.ts` asserts declaration-level subject policy over the resolved project (Codex `codex_policy`, Grok `turn_limits` equal to the broker limits and a clocked slot).
+- Public exports include the offline SQLite inspector with ordered room/sender filtering.

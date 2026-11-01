@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { within } from "./preparation/files.js";
+
+export const within = (root: string, file: string): boolean => file === root || file.startsWith(root + path.sep);
 
 /** Durable default namespace disjoint from every declared input, even a project ancestor. */
 export const defaultTrainingOutputRoot = (projectRoot: string, inputs: readonly string[] = []): string => {

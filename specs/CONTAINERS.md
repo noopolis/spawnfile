@@ -396,10 +396,6 @@ The Docker deployment record schema and behavior are defined in `STATUS.md`. Con
 
 A failed detached start MUST NOT write a record. Redeploying the same deployment name MUST replace the record atomically only after the new detached start succeeds.
 
-`spawnfile dev activity` uses the same deployment record to read the generated
-Pi app's bounded activity buffer from the running container. It is a runtime
-diagnostic surface, not a Moltnet message reader.
-
 ### Docker Targets
 
 Detached Docker execution may run against the default Docker context, an explicit `--context <name>`, or `DOCKER_HOST`. The deployment record must store the Docker target actually used:
@@ -581,13 +577,12 @@ spawnfile run test/fixtures/multi-runtime-team --out ./bundle/team --tag my-team
 
 Same flow regardless of project complexity. One compile, one build, one run.
 
-For interactive Pi org development, use the dev loop:
+For interactive org development, use the dev loop:
 
 ```bash
 spawnfile auth sync test/fixtures/e2e/daimon-org --profile dev --env-file ./.env
 spawnfile dev up test/fixtures/e2e/daimon-org --auth-profile dev --deployment dev
-spawnfile dev apply test/fixtures/e2e/daimon-org --agent new-agent --deployment dev
-spawnfile dev activity test/fixtures/e2e/daimon-org --agent new-agent --deployment dev
+spawnfile dev stop test/fixtures/e2e/daimon-org --deployment dev
 ```
 
 `spawnfile compile` still emits a standard Docker build context, so manual `docker build` remains supported when developers want to inspect or tweak the emitted output before building the image.

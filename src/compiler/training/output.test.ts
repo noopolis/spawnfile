@@ -1,7 +1,6 @@
 import path from "node:path";
 import { expect, it } from "vitest";
-import { defaultTrainingOutputRoot } from "./output.js";
-import { within } from "./preparation/files.js";
+import { defaultTrainingOutputRoot, within } from "./output.js";
 
 it("places default output and its preparation siblings outside every input including project ancestors", () => {
   const project = "/sandbox/public/project", inputs = ["/sandbox/public", "/sandbox/.spawn-training", "/sandbox/private"];

@@ -87,17 +87,16 @@ functions, never a copy.
 to `trainingCli.ts` for runtime composition without exposing its internal `main`.
 
 `daimonInstall.ts` owns the receipt/manifest verification and CLI/broker
-installation commands shared by `container.ts` and the training-native parent
-renderer. Keep this one authority; never weaken parent verification or add
-separate evaluator CLI installations. Its adjacent tests execute verification
+installation commands `container.ts` renders. Keep this one authority; never
+weaken verification. Its adjacent tests execute verification
 against matching, missing and mismatched install files.
 
 Training subject registration is optional. Registry entries expose an async
 `training.subject()` loader; only `trainingSubjects.ts` resolves it, so ordinary
 compiler and CLI startup never evaluates training adapters. The scoped training
 typecheck/build also covers the moved adapters and supplies their strict checks.
-`trainingCli.ts` is the import-safe training composition and executable container entry.
-Host consumers pass canonical context directly; container consumers retain the context-file flag. `codex-exec/` is a standalone subject, not a compiled
-runtime. `trainingSubjects.test.ts` owns default factory composition coverage.
+`trainingCli.ts` is the import-safe training composition and executable integration entry.
+Host consumers pass canonical context directly; integrations may pass the context-file flag.
+`trainingSubjects.test.ts` owns default factory composition coverage.
 
 Training provider composition lives in trainingProviders.ts; trainingGraderProviders.ts installs immutable grader policy. Engine inference providers live under their runtime's training/providers, while neutral built-ins remain in the core. Training implementations import contracts or the public core barrel, never private helpers. Registry training declarations include adapterId and engine vocabulary; repair admission checks the selected registration.

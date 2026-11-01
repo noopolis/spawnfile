@@ -8,12 +8,8 @@ import { describe, expect, it } from "vitest";
 
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import {
-  DAIMON_BROKER_REALM,
-  DAIMON_BROKER_TMPDIR,
   DAIMON_ORGANIZATION_STATE_DIRECTORY,
   renderDaimonBrokerProvisioning,
-  renderDaimonBrokerProvisioningProgram,
-  resolveDaimonGrokRegistrations,
   renderDaimonUsageLedgerProvisioning,
   renderDaimonWorkspaceResourceSecurity
 } from "./containerDaimonBrokerRender.js";
@@ -94,10 +90,6 @@ describe("Daimon broker usage ledger provisioning", () => {
 describe("Daimon root provisioning capability-safe ordering", () => {
   const plan = grokPlan(["agent:grok"]);
   const render = () => renderDaimonBrokerProvisioning([plan]).join("\n");
-  // The broker-held realm survives only in the training slot container; production defers to the gateway.
-  const renderBrokerAuthority = () => renderDaimonBrokerProvisioningProgram(
-    resolveDaimonGrokRegistrations([plan]), [], {}, "remove", undefined, DAIMON_BROKER_TMPDIR, [], "broker"
-  ).join("\n");
 
   it("stages no Grok credential when the auth gateway owns the login", () => {
     const program = render();
@@ -126,18 +118,6 @@ describe("Daimon root provisioning capability-safe ordering", () => {
     expect(tighten).toBeGreaterThan(lastWrite);
   });
 
-  it("hands the broker realm to its owner after the last atomic credential write", () => {
-    const program = renderBrokerAuthority();
-    const credentialWrites = program.indexOf("try { const journalPath =");
-    const finalOwnership = program.indexOf(
-      "fs.chownSync('/var/lib/spawnfile/daimon/grok-subscription-realm', 2100, 2100)",
-      credentialWrites
-    );
-
-    expect(credentialWrites).toBeGreaterThanOrEqual(0);
-    expect(finalOwnership).toBeGreaterThan(credentialWrites);
-  });
-
   it("reclaims, modes, and restores helper-managed inode ownership in that order", () => {
     const program = render();
 
@@ -149,27 +129,12 @@ describe("Daimon root provisioning capability-safe ordering", () => {
     );
   });
 
-  it("modes atomic files and workspace nodes before final ownership", () => {
-    const program = renderBrokerAuthority();
+  it("modes workspace nodes before final ownership", () => {
+    const program = render();
 
-    expect(program).toContain(
-      "fs.fchmodSync(output, 0o600); fs.fchownSync(output, 2100, 2100)"
-    );
     expect(program).toContain(
       "fs.chownSync(target, 0, 0); fs.chmodSync(target, 0o640); fs.chownSync(target, 2000, uid)"
     );
-  });
-
-  it("restores the journal directory only after credential journal writes", () => {
-    const program = renderBrokerAuthority();
-    const write = program.indexOf("atomicOwned(journalPath, recovered)");
-    const restore = program.indexOf(
-      "fs.chmodSync(journalRoot, 0o700); fs.chownSync(journalRoot, 2100, 2100)",
-      write
-    );
-
-    expect(write).toBeGreaterThanOrEqual(0);
-    expect(restore).toBeGreaterThan(write);
   });
 });
 

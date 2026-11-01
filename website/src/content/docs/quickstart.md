@@ -139,14 +139,14 @@ spawnfile status . --live
 
 Live status reads the detached deployment record, inspects the recorded Docker target, runs adapter-owned runtime probes, and checks Moltnet metadata without reading message bodies. See [Docker Packaging](/guides/docker/) for the full build and auth workflow, and [Status](/guides/status/) for operational checks.
 
-For Pi-backed orgs, the interactive loop is:
+For an interactive development deployment, the loop is:
 
 ```bash
 spawnfile dev up . --auth-profile dev --deployment dev
-spawnfile dev apply . --agent new-agent --deployment dev
+spawnfile dev stop . --deployment dev
 ```
 
-`dev up` writes to `.spawn-dev` by default. `dev apply` hot-loads one Pi agent and its Moltnet bridges into the running dev container without restarting the rest of the organization.
+`dev up` writes to `.spawn-dev` by default and never attaches a production deployment's derived volumes.
 
 ## What's Next
 

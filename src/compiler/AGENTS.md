@@ -44,7 +44,6 @@ src/compiler/
 ├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations binary, credential realm, and root-launch provisioning
 ├── containerDaimonGrokWorkerRender.ts # Brokered Grok registrations: pinned worker config, sandbox deny list, service.json v2
 ├── containerDaimonGrokWorkerProvisioning.ts # Root program lines for the attested worker GROK_HOME layout and canonical-path checks
-├── containerDaimonGrokTaskClock.ts # Slot-specific shared root clock and socket provisioning
 ├── containerDaimonGatewayRender.ts # Daimon auth gateway placements: in-container (per-start key, realm re-own, launch) or external at boot, and the training sidecar script
 ├── containerDaimonStartupSupervision.ts # Root readiness waits and EXIT-trap cleanup shared by broker and gateway startup
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
@@ -298,8 +297,7 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   realm volume keeps its id (so it reattaches) but mounts at
   `/var/lib/spawnfile/daimon/gateway-grok-subscription-realm`; the descriptor
   path stays the broker's plain local turn-state folder and production broker
-  provisioning stages no credential (`credentialAuthority: "gateway"`; the
-  training slot container keeps `"broker"`). Organizations without a gatewayed
+  provisioning stages no credential. Organizations without a gatewayed
   engine render byte-identically.
   The placement is decided at boot: with `DAIMON_GATEWAY_URL` (and
   `DAIMON_GATEWAY_KEY`) in the container env, an external gateway serves the

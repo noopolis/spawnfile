@@ -8,17 +8,8 @@ export interface GrokFrames {
   result?: Record<string, unknown>;
 }
 
-/**
- * How a Grok CLI authenticates. `subscription` is the saved desktop OAuth login;
- * `broker-grant` reaches a Daimon broker proxy with a short inference grant, so
- * its init reports `apiKeySource: "user"` and the pinned client model id, and the
- * broker-enforced catalog model (the grant's) is the response model.
- */
-export type GrokAuthMode =
-  | Readonly<{ auth: 'subscription' }>
-  | Readonly<{ auth: 'broker-grant'; clientModelId: string; grantModel: string }>;
-const SUBSCRIPTION: GrokAuthMode = Object.freeze({ auth: 'subscription' });
-export const grokRoute = (mode: GrokAuthMode): string => mode.auth === 'subscription' ? 'grok-subscription' : 'grok-broker-grant';
+/** The route of the saved desktop OAuth login, the only way this provider authenticates. */
+export const GROK_ROUTE = 'grok-subscription';
 
 export function grokEnvironment(): NodeJS.ProcessEnv {
   const env = { ...process.env };
@@ -26,7 +17,7 @@ export function grokEnvironment(): NodeJS.ProcessEnv {
   return env;
 }
 
-function usageOf(result: Record<string, unknown>, mode: GrokAuthMode): Usage | null {
+function usageOf(result: Record<string, unknown>): Usage | null {
   const raw = result['usage'] as Record<string, unknown> | undefined;
   const count = (key: string): number | null => typeof raw?.[key] === 'number' && Number.isSafeInteger(raw[key]) && raw[key] >= 0 ? raw[key] : null;
   const input = count('input_tokens'), read = count('cache_read_input_tokens'), write = count('cache_creation_input_tokens');
@@ -34,29 +25,23 @@ function usageOf(result: Record<string, unknown>, mode: GrokAuthMode): Usage | n
   const total = input === null || read === null || write === null ? null : input + read + write;
   if (total === 0 && output === 0) return null;
   return { inputTokens: total !== null && Number.isSafeInteger(total) ? total : null, cachedInputTokens: read,
-    cacheWriteInputTokens: write, outputTokens: output, reasoningTokens: null, source: mode.auth === 'subscription' ? 'grok.result.usage.lower-bound' : 'grok-broker-grant.result.usage.lower-bound' };
+    cacheWriteInputTokens: write, outputTokens: output, reasoningTokens: null, source: 'grok.result.usage.lower-bound' };
 }
 
-export function grokFailureEvidence({ init, result }: GrokFrames, mode: GrokAuthMode = SUBSCRIPTION): InferenceFailureEvidence {
-  return { usage: result === undefined ? null : usageOf(result, mode), responseModel: reportedModel(init, mode), responseRoute: grokRoute(mode) };
+export function grokFailureEvidence({ init, result }: GrokFrames): InferenceFailureEvidence {
+  return { usage: result === undefined ? null : usageOf(result), responseModel: reportedModel(init), responseRoute: GROK_ROUTE };
 }
 
-function reportedModel(init: Record<string, unknown> | undefined, mode: GrokAuthMode): string | null {
-  const native = typeof init?.['model'] === 'string' && init['model'].trim() ? init['model'] : null;
-  if (mode.auth === 'subscription') return native;
-  return native === mode.clientModelId ? mode.grantModel : null;
+function reportedModel(init: Record<string, unknown> | undefined): string | null {
+  return typeof init?.['model'] === 'string' && init['model'].trim() ? init['model'] : null;
 }
 
 /** Validate before generation proceeds; permission denial alone is not tool isolation. */
-export function validateGrokInitialization(frames: GrokFrames, mode: GrokAuthMode = SUBSCRIPTION): void {
-  const { init } = frames, evidence = grokFailureEvidence(frames, mode);
+export function validateGrokInitialization(frames: GrokFrames): void {
+  const { init } = frames, evidence = grokFailureEvidence(frames);
   if (init === undefined) throw new InferenceFailure('protocol', 'Grok omitted initialization', { ...evidence, diagnostic: captureInferenceDiagnostic('initialization') });
-  // Each mode accepts exactly its own source: a grant run reporting OAuth used a desktop login.
-  if (init['apiKeySource'] !== (mode.auth === 'subscription' ? 'oauth' : 'user')) {
-    throw new InferenceFailure('authentication', mode.auth === 'subscription' ? 'Grok did not acknowledge subscription OAuth' : 'Grok did not acknowledge the broker inference grant', { ...evidence, diagnostic: captureInferenceDiagnostic('subscription') });
-  }
-  if (mode.auth === 'broker-grant' && init['model'] !== mode.clientModelId) {
-    throw new InferenceFailure('authentication', 'Grok did not run the pinned broker inference client model', { ...evidence, diagnostic: captureInferenceDiagnostic('subscription') });
+  if (init['apiKeySource'] !== 'oauth') {
+    throw new InferenceFailure('authentication', 'Grok did not acknowledge subscription OAuth', { ...evidence, diagnostic: captureInferenceDiagnostic('subscription') });
   }
   if (!Array.isArray(init['tools']) || init['tools'].length !== 0 ||
     !Array.isArray(init['mcp_servers']) || init['mcp_servers'].length !== 0) {
@@ -64,20 +49,18 @@ export function validateGrokInitialization(frames: GrokFrames, mode: GrokAuthMod
   }
 }
 
-export function decodeGrok(frames: GrokFrames, exitCode: number | null, mode: GrokAuthMode = SUBSCRIPTION): InferenceResult {
+export function decodeGrok(frames: GrokFrames, exitCode: number | null): InferenceResult {
   const { init, assistant, result } = frames;
-  const evidence = grokFailureEvidence(frames, mode), usage = evidence.usage ?? null;
-  const model = reportedModel(init, mode);
+  const evidence = grokFailureEvidence(frames), usage = evidence.usage ?? null;
+  const model = reportedModel(init);
   const status = result?.['status'] ?? result?.['status_code'] ?? refusalStatus(result);
-  // The broker's stale shared realm: fail fast, never retry the same authority.
-  if (status === AUTH_STALE) throw new InferenceFailure(mode.auth === 'broker-grant' ? 'auth-stale' : 'authentication', 'Grok credential authority is stale', { ...evidence, detail: 'grant-expired' });
   if (status === 402 || status === 429 || status === 503 || status === 401 || status === 403) {
     // The number is the only part of a refusal an operator can act on, so it is
     // retained as a number rather than left for someone to read back out of prose.
     throw new InferenceFailure(status === 402 || status === 429 ? 'quota' : status === 503 ? 'unavailable' : 'authentication',
       'Grok refused inference', { ...evidence, detail: 'provider-status', status });
   }
-  validateGrokInitialization(frames, mode);
+  validateGrokInitialization(frames);
   const message = assistant?.['message'] as Record<string, unknown> | undefined;
   const blocks = message?.['content'];
   const validBlocks = Array.isArray(blocks) && blocks.every((block: unknown) =>
@@ -95,12 +78,9 @@ export function decodeGrok(frames: GrokFrames, exitCode: number | null, mode: Gr
   if (issue) throw new InferenceFailure('protocol', 'Grok omitted a matching completed response', {
     ...evidence, diagnostic: captureInferenceDiagnostic(issue),
   });
-  return { text, model: model!, modelBasis: 'provider-reported', usage, route: grokRoute(mode) };
+  return { text, model: model!, modelBasis: 'provider-reported', usage, route: GROK_ROUTE };
 }
 
-const AUTH_STALE = Symbol('auth_stale');
-/** Grok 1.0.34 surfaces a broker proxy 401 `{"error":"auth_stale"}` as a JSON string, not an object (live capture). */
-const STALE_REALM = /^Unauthorized \(401\) from http:\/\/127\.0\.0\.1:[0-9]{1,5}\/v1\/chat\/completions: auth_stale(?:\n|$)/u;
 
 /** Decode the native error wrapper, never search arbitrary model output for HTTP text. */
 function refusalStatus(result: Record<string, unknown> | undefined): unknown {
@@ -109,7 +89,7 @@ function refusalStatus(result: Record<string, unknown> | undefined): unknown {
   if (typeof error !== 'string' || !error.startsWith('Internal error: ')) return undefined;
   try {
     const detail: unknown = JSON.parse(error.slice('Internal error: '.length));
-    if (typeof detail === 'string') return STALE_REALM.test(detail) ? AUTH_STALE : /^Unauthorized \(401\) /u.test(detail) ? 401 : undefined;
+    if (typeof detail === 'string') return /^Unauthorized \(401\) /u.test(detail) ? 401 : undefined;
     return detail !== null && typeof detail === 'object' ? (detail as Record<string, unknown>)['http_status'] : undefined;
   } catch { return undefined; }
 }

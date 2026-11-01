@@ -3,7 +3,7 @@ import { runProcess } from '../../../../../training/index.js';
 import { captureInferenceDiagnostic } from '../../../../../training/index.js';
 import { InferenceFailure } from '../../../../../training/index.js';
 import { validateInferenceResponse } from '../../../../../training/index.js';
-import { decodeGrok, grokFailureEvidence, validateGrokInitialization, type GrokAuthMode, type GrokFrames } from './protocol.js';
+import { decodeGrok, grokFailureEvidence, validateGrokInitialization, type GrokFrames } from './protocol.js';
 
 export type GrokReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
 
@@ -14,18 +14,17 @@ export interface GrokCliRun {
   /** The complete child environment; nothing else is inherited. */
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
-  /** `--model` argument: a catalog model for subscription, the pinned client model id for a grant. */
+  /** `--model` argument: a catalog model. */
   cliModel: string;
   reasoningEffort: GrokReasoningEffort;
   request: InferenceRequest;
   responseSchema: InferenceRequest['responseSchema'];
-  mode: GrokAuthMode;
   process?: typeof runProcess;
 }
 
 /** One tool-free Grok CLI call with init attestation before any further native frame is consumed. */
 export async function runGrokCli(run: GrokCliRun): Promise<InferenceResult> {
-  const { request, responseSchema, mode } = run;
+  const { request, responseSchema } = run;
   const frames: GrokFrames = {};
   let malformed = false;
   let nativeFailure: InferenceFailure | undefined;
@@ -49,7 +48,7 @@ export async function runGrokCli(run: GrokCliRun): Promise<InferenceResult> {
       } catch { malformed = true; throw new Error('Malformed Grok protocol'); }
       if (event['type'] === 'system' && event['subtype'] === 'init') {
         frames.init = event;
-        try { validateGrokInitialization(frames, mode); }
+        try { validateGrokInitialization(frames); }
         catch (error) { nativeFailure = error as InferenceFailure; throw error; }
       }
       if (event['type'] === 'assistant') frames.assistant = event;
@@ -57,18 +56,18 @@ export async function runGrokCli(run: GrokCliRun): Promise<InferenceResult> {
       if (frames.init === undefined) {
         // A refusal may precede init; classify that typed envelope. Every
         // other frame must fail before further native work is consumed.
-        try { decodeGrok(frames, 1, mode); }
+        try { decodeGrok(frames, 1); }
         catch (error) { nativeFailure = error as InferenceFailure; throw error; }
       }
     },
   });
   const completed = await process.completion;
-  const evidence = grokFailureEvidence(frames, mode);
+  const evidence = grokFailureEvidence(frames);
   if (request.signal?.aborted) throw new InferenceFailure('cancelled', 'Grok inference cancelled', evidence);
   if (nativeFailure) throw nativeFailure;
   if (malformed) throw new InferenceFailure('protocol', 'Malformed Grok protocol', { ...evidence, diagnostic: captureInferenceDiagnostic('transport-framing') });
   if (completed.cancelled || completed.error !== undefined) throw new InferenceFailure('unknown', 'Grok native process did not settle successfully', { ...evidence, diagnostic: captureInferenceDiagnostic('native-process') });
-  const result = decodeGrok(frames, completed.exitCode, mode);
+  const result = decodeGrok(frames, completed.exitCode);
   try { validateInferenceResponse(result.text, responseSchema); }
   catch { throw new InferenceFailure('invalid-response', 'Grok response did not match its requested schema', { ...evidence, diagnostic: captureInferenceDiagnostic('response-schema', result.text) }); }
   return result;

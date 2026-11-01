@@ -9,47 +9,35 @@ import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
 import { memoryFs, plan, run, runOn, seedFor } from "./containerDaimonGrokWorkerProvisioning.test-helper.js";
 import { renderDaimonGrokServiceConfig, resolveDaimonGrokRegistrations } from "./containerDaimonGrokWorkerRender.js";
-import { resolveTrainingGrokRegistration } from "./training/broker/registration.js";
 
 const SAMPLE = DAIMON_GROK_WORKER_SKILLS_SAMPLES[2]!;
 const sampleSkills = () => SAMPLE.skills.map((skill) => ({ name: skill.name, files: skill.files.map((file) => ({ ...file })) }));
 const sha256 = (value: unknown) => createHash("sha256").update(typeof value === "string" ? value : JSON.stringify(value)).digest("hex");
 const withSkills = (base: RuntimeTargetPlan): RuntimeTargetPlan => ({ ...base, grokSkillsByNodeId: { "agent:a": sampleSkills() } });
 
-/**
- * Production digests include the shared Codex subscription authority deny paths.
- * Training slot digests include the renamed evaluator context mask; its profile
- * bytes and digest were checked against Daimon's public renderer.
- */
+/** Production digests include the shared Codex subscription authority deny paths. */
 const SKILL_LESS_GOLDEN = {
   registrations: "14e39a1a00530c97400fc9f59e0dc44136bd467732a220a9e1fc825fb3d06cdb",
   program: "c33c9982f41aa7abea72d3c8157bf67fd82e584a67122fc821feffa924269ce9",
-  serviceV2: "58d7d717d3b751f4f916504c8ed952f2acac2e9f035b59c44aab89f98b114674",
-  serviceV3: "fed05ea8dc946ca5fab07d9095ce79b5003cab1352b003f6ef576da1cff3060f",
-  slotRegistration: "203321f8929fa55749d31613cb10532e7a1a3dd3947dcca737a9bb6714e1e457",
-  slotProgram: "502bdb1794e0ddd2f2dd69c51043bd95ed422b58b46c86c280d01fffffea4b58"
+  serviceV2: "58d7d717d3b751f4f916504c8ed952f2acac2e9f035b59c44aab89f98b114674"
 };
 
 describe("Grok worker skills provisioning", () => {
   const base = plan({ "agent:a": "grok", "agent:b": "grok", "agent:c": "codex" });
 
-  it("pins skill-less production realm denials and the renamed training slot", () => {
+  it("pins skill-less production realm denials", () => {
     const registrations = resolveDaimonGrokRegistrations([base]);
     for (const registration of registrations) expect(registration.denyPaths).toEqual(expect.arrayContaining([
       "/var/lib/spawnfile/daimon/gateway-bootstrap", DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath, "/etc/daimon-gateway", "/run/daimon-gateway"
     ]));
-    const slot = resolveTrainingGrokRegistration({ agentId: "agent:a", model: "grok-4.6", reasoningEffort: "low", slot: 1, slots: 2, limits: { maxRequests: 8, maxTokens: 100000, timeoutMs: 600000 } });
-    expect(slot.denyPaths).toContain("/run/spawnfile-training");
-    expect(slot.denyPaths).not.toContain("/run/training");
     expect({
       registrations: sha256(registrations), program: sha256(renderDaimonGrokWorkerProvisioning(registrations).join("\n")),
-      serviceV2: sha256(renderDaimonGrokServiceConfig(registrations)), serviceV3: sha256(renderDaimonGrokServiceConfig([slot], { version: "v3" })),
-      slotRegistration: sha256(slot), slotProgram: sha256(renderDaimonGrokWorkerProvisioning([slot], {}, [], "slot").join("\n"))
+      serviceV2: sha256(renderDaimonGrokServiceConfig(registrations))
     }).toEqual(SKILL_LESS_GOLDEN);
     expect(resolveDaimonGrokRegistrations([{ ...base, grokSkillsByNodeId: {} }])).toEqual(registrations);
   });
 
-  it("binds Daimon's skills digest into the v2 registration and v3 slot policy of only the skill-declaring agent", () => {
+  it("binds Daimon's skills digest into the v2 registration of only the skill-declaring agent", () => {
     const [a, b] = resolveDaimonGrokRegistrations([withSkills(base)]);
     expect(a!.skills?.sha256).toBe(SAMPLE.sha256);
     expect(a!.skills?.tree).toEqual(SAMPLE.tree);
@@ -57,10 +45,6 @@ describe("Grok worker skills provisioning", () => {
     const v2 = renderDaimonGrokServiceConfig([a!, b!]);
     expect(v2.registrations[0]).toMatchObject({ agentId: "agent:a", skillsSha256: SAMPLE.sha256 });
     expect(v2.registrations[1]).not.toHaveProperty("skillsSha256");
-    const v3 = renderDaimonGrokServiceConfig([a!, b!], { version: "v3" });
-    expect(v3.registrations.some((entry) => "skillsSha256" in entry)).toBe(false);
-    expect(v3.slotPolicies![0]).toMatchObject({ slot: a!.slot, skillsSha256: SAMPLE.sha256 });
-    expect(v3.slotPolicies![1]).not.toHaveProperty("skillsSha256");
   });
 
   it("provisions Daimon's tree under $GROK_HOME root:root, files 0444 single-link and directories 0555, and nothing for a skill-less worker", () => {

@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, readFile, rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { experimentSlotFreshnessFile, type GrokSlotFreshnessStore } from './daimon/training/native/index.js';
 import { parseArguments } from '../training/cli/arguments.js';
-import { resourceMappings } from '../training/cli/native.js';
-import { prepareNative } from './trainingSubjects.js';
-import { main } from './trainingCli.js';
+import { prepareNative as prepareCoreNative, resourceMappings } from '../training/cli/native.js';
+import { main, trainingDependencies } from './trainingCli.js';
 import { cliFixture, fixtureAdapter } from '../../fixtures/support/training/cli-fixture.js';
 import { contextFixture } from '../../fixtures/support/training/spawnfile-fixture.js';
 
 const roots: string[] = [];
+const prepareNative = async (...[args, io, dependencies, ...rest]: Parameters<typeof prepareCoreNative>) =>
+  prepareCoreNative(args, io, await trainingDependencies(dependencies), ...rest);
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe('explicit native resource and inference selection', () => {
@@ -52,19 +52,18 @@ describe('explicit native resource and inference selection', () => {
   ])('rejects undeclared/ambiguous edits and unsupported configuration: %j', (...flags) => {
     expect(() => resourceMappings(parseArguments(['train', ...flags]))).toThrow();
   });
-  it('builds the actual default adapter capabilities and explicit judge/resource routes without invoking them', async () => {
+  it('refuses a registered Daimon subject outside production-booted training and builds explicit judge/resource routes', async () => {
     const fixture = await cliFixture(); roots.push(fixture.root);
-    for (const runtime of ['codex', 'daimon']) {
-      const args = parseArguments(['evaluate', 'data.yaml', '--runtime', runtime, '--model', 'explicit', '--instructions', 'AGENTS.md',
-        '--out', 'out', '--judge', 'quality=explicit-judge', '--judge-citation-repairs', 'quality=1', '--resource', 'archive=archive']);
-      const prepared = await prepareNative(args, fixture.io, {}, 1000);
-      expect(prepared.adapter.id).toBe(runtime);
-      expect(prepared.inference!.capabilities.billing).toBe('subscription');
-      expect(prepared.evaluation.judges.quality!.model).toBe('explicit-judge');
-      expect(prepared.evaluation.judges.quality!.citationRepairs).toBe(1);
-      expect(prepared.resources.archive).toBe(`${fixture.root}/archive`);
-      await expect(prepared.evaluation.readText('unknown')).rejects.toThrow('not frozen');
-    }
+    const args = parseArguments(['evaluate', 'data.yaml', '--runtime', 'daimon', '--model', 'explicit', '--instructions', 'AGENTS.md',
+      '--out', 'out', '--judge', 'quality=explicit-judge', '--judge-citation-repairs', 'quality=1', '--resource', 'archive=archive']);
+    await expect(prepareNative(args, fixture.io, {}, 1000)).rejects.toThrow('production-booted trials');
+    const prepared = await prepareNative(args, fixture.io, { adapter: fixture.dependencies.adapter }, 1000);
+    expect(prepared.inference!.capabilities.billing).toBe('subscription');
+    expect(prepared.evaluation.judges.quality!.model).toBe('explicit-judge');
+    expect(prepared.evaluation.judges.quality!.citationRepairs).toBe(1);
+    expect(prepared.resources.archive).toBe(`${fixture.root}/archive`);
+    await expect(prepared.evaluation.readText('unknown')).rejects.toThrow('not frozen');
+    await prepared.closeInference();
     await expect(prepareNative(parseArguments(['evaluate', 'x', '--runtime', 'other']), fixture.io, {}, 1)).rejects.toThrow('Supported native runtimes');
   });
   it.each(['file', 'in-process'])('preserves registered Spawnfile %s context preparation while installing evaluation services', async mode => {
@@ -74,40 +73,15 @@ describe('explicit native resource and inference selection', () => {
     if (mode === 'in-process') await rm(context.path);
     const native = await prepareNative(parseArguments(['evaluate', 'data.yaml', ...(mode === 'file' ? ['--spawnfile-context', context.path] : []), '--out', 'out']), f.io,
       { ...f.dependencies, ...(mode === 'in-process' ? { spawnfileContext: context.context } : {}), spawnfile: { id: 'fixture', version: '1', subjectRoot: context.root, createAdapter, prepareEnvironment } }, 1000);
-    expect(createAdapter).toHaveBeenCalledWith(context.context, { model: 'gpt-5.5', timeoutMs: 1000, grokSlots: expect.any(Object) });
+    expect(createAdapter).toHaveBeenCalledWith(context.context, { model: 'gpt-5.5', timeoutMs: 1000 });
     expect(native.subjectRoot).toBe(context.root);
     const paths = { root: f.root, workspace: f.root, control: f.root, runtimeHome: f.root };
     const signal = new AbortController().signal;
     const trial = { id: 'trial', phase: 'train' as const, record: native.datasets.load('data.yaml', false).records[0]!,
       candidate: native.candidate, resources: {} };
     expect(await native.prepareEnvironment!(paths, signal, trial)).toEqual({ tools: [] });
-    const grokSlots = (createAdapter.mock.calls[0] as unknown as [unknown, { grokSlots: GrokSlotFreshnessStore }])[1].grokSlots;
-    expect(prepareEnvironment).toHaveBeenCalledWith(paths, signal, trial, context.context, { grokSlots });
+    expect(prepareEnvironment).toHaveBeenCalledWith(paths, signal, trial, context.context, {});
     expect(native.evaluation.graders).toEqual({});
     await native.closeInference();
-  });
-  it('owns one slot freshness store per experiment in its output state, shared by preparation and the adapter across resume', async () => {
-    const f = await cliFixture(), context = await contextFixture(); roots.push(f.root, context.root);
-    const seen: GrokSlotFreshnessStore[] = [];
-    const integration = { id: 'fixture', version: '1', createAdapter: vi.fn((_context: unknown, options: { model: string; timeoutMs: number; [service: string]: unknown }) => {
-      seen.push(options.grokSlots as GrokSlotFreshnessStore); return f.dependencies.adapter!('daimon', { model: 'gpt-5.5', timeoutMs: 1000 });
-    }), prepareEnvironment: vi.fn(async (..._args: unknown[]) => ({})) };
-    const args = parseArguments(['evaluate', 'data.yaml', '--spawnfile-context', context.path, '--out', 'out']);
-    const first = await prepareNative(args, f.io, { ...f.dependencies, spawnfile: integration }, 1000);
-    const paths = { root: f.root, workspace: f.root, control: f.root, runtimeHome: f.root };
-    const trial = { id: 'trial', phase: 'train' as const, record: first.datasets.load('data.yaml', false).records[0]!, candidate: first.candidate, resources: {} };
-    await first.prepareEnvironment!(paths, new AbortController().signal, trial);
-    expect((integration.prepareEnvironment.mock.calls[0]![4] as { grokSlots: unknown }).grokSlots).toBe(seen[0]);
-    await mkdir(first.out, { recursive: true });
-    const minted = await seen[0]!.request(3);
-    await seen[0]!.accept(3, { nonce: minted.expectedNonce, generation: 9 });
-    expect(JSON.parse(await readFile(join(f.root, 'out', experimentSlotFreshnessFile), 'utf8')).slots['3']).toEqual({ lastGeneration: 9 });
-    await first.closeInference();
-    // A resumed invocation on the same output keeps the floor and never replays the old receipt.
-    const resumed = await prepareNative(args, f.io, { ...f.dependencies, spawnfile: integration }, 1000);
-    expect(seen[1]).not.toBe(seen[0]);
-    await expect(seen[1]!.accept(3, { nonce: minted.expectedNonce, generation: 10 })).rejects.toThrow('stale');
-    expect((await seen[1]!.request(3)).minGeneration).toBe(10);
-    await resumed.closeInference();
   });
 });

@@ -1,13 +1,12 @@
-import type { CliDependencies } from '../training/cli/index.js';
 import type { InferenceProviderDescriptor, InferenceProviderRegistry } from '../training/contracts/index.js';
 import { INFERENCE_POLICY_VERSIONS } from '../training/contracts/index.js';
-import { defaultInferenceProviders, DatasetError, subjectHostInference, trainingEnvironment } from '../training/index.js';
-import { createCodexInference } from './codex-exec/training/providers/codex-subscription/index.js';
+import { defaultInferenceProviders, DatasetError, InferenceFailure } from '../training/index.js';
+import { createCodexInference } from './daimon/training/providers/codex-subscription/index.js';
 import { createGrokInference } from './daimon/training/providers/grok-subscription/index.js';
-import { createGrokBrokerInference, GrokGrantPool } from './daimon/training/providers/grok-broker/index.js';
-import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, grokGrantModels, grokGrantReasoningEfforts,
-  type GrokInferenceGrantAuthority } from './daimon/training/providers/grok-broker/grants.js';
 
+/** Frozen `grok-broker` catalog: historical YAML and measurement identities keep validating. */
+const grokGrantModels = ['grok-4.6', 'grok-4.5', 'grok-build'] as const;
+const grokGrantReasoningEfforts = ['low', 'medium', 'high'] as const;
 const modelFields = ['provider', 'model', 'endpoint', 'reasoning_effort', 'think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'];
 function fail(path: string, message: string): never { throw new DatasetError(path, message); }
 function oneOf(value: unknown, choices: readonly unknown[], path: string): void {
@@ -30,7 +29,7 @@ function validate(model: Readonly<Record<string, unknown>>, path: string, reason
 }
 
 /** Engine-owned descriptors extend the neutral built-ins at host composition. */
-export function createTrainingProviderRegistry(dependencies: Pick<CliDependencies, 'grantAuthority' | 'subjects'> = {}): InferenceProviderRegistry {
+export function createTrainingProviderRegistry(): InferenceProviderRegistry {
   const codex: InferenceProviderDescriptor = {
     policyVersion: INFERENCE_POLICY_VERSIONS['codex-subscription']!,
     capabilities: { evaluatorPurposes: ['proposals', 'extraction'], evaluatorBudget: 'requests' },
@@ -44,25 +43,14 @@ export function createTrainingProviderRegistry(dependencies: Pick<CliDependencie
     normalizeIdentity: model => ({ ...model, reasoning_effort: model.reasoning_effort ?? 'medium' }),
     create: (model, context) => createGrokInference({ timeoutMs: context.timeoutMs, reasoningEffort: model.reasoning_effort }),
   };
+  // Broker grants lived in the removed training container; the ID still validates, and calls fail closed.
   const broker: InferenceProviderDescriptor = {
     policyVersion: INFERENCE_POLICY_VERSIONS['grok-broker']!,
     capabilities: { purposeScoped: true, brokerAdmission: true }, incompatibleWith: ['grok-subscription'],
     incompatibilityReason: 'grok-broker routes cannot fall back to a desktop grok-subscription login',
     validate: (model, path) => validate(model, path, 'required'),
-    create(model, context) {
-      const key = 'daimon.grok-broker.grants';
-      let pool = context.resources.get(key) as GrokGrantPool | undefined;
-      if (!pool) {
-        const socket = trainingEnvironment(grokBrokerControlSocketEnv);
-        pool = new GrokGrantPool({ id: socket ?? 'unconfigured',
-          authority: async () => (await (dependencies.grantAuthority?.() ?? subjectHostInference(dependencies.subjects).grantAuthority(socket))) as GrokInferenceGrantAuthority });
-        context.resources.set(key, pool);
-        const retained = pool;
-        context.onClose(() => retained.close());
-      }
-      return createGrokBrokerInference({ pool, homeRoot: trainingEnvironment(grokGrantHomeRootEnv) || undefined,
-        purpose: context.purpose, timeoutMs: context.timeoutMs, reasoningEffort: model.reasoning_effort as 'low' | 'medium' | 'high' });
-    },
+    create: () => ({ id: 'grok-broker', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
+      generate: async () => { throw new InferenceFailure('unavailable', 'grok-broker grants were removed with the training container; use grok-subscription'); } }),
   };
   return { ...defaultInferenceProviders, brokerAdmissionLabel: 'grok-broker',
     // Registration order preserves the historical authored-provider diagnostic.

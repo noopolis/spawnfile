@@ -164,5 +164,4 @@ Support levels:
 | `spawnfile build` / `run` / `up` | Supported with pinned npm install | Supported with pinned GitHub release archive | Supported with pinned Daimon/Pi npm packages and generated app |
 | `spawnfile status --live` runtime probes | Supported through OpenClaw status probes | Supported through PicoClaw status probes | Limited: deployment state and logs work; runtime health probes are not implemented yet |
 | Runtime activity stream | Not normalized yet; use status/logs | Not normalized yet; use status/logs | Supported through `spawnfile.activity.v1` buffer and SSE endpoint |
-| `spawnfile dev apply --agent` hot-add | Not supported in v0.1 | Not supported in v0.1 | Supported for Daimon app agents and their Moltnet bridge |
 | Managed Moltnet servers and durable Moltnet state | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent |

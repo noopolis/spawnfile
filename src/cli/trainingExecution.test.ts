@@ -1,6 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { rm } from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import type { main } from "../runtime/trainingCli.js";
 import { runTraining, type RunTrainingOptions } from "./trainingExecution.js";
@@ -82,34 +80,11 @@ it("abandons a core that ignores cancellation at the command deadline", async ()
   } finally { complete?.(0); }
 }, 1000);
 
-it("requires isolated actual training and validates repair authority before invoking the core", async () => {
-  await expect(runTraining({ ...options(), dryRun: false })).rejects.toThrow("host execution is disabled");
-  await expect(runTraining({ ...options(), repairWitness: "/witness" })).rejects.toThrow("--repair-witness requires");
-  await expect(runTraining({ ...options(), repairMeasurements: "/parent" })).rejects.toThrow("v2 preparation");
-  expect(core).not.toHaveBeenCalled();
-});
-
 it("trains a Daimon subject as production-booted trials, which need the login a gateway will hold", async () => {
   const daimon = { agent: { id: "agent:a", runtime: "daimon" }, documents: [], project: { root: "/p" } } as unknown as RunTrainingOptions["context"];
   await expect(runTraining({ ...options(), context: daimon, dryRun: false, args: ["--out", "/o"] })).rejects.toThrow("requires --auth-profile");
   await expect(runTraining({ ...options(), context: daimon, dryRun: false, authProfile: "p", args: [] })).rejects.toThrow("requires --out");
-  await expect(runTraining({ ...options(), context: { ...daimon, agent: { id: "agent:a", runtime: "openclaw" } } as unknown as RunTrainingOptions["context"], dryRun: false }))
-    .rejects.toThrow("host execution is disabled");
   expect(core).not.toHaveBeenCalled();
-});
-
-it("routes v4 image declarations through preparation validation before any training", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-v4-")); roots.push(root);
-  const file = path.join(root, "launch.json");
-  await writeFile(file, JSON.stringify({ version: "spawnfile.training-container.v4", image: {}, slots: 0 }));
-  await expect(runTraining({ ...options(), trainingConfig: file, dryRun: false })).rejects.toThrow(/slots/);
-  expect(core).not.toHaveBeenCalled();
-});
-
-it("rejects an image override owned by a preparation declaration", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-v2-")); roots.push(root);
-  const file = path.join(root, "launch.json"); await writeFile(file, JSON.stringify({ version: "spawnfile.training-container.v2" }));
-  await expect(runTraining({ ...options(), trainingConfig: file, trainingImage: "sha256:any" })).rejects.toThrow("owns its image declaration");
 });
 
 it("enforces dry-run at the in-process boundary even if its caller omitted the flag", async () => {

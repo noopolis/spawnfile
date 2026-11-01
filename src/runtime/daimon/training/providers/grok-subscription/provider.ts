@@ -34,8 +34,7 @@ export function createGrokInference(options: GrokInferenceOptions = {}): Inferen
         const promptFile = path.join(cwd, 'prompt.txt');
         await writeFile(promptFile, request.prompt, { mode: 0o600 });
         return await runGrokCli({ command: options.command ?? 'grok', cwd, promptFile, env: grokEnvironment(),
-          timeoutMs: options.timeoutMs ?? 180_000, cliModel: request.model, reasoningEffort, request, responseSchema,
-          mode: { auth: 'subscription' }, process: options.process });
+          timeoutMs: options.timeoutMs ?? 180_000, cliModel: request.model, reasoningEffort, request, responseSchema, process: options.process });
       } finally { await rm(cwd, { recursive: true, force: true }); }
     },
   };

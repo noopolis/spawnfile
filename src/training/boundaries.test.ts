@@ -114,7 +114,7 @@ function boundaryViolations(filename: string, source: string, resolve = importTa
 test('training retains its imported structural and public module gates', async () => {
   const eslint = new ESLint({ cwd: root, overrideConfigFile: true,
     overrideConfig: trainingLintConfig as unknown as Linter.Config[] });
-  const results = await eslint.lintFiles(['src/training/**/*.ts', 'src/runtime/daimon/training/**/*.ts', 'src/runtime/codex-exec/training/**/*.ts', 'tooling/training/**/*.ts']);
+  const results = await eslint.lintFiles(['src/training/**/*.ts', 'src/runtime/daimon/training/**/*.ts', 'tooling/training/**/*.ts']);
   expect(results.flatMap((result) => result.messages.filter((message) => message.severity === 2)
     .map((message) => `${path.relative(root, result.filePath)}:${message.line}: ${message.ruleId}: ${message.message}`))).toEqual([]);
 }, 120_000);
@@ -170,7 +170,7 @@ test.each([
   ['src/runtime/common.ts', "import '../training/index.js';"],
   ['src/runtime/daimon/adapter.ts', "import '../../training/index.js';"],
   ['src/runtime/openclaw/adapter.ts', "export * from '../../training/index.js';"],
-  ['src/runtime/codex-exec/training-extra/check.ts', "import '../../../training/index.js';"],
+  ['src/runtime/picoclaw/training-extra/check.ts', "import '../../../training/index.js';"],
   ['src/runtime/daimon/other/training/check.ts', "import '../../../../training/index.js';"],
   ['src/runtime/trainingSubjectsExtra.ts', "import '../training/index.js';"],
   ['src/runtime/registry.ts', "import { SubjectAdapterRegistration } from '../training/subjects/index.js';"],
@@ -183,7 +183,7 @@ test.each([
 
 test.each([
   ['src/runtime/daimon/training/check.ts', "import '../../../training/index.js';"],
-  ['src/runtime/codex-exec/training/check.ts', "import '../../../training/index.js';"],
+  ['src/runtime/picoclaw/training/check.ts', "import '../../../training/index.js';"],
   ['src/runtime/trainingSubjects.ts', "import '../training/subjects/index.js';"],
   ['src/runtime/trainingCli.ts', "import '../training/cli/index.js';"],
   ['src/runtime/trainingSubjects.test.ts', "import '../training/cli/fixture.js';"],

@@ -8,28 +8,15 @@ import { expect, it } from "vitest";
 
 const run = promisify(execFile);
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
-const test = "src/runtime/daimon/training/native/container/slot.test.ts";
-const verifier = "src/runtime/daimon/training/native/container/slot.ts";
 const loader = "src/training/experiments/concurrency/slots.ts";
-const mutations: { file: string; before: string; after: string; title: string; test?: string }[] = [
-  { file: verifier, before: "launch.host.port < slot.ports.base", after: "false", title: "always checks its port block" },
-  { file: verifier, before: "!Number.isSafeInteger(slot.ports.base)", after: "false", title: "always checks its port block" },
-  { file: verifier, before: "!Number.isSafeInteger(slot.ports.count)", after: "false", title: "always checks its port block" },
-  { file: verifier, before: "launch.host.port >= slot.ports.base + slot.ports.count", after: "false", title: "always checks its port block" },
-  { file: "src/runtime/daimon/training/native/container/manifest.ts", before: "if (input.slot) assertLeasedLaunch(launch, input.slot);", after: "", title: "always checks its port block" },
-  { file: verifier, before: "declared.source !== root", after: "false", title: "binds every declared Codex root" },
-  { file: verifier, before: "declared.target !== root", after: "false", title: "binds every declared Codex root" },
-  { file: verifier, before: "matches?.length !== 1 ||", after: "false ||", title: "binds every declared Codex root" },
-  { file: verifier, before: "slot.workerUid !== process.geteuid?.()", after: "false", title: "always checks its port block" },
-  { file: verifier, before: "isGrokLaunch(launch) ||", after: "false ||", title: "always checks its port block" },
-  { file: verifier, before: "if (slot.isolation === 'shared-uid')", after: "if (false)", title: "always checks its port block" },
+const mutations: { file: string; before: string; after: string; title: string; test: string }[] = [
   { file: loader, before: "prior.workerUid === slot.workerUid && !sharedIdentity", after: "false", title: "keeps v1 identity rules", test: "src/training/experiments/concurrency/slots.test.ts" },
   { file: loader, before: "prior.ports.base < slot.ports.base + slot.ports.count && slot.ports.base < prior.ports.base + prior.ports.count", after: "false", title: "keeps v1 identity rules", test: "src/training/experiments/concurrency/slots.test.ts" },
   { file: loader, before: "z.array(sharedUidSlotSchema).min(1).max(8)", after: "z.array(slotSchema).min(1).max(8)", title: "loads", test: "src/training/experiments/concurrency/slots.test.ts" },
 ];
 
-it("kills native slot mutants through behavioral assertions in isolated copies", async () => {
-  const sandbox = await mkdtemp(join(tmpdir(), "native-slot-mutations-"));
+it("kills slot loader mutants through behavioral assertions in isolated copies", async () => {
+  const sandbox = await mkdtemp(join(tmpdir(), "slot-mutations-"));
   try {
     await cp(join(root, "src/training"), join(sandbox, "src/training"), { recursive: true, filter: entry => !/[\\/]\.venv(?:[\\/]|$)/.test(entry) });
     await cp(join(root, 'src/shared'), join(sandbox, 'src/shared'), { recursive: true });
@@ -46,7 +33,7 @@ it("kills native slot mutants through behavioral assertions in isolated copies",
         let code: unknown;
         try {
           await run(process.execPath, [join(root, "node_modules/vitest/vitest.mjs"), "run", "--configLoader", "runner",
-            "--maxWorkers=1", "--reporter=json", "--outputFile=results.json", mutation.test ?? test, "-t", mutation.title],
+            "--maxWorkers=1", "--reporter=json", "--outputFile=results.json", mutation.test, "-t", mutation.title],
           { cwd: sandbox, timeout: 30000, maxBuffer: 1024 * 1024,
             env: Object.fromEntries(Object.entries(process.env).filter(([key]) => !/KEY|TOKEN|SECRET|PASSWORD/iu.test(key))) });
           code = 0;
