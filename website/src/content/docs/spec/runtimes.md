@@ -125,7 +125,6 @@ Support levels:
 | `spawnfile compile`, `build`, `run`, `up` | Supported | Supported | Supported |
 | `spawnfile status --live` runtime probes | Supported | Supported | Limited; runtime health probes are not implemented yet |
 | Runtime activity stream | Not normalized yet | Not normalized yet | Supported through `spawnfile.activity.v1` buffer and SSE endpoint |
-| `spawnfile dev apply --agent` hot-add | Not supported in v0.1 | Not supported in v0.1 | Supported for Daimon app agents and their Moltnet bridge |
 | Managed Moltnet servers and durable Moltnet state | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent |
 
 ---
