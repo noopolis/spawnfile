@@ -83,7 +83,7 @@ See [container deployment](specs/CONTAINERS.md), [status](specs/STATUS.md), and 
 | **OpenClaw** | OpenClaw agents and their native messaging surfaces. The default agent scaffold. |
 | **PicoClaw** | PicoClaw agents and their native messaging surfaces. |
 
-Daimon requires a pinned runtime image matching the compiler contract. The older `pi` adapter remains available for existing projects.
+Daimon requires a pinned runtime image matching the compiler contract.
 
 Portability is capability-specific: the compiler reports each feature as **supported**, **degraded**, or **unsupported**. Read that report before switching runtimes. Exact versions live in [runtimes.yaml](runtimes.yaml); the [runtime specification](specs/RUNTIMES.md) describes the adapter model.
 

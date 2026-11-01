@@ -54,7 +54,6 @@ These runtimes have working adapters:
 1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, native `mcp.servers`, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
 3. **[Daimon](/runtimes/daimon/)** -- Noopolis-native generated harness app backed by Pi, grouped team agents, subscription auth support, local model endpoints, shared workspace resources.
-4. **[Pi](/runtimes/pi/)** -- compatibility alias for the Daimon runtime path.
 
 ## Exploratory Runtimes
 

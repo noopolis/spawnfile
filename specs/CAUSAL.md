@@ -122,7 +122,7 @@ instead of a schema library.
   are `agent:<agentId>`) — the agent whose stream this is must be the agent
   the event is attributed to. This does NOT apply to daimon's control-wake
   events (`control.wake.accepted`/`control.wake.denied`, minted by root's
-  operator-control endpoint, see `src/runtime/pi/appControlSource.ts`):
+  operator-control endpoint):
   their stream is the *target* agent being woken, but their principal is
   the *operator* who requested the wake — an intentional mismatch.
 - **`recorded_at`** — an ISO 8601 timestamp, diagnostics only. The

@@ -13,7 +13,6 @@ Dev mode is intentionally narrower than the normal lifecycle commands:
 
 - It defaults to `.spawn-dev`.
 - It targets project-backed Docker deployments.
-- Hot apply currently supports Pi runtime agents one at a time.
 - It mutates a running dev container without rebuilding or restarting it.
 - Its durable volumes are namespaced away from production's. `devUpProject`
   passes `DEV_DEPLOYMENT_LINEAGE_NAMESPACE` to `upProject`, which folds it into

@@ -30,9 +30,6 @@ and [adapter tests](../src/runtime/daimon/adapter.test.ts) verify the versioned
 runtime contract, workspace documents, and launch artifacts. A separate
 hand-maintained blueprint is not a compile input or a missing runtime dependency.
 
-The legacy Pi adapter likewise generates its application and configuration;
-see its [working guide](../src/runtime/pi/AGENTS.md).
-
 ## Incompatible Runtimes
 
 These were evaluated but are fundamentally incompatible with Spawnfile's config + markdown workspace model:

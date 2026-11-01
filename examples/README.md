@@ -32,7 +32,6 @@ product code must not contain fixture-specific behavior.
 | `daimon-cli-memory-org` | Codex, Claude, Grok, and Agy CLI engines receiving schedule/dream memory context |
 | `lifecycle-smoke` | Minimal single-agent scripted lifecycle (`up`/`artifacts export`/`down`) receipt smoke |
 | `moltnet-memetics` | Live two-agent Moltnet conversation over real Codex/Grok |
-| `office-sim` | Standalone scripted-engine harness proving the pi adapter's `scripted` engine kind |
 
 Executable test-support helpers (cross-process fork fixtures and the trusted
 Moltnet release stager) live under `fixtures/support/`.

@@ -71,7 +71,6 @@ src/compiler/
 ├── moltnetBinaries.ts          # Strict stamped and authority-pinned Moltnet binary staging
 ├── moltnetReleaseDownload.ts   # Bounded exact-digest download for the pinned published release
 ├── moltnetReleaseAuthority.ts  # Parser for the checked-in version/revision/asset digest trust root
-├── daimonTelemetryArtifacts.ts # Run-scoped durable volume for legacy generated-Pi telemetry
 ├── workspaceBundleArtifacts.ts # Bundle tar validation and staging into the Docker context
 ├── workspaceBundleResolve.ts   # Gives every bundle a digest: builds declared inputs by cache key, hashes unpinned tars
 ├── workspaceBundleFiles.ts     # `build.files` inputs: exclude globs, release (git tree) and dev (work tree) identity, archive writing
@@ -162,11 +161,8 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   `resolveCompiledEngines(report)` in this same file, which flattens
   `report.container.runtime_instances[].engine_by_node_id` — deliberately reading the
   already-compiled report rather than re-deriving from a second `buildCompilePlan` walk
-  (unlike `resolveCompiledSchedule` above), since that field is pi-adapter-owned
-  (`src/runtime/pi/adapter.ts`'s `resolvePiEngine`) and this folder has no business
-  recomputing pi-internal engine resolution itself. This is the disclosure ground truth for
-  a `scripted` (or any non-default) pi engine, so a scripted run is visibly scripted rather
-  than an invisible test-only branch.
+  (unlike `resolveCompiledSchedule` above), since engine resolution belongs to
+  the runtime adapter.
 - `memoryArtifacts.ts` emits durable memory mounts with `lifecycle:
   "exclusive-reattach"`, deliberately NOT run-scoped. `createPersistentVolumeName`
   folds `NOOPOLIS_RUN_ID` into a volume name and `ensureNoopolisRunId` mints a
@@ -199,7 +195,7 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   the organization a brand-new empty volume — a real newsroom lost its whole
   message history to a routine `docker rm` + recreate. `createPersistentVolumeName`
   now takes no name at all and is reserved for genuinely run-scoped mounts (the
-  Moltnet causal log, per-network Moltnet runtime state, Pi telemetry). The
+  Moltnet causal log, per-network Moltnet runtime state). The
   cost is the same one durable memory already pays: an organization declaring
   any of these cannot use the concurrent blue/green canary path.
 - `runProject.ts` mounts compiler-owned persistent mounts WITHOUT `volume-nocopy`.
@@ -321,20 +317,15 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   store"` compiled fine and then refused to start.
   `SPAWNFILE_ALLOW_EPHEMERAL_STATE=1` opts out, but it disables the guard for
   every mount, so it is not a workaround for one bad path.
-- `daimonTelemetryArtifacts.ts` retains the legacy generated-Pi telemetry mount
-  layout. The Phase-A public `runtime: daimon` host has no Spawnfile telemetry
-  mount or Pi implementation path; add its public activity integration only in
-  a later Daimon control-plane phase.
+
 - `runtime: daimon` lowers one strict public organization-host config, not a
   generated Pi app. Schedules, MCP declarations, and every surface except a
-  compiler-owned Moltnet public-wake attachment fail closed. `runtime: pi`
-  remains the only generated Pi path and owns its legacy engine/auth/MCP/
-  scheduler behavior.
+  compiler-owned Moltnet public-wake attachment fail closed.
 - Standard compiles use the published Daimon, Mneme, and authority-pinned
   Moltnet releases. Local package directories are accepted only through the
   explicit `CompileProjectOptions.runtimePackageOverrides` test/development
   seam; a checkout's `ecosystem/` directory never changes production output.
-- `runProjectAuth.ts`'s `prepareRuntimeAuthMounts` no longer bails out to empty mounts when its `authProfile` argument is `null` (no `--auth-profile` was passed to `spawnfile run`/`up`). It still calls every runtime instance's adapter `prepareRuntimeAuth` (`src/runtime/types.ts`, now `authProfile: ResolvedAuthProfile | null`), because not all adapter-owned mounting depends on the Spawnfile-managed auth profile: the Pi adapter's optional grok/codex/antigravity CLI-home staging (`src/runtime/pi/runAuth.ts`) is host-credential-based and profile-independent, mirroring `src/e2e/officeSim.ts`'s `stageGrokHome` harness helper. This is what makes a bare `spawnfile up <org>` (no `--auth-profile`) stage the host's already-logged-in `~/.grok`/`~/.codex`/antigravity homes into a real-engine `pi` instance's runtime home — the gap that silently starved a composed real-engine deployment (e.g. `ecosystem/simfile`'s driver, which never passes `--auth-profile` by charter) of grok auth. `assertDeclaredModelAuthSatisfied`/`assertRunEnvironmentSatisfied` are unaffected: a project that actually declares `codex`/`claude-code` model auth methods still requires a matching `--auth-profile` to satisfy those, this only widens what runs with NO profile selected at all. Mount args built here are never persisted anywhere (not the deployment record, not the up-receipt) — they exist only as ephemeral `docker run -v` arguments for the one invocation.
+- `runProjectAuth.ts`'s `prepareRuntimeAuthMounts` calls runtime auth adapters even without an auth profile. Each adapter treats a null profile as no imported credentials.
 - `runProjectAuth.ts` also provisions an independent random value for every missing managed-bearer Moltnet token environment binding. Explicit process/profile/env-file values still win, but generated red/blue/operator credentials stay only in the one Docker env file, are checked for distinctness, and that generated file is unlinked immediately after Docker returns the detached container id by `runProjectLifecycle.ts`. A later image-inspection or record-write failure must preserve the remaining support directory because its staged auth files may already be active bind-mount sources; only a true pre-start failure removes the whole directory.
 - Container plans expand adapter-owned per-agent paths into report `agent_paths`; Moltnet summaries preserve the source node ID for exact offline training attachment lookup.
 - Per-agent path metadata belongs only to the compile report; strip it at the strict distribution-report boundary.
