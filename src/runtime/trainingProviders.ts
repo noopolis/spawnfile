@@ -2,7 +2,7 @@ import type { CliDependencies } from '../training/cli/index.js';
 import type { InferenceProviderDescriptor, InferenceProviderRegistry } from '../training/contracts/index.js';
 import { INFERENCE_POLICY_VERSIONS } from '../training/contracts/index.js';
 import { defaultInferenceProviders, DatasetError, subjectHostInference, trainingEnvironment } from '../training/index.js';
-import { createCodexInference } from './codex-exec/training/providers/codex-subscription/index.js';
+import { createCodexInference } from './daimon/training/providers/codex-subscription/index.js';
 import { createGrokInference } from './daimon/training/providers/grok-subscription/index.js';
 import { createGrokBrokerInference, GrokGrantPool } from './daimon/training/providers/grok-broker/index.js';
 import { grokBrokerControlSocketEnv, grokGrantHomeRootEnv, grokGrantModels, grokGrantReasoningEfforts,

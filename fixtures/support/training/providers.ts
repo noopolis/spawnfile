@@ -8,7 +8,7 @@ import * as policies from '../../../src/training/providers/index.js';
 import type { InferenceProviderRegistry } from '../../../src/training/contracts/index.js';
 
 export { createGrokInference } from '../../../src/runtime/daimon/training/providers/grok-subscription/index.js';
-export { createCodexInference } from '../../../src/runtime/codex-exec/training/providers/codex-subscription/index.js';
+export { createCodexInference } from '../../../src/runtime/daimon/training/providers/codex-subscription/index.js';
 export type { GrokInferenceGrantAuthority } from '../../../src/runtime/daimon/training/providers/grok-broker/grants.js';
 
 export const providers = createTrainingProviderRegistry();
