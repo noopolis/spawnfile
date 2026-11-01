@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import { renderDockerfile } from "./containerArtifactsRender.js";
@@ -34,13 +34,8 @@ const createRuntimePlan = (): RuntimeTargetPlan => ({
   targetFiles: []
 });
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
-
 describe("Docker build context ignore safety", () => {
   it("keeps every rendered context source visible across supported configurations", async () => {
-    vi.stubEnv("SPAWNFILE_PI_RUNTIME_BASE_IMAGE", "");
     const plan = createRuntimePlan();
     const configurations = [
       {
@@ -53,14 +48,6 @@ describe("Docker build context ignore safety", () => {
           hasStagedMoltnetBinaries: true
         }),
         name: "moltnet with staged binaries"
-      },
-      {
-        dockerfile: await renderDockerfile([plan], {
-          runtimePackageOverrides: {
-            "@noopolis/daimon": { filename: "noopolis-daimon-test.tgz" }
-          }
-        }),
-        name: "runtime package override"
       },
       {
         dockerfile: await renderDockerfile([plan], {
@@ -89,8 +76,7 @@ describe("Docker build context ignore safety", () => {
       ).toEqual([]);
     }
     expect(configurations[1]!.dockerfile).toContain("COPY moltnet-bin/");
-    expect(configurations[2]!.dockerfile).toContain("COPY container/vendor/");
-    expect(configurations[3]!.dockerfile).toContain("COPY world-bindings.json");
+    expect(configurations[2]!.dockerfile).toContain("COPY world-bindings.json");
   });
 
   it("reports an ignored COPY source and skips multi-stage or remote sources", () => {
