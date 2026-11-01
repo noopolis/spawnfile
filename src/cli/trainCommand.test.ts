@@ -18,7 +18,6 @@ async function project(): Promise<string> {
   await writeFile(path.join(root, "Spawnfile"), 'spawnfile_version: "0.1"\nkind: agent\nname: author\nruntime: daimon\n');
   return root;
 }
-const container = ["--training-image", `sha256:${"a".repeat(64)}`, "--training-config", "/training.json"];
 const base = ["--train", "train.spawnfile-training.yaml", "--test", "test.spawnfile-training.yaml", "--out", "local output"];
 const { version: packageVersion } = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8")) as { version: string };
 const emptyPlan = (root: string): Awaited<ReturnType<CliHandlers["createTrainingPlan"]>> => ({
@@ -169,7 +168,7 @@ describe("spawnfile train --plan", () => {
     const forbidden = vi.fn(async () => { throw Error("must not start training"); });
     const stdout: string[] = [];
     expect(await runCli(["train", "./project with spaces", "--plan", "--agent", "agent:author",
-      "--train", "unused.yaml", "--out", "unused-output", "--training-config", "unused.json", "--resume"], {
+      "--train", "unused.yaml", "--out", "unused-output", "--resume"], {
       handlers: { createTrainingPlan, createTrainingContext: forbidden, runTraining: forbidden },
       streams: { stdout: (value) => stdout.push(value), stderr() {} }
     })).toBe(0);
@@ -213,14 +212,14 @@ describe("spawnfile train", () => {
   it.each([[], ["--concurrency", "2"], ["--concurrency=2"]])("forwards explicit concurrency to the launcher without imposing a default: %j", async (...flags) => {
     const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
     const stderr: string[] = [];
-    expect(await runCli(["train", await project(), ...base, ...container, ...flags], {
+    expect(await runCli(["train", await project(), ...base, ...flags], {
       handlers: { runTraining: delegate },
       streams: { stdout() {}, stderr: (value) => stderr.push(value) }
     })).toBe(0);
     expect(stderr).toEqual([]);
     expect(delegate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       args: [...base, ...(flags.length ? ["--concurrency", "2"] : []), "--experiment-timeout-ms", "43200000"],
-      trainingConfig: "/training.json", dryRun: false
+      dryRun: false
     }));
   });
 
@@ -257,7 +256,7 @@ describe("spawnfile train", () => {
 
   it("forwards explicit resume to training core without changing canonical agent context", async () => {
     const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
-    expect(await runCli(["train", await project(), ...base, ...container, "--resume"], {
+    expect(await runCli(["train", await project(), ...base, "--resume"], {
       handlers: { runTraining: delegate }, streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(0);
     expect(delegate.mock.calls[0]![0].args).toEqual([...base, "--resume", "--experiment-timeout-ms", "43200000"]);
@@ -266,7 +265,7 @@ describe("spawnfile train", () => {
   });
 
   it.each([1, 2, 130, 143])("propagates the delegated exit %s", async (exitCode) => {
-    const code = await runCli(["train", await project(), ...base, ...container], { handlers: { runTraining: async () => exitCode },
+    const code = await runCli(["train", await project(), ...base], { handlers: { runTraining: async () => exitCode },
       streams: { stdout: () => undefined, stderr: () => undefined } });
     expect(code).toBe(exitCode);
   });
@@ -274,7 +273,7 @@ describe("spawnfile train", () => {
   it("forwards cancellation and default timeout without forcing dry-run", async () => {
     const controller = new AbortController();
     let captured: RunTrainingOptions | undefined;
-    expect(await runCli(["train", await project(), ...base, ...container, "--optimizer-model", "fable", "--bridge-command", "bridge", "--max-proposals", "1", "--seed", "0", "--view", "0"], {
+    expect(await runCli(["train", await project(), ...base, "--optimizer-model", "fable", "--bridge-command", "bridge", "--max-proposals", "1", "--seed", "0", "--view", "0"], {
       signal: controller.signal, handlers: { runTraining: async (options) => { captured = options; return 2; } },
       streams: { stdout: () => undefined, stderr: () => undefined }
     })).toBe(2);
@@ -331,12 +330,3 @@ describe("spawnfile train", () => {
   });
 });
 
-it("keeps public repair authority separate from forwarded optimizer flags", async () => {
-  const delegate = vi.fn(async (_options: RunTrainingOptions) => 0);
-  expect(await runCli(["train", await project(), ...base, "--training-config", "/recipe.json", "--repair-measurements", "/parent", "--repair-witness", "/witness.json"], {
-    handlers: { runTraining: delegate }, streams: { stdout() {}, stderr() {} }
-  })).toBe(0);
-  expect(delegate.mock.calls[0]![0]).toMatchObject({ repairMeasurements: "/parent", repairWitness: "/witness.json" });
-  expect(delegate.mock.calls[0]![0].args).not.toContain("--repair-measurements");
-  expect(delegate.mock.calls[0]![0].args).not.toContain("--repair-context");
-});

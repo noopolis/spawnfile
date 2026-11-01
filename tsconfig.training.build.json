@@ -6,8 +6,7 @@
   },
   "include": [
     "src/training/**/*.ts",
-    "src/runtime/daimon/training/**/*.ts",
-    "src/runtime/codex-exec/**/*.ts"
+    "src/runtime/daimon/training/**/*.ts"
   ],
   "exclude": [
     "src/training/**/*.test.ts",

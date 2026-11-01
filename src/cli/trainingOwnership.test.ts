@@ -30,7 +30,6 @@ const legacyPaths = new Set([
   'src/shared/trainingLegacy/trainingLegacyWire.test.ts',
   'src/training/experiments/replay/legacy-wire.test.ts',
   'src/training/experiments/repair/legacy-wire.test.ts',
-  'src/compiler/training/repair/legacy-wire.test.ts',
   'src/training/graders/format/legacy-wire.test.ts',
   'src/shared/trainingLegacy/trainingLegacyEnvironment.ts',
   'src/shared/trainingLegacy/trainingLegacyEnvironment.test.ts',
@@ -128,7 +127,7 @@ it("allows legacy data only in the exact compatibility allowlist", () => {
 });
 
 it("scans documentation, images, core, tests, fixtures, names and mixed case", () => {
-  const files = ["README.md", "runtime-images/training/Dockerfile", "src/training/legacy.ts",
+  const files = ["README.md", "runtime-images/daimon/Dockerfile", "src/training/legacy.ts",
     "src/cli/example.test.ts", "src/compiler/fixtures.test-helper.ts", "PAIDEIA.md"];
   expect(scan(files, () => "PaIdEiA")).toEqual(files);
   expect(scan(['Paideia.txt'], () => 'clean contents')).toEqual(['Paideia.txt']);

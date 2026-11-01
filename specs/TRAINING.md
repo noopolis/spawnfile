@@ -4,19 +4,12 @@
 training core in-process. Spawnfile owns canonical source resolution, training
 authoring, native compilation, evaluation, cost planning, optimization and isolated trials.
 
-The [container boundary](TRAINING_CONTAINERS.md) runs the complete experiment
-inside one immutable image. The v2 training configuration prepares its pinned
-image and inputs behind the same command; the v1 image/mount path remains
-available. Dry-run remains a host-only estimate.
-
-`spawnfile.training-container.v3` adds a brokered Grok slot to that boundary:
-the subject's model runs in the same container under a root-provisioned broker,
-the evaluator recycles that slot between trials through a single-verb root
-supervisor, and judges spend the one dedicated training Grok login through
-bounded inference grants instead of holding it. Import that login with
-`spawnfile auth import grok --profile spawnfile-training --from <directory>`; the
-desktop `~/.grok` is refused, because a training run rotates the credential it
-is given.
+Actual training is production-booted: every trial is the subject agent's own
+compiled organization, booted with production's entrypoint and Docker security
+arguments, and all trials of one run share one Daimon auth gateway sidecar that
+holds the login of `--auth-profile` (see `src/compiler/training/trial/AGENTS.md`).
+The training core and graders run in the parent process. Only Daimon subjects
+train; dry-run remains a host-only estimate.
 
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer \
@@ -73,13 +66,9 @@ command-local resource map and awaited cleanup hooks; dry-run does not call them
 Provider IDs in existing YAML and receipt/cache/checkpoint identities remain unchanged.
 
 The core's neutral built-ins are saved Claude subscription inference and native
-Ollama inference. Standalone CLI subscription inference lives in
-`src/runtime/codex-exec/training/providers/codex-subscription/`. Daimon owns
-`src/runtime/daimon/training/providers/grok-subscription/` and `grok-broker/`,
-including shared CLI transport, broker grants, the model catalog and client pins.
-Daimon's durable slot freshness services live under its `training/services/`;
-subject authentication helpers live with the standalone subject adapter. The core
-passes adapter-owned services through unchanged.
+Ollama inference. Daimon owns `src/runtime/daimon/training/providers/codex-subscription/`
+and `grok-subscription/`, the parent-process grader and evaluator routes over the
+operator's saved logins. The core passes adapter-owned services through unchanged.
 
 `src/runtime/trainingSubjects.ts` composes subjects and provider registrations;
 `trainingProviders.ts` supplies engine descriptors. Grader provider policy is an
@@ -96,24 +85,17 @@ synthetic evidence helpers. Private implementation imports are forbidden. Non-te
 core files MUST contain no engine-name text; the only boundary exception is the Python packaging symlink to the shared frozen wire-alias table, verified by canonical target.
 
 Runtime registry entries declare their training adapter ID and engine vocabulary.
-Launch schemas consume that vocabulary; adapter-specific execution constraints
-still refuse engines without an implemented training path. Repair receipts carry
-a string `adapterId`; launch validates it against the selected runtime's registered
-adapter before container operations. Existing string-valued receipts and launch
-versions remain readable without changing their wire shape.
+The Daimon registration accepts `--runtime daimon` for planning and dry-run; its
+trials are created only by `spawnfile train`, which supplies the run's launcher.
 
 ## Interim public integration entry points
 
 The package declares explicit ESM and TypeScript exports for integrations migrating
 from the former training package:
 
-- `spawnfile/training` retains compiler context, plans, moments, preparation and
-  subject leases, including `trainingPreparationSchema` and `prepareTrainingEvaluators`.
+- `spawnfile/training` retains compiler context, plans, execution lowering and moments.
 - `spawnfile/training/core` supplies the selected dataset, candidate, trial,
   evaluation, inference, optimizer identity and storage APIs.
-- `spawnfile/training/daimon` supplies the selected native subject, slot,
-  child-environment and worker-validation APIs. Its barrel lives with the Daimon
-  runtime; importing it never starts a worker or loads the external runtime package.
 - `spawnfile/training/cli` supplies `launch`, integration and moment types,
   `spawnfileEnvironment`, `CliDatasets`, `createTrainingInference` and
   `trainingDependencies`. `launch` uses the same runtime composition as the host CLI.
@@ -263,7 +245,7 @@ spawnfile train ./project --agent writer --dry-run
 spawnfile train ./project --agent writer
 ```
 
-With authored targets, `--train`, `--out`, and `--training-config` are OPTIONAL.
+With authored targets, `--train` and `--out` are OPTIONAL.
 Spawnfile lowers `spawnfile.training-plan.v1` to `spawnfile.training-execution.v1`:
 
 - `--train` and `--test` default to the target's absolute dataset paths.
@@ -276,104 +258,32 @@ Spawnfile lowers `spawnfile.training-plan.v1` to `spawnfile.training-execution.v
 - A fresh output defaults to
   `<ancestor>/.spawn-training/<project-name>-<project-path-hash>/<URI-encoded canonical agent ID>/<UTC timestamp>-<nonce>`.
   The nearest project ancestor with a namespace disjoint from every declared input
-  is selected, so neither output nor sibling preparation scratch enters the input tree.
+  is selected, so output never enters the input tree.
   Parents are private canonical directories; symlink aliases fail before allocation.
   `--resume` MUST supply `--out` for the exact prior experiment, never select "latest".
 
-The container declaration is selected at `training/container.json` beside the selected
-agent's declaring Spawnfile, then at `<project>/training/container.json`. The first
-existing declaration wins; an invalid local declaration MUST NOT fall back to the root.
-Inline members use their parent manifest's directory. No new training-block fields
-are introduced. The existing v2/v4 declaration supplies the image reference/build,
-auth leaf references, history/input bindings, and integration settings/build entry.
-Org-specific reconstruction, accepted-output extraction and grader semantics belong to
-that declared integration. For history, use an input with `id: history`; it remains a
-read-only binding in the mapped preparation receipt. No auth bytes enter the authoring
-or execution receipt, image or per-trial inputs.
-
-For example, a declaration for an already-built immutable training image:
-
-```json
-{
-  "version": "spawnfile.training-container.v2",
-  "dockerContext": "local",
-  "image": { "ref": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-  "inputs": [{ "id": "project", "source": "..", "destination": "/run/training/inputs/project",
-    "include": ["Spawnfile", "AGENTS.md", "training"] }],
-  "integration": { "settings": { "input": "project", "path": "training/settings.json" } },
-  "output": { "source": "output-template", "destination": "/run/training/output" },
-  "auth": []
-}
-```
-
-Paths in the container declaration resolve from its directory. Use the actual image,
-required auth references and integration settings. The output source is a template:
-authoring-driven execution replaces it with allocated `--out`. When the source project
-contains the output, the project input MUST use selected `include` paths or a pinned Git
-snapshot, disjoint from output. The source root is never bound over its own output;
-preparation stages the read-only snapshot. All canonical sources, datasets, graders and
-integration settings MUST be covered by declared inputs. Full directory binds that
-overlap output remain forbidden.
-
 Explicit scalar flags override lowered defaults; repeated `--editable` replaces the
-default editable set. `--training-config` replaces convention lookup; `--training-image`
-replaces a v2/v4 image recipe/reference with that immutable image. Advanced v1 bindings
-remain supported with explicit `--training-image`, as do lowered v4 launch configurations
-without `image`. Preparation dispatch uses both version and declaration shape.
-Fresh authored direct launches create canonical private output after validating mounts
-and CLI paths; resume requires existing output. A full project bind cannot contain the
-default project-local output: use disjoint `--out` or a selected preparation snapshot.
-The authoring receipt preserves the
+default editable set. The authoring receipt preserves the
 original declaration; `args` and `optimizer` carry the effective overrides. The
 argv holds one authoring locator per role, while the protected receipt carries all
 target datasets. Its consumer MUST lower every declared dataset into one executable
 dataset per role; the locator MUST NOT restrict lowering to the first target.
 An integration that does not support a dataset override MUST reject it explicitly.
 
-Authored `--dry-run` prints the lowered execution receipt plus the selected container
-configuration (and any image override), then exits 0. It reads local files only: no
+Authored `--dry-run` prints the lowered execution receipt, then exits 0. It reads local files only: no
 context capture, training estimator, auth contents, Docker, hooks, output allocation or
 writes. `--plan` continues printing only the deterministic authoring plan. Without
 any authored targets the existing explicit dataset dry-run remains the training estimator.
 
-Actual training follows the existing preparation and container launcher. A protected,
-read-only JSON receipt at `/run/spawnfile-training/execution.json` contains `version`, `authoring`, `datasetPins`,
-`optimizer`, `args`, and `output`; all filesystem addresses are mapped into declared
-container mounts. `trainingExecutionSchema` validates the strict public shape, and
-`TRAINING_EXECUTION_FILE` exposes its conventional location. Integration consumes this
-receipt for moment/case lowering, validation dataset handoff and population search;
-these controls are not invented training CLI flags. The legacy context contract is unchanged.
-Authored execution MUST inspect the resolved immutable image before container creation
-and require the label `com.spawnfile.training.execution=spawnfile.training-execution.v1`.
-This label declares that `/opt/training/bin/train` accepts
-`--spawnfile-execution /run/spawnfile-training/execution.json`, validates the receipt, lowers
-authored examples into executable cases, hands off validation data and graders, and
-applies effective optimizer controls and explicit argv overrides. It MUST reject
-unsupported controls instead of ignoring them. Spawnfile passes this argument to the
-entrypoint. Existing Training consumers without this contract MUST fail explicitly;
-the packaged recipe MUST NOT automatically claim compatibility for an arbitrary
-integration. Integration/image authors own the implementation and capability label.
-For packaged `image.build`, the integration author explicitly declares support with
-`image.build.integration.execution: "spawnfile.training-execution.v1"` alongside
-`source` and `entry`. This optional field accepts only that exact version; omission
-preserves legacy integration behavior. The builder emits the corresponding image
-label, binds it into the recipe digest, and verifies it on cache hits and after a
-build. Without the declaration it sets the label to an empty value, overriding any
-native-parent label: the installed integration cannot inherit another entrypoint's
-compatibility. This declaration is the author's assertion of implementation, not a
-runtime conformance test. Authored launch still checks the immutable image label.
-Dry-run reports the plan only and does not verify an image's capability.
+Actual training hands the lowered `args` to production-booted training
+(`--auth-profile` is required). `trainingExecutionSchema` validates the strict
+public receipt shape: `version`, `authoring`, `datasetPins`, `optimizer`, `args`
+and `output`.
 
 `datasetPins` binds every authored train/validation/test source path to the SHA-256
 of the exact bytes parsed during plan loading, including full override declarations.
-Preparation MUST verify these pins against staged Git/selected snapshot bytes on
-fresh runs and resume; missing files and mismatches MUST fail before image building.
-Direct launches MUST verify the mounted dataset bytes before Docker. Path projection
-preserves hashes. Explicit dataset overrides remain in `args`; they do not erase
-the original authoring provenance or its pins.
-Exact resume binds the execution receipt (including optimizer shape) into preparation
-identity, independently of source/model/argv changes, ignoring only `--resume` and
-scalar-option ordering. This lowering does not itself materialize trials, grade them,
+Explicit dataset overrides remain in `args`; they do not erase the original
+authoring provenance or its pins. This lowering does not itself materialize trials, grade them,
 select candidates, or publish outputs.
 
 ## Moment record
@@ -599,7 +509,7 @@ spawnfile train ./Spawnfile --agent agent:writer --materialize train:ice-shootin
 
 `--materialize <example>` MUST require the existing `--out` option and follows
 the plan's exact-agent selection (inferred only for a single-agent project).
-It requires neither `--train` nor `--training-config`. It is mutually exclusive
+It does not require `--train`. It is mutually exclusive
 with `--plan`. `--history` is OPTIONAL and applies only to materialization. The
 command resolves the authoring plan and selected example using local files. It
 MUST NOT invoke cognition, Training, Docker, authentication, network access, or
@@ -938,7 +848,6 @@ Each process MUST have exactly one offset owner. These pure helpers replace
 | `harnessTaskClockEnvironment` | Top-level agent harness (Daimon), with an unshifted process clock | Only `NOOPOLIS_TASK_CLOCK`: compact JSON `{"version":"noopolis.task-clock.v1","origin":"<ISO Z>","anchorEpochMs":<int>}` |
 | `processClockEnvironment` | Child/tool process under libfaketime | Only `FAKETIME`: signed relative seconds `(originEpochMs - anchorEpochMs) / 1000`, and `FAKETIME_DONT_FAKE_MONOTONIC=1` |
 | `clockAwareEnvironment` | Clock-aware child (such as Mneme) without libfaketime | Only `MNEME_CLOCK_ORIGIN`: normalized origin, and `MNEME_CLOCK_ANCHOR_MS`: decimal anchor milliseconds |
-| Daimon broker `start_turn.processClock` | Brokered Grok in a clocked training slot | Signed relative seconds over control protocol v4; the broker atomically publishes the offset to `/run/daimon-engine-broker/task-clock/slot-<n>/faketime` before launch. The pinned clocked shell policy supplies `LD_PRELOAD=/usr/local/lib/daimon/libfaketime.so.1`, `FAKETIME_TIMESTAMP_FILE`, `FAKETIME_DONT_FAKE_MONOTONIC=1` and `LC_ALL=C`. |
 
 Daimon consumes the top-level contract and derives each child's environment itself.
 Trial preparation supplies the installed libfaketime path through `LD_PRELOAD` for
@@ -948,18 +857,6 @@ and `MNEME_CLOCK_ANCHOR_MS`, including inherited values. A clock-aware child MUS
 instead omit libfaketime from `LD_PRELOAD` and omit `FAKETIME` and
 `NOOPOLIS_TASK_CLOCK`. Applying both offsets would shift time twice. The top-level
 harness MUST NOT itself run under libfaketime or receive the Mneme offset variables.
-
-The training image installs the fixed preload path above for both direct Daimon
-tool children and brokered Grok shells. Brokered training uses the manifest's
-separate `clockedConfigSha256` matrix, never modified production bytes. A clocked
-training container MUST isolate each registration's clock directory; turns in
-different leased slots may overlap.
-An unclocked turn in that slot resets the file to `+0` before launch. The clock
-directory is broker-owned and readable through the worker's read-only `/run`
-directory mount; a file-only bind would retain a stale inode after publication.
-The launcher, broker, Grok process, authentication and TLS remain on real time.
-Daimon also rewrites Grok's provider-injected date for clocked turns; this is
-separate from shell clock coverage. Production's unclocked config is unchanged.
 
 Relative `FAKETIME` MUST include a sign, use seconds without a suffix, and preserve
 milliseconds (three fractional digits when nonzero; no fraction for integral
@@ -1063,8 +960,8 @@ tests MUST keep them identical to the exported runtime contracts.
 ## Training context
 
 The host calls the training composition with the resolved context object and
-explicit training options. The container reads the same strict context from
-`--spawnfile-context /run/spawnfile-training/context.json`; that file is evaluator-only.
+explicit training options. Integrations may pass the same strict context with
+`--spawnfile-context <file>`.
 Dry-run requires neither `--out` nor an optimizer bridge; actual training requires `--out`.
 The receiver must save any provenance needed later in its own protected experiment.
 The strict `spawnfile.training-context.v1` schema appears below and is generated from
@@ -1128,8 +1025,8 @@ host path forwards cancellation through an AbortSignal and enforces its outer
 command deadline: timeout fails, aborts the core and abandons the invocation,
 discarding subsequent output even if the core ignores cancellation. It removes
 its timer and signal handlers on completion. SIGINT and SIGTERM retain exit 130
-and 143. The core owns experiment and per-trial deadlines; the container launcher
-retains its Docker lifecycle and final-receipt validation.
+and 143. The core owns experiment and per-trial deadlines; each trial's
+organization container is removed when its trial stops.
 No external training process, process-group supervisor or temporary host context
 file is involved.
 
@@ -1139,8 +1036,8 @@ days) and optional `training.deadlines.trial_ms` (1..86400000, up to 24 hours).
 Deadlines inherit through direct membership with local fields overriding inherited
 fields. `--experiment-timeout-ms` overrides the plan, followed by the legacy
 `--timeout-ms` alias; `--trial-timeout-ms` overrides the authored trial deadline.
-The outer experiment default is always passed to the training core; the container
-launcher gets that duration plus five seconds for cleanup. The core defaults each trial
+The outer experiment default is always passed to the training core, and the
+command gets that duration plus five seconds for cleanup. The core defaults each trial
 to one hour when no trial deadline is supplied. Experiment duration never changes
 broker turn limits (1800000 for a declared production-length 30-minute turn),
 judge/optimizer route deadlines or atomic extraction deadlines.

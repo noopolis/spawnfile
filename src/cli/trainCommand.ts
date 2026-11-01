@@ -20,15 +20,11 @@ export const registerTrainCommand = (
     .description("Plan, rewind, or train one canonical agent through its declared training inputs")
     .argument("[path]", "Canonical project directory or Spawnfile path", process.cwd())
     .option("--agent <id>", "Canonical agent id or unambiguous short name (inferred for one agent)")
-    .option("--training-image <immutable-image>", "Pinned image containing the complete training environment")
-    .option("--training-config <json>", "V2 image recipe and declared inputs, or advanced v1 local bindings")
     .option("--auth-profile <name>", "Login for production-booted Daimon trials (held by the run's auth gateway)")
     .option("--plan", "Print the resolved training authoring plan without executing training")
     .option("--materialize <example>", "Rewind an authored example into --out without running training")
     .option("--history <directory>", "Local recorded history for --materialize")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
-    .option("--repair-measurements <parent-out>", "Fork captured work into a fresh output for authorized measurement repair")
-    .option("--repair-witness <manifest>", "Explicit verified image witness for a legacy parent")
     .option("--resume", "Resume the exact persisted training experiment in --out");
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
@@ -86,11 +82,9 @@ export const registerTrainCommand = (
     const timeout = Number(options.experimentTimeoutMs ?? options.timeoutMs ?? plan.deadlines?.experiment_ms ?? 43_200_000);
     if (options.experimentTimeoutMs === undefined && options.timeoutMs === undefined) args.push("--experiment-timeout-ms", String(timeout));
     if (options.trialTimeoutMs === undefined && plan.deadlines?.trial_ms !== undefined) args.push("--trial-timeout-ms", String(plan.deadlines.trial_ms));
-    const lowered = plan.targets.length > 0 ? await handlers.lowerTrainingExecution({ project, plan, args,
-      trainingConfig: options.trainingConfig as string | undefined, trainingImage: options.trainingImage as string | undefined }) : undefined;
+    const lowered = plan.targets.length > 0 ? await handlers.lowerTrainingExecution({ project, plan, args }) : undefined;
     if (lowered && options.dryRun === true) {
-      streams.stdout(JSON.stringify({ ...lowered.execution, container: { configPath: lowered.trainingConfig,
-        declaration: lowered.declaration, ...(lowered.trainingImage ? { imageOverride: lowered.trainingImage } : {}) } }, null, 2));
+      streams.stdout(JSON.stringify(lowered.execution, null, 2));
       setExitCode(0);
       return;
     }
@@ -101,15 +95,12 @@ export const registerTrainCommand = (
       throw new SpawnfileError("validation_error", "Actual training requires --out when no training targets are declared");
     }
     const context = await handlers.createTrainingContext(inputPath, { agent: plan.agent.id, packageVersion });
-    // Daimon subjects train as production-booted trials: the container per trial is the isolation.
-    if (!lowered && options.dryRun !== true && typeof options.trainingConfig !== "string" && context.agent.runtime !== "daimon") {
-      throw new SpawnfileError("validation_error", "Actual training requires --training-config when no training targets are declared; host execution is disabled");
+    // Trials are production-booted Daimon organizations: the container per trial is the isolation.
+    if (options.dryRun !== true && context.agent.runtime !== "daimon") {
+      throw new SpawnfileError("validation_error", `Actual training boots Daimon trials; agent ${context.agent.id} runs on ${context.agent.runtime}`);
     }
     if (lowered) await handlers.allocateTrainingOutputParent(lowered.execution.output);
-    setExitCode(await handlers.runTraining({ context, args: lowered?.execution.args ?? args, execution: lowered?.execution,
-      repairMeasurements: options.repairMeasurements as string | undefined, repairWitness: options.repairWitness as string | undefined,
-      trainingImage: lowered?.trainingImage ?? options.trainingImage as string | undefined,
-      trainingConfig: lowered?.trainingConfig ?? options.trainingConfig as string | undefined,
+    setExitCode(await handlers.runTraining({ context, args: lowered?.execution.args ?? args,
       authProfile: options.authProfile as string | undefined,
       dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));

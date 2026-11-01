@@ -15,13 +15,13 @@ it('leaves training adapters unloaded for compilation and resolves them only at 
   expect(hasRuntimeAdapter('codex-exec')).toBe(false);
   const subjects = await createTrainingSubjects(entries);
   expect(loading.count).toBe(1);
-  expect(Object.keys(subjects).sort()).toEqual(['codex', 'daimon']);
-  expect(subjects.daimon!.hostInference!.grantAuthority).toBeTypeOf('function');
+  expect(Object.keys(subjects)).toEqual(['daimon']);
+  expect(subjects.daimon!.hostInference).toBeUndefined();
 });
 
 it('preserves explicit dependency injection and composes the imported CLI entry', async () => {
   const subjects = await createTrainingSubjects([]);
-  expect(Object.keys(subjects)).toEqual(['codex']);
+  expect(Object.keys(subjects)).toEqual([]);
   expect((await trainingDependencies({ subjects })).subjects).toBe(subjects);
   const stdout: string[] = [];
   expect(await main(['--help'], { cwd: process.cwd(), stdout: text => { stdout.push(text); }, stderr: vi.fn() }, { subjects })).toBe(0);
