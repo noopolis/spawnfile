@@ -39,9 +39,18 @@ test('refuses a judgment whose transcript shows any tool activity', async () => 
   expect(refused.usage).toMatchObject({ outputTokens: 6 });
 });
 
-test('refuses a judgment without a transcript to prove it tool-free', async () => {
+test('refuses a judgment without evidence that it was tool-free', async () => {
   bind({ transcript: null });
   expect(await failure(judge().generate({ prompt: 'p', model: 'm' }))).toMatchObject({ kind: 'protocol' });
+  bind({ transcript: null, requestToolCalls: [[], null] });
+  expect(await failure(judge().generate({ prompt: 'p', model: 'm' }))).toMatchObject({ kind: 'protocol' });
+});
+
+test('accepts per-request tool records as proof and refuses any recorded tool call', async () => {
+  bind({ transcript: null, requestToolCalls: [[], []] });
+  expect((await judge().generate({ prompt: 'p', model: 'm', responseSchema: schema })).text).toBe('{"score":9}');
+  bind({ transcript: null, requestToolCalls: [['read_file'], []] });
+  expect(await failure(judge().generate({ prompt: 'p', model: 'm' }))).toMatchObject({ kind: 'protocol', detail: 'tool-call' });
 });
 
 test('refuses a reply that violates the requested schema, and accepts a json fence only when asked', async () => {

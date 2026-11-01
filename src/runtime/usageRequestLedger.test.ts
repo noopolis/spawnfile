@@ -16,6 +16,8 @@ describe("per-request usage stream", () => {
       ended_at: "2026-09-17T10:00:02.004Z", model: "grok-4.6", started_at: "2026-09-17T10:00:01.120Z", turn, usage_source: "stream"
     });
     expect(parseUsageRequestLedgerLine(grokRow({ usage_source: "estimated" }))).toMatchObject({ usage_source: "estimated" });
+    expect(parseUsageRequestLedgerLine(grokRow({ tool_calls: ["read_file"] }))).toMatchObject({ tool_calls: ["read_file"] });
+    expect(parseUsageRequestLedgerLine(grokRow())!.tool_calls).toBeUndefined();
     const codex = JSON.stringify({
       v: "noopolis.daimon.turn-requests.v1", agent: "desk", wake: "w", engine: "codex", at: "2026-09-17T10:00:00.000Z", thread: "t-1",
       request: 1, requests: 3, input: 30_000, cached_input: 28_000, fresh_input: 2_000, cache_write: 0, output: 200, reasoning: 50, total: 30_200
@@ -29,7 +31,7 @@ describe("per-request usage stream", () => {
   it("rejects malformed rows rather than inventing values", () => {
     for (const bad of [
       grokRow({ usage_source: "guessed" }), grokRow({ started_at: "yesterday" }), grokRow({ turn: "short" }),
-      grokRow({ input: -1 }), grokRow({ requests: 0 }), grokRow({ v: "noopolis.daimon.turn-usage.v1" }), "{torn"
+      grokRow({ input: -1 }), grokRow({ requests: 0 }), grokRow({ tool_calls: [1] }), grokRow({ tool_calls: "read_file" }), grokRow({ v: "noopolis.daimon.turn-usage.v1" }), "{torn"
     ]) expect(parseUsageRequestLedgerLine(bad)).toBeNull();
   });
 

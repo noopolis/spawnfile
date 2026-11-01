@@ -14,6 +14,8 @@ export interface BootedWake {
   text: string;
   usage: readonly BootedUsageRow[];
   transcript: string | null;
+  /** Per model request, the tool-call names its response carried; null where the runtime could not say. */
+  requestToolCalls?: readonly (readonly string[] | null)[];
 }
 
 export interface BootedTrialHandle {

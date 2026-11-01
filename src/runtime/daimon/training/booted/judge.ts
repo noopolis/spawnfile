@@ -66,8 +66,8 @@ function wakeFailure(wake: BootedWake): InferenceFailureKind {
  * one wake of the run's warm, tool-free judge organization for this engine,
  * whose login lives only in the run's auth gateway (or the engine's own
  * realm). The reply is validated against the requested schema after the
- * wake, and a wake whose transcript shows any tool activity, or that left no
- * transcript to prove otherwise, is refused.
+ * wake. A wake whose transcript or per-request tool record shows any tool
+ * activity is refused, and so is one that left no evidence either way.
  */
 export function createBootedJudgeInference(options: BootedJudgeOptions): InferenceProvider {
   const route = `${options.engine}-subscription`;
@@ -94,9 +94,13 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
       const withUsage = { ...evidence, usage };
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', `${route} judgment cancelled`, withUsage);
       if (wake.state !== 'completed') throw new InferenceFailure(wakeFailure(wake), `${route} judge wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}`, withUsage);
-      if (wake.transcript === null) throw new InferenceFailure('protocol', `${route} judge left no transcript to prove a tool-free judgment`, withUsage);
-      if (transcriptToolActivity(wake.transcript).length > 0) {
+      const requests = wake.requestToolCalls ?? [];
+      if ((wake.transcript !== null && transcriptToolActivity(wake.transcript).length > 0) || requests.some(calls => calls !== null && calls.length > 0)) {
         throw new InferenceFailure('protocol', `${route} attempt refused: tool-call`, { ...withUsage, detail: 'tool-call' });
+      }
+      // Proof of a tool-free wake: the engine transcript, or every model request's own tool-call record.
+      if (wake.transcript === null && (requests.length === 0 || requests.some(calls => calls === null))) {
+        throw new InferenceFailure('protocol', `${route} judge left no evidence to prove a tool-free judgment`, withUsage);
       }
       const reply = wake.text.trim();
       if (!reply) throw new InferenceFailure('protocol', `${route} judge replied with nothing`, withUsage);
