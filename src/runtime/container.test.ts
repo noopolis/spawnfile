@@ -77,75 +77,12 @@ describe("runtime container install recipes", () => {
     ]);
   });
 
-  it("creates a Pi generated-app install root from the pinned runtime version", async () => {
-    const recipe = await createRuntimeInstallRecipe("pi");
-
-    expect(recipe.runtimeName).toBe("pi");
-    expect(recipe.runtimeRoot).toBe(`${RUNTIME_INSTALL_ROOT}/pi`);
-    expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands).toEqual([
-      `mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`,
-      `cd ${RUNTIME_INSTALL_ROOT}/pi && npm install --omit=dev --no-fund --no-audit @noopolis/daimon@0.1.2 @noopolis/mneme@0.1.1 @earendil-works/pi-coding-agent@0.79.10 @earendil-works/pi-ai@0.79.10`
-    ]);
-  });
-
   it("copies the CI-published Daimon index and checks the per-architecture receipt by default", async () => {
     const recipe = await createRuntimeInstallRecipe("daimon");
     expect(recipe.copyCommands).toEqual([
       `COPY --from=noopolis/spawnfile-runtime-daimon@sha256:40badb0eca3b332aa23ac8eef45f9f07e739dc51aed825ee4ca496542a3e0697 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
     expect(recipe.commands[0]).toContain('case "$arch" in amd64) expected="sha256:6558ccd7a9d4aa0dfc49dd5bd664002c11eea4b1e9d6bbf061a6d9b74a9b123d" ;; arm64) expected="sha256:0c66a9d3e1bc65ac2b8b8fdb7e3c327ed026ac8e7b8c2365fdd7aabe2f74f727" ;;');
-  });
-
-  it("installs overridden runtime packages from the vendored tarball path in the Pi recipe", async () => {
-    const recipe = await createRuntimeInstallRecipe("pi", {
-      packageOverrides: {
-        "@noopolis/daimon": { filename: "noopolis-daimon-0.1.2.tgz" },
-        "@noopolis/mneme": { filename: "noopolis-mneme-0.1.1.tgz" }
-      }
-    });
-
-    expect(recipe.copyCommands).toEqual(["COPY container/vendor/ /opt/spawnfile/vendor/"]);
-    expect(recipe.commands).toEqual([
-      `mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`,
-      `cd ${RUNTIME_INSTALL_ROOT}/pi && npm install --omit=dev --no-fund --no-audit /opt/spawnfile/vendor/noopolis-daimon-0.1.2.tgz /opt/spawnfile/vendor/noopolis-mneme-0.1.1.tgz @earendil-works/pi-coding-agent@0.79.10 @earendil-works/pi-ai@0.79.10`
-    ]);
-  });
-
-  it("keeps the pinned registry spec for Pi recipe packages without an override entry", async () => {
-    const recipe = await createRuntimeInstallRecipe("pi", {
-      packageOverrides: { "@noopolis/daimon": { filename: "noopolis-daimon-0.1.2.tgz" } }
-    });
-
-    expect(recipe.commands[1]).toContain("@noopolis/mneme@0.1.1");
-    expect(recipe.commands[1]).toContain("/opt/spawnfile/vendor/noopolis-daimon-0.1.2.tgz");
-    expect(recipe.commands[1]).not.toContain(`@noopolis/daimon@0.1.2`);
-  });
-
-  it("omits the vendor copy command when the Pi recipe has no overrides", async () => {
-    const recipe = await createRuntimeInstallRecipe("pi", {});
-    expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands[1]).toContain(`@noopolis/daimon@0.1.2`);
-  });
-
-  it("omits the vendor copy command when a prebuilt Pi base image is configured, even with overrides set", async () => {
-    process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-pi-runtime:test";
-
-    const recipe = await createRuntimeInstallRecipe("pi", {
-      packageOverrides: { "@noopolis/daimon": { filename: "noopolis-daimon-0.1.2.tgz" } }
-    });
-
-    expect(recipe.copyCommands).toEqual([]);
-    expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`]);
-  });
-
-  it("uses a prebuilt Pi runtime base image when configured", async () => {
-    process.env.SPAWNFILE_PI_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-pi-runtime:test";
-
-    const recipe = await createRuntimeInstallRecipe("pi");
-
-    expect(recipe.baseImage).toBe("noopolis/spawnfile-pi-runtime:test");
-    expect(recipe.commands).toEqual([`mkdir -p ${RUNTIME_INSTALL_ROOT}/pi`]);
   });
 
   it("consumes an explicit local Daimon identity by immutable manifest and exact receipt digest", async () => {
@@ -215,7 +152,7 @@ describe("runtime container install recipes", () => {
   });
 
   it("omits NOOPOLIS_RUN_ID from every recipe's env when unset", async () => {
-    for (const runtimeName of ["openclaw", "picoclaw", "pi"] as const) {
+    for (const runtimeName of ["openclaw", "picoclaw"] as const) {
       const recipe = await createRuntimeInstallRecipe(runtimeName);
       expect(recipe.env).toEqual({});
     }
@@ -224,7 +161,7 @@ describe("runtime container install recipes", () => {
   it("stamps the same NOOPOLIS_RUN_ID into every recipe's env when set", async () => {
     process.env.NOOPOLIS_RUN_ID = "run-shared-1";
 
-    for (const runtimeName of ["openclaw", "picoclaw", "pi"] as const) {
+    for (const runtimeName of ["openclaw", "picoclaw"] as const) {
       const recipe = await createRuntimeInstallRecipe(runtimeName);
       expect(recipe.env).toEqual({ [NOOPOLIS_RUN_ID_ENV]: "run-shared-1" });
     }

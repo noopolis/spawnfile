@@ -127,20 +127,6 @@ export const resolveRuntimeConfig = (
         token_env: "SPAWNFILE_DAIMON_CONTROL_TOKEN"
       };
     }
-    case "pi": {
-      const port = getRuntimeAdapter(agentNode.runtime.name).container.port;
-      if (!port) {
-        throw new SpawnfileError(
-          "compile_error",
-          `Unable to resolve ${agentNode.runtime.name} control port for Moltnet agent ${agentNode.name}`
-        );
-      }
-
-      return {
-        control_url: `http://127.0.0.1:${port}/agents/${nodeSlug}/wake`,
-        kind: "pi"
-      };
-    }
     default:
       throw new SpawnfileError(
         "compile_error",

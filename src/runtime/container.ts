@@ -1,14 +1,8 @@
-import { DAIMON_PACKAGE_NAME } from './daimon/packageName.js';
 import { createDaimonInstallCommands } from "./daimonInstall.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { NOOPOLIS_RUN_ID_ENV, resolveNoopolisRunId } from "./common.js";
-import {
-  createVendorCopyCommand,
-  needsVendorCopyCommand,
-  resolveInstallPackageSpec,
-  type RuntimeContainerPackageOverrides
-} from "./containerPackageOverrides.js";
+import type { RuntimeContainerPackageOverrides } from "./containerPackageOverrides.js";
 import { resolveRuntimeInstallSelection } from "./install.js";
 import type { DaimonCapabilityReceipts } from "./registry.js";
 import {
@@ -22,18 +16,11 @@ import {
 } from "./daimon/config.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
-const PI_RUNTIME_BASE_IMAGE_ENV = "SPAWNFILE_PI_RUNTIME_BASE_IMAGE";
 const LEGACY_DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
 const LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV =
   "SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT";
 const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
 const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
-const PI_DAIMON_PACKAGE_VERSION = "0.1.2";
-const MNEME_PACKAGE_NAME = "@noopolis/mneme";
-const MNEME_PACKAGE_VERSION = "0.1.1";
-const PI_AI_PACKAGE_NAME = "@earendil-works/pi-ai";
-const PI_CODING_AGENT_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
-const PI_PACKAGE_VERSION = "0.79.10";
 
 export interface RuntimeInstallRecipe {
   baseImage?: string;
@@ -172,14 +159,13 @@ export interface RuntimeInstallRecipeOptions {
 
 export const createRuntimeInstallRecipe = async (
   runtimeName: string,
-  options: RuntimeInstallRecipeOptions = {}
+  _options: RuntimeInstallRecipeOptions = {}
 ): Promise<RuntimeInstallRecipe> => {
   const selection = await resolveRuntimeInstallSelection(runtimeName);
   assertArtifactInstallSelection(runtimeName, selection);
 
   const installRoot = `${RUNTIME_INSTALL_ROOT}/${runtimeName}`;
   const containerEnv = createRuntimeContainerEnv();
-  const packageOverrides = options.packageOverrides;
 
   switch (runtimeName) {
     case "openclaw": {
@@ -249,40 +235,6 @@ export const createRuntimeInstallRecipe = async (
           ...containerEnv,
           [DAIMON_WAKE_FUSE_DIRECTORY_ENV]: DAIMON_WAKE_FUSE_DIRECTORY
         },
-        runtimeName,
-        runtimeRoot: installRoot
-      };
-    }
-    case "pi": {
-      if (selection.kind !== "npm") {
-        throw new SpawnfileError(
-          "runtime_error",
-          `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
-        );
-      }
-
-      const prebuiltBaseImage = process.env[PI_RUNTIME_BASE_IMAGE_ENV]?.trim() || undefined;
-      const npmPackages = [
-        resolveInstallPackageSpec(DAIMON_PACKAGE_NAME, PI_DAIMON_PACKAGE_VERSION, packageOverrides),
-        resolveInstallPackageSpec(MNEME_PACKAGE_NAME, MNEME_PACKAGE_VERSION, packageOverrides),
-        `${selection.packageName}@${selection.version}`,
-        `${PI_AI_PACKAGE_NAME}@${selection.version}`
-      ];
-
-      return {
-        ...(prebuiltBaseImage ? { baseImage: prebuiltBaseImage } : {}),
-        commands: prebuiltBaseImage
-          ? [`mkdir -p ${installRoot}`]
-          : [
-              `mkdir -p ${installRoot}`,
-              `cd ${installRoot} && npm install --omit=dev --no-fund --no-audit ${npmPackages.join(" ")}`
-            ],
-        copyCommands:
-          !prebuiltBaseImage &&
-          needsVendorCopyCommand([DAIMON_PACKAGE_NAME, MNEME_PACKAGE_NAME], packageOverrides)
-            ? [createVendorCopyCommand()]
-            : [],
-        env: containerEnv,
         runtimeName,
         runtimeRoot: installRoot
       };

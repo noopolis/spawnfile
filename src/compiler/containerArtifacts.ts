@@ -7,7 +7,6 @@ import { SpawnfileError } from "../shared/index.js";
 import { createMoltnetSummary, createOrganizationSummary } from "./containerArtifactSummaries.js";
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
 import { createDockerIgnoreContent } from "./dockerBuildContext.js";
-import { createDaimonTelemetryArtifacts } from "./daimonTelemetryArtifacts.js";
 import { createRootfsFiles, renderDockerfile, renderEntrypoint, renderEnvExample } from "./containerArtifactsRender.js";
 import { createMemoryArtifactBundle } from "./memoryArtifacts.js";
 import { resolveRecordingReport } from "./recordingReport.js";
@@ -70,7 +69,6 @@ export const createContainerArtifacts = async (
   const localDaimonIdentityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
   const localDaimonIdentity = localDaimonIdentityPath ? await loadLocalDaimonRuntimeIdentity(localDaimonIdentityPath) : undefined;
   const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings, options.deploymentLineage);
-  const daimonTelemetryArtifacts = createDaimonTelemetryArtifacts(plan, runtimePlans, compiledNodes);
   const envVariableMap = createEnvVariableMap(compiledNodes, runtimePlans, options.moltnet);
   const projectedWorldTokenEnvNames = [...new Set(
     runtimePlans.flatMap((runtimePlan) => runtimePlan.worldTokenEnvNames ?? [])
@@ -125,7 +123,6 @@ export const createContainerArtifacts = async (
   const persistentMountCandidates: ContainerPersistentMountReport[] = [
     ...memoryArtifacts.mounts,
     ...workspaceResourceMounts,
-    ...daimonTelemetryArtifacts.mounts,
     ...runtimePlans.flatMap((runtimePlan) => runtimePlan.persistentMounts ?? []),
     ...((options.moltnet?.persistentMounts ?? []).map((mount) => ({
       ...(mount.declaredVolumeName ? { declared_volume_name: mount.declaredVolumeName } : {}),
@@ -161,7 +158,6 @@ export const createContainerArtifacts = async (
   ].sort();
   const runtimeInstances = runtimePlans
     .map((plan) => {
-      const telemetryMountIds = daimonTelemetryArtifacts.telemetryMountIdsByInstance.get(plan.id);
       return {
         ...(plan.agentPathsByNodeId ? { agent_paths: Object.fromEntries(
           Object.entries(plan.agentPathsByNodeId).map(([id, paths]) => [id, {
@@ -180,7 +176,6 @@ export const createContainerArtifacts = async (
         node_ids: [...(plan.sourceIds ?? [])],
         published_port: plan.publishedPort ?? null,
         runtime: plan.runtimeName,
-        ...(telemetryMountIds ? { telemetry_mount_ids: telemetryMountIds } : {}),
         workspace_path: plan.instancePaths.workspacePath
       };
     })

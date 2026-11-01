@@ -236,30 +236,6 @@ export const generateMoltnetArtifacts = async (
       }
       nodePlanKeys.add(nodePlanKey);
 
-      if (agentNode.runtime.name === "pi") {
-        const clientAuth = resolveMoltnetClientAuth(
-          serverPlan.server,
-          attachment.network,
-          attachment.memberId,
-          node.slug,
-          attachment.auth?.tokenId
-        );
-        const usesPerAttachmentOpenToken =
-          clientAuth.mode === "open" &&
-          clientAuth.staticToken !== true &&
-          Boolean(clientAuth.tokenEnv || clientAuth.tokenPath);
-
-        if (usesPerAttachmentOpenToken && clientAuth.tokenPath) {
-          const mountId = `agent-${node.slug}-moltnet-tokens`;
-          addPersistentMount({
-            id: mountId,
-            lifecycle: "exclusive-reattach",
-            mountPath: createMoltnetOpenTokenDirectory(node.slug),
-            reason: `Moltnet open-mode generated agent tokens for ${agentNode.name}`,
-            volumeName: durableVolumeName(mountId)
-          });
-        }
-      }
 
       const nodeConfig = createMoltnetNodeConfigContent({
         agentNode,
