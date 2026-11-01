@@ -197,9 +197,9 @@ const captureRunArtifacts = async (
   return { causalEventCounts, engineLogsCopied };
 };
 
-const resolvePiInstanceRoot = (buildResult: BuildProjectResult | undefined): string | null => {
+const resolveDaimonInstanceRoot = (buildResult: BuildProjectResult | undefined): string | null => {
   const instance = (buildResult?.report.container?.runtime_instances ?? []).find(
-    (candidate) => (candidate.runtime === "pi" || candidate.runtime === "daimon") && candidate.home_path
+    (candidate) => candidate.runtime === "daimon" && candidate.home_path
   );
   return instance?.home_path ? resolveInstanceRoot(instance.home_path) : null;
 };
@@ -277,7 +277,7 @@ export const runMoltnetMemeticsE2E = async (
     const artifacts = await captureRunArtifacts({
       containerName: invocation.containerName ?? containerName,
       dockerCommand,
-      instanceRoot: resolvePiInstanceRoot(buildResult),
+      instanceRoot: resolveDaimonInstanceRoot(buildResult),
       roomId: target.roomId,
       runCommand: deps.runDockerCommand,
       runFolder,
@@ -301,7 +301,7 @@ export const runMoltnetMemeticsE2E = async (
     await captureRunArtifacts({
       containerName: invocation?.containerName ?? containerName,
       dockerCommand,
-      instanceRoot: resolvePiInstanceRoot(buildResult),
+      instanceRoot: resolveDaimonInstanceRoot(buildResult),
       roomId: target.roomId,
       runCommand: deps.runDockerCommand,
       runFolder,

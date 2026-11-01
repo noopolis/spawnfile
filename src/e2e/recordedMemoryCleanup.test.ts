@@ -14,7 +14,6 @@ import { writeUtf8File } from "../filesystem/index.js";
 import type { CompileReport } from "../report/index.js";
 import { REPORT_FILENAME } from "../shared/index.js";
 
-import { runDaimonOrgE2E } from "./daimonOrg.js";
 import { cleanup } from "./moltnetE2ESupport.js";
 import { runOperationalSmokeE2E, type OperationalSmokeDependencies } from "./operationalSmoke.js";
 
@@ -70,41 +69,5 @@ describe("E2E recorded memory retention", () => {
     })).rejects.toThrow("automatic E2E cleanup cannot discard recorded memory");
     expect(runDockerCommand.mock.calls.some(([, args]) => args.includes("rm"))).toBe(false);
     expect(removeDirectory).not.toHaveBeenCalled();
-  });
-
-  it.each([false, true])("local-rootfs cleanup preserves ledgers exactly when recording=%s", async (enabled) => {
-    const root = await makeRoot();
-    const ledger = path.join(root, "container", "rootfs", "memory", "events.jsonl");
-    await mkdir(path.dirname(ledger), { recursive: true });
-    await writeUtf8File(ledger, '{"seq":1}\n');
-    vi.mocked(compileProject).mockResolvedValue({ outputDirectory: root, report: report(enabled), reportPath: "/fixture-report" } as CompileProjectResult);
-    await expect(runDaimonOrgE2E({ outputDirectory: root, keepArtifacts: false }))
-      .rejects.toThrow(enabled ? "--discard-recorded-memory" : "did not include a generated Daimon instance");
-    if (enabled) await expect(readFile(ledger, "utf8")).resolves.toBe('{"seq":1}\n');
-    else await expect(readFile(ledger, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-  });
-
-  it("refuses recording before local runtime setup even when artifacts would be kept", async () => {
-    const root = await makeRoot();
-    vi.mocked(compileProject).mockResolvedValue({ outputDirectory: root, report: report(), reportPath: "/fixture-report" } as CompileProjectResult);
-    await expect(runDaimonOrgE2E({ outputDirectory: root, keepArtifacts: true }))
-      .rejects.toThrow("Local-rootfs E2E recording requires --discard-recorded-memory");
-  });
-
-  it.each([false, true])("protects prior recorded output before compile unless discard=%s", async (discardRecordedMemory) => {
-    const root = await makeRoot();
-    const ledger = path.join(root, "events.jsonl");
-    await writeUtf8File(ledger, '{"seq":1}\n');
-    await writeUtf8File(path.join(root, REPORT_FILENAME), JSON.stringify(report()));
-    vi.mocked(compileProject).mockResolvedValue({ outputDirectory: root, report: report(false), reportPath: "/fixture-report" } as CompileProjectResult);
-    await expect(runDaimonOrgE2E({ outputDirectory: root, keepArtifacts: false, discardRecordedMemory }))
-      .rejects.toThrow(discardRecordedMemory ? "did not include a generated Daimon instance" : "--discard-recorded-memory");
-    if (discardRecordedMemory) {
-      expect(compileProject).toHaveBeenCalledOnce();
-      await expect(readFile(ledger, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
-    } else {
-      expect(compileProject).not.toHaveBeenCalled();
-      await expect(readFile(ledger, "utf8")).resolves.toBe('{"seq":1}\n');
-    }
   });
 });

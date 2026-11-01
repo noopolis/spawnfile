@@ -1,6 +1,5 @@
 import { Command } from "commander";
 
-import { runDaimonOrgE2E } from "./daimonOrg.js";
 import { runLifecycleSmokeE2E } from "./lifecycleSmoke.js";
 import { runOperationalSmokeE2E } from "./operationalSmoke.js";
 
@@ -83,42 +82,4 @@ export const runOperationalSmokeCli = async (argv: string[]): Promise<void> => {
     timeoutMs: options.timeoutMs
   });
   console.log(`Operational smoke E2E passed (${result.containerName})`);
-};
-
-export const runDaimonOrgCli = async (argv: string[]): Promise<void> => {
-  const command = new Command();
-  command
-    .name("spawnfile-e2e daimon-org")
-    .description("Run the opt-in legacy generated-Pi organization E2E against real Codex auth")
-    .option("--codex-auth-path <path>", "Codex auth.json path")
-    .option("--discard-recorded-memory", "Allow local fixture execution and cleanup to discard recorded memory ledgers")
-    .option("--fixture <path>", "Fixture directory override")
-    .option("--keep-artifacts", "Keep temporary compile output")
-    .option("--node-command <command>", "Node command", "node")
-    .option("--npm-command <command>", "npm command", "npm")
-    .option("--out <path>", "Compile output directory");
-
-  await command.parseAsync(argv, { from: "user" });
-  const options = command.opts<{
-    codexAuthPath?: string;
-    discardRecordedMemory?: boolean;
-    fixture?: string;
-    keepArtifacts?: boolean;
-    nodeCommand?: string;
-    npmCommand?: string;
-    out?: string;
-  }>();
-  const result = await runDaimonOrgE2E({
-    codexAuthPath: options.codexAuthPath,
-    discardRecordedMemory: options.discardRecordedMemory,
-    fixtureDirectory: options.fixture,
-    keepArtifacts: options.keepArtifacts,
-    nodeCommand: options.nodeCommand,
-    npmCommand: options.npmCommand,
-    outputDirectory: options.out
-  });
-  console.log(
-    `Legacy Pi org E2E passed (${result.mapperNotePath}, ${result.reviewerNotePath}; ` +
-    `memory_events=${result.memoryEventCount} recalled=${result.memoryRecallCount})`
-  );
 };

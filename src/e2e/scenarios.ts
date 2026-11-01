@@ -39,9 +39,7 @@ const SINGLE_AGENT_SCENARIOS: DockerAuthE2EScenario[] = [
   createSingleAgentScenario("openclaw", "anthropic", "claude-sonnet-4-5", "claude-code"),
   createSingleAgentScenario("picoclaw", "openai", "gpt-5", "api_key"),
   createSingleAgentScenario("picoclaw", "openai", "gpt-5", "codex"),
-  createSingleAgentScenario("picoclaw", "anthropic", "claude-sonnet-4-5", "claude-code"),
-  createSingleAgentScenario("pi", "openai", "gpt-5.4-mini", "codex"),
-  createSingleAgentScenario("pi", "openai", "gpt-5", "api_key")
+  createSingleAgentScenario("picoclaw", "anthropic", "claude-sonnet-4-5", "claude-code")
 ];
 
 const TEAM_SCENARIOS: DockerAuthE2EScenario[] = [

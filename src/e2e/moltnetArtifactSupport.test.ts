@@ -14,7 +14,7 @@ describe("copyContainerPathToHost", () => {
     const calls: string[][] = [];
     const ok = await copyContainerPathToHost({
       containerName: "container",
-      containerPath: "/var/lib/spawnfile/instances/pi/pi-app/runtime/agents",
+      containerPath: "/var/lib/spawnfile/instances/daimon/organization/runtime/agents",
       dockerCommand: "docker",
       hostPath: "/tmp/out/engine-logs",
       runCommand: async (_command, args) => {
@@ -25,7 +25,7 @@ describe("copyContainerPathToHost", () => {
 
     expect(ok).toBe(true);
     expect(calls).toEqual([
-      ["cp", "container:/var/lib/spawnfile/instances/pi/pi-app/runtime/agents", "/tmp/out/engine-logs"]
+      ["cp", "container:/var/lib/spawnfile/instances/daimon/organization/runtime/agents", "/tmp/out/engine-logs"]
     ]);
   });
 
