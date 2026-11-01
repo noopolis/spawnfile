@@ -48,7 +48,7 @@ const agent = (name: string, source: string): ResolvedAgentNode => ({
   name,
   policyMode: null,
   policyOnDegrade: null,
-  runtime: { name: "picoclaw", options: { engine: "picoclaw" } },
+  runtime: { name: "picoclaw", options: {} },
   secrets: [],
   skills: [],
   source,
@@ -100,7 +100,7 @@ const plan = (root = "/org/Spawnfile"): CompilePlan => {
       ]
     },
     root,
-    runtimes: { pi: { nodeIds: ["runtime:red", "runtime:blue"] } }
+    runtimes: { picoclaw: { nodeIds: ["runtime:red", "runtime:blue"] } }
   };
 };
 

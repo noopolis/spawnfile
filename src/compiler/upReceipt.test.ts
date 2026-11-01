@@ -312,7 +312,7 @@ describe("buildUpReceipt", () => {
     expect(receipt.moltnet_release).not.toHaveProperty("development");
   });
 
-  it("discloses a scripted pi engine per agent, derived from the compile report's engine_by_node_id", async () => {
+  it("discloses a Codex engine per agent, derived from the compile report's engine_by_node_id", async () => {
     const fixtureDirectory = await createSingleAgentFixture();
     const outputDirectory = await createTempDirectory("spawnfile-up-receipt-compiled-");
     const upResult = createUpResult(outputDirectory, null);

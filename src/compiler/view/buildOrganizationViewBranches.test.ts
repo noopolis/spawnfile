@@ -97,7 +97,7 @@ const plan = (): CompilePlan => {
       { id: "team:nested", kind: "team", runtimeName: null, slug: "nested", value: nested }
     ],
     root: root.source,
-    runtimes: { pi: { nodeIds: ["agent:alpha", "agent:beta"] } }
+    runtimes: { picoclaw: { nodeIds: ["agent:alpha", "agent:beta"] } }
   };
 };
 

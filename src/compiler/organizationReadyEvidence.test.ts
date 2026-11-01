@@ -115,7 +115,7 @@ const plan = (): CompilePlan => ({
     externalParticipants: [{ authoredParticipantKey: "world", kind: "service", memberId: "world", principalId: "system:world" }]
   },
   root: "root",
-  runtimes: { pi: { nodeIds: ["agent:zeta", "agent:alpha"] } }
+  runtimes: { picoclaw: { nodeIds: ["agent:zeta", "agent:alpha"] } }
 });
 
 const worldBindings = (): MutableWorldBindings => {

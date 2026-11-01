@@ -245,7 +245,7 @@ describe("planArtifactExports", () => {
     ]);
   });
 
-  it("does not plan daimon telemetry for a non-pi/daimon runtime instance", () => {
+  it("does not plan daimon telemetry for a non-Daimon runtime instance", () => {
     const report = baseReport(baseContainer({
       runtime_instances: [
         {
@@ -263,7 +263,7 @@ describe("planArtifactExports", () => {
     expect(planArtifactExports(report)).toEqual([]);
   });
 
-  it("skips a pi runtime instance with no telemetry mount and no home_path", () => {
+  it("skips a daimon runtime instance with no telemetry mount and no home_path", () => {
     const report = baseReport(baseContainer({
       runtime_instances: [
         {
