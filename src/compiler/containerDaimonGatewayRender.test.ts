@@ -91,6 +91,11 @@ describe("Daimon auth gateway placement", () => {
     expect(resolveDaimonGatewayRealmPaths([mixed])).toEqual([realm, "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm"]);
     const provisioning = renderDaimonGatewayProvisioning([mixed]).join("\n");
     expect(provisioning).toContain('engines: ["codex","grok"]');
+    // Against an external gateway the worker's masked gateway paths still exist, as empty root-only directories.
+    const external = provisioning.slice(0, provisioning.indexOf("else"));
+    for (const target of ["/etc/daimon-gateway", "/run/daimon-gateway", "/var/lib/spawnfile/daimon/gateway-bootstrap", "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm"]) {
+      expect(external).toContain(`if [ ! -e ${target} ]; then install -d -o root -g root -m 0700 ${target}; fi`);
+    }
     expect(provisioning).toContain('\\"grok\\":{\\"realm_path\\":\\"/var/lib/spawnfile/daimon/gateway-grok-subscription-realm\\",\\"bootstrap_path\\":\\"/run/daimon-gateway/grok-bootstrap-auth\\",\\"command\\":\\"/usr/local/bin/grok\\",\\"scratch_path\\":\\"/run/daimon-gateway/grok-refresh\\"}');
     const entrypoint = renderDaimonUidEntrypoint([mixed]);
     const gateway = entrypoint.indexOf("gateway --config");

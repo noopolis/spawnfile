@@ -117,6 +117,10 @@ export const renderDaimonGatewayProvisioning = (plans: readonly RuntimeTargetPla
     `  ${KEY_VARIABLE}=\${${DAIMON_GATEWAY_KEY_ENV}:?${DAIMON_GATEWAY_KEY_ENV} must accompany ${DAIMON_GATEWAY_URL_ENV}}`,
     // Only the runtime and broker launches below get them, as with the in-container gateway.
     `  export -n ${DAIMON_GATEWAY_URL_ENV} ${DAIMON_GATEWAY_KEY_ENV}`,
+    // Empty root-only placeholders: a brokered worker's sandbox masks these paths and refuses one that is missing.
+    ...(descriptors.some((descriptor) => descriptor.broker !== null)
+      ? [DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN, DAIMON_GATEWAY_BOOTSTRAP_ROOT, ...descriptors.map(daimonGatewayRealmPath)] : [])
+      .map((target) => `  if [ ! -e ${target} ]; then install -d -o root -g root -m 0700 ${target}; fi`),
     "else",
     `  ${EXTERNAL_VARIABLE}=0 ${URL_VARIABLE}=${DAIMON_GATEWAY_URL}`,
     // Rotated every start: 32 random bytes as lowercase hex, held only in this root shell.
