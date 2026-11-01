@@ -16,7 +16,7 @@ vi.mock("../compiler/buildProject.js", async (importOriginal) => ({
 vi.mock("../distribution/index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../distribution/index.js")>()),
   consumeImageUp: async (...args: unknown[]) => { record("deploy")(...args); return { containerName: "spawnfile-org" }; },
-  extractImageReport: async (...args: unknown[]) => { record("extract")(...args); return { report: { runtime_instances: [{ runtime: "daimon" }, { runtime: "pi" }] } }; }
+  extractImageReport: async (...args: unknown[]) => { record("extract")(...args); return { report: { runtime_instances: [{ runtime: "daimon" }, { runtime: "openclaw" }] } }; }
 }));
 
 const deploymentState = { exists: false, verified: [] as unknown[] };
@@ -61,7 +61,7 @@ describe("createDefaultReleaseDependencies", () => {
   });
 
   it("reads the running image's runtime kinds from its embedded report", async () => {
-    expect(await createDefaultReleaseDependencies().runtimesOf({ ...request, dockerContext: "prod" }, "sha256:img")).toEqual(["daimon", "pi"]);
+    expect(await createDefaultReleaseDependencies().runtimesOf({ ...request, dockerContext: "prod" }, "sha256:img")).toEqual(["daimon", "openclaw"]);
     expect(calls.extract).toEqual(["sha256:img", { dockerCommand: "docker", dockerContext: "prod" }]);
   });
 

@@ -189,7 +189,7 @@ describe("planArtifactExports", () => {
           model_auth_methods: {},
           model_secrets_required: [],
           node_ids: ["agent:eleanor", "team:root"],
-          runtime: "pi",
+          runtime: "daimon",
           telemetry_mount_ids: { "agent:eleanor": "agent-eleanor-daimon-telemetry" }
         }
       ]
@@ -273,7 +273,7 @@ describe("planArtifactExports", () => {
           model_auth_methods: {},
           model_secrets_required: [],
           node_ids: ["agent:eleanor"],
-          runtime: "pi"
+          runtime: "daimon"
         }
       ]
     }));
@@ -291,7 +291,7 @@ describe("planArtifactExports", () => {
           model_auth_methods: {},
           model_secrets_required: [],
           node_ids: ["agent:eleanor"],
-          runtime: "pi"
+          runtime: "daimon"
         }
       ]
     }));

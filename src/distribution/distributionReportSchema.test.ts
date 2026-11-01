@@ -43,7 +43,7 @@ describe("parseDistributionReport", () => {
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/u);
   });
 
-  it("accepts the per-agent telemetry mounts every pi/Daimon image carries, and rejects hostile ids", () => {
+  it("accepts the per-agent telemetry mounts every Daimon image carries, and rejects hostile ids", () => {
     const instance = {
       config_path: "/var/lib/spawnfile/instances/daimon/org/daimon/config.json",
       home_path: null,

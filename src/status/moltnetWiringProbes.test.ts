@@ -8,7 +8,7 @@ const VALID_NODE_CONFIG = JSON.stringify({
   attachments: [
     {
       agent: { id: "analyst", name: "Analyst" },
-      runtime: { control_url: "http://127.0.0.1:19690/agents/analyst/wake", kind: "pi" }
+      runtime: { config_path: "/instances/picoclaw/agent-analyst/config.json", kind: "picoclaw" }
     }
   ],
   moltnet: { base_url: "http://127.0.0.1:8787", network_id: "local_lab" },
@@ -123,25 +123,6 @@ describe("collectMoltnetWiringProbeObservations", () => {
     expect(observationFor(wrongVersion, "network.wiring.node_config", "network:local_lab")?.severity).toBe("error");
   });
 
-  it("errors control_url when a pi attachment's control_url is mangled", async () => {
-    const mangled = JSON.stringify({
-      attachments: [
-        {
-          agent: { id: "analyst" },
-          runtime: { control_url: "https://example.com/wake", kind: "pi" }
-        }
-      ],
-      version: "moltnet.node.v1"
-    });
-    const observations = await collectMoltnetWiringProbeObservations({
-      loadedReport: loadedReport(),
-      outputDirectory: "/out",
-      readFile: vi.fn(async () => mangled)
-    });
-
-    expect(observationFor(observations, "network.wiring.control_url", "network:local_lab")?.severity).toBe("error");
-  });
-
   it("checks picoclaw attachments for a non-empty config_path", async () => {
     const observations = await collectMoltnetWiringProbeObservations({
       loadedReport: loadedReport(),
@@ -150,22 +131,6 @@ describe("collectMoltnetWiringProbeObservations", () => {
     });
 
     expect(observationFor(observations, "network.wiring.control_url", "network:local_lab")?.severity).toBe("ok");
-  });
-
-  it("errors control_url when a pi attachment omits control_url entirely", async () => {
-    const missingControlUrl = JSON.stringify({
-      attachments: [{ agent: { id: "analyst" }, runtime: { kind: "pi" } }],
-      version: "moltnet.node.v1"
-    });
-    const observations = await collectMoltnetWiringProbeObservations({
-      loadedReport: loadedReport(),
-      outputDirectory: "/out",
-      readFile: vi.fn(async () => missingControlUrl)
-    });
-
-    const observation = observationFor(observations, "network.wiring.control_url", "network:local_lab");
-    expect(observation?.severity).toBe("error");
-    expect(observation?.message).toContain("missing control_url");
   });
 
   it("errors control_url when a picoclaw attachment omits config_path entirely", async () => {

@@ -21,7 +21,7 @@ const loadedReport = (overrides: Partial<StatusReport> = {}): LoadedCompileRepor
     entrypointPath: "/out/entrypoint.sh",
     generatedAt: "2026-06-11T00:00:00.000Z",
     nodes: [
-      { capabilities: [], diagnostics: [], id: "agent:analyst", kind: "agent", outputDir: null, runtime: "pi" },
+      { capabilities: [], diagnostics: [], id: "agent:analyst", kind: "agent", outputDir: null, runtime: "daimon" },
       { capabilities: [], diagnostics: [], id: "agent:writer", kind: "agent", outputDir: null, runtime: "openclaw" }
     ],
     outputDirectory: "/out",
@@ -29,14 +29,14 @@ const loadedReport = (overrides: Partial<StatusReport> = {}): LoadedCompileRepor
     root: "/project/Spawnfile",
     runtimeInstances: [
       {
-        configPath: "/instances/pi/agent-analyst/pi/pi-app.json",
-        homePath: "/instances/pi/agent-analyst/home",
-        id: "pi-analyst",
+        configPath: "/instances/daimon/agent-analyst/pi/pi-app.json",
+        homePath: "/instances/daimon/agent-analyst/home",
+        id: "daimon-analyst",
         internalPort: 19690,
         nodeIds: ["agent:analyst"],
         publishedPort: null,
-        runtime: "pi",
-        workspacePath: "/instances/pi/agent-analyst/workspace"
+        runtime: "daimon",
+        workspacePath: "/instances/daimon/agent-analyst/workspace"
       },
       {
         configPath: "/instances/openclaw/agent-writer/openclaw.json",
@@ -116,7 +116,7 @@ describe("collectLifecycleProbeObservations", () => {
       readFile: vi.fn(async () => PI_APP_SOURCE)
     });
 
-    expect(observationFor(observations, "lifecycle.instance.runtime", "runtime-instance:pi-analyst")?.severity).toBe("ok");
+    expect(observationFor(observations, "lifecycle.instance.runtime", "runtime-instance:daimon-analyst")?.severity).toBe("ok");
     expect(observationFor(observations, "lifecycle.instance.runtime", "runtime-instance:openclaw-writer")?.severity).toBe("error");
   });
 
@@ -133,7 +133,7 @@ describe("collectLifecycleProbeObservations", () => {
     });
 
     expect(observationFor(observations, "lifecycle.instance.paths", "runtime-instance:openclaw-writer")?.severity).toBe("warn");
-    expect(observationFor(observations, "lifecycle.instance.paths", "runtime-instance:pi-analyst")?.severity).toBe("error");
+    expect(observationFor(observations, "lifecycle.instance.paths", "runtime-instance:daimon-analyst")?.severity).toBe("error");
   });
 
   it("warns with just workspacePath missing when homePath is present", async () => {
@@ -153,17 +153,17 @@ describe("collectLifecycleProbeObservations", () => {
     expect(observation?.message).not.toContain("homePath and workspacePath");
   });
 
-  it("checks the B62 operator wake route only for pi/daimon instances", async () => {
+  it("checks the B62 operator wake route only for daimon instances", async () => {
     const readFile = vi.fn(async (filePath: string) =>
-      filePath.includes("/opt/spawnfile/runtime-installs/pi/app.mjs") ? PI_APP_SOURCE : null);
+      filePath.includes("/opt/spawnfile/runtime-installs/daimon/app.mjs") ? PI_APP_SOURCE : null);
     const observations = await collectLifecycleProbeObservations({
       loadedReport: loadedReport(),
       outputDirectory: "/out",
       readFile
     });
 
-    expect(readFile).toHaveBeenCalledWith("/out/container/rootfs/opt/spawnfile/runtime-installs/pi/app.mjs");
-    expect(observationFor(observations, "lifecycle.wake.operator", "runtime-instance:pi-analyst")?.severity).toBe("ok");
+    expect(readFile).toHaveBeenCalledWith("/out/container/rootfs/opt/spawnfile/runtime-installs/daimon/app.mjs");
+    expect(observationFor(observations, "lifecycle.wake.operator", "runtime-instance:daimon-analyst")?.severity).toBe("ok");
     expect(observationFor(observations, "lifecycle.wake.operator", "runtime-instance:openclaw-writer")?.severity).toBe("unknown");
   });
 
@@ -173,14 +173,14 @@ describe("collectLifecycleProbeObservations", () => {
       outputDirectory: "/out",
       readFile: vi.fn(async () => null)
     });
-    expect(observationFor(missing, "lifecycle.wake.operator", "runtime-instance:pi-analyst")?.severity).toBe("error");
+    expect(observationFor(missing, "lifecycle.wake.operator", "runtime-instance:daimon-analyst")?.severity).toBe("error");
 
     const stripped = await collectLifecycleProbeObservations({
       loadedReport: loadedReport(),
       outputDirectory: "/out",
       readFile: vi.fn(async () => "const app = 1;")
     });
-    const strippedObservation = observationFor(stripped, "lifecycle.wake.operator", "runtime-instance:pi-analyst");
+    const strippedObservation = observationFor(stripped, "lifecycle.wake.operator", "runtime-instance:daimon-analyst");
     expect(strippedObservation?.severity).toBe("error");
     expect(strippedObservation?.message).toContain("operator wake route");
     expect(strippedObservation?.message).toContain("SPAWNFILE_PI_CONTROL_TOKEN");
@@ -194,7 +194,7 @@ describe("collectLifecycleProbeObservations", () => {
       readFile: vi.fn(async () => PI_APP_SOURCE)
     });
 
-    expect(observationFor(observations, "lifecycle.wake.operator", "runtime-instance:pi-analyst")?.severity).toBe("unknown");
+    expect(observationFor(observations, "lifecycle.wake.operator", "runtime-instance:daimon-analyst")?.severity).toBe("unknown");
   });
 
   it("reports run_id ok when the entrypoint stamps NOOPOLIS_RUN_ID", async () => {
