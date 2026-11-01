@@ -1,7 +1,3 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../compiler/index.js", async (importOriginal) => ({
@@ -9,20 +5,12 @@ vi.mock("../compiler/index.js", async (importOriginal) => ({
   compileProject: vi.fn(),
 }));
 
-import { compileProject, type BuildProjectResult, type CompileProjectResult, type UpProjectResult } from "../compiler/index.js";
-import { writeUtf8File } from "../filesystem/index.js";
+import { compileProject, type BuildProjectResult, type UpProjectResult } from "../compiler/index.js";
 import type { CompileReport } from "../report/index.js";
-import { REPORT_FILENAME } from "../shared/index.js";
 
 import { cleanup } from "./moltnetE2ESupport.js";
 import { runOperationalSmokeE2E, type OperationalSmokeDependencies } from "./operationalSmoke.js";
 
-const roots: string[] = [];
-const makeRoot = async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-e2e-recorded-memory-"));
-  roots.push(root);
-  return root;
-};
 const report = (enabled = true): CompileReport => ({
   container: {
     dockerfile: "Dockerfile", entrypoint: "entrypoint", env_example: ".env.example", model_secrets_required: [],
@@ -37,7 +25,6 @@ const buildResult = (enabled = true): BuildProjectResult => ({
 }) as BuildProjectResult;
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
   vi.mocked(compileProject).mockReset();
 });
 
