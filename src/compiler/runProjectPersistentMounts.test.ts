@@ -52,4 +52,20 @@ describe("createDockerRunInvocation persistent volume mounts",()=>{
     expect(local.args).toContain("type=volume,source=spawnfile-realm,target=/var/lib/spawnfile/daimon/codex-subscription-realm");
     expect(local.args).not.toContain("--network");
   });
+  it("reattaches a profile-held realm volume and runs the image's own command on the operator's terminal",async()=>{
+    const realm = { id: "daimon-agy-subscription-realm", lifecycle: "exclusive-reattach" as const, mount_path: "/var/lib/spawnfile/daimon/agy-subscription-realm", reason: "realm", volume_name: "lineage-agy-realm" };
+    const withRealm = { ...report, container: { ...report.container!, persistent_mounts: [...report.container!.persistent_mounts!, realm] } };
+    const compiled = { organizationReadinessEvidence: readiness, outputDirectory: "/tmp/spawnfile-run-out", report: withRealm, reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json" };
+    const authProfile = { authHome: "/x", env: {}, imports: {}, name: "training", profileDirectory: "/x/p", profilePath: "/x/p/profile.json",
+      realms: { agy: { realmVolume: "profile-agy-realm", unlockVolume: "profile-agy-unlock" } }, version: 1 as const };
+    const login = await createDockerRunInvocation(compiled, "spawnfile-test", { authProfile, command: ["auth", "agy", "login", "--config", "/c.json"], interactive: true });
+    expect(login.args.slice(0, 3)).toEqual(["run", "--rm", "-it"]);
+    expect(login.args).toContain("type=volume,source=profile-agy-realm,target=/var/lib/spawnfile/daimon/agy-subscription-realm");
+    expect(login.args.join("\n")).not.toContain("lineage-agy-realm");
+    expect(login.exclusiveReattachVolumes).toEqual(["profile-agy-realm"]);
+    expect(login.args.slice(-6)).toEqual(["spawnfile-test", "auth", "agy", "login", "--config", "/c.json"]);
+    const plain = await createDockerRunInvocation(compiled, "spawnfile-test");
+    expect(plain.args).toContain("type=volume,source=lineage-agy-realm,target=/var/lib/spawnfile/daimon/agy-subscription-realm");
+    expect(plain.args).not.toContain("-it");
+  });
 });

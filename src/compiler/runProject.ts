@@ -3,12 +3,7 @@ import path from "node:path";
 import { mkdtemp } from "node:fs/promises";
 
 import { requireAuthProfile, type ResolvedAuthProfile } from "../auth/index.js";
-import {
-  ensureDirectory,
-  fileExists,
-  removeDirectory,
-  writeUtf8File
-} from "../filesystem/index.js";
+import { ensureDirectory, fileExists, removeDirectory, writeUtf8File } from "../filesystem/index.js";
 import type { ContainerReport } from "../report/index.js";
 import {
   appendDockerLabelArgs,
@@ -27,13 +22,9 @@ import {
 } from "../deployment/index.js";
 import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
-import { DAIMON_GATEWAY_URL_ENV, isDaimonGatewayRealmMountId } from "../runtime/daimon/index.js";
+import { DAIMON_GATEWAY_URL_ENV, daimonProfileRealmVolume, isDaimonGatewayRealmMountId } from "../runtime/daimon/index.js";
 
-import {
-  compileProject,
-  type CompileProjectOptions,
-  type CompileProjectResult
-} from "./compileProject.js";
+import { compileProject, type CompileProjectOptions, type CompileProjectResult } from "./compileProject.js";
 import { createDefaultImageTag, resolveDockerBuildArchitecture } from "./buildProject.js";
 import { slugify } from "./helpers.js";
 import { resolveDaimonCodexNativeSandboxDockerSecurityOptions } from "./runProjectDaimonCodexDocker.js";
@@ -97,6 +88,7 @@ export const createDockerRunInvocation = async (
   options: {
     authProfile?: ResolvedAuthProfile | null;
     cliCredential?: { name: string; value: string };
+    command?: readonly string[]; // after the image: its own one-shot command (`auth agy login --config <path>`)
     /** See `RuntimeAuthPreparationInput.containerCredentialUid`. */
     containerCredentialUid?: number;
     containerName?: string;
@@ -106,6 +98,7 @@ export const createDockerRunInvocation = async (
     dockerContext?: string;
     dockerHost?: string;
     envFilePath?: string;
+    interactive?: boolean; // attach the operator's terminal (`-it`) to a foreground run
     network?: string; // a user-defined network to join (a training run's private gateway network)
   } = {}
 ): Promise<DockerRunInvocation> => {
@@ -167,7 +160,7 @@ export const createDockerRunInvocation = async (
     if (options.detach) {
       args.push("-d", "--restart", "unless-stopped");
     } else {
-      args.push("--rm");
+      args.push("--rm", ...(options.interactive ? ["-it"] : []));
     }
 
     args.push("--name", containerName);
@@ -196,9 +189,10 @@ export const createDockerRunInvocation = async (
     // reattached volume that already holds state is untouched by dropping it.
     // (Target/secrets volumes under src/target/* keep `volume-nocopy`: no
     // image content backs those paths and they must stay opaque.)
-    // An external auth gateway in the run env holds every gatewayed realm; the org mounts none.
+    // An external auth gateway holds every gatewayed realm (the org mounts none); a profile-held login reattaches its volume.
     const persistentMounts = (containerReport.persistent_mounts ?? [])
-      .filter((mount) => !env[DAIMON_GATEWAY_URL_ENV] || !isDaimonGatewayRealmMountId(mount.id));
+      .filter((mount) => !env[DAIMON_GATEWAY_URL_ENV] || !isDaimonGatewayRealmMountId(mount.id))
+      .map((mount) => ({ ...mount, volume_name: daimonProfileRealmVolume(mount.id, options.authProfile) ?? mount.volume_name }));
     for (const mount of persistentMounts) {
       args.push(
         "--mount",
@@ -219,7 +213,7 @@ export const createDockerRunInvocation = async (
     args.push("--env-file", envFilePath);
     args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
     args.push(...preparedRuntimeAuth.mountArgs);
-    args.push(imageTag);
+    args.push(imageTag, ...(options.command ?? []));
 
     return {
       args,

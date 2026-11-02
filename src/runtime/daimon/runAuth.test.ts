@@ -346,6 +346,26 @@ describe("prepareDaimonRuntimeAuth", () => {
     })).rejects.toThrow(/AGY realm unlock/u);
   });
 
+  it("mounts a profile's volume-held AGY unlock secret instead of a host file", async () => {
+    const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
+    const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");
+    const configPath = "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/config.json";
+    const hostPath = path.join(outputDirectory, "container", "rootfs", `.${configPath}`);
+    await mkdir(path.dirname(hostPath), { recursive: true });
+    await writeFile(hostPath, JSON.stringify({
+      agents: [{ engine: { kind: "agy" }, id: "agent:agy", runtimeHomePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy" }],
+      host: {}, version: "noopolis.daimon.organization-runtime.v1"
+    }));
+    const profile = {
+      authHome: tempRoot, env: {}, imports: {}, name: "training", profileDirectory: tempRoot, profilePath: path.join(tempRoot, "profile.json"),
+      realms: { agy: { realmVolume: "realm-volume", unlockVolume: "unlock-volume" } }, version: 1 as const
+    };
+    const prepared = await prepare(outputDirectory, tempRoot, configPath, callerUid(), profile);
+    expect(prepared.mountArgs).toEqual([
+      "--mount", "type=volume,source=unlock-volume,target=/var/lib/spawnfile/daimon/agy-unlock-secret,volume-subpath=unlock,readonly"
+    ]);
+  });
+
   it("fails before staging a later runtime-home traversal", async () => {
     const outputDirectory = await createTempDirectory("spawnfile-daimon-output-");
     const tempRoot = await createTempDirectory("spawnfile-daimon-auth-");

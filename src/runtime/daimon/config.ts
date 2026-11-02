@@ -2,7 +2,7 @@ import path from "node:path";
 import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
 import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
-import { daimonGatewayedSubscriptionRealms } from "./subscriptionRealms.js";
+import { daimonGatewayedSubscriptionRealms, daimonSubscriptionRealmMountId } from "./subscriptionRealms.js";
 
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
@@ -55,7 +55,7 @@ export const DAIMON_RUNTIME_HOMES_DIRECTORY = "runtime-homes";
 const DAIMON_MAX_CONFIG_BYTES = 1_048_576;
 const DAIMON_MAX_INSTRUCTION_BYTES = 16_384;
 const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 16_384;
-import { DAIMON_ENGINES, DAIMON_DEFAULT_ENGINE, getDaimonEngineDescriptor, daimonEngineHasBroker } from "./engines.js";
+import { DAIMON_ENGINES, DAIMON_DEFAULT_ENGINE, DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor, daimonEngineHasBroker } from "./engines.js";
 export { DAIMON_ENGINES } from "./engines.js";
 type DaimonEngine = typeof DAIMON_ENGINES[number];
 
@@ -371,7 +371,7 @@ export const createDaimonContainerTargets = async (
         mountPath: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
         reason: "Daimon per-turn engine usage ledger"
       }, ...(hasAgy ? [{
-        id: "daimon-agy-subscription-realm",
+        id: daimonSubscriptionRealmMountId(DAIMON_SECRET_SERVICE_ENGINE_ID),
         // The AGY subscription credential is an OS-keyring entry created by an
         // interactive browser OAuth that has no headless equivalent; it lives
         // in this volume. Without this lifecycle the volume name folds in the

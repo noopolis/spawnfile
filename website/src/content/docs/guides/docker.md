@@ -144,7 +144,13 @@ spawnfile auth import-claude-code --profile dev
 
 # Import Codex CLI credentials
 spawnfile auth import-codex --profile dev
+
+# Sign a profile into its own AGY login (interactive; kept in Docker volumes)
+spawnfile auth login agy --profile training
 ```
+
+AGY keeps its login in an encrypted keyring realm that admits one container at
+a time, so containers using a profile's AGY login take turns on it.
 
 ### Viewing Profiles
 

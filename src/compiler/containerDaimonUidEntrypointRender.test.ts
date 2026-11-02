@@ -134,6 +134,14 @@ const moltnetPlans = {
 } satisfies NonNullable<EntrypointOptions["moltnet"]>;
 
 describe("renderDaimonUidEntrypoint", () => {
+  it("hands the operator's stdin to the runtime command, which the interactive AGY login reads", () => {
+    const rendered = renderDaimonUidEntrypoint([daimonPlan]);
+    expect(rendered).toContain(`' bash "\${runtime_command[@]}" <&0 &`);
+    // Why: a non-interactive shell gives a bare `&` job /dev/null for stdin.
+    const run = (job: string) => spawnSync("bash", ["-c", `${job} & wait`], { input: "code\n", encoding: "utf8" }).stdout;
+    expect(run("cat")).toBe("");
+    expect(run("cat <&0")).toBe("code\n");
+  });
   it("deduplicates shared declared volume anchors and rejects conflicting or escaping identity metadata",()=>{const path="/var/lib/spawnfile/resources/teams/example/shared/.spawnfile-resource-identity",base={...daimonPlan,resources:[{id:"shared",kind:"volume",linkPath:"/workspace/shared",backingPath:"/var/lib/spawnfile/resources/teams/example/shared",mount:"./shared",mode:"mutable",sharing:"team",replacementSentinel:path,resolvedIdentity:`sha256:${"a".repeat(64)}`} as NonNullable<RuntimeTargetPlan["resources"]>[number]&{replacementSentinel:string;resolvedIdentity:string}]};expect(resolveDaimonVolumeIdentityFiles([base,base])).toEqual([{path,identity:`sha256:${"a".repeat(64)}`}]);const conflict={...base,resources:[{...base.resources[0]!,resolvedIdentity:`sha256:${"b".repeat(64)}`} ]};expect(()=>resolveDaimonVolumeIdentityFiles([base,conflict])).toThrow(/conflicting compiler-authored volume identity anchor/u);const invalidRoots=["/var/lib/spawnfile/resources/../../etc","/var/lib/spawnfile/resources","/var/lib/spawnfile/resources/"];for(const backingPath of invalidRoots){const invalid={...base,resources:[{...base.resources[0]!,backingPath,replacementSentinel:`${backingPath}/.spawnfile-resource-identity`} ]};expect(()=>resolveDaimonVolumeIdentityFiles([invalid])).toThrow(/invalid compiler-authored volume identity anchor/u);}});
   it("secures the durable organization acceptance store for the authorized runtime UID", () => {
     const ownership = resolveDaimonUidEntrypointOwnershipPlan(

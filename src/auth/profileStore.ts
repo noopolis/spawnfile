@@ -18,7 +18,7 @@ import {
   resolveProfilePath,
   resolveProfilesRoot
 } from "./paths.js";
-import type { AuthProfile, ImportedAuthKind, ResolvedAuthProfile } from "./types.js";
+import type { AuthProfile, ImportedAuthKind, ResolvedAuthProfile, SubscriptionRealmBinding } from "./types.js";
 
 const importedAuthEntrySchema = z.object({
   kind: z.enum(["claude-code", "codex", "grok"]),
@@ -34,6 +34,10 @@ const authProfileSchema = z.object({
       grok: importedAuthEntrySchema.optional()
     })
     .default({}),
+  realms: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/u), z.object({
+    realmVolume: z.string().min(1),
+    unlockVolume: z.string().min(1)
+  }).strict()).optional(),
   version: z.literal(1)
 });
 
@@ -61,6 +65,20 @@ export const createResolvedAuthProfile = (
   name: profileName,
   profileDirectory: resolveProfileDirectory(profileName),
   profilePath: resolveProfilePath(profileName),
+  ...(profile.realms && Object.keys(profile.realms).length > 0 ? { realms: structuredClone(profile.realms) } : {}),
+  version: 1
+});
+
+/** The stored form of a resolved profile: import paths relative to its directory again. */
+const storedProfile = (current: ResolvedAuthProfile): AuthProfile => ({
+  env: { ...current.env },
+  imports: Object.fromEntries(
+    Object.entries(current.imports).map(([kind, entry]) => [
+      kind,
+      { kind: entry.kind, relativePath: path.relative(current.profileDirectory, entry.path) }
+    ])
+  ) as AuthProfile["imports"],
+  ...(current.realms ? { realms: structuredClone(current.realms) } : {}),
   version: 1
 });
 
@@ -129,22 +147,18 @@ export const setAuthProfileEnv = async (
   env: Record<string, string>
 ): Promise<ResolvedAuthProfile> => {
   const current = (await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName));
-  return writeProfile(profileName, {
-    env: {
-      ...current.env,
-      ...env
-    },
-    imports: Object.fromEntries(
-      Object.entries(current.imports).map(([kind, entry]) => [
-        kind,
-        {
-          kind: entry.kind,
-          relativePath: path.relative(current.profileDirectory, entry.path)
-        }
-      ])
-    ) as AuthProfile["imports"],
-    version: 1
-  });
+  const stored = storedProfile(current);
+  return writeProfile(profileName, { ...stored, env: { ...stored.env, ...env } });
+};
+
+/** Records an engine's volume-held login on the profile (names only, never login bytes). */
+export const registerSubscriptionRealm = async (
+  profileName: string,
+  engine: string,
+  binding: SubscriptionRealmBinding
+): Promise<ResolvedAuthProfile> => {
+  const stored = storedProfile((await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName)));
+  return writeProfile(profileName, { ...stored, realms: { ...stored.realms, [engine]: { ...binding } } });
 };
 
 export const registerImportedAuth = async (
@@ -159,24 +173,13 @@ export const registerImportedAuth = async (
   if (kind !== "grok") await removeDirectory(importDirectory);
   await ensurePrivateDirectory(importDirectory);
 
+  const stored = storedProfile(current);
   const nextProfile: AuthProfile = {
-    env: { ...current.env },
+    ...stored,
     imports: {
-      ...Object.fromEntries(
-        Object.entries(current.imports).map(([entryKind, entry]) => [
-          entryKind,
-          {
-            kind: entry.kind,
-            relativePath: path.relative(current.profileDirectory, entry.path)
-          }
-        ])
-      ),
-      [kind]: {
-        kind,
-        relativePath: path.relative(current.profileDirectory, importDirectory)
-      }
-    },
-    version: 1
+      ...stored.imports,
+      [kind]: { kind, relativePath: path.relative(current.profileDirectory, importDirectory) }
+    }
   };
 
   return {

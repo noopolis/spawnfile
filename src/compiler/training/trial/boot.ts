@@ -2,7 +2,8 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, getDaimonEngineDescriptor, isDaimonGatewayRealmMountId } from "../../../runtime/daimon/index.js";
+import type { ResolvedAuthProfile } from "../../../auth/index.js";
+import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, daimonProfileRealmVolume, getDaimonEngineDescriptor, isDaimonGatewayRealmMountId } from "../../../runtime/daimon/index.js";
 import { daimonHelperControlCall, type DaimonControlCall, type DaimonControlTarget } from "../../../runtime/daimon/control.js";
 import { RUNTIME_INSTALL_ROOT } from "../../../runtime/container.js";
 import { parseUsageLedger, type UsageRecord } from "../../../runtime/usageLedger.js";
@@ -67,7 +68,14 @@ export interface PreparedTrial {
   runtimeRoot: string;
   engines: string[];
   agentId: string;
-  boot(gateway: TrainingGatewayAccess, options?: { readyTimeoutMs?: number }): Promise<BootedTrial>;
+  /**
+   * Boots the organization. `gateway` is null for an organization on no
+   * gatewayed engine; `realms` is a profile view holding only the
+   * volume-held logins (`spawnfile auth login`) this organization mounts.
+   */
+  boot(gateway: TrainingGatewayAccess | null, options?: { readyTimeoutMs?: number; realms?: ResolvedAuthProfile }): Promise<BootedTrial>;
+  /** Runs the organization's own `auth <engine> login` attached to the operator's terminal, or returns its argv on `dryRun`. */
+  login(realms: ResolvedAuthProfile, options?: { dryRun?: boolean }): Promise<readonly string[]>;
   dispose(): Promise<void>;
 }
 
@@ -97,6 +105,12 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   // The engine writes its own session records under its home inside the agent's runtime home.
   const engineHome = getDaimonEngineDescriptor(agents[0]![1])?.homeDirectory;
   const sessionsPath = home && engineHome !== undefined ? path.posix.join(home, engineHome, "sessions") : null;
+  const lineageVolumes = (realms: ResolvedAuthProfile | undefined): string[] => (compiled.report.container?.persistent_mounts ?? [])
+    .filter((mount) => !isDaimonGatewayRealmMountId(mount.id) && daimonProfileRealmVolume(mount.id, realms) === undefined)
+    .map((mount) => mount.volume_name);
+  const removeVolumes = async (volumes: readonly string[]): Promise<void> => {
+    for (const volume of volumes) await docker(["volume", "rm", "-f", volume]).catch(() => undefined);
+  };
   const dispose = async (): Promise<void> => {
     await docker(["image", "rm", "-f", image]).catch(() => undefined);
     await rm(options.directory, { recursive: true, force: true });
@@ -105,21 +119,37 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
     agentId, dispose, image,
     engines: agents.map(([, engine]) => engine),
     runtimeRoot: `${RUNTIME_INSTALL_ROOT}/daimon`,
+    login: async (realms, loginOptions = {}) => {
+      const engine = agents[0]![1];
+      const invocation = await createDockerRunInvocation(compiled, image, {
+        authProfile: realms, command: ["auth", engine, "login", "--config", instance.config_path],
+        containerName: `spawnfile-login-${slug}`, interactive: true
+      });
+      if (loginOptions.dryRun) {
+        await rm(invocation.supportDirectory, { recursive: true, force: true });
+        return [invocation.command, ...invocation.args];
+      }
+      try { await executeDockerRunWithSupportCleanup(invocation, runDockerContainer); }
+      finally { await removeVolumes(lineageVolumes(realms)); }
+      return [invocation.command, ...invocation.args];
+    },
     boot: async (gateway, bootOptions = {}) => {
       const token = randomBytes(32).toString("base64url");
       const container = `spawnfile-trial-${slug}`;
       await mkdir(options.directory, { recursive: true });
       const envFilePath = path.join(options.directory, "boot.env");
-      // The boot inputs: control token, gateway URL and key. No login, no realm.
-      await writeFile(envFilePath, `${CONTROL_TOKEN_ENV}=${token}\n${DAIMON_GATEWAY_URL_ENV}=${gateway.url}\n${DAIMON_GATEWAY_KEY_ENV}=${gateway.key}\n`, { mode: 0o600 });
+      // The boot inputs: control token, plus the gateway URL and key. No gatewayed login, no
+      // gatewayed realm; only a volume-held login of the selected profile is mounted.
+      const gatewayEnv = gateway ? `${DAIMON_GATEWAY_URL_ENV}=${gateway.url}\n${DAIMON_GATEWAY_KEY_ENV}=${gateway.key}\n` : "";
+      await writeFile(envFilePath, `${CONTROL_TOKEN_ENV}=${token}\n${gatewayEnv}`, { mode: 0o600 });
       const invocation = await createDockerRunInvocation(compiled, image, {
-        containerName: container, deploymentName: slug, detach: true, envFilePath, network: gateway.network
+        authProfile: bootOptions.realms ?? null, containerName: container, deploymentName: slug, detach: true, envFilePath,
+        ...(gateway ? { network: gateway.network } : {})
       });
-      const volumes = (compiled.report.container?.persistent_mounts ?? [])
-        .filter((mount) => !isDaimonGatewayRealmMountId(mount.id)).map((mount) => mount.volume_name);
+      const volumes = lineageVolumes(bootOptions.realms);
       const teardown = async (): Promise<void> => {
         await docker(["rm", "-f", container]).catch(() => undefined);
-        for (const volume of volumes) await docker(["volume", "rm", "-f", volume]).catch(() => undefined);
+        await removeVolumes(volumes);
         await rm(invocation.supportDirectory, { recursive: true, force: true });
         await rm(envFilePath, { force: true });
       };
@@ -129,8 +159,9 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         const target: DaimonControlTarget = { containerRef: container, dockerArgs: [], dockerCommand: "docker", imageRef: image, token };
         const call = options.control ?? daimonHelperControlCall;
         await waitFor(async () => {
-          if (await docker(["inspect", "--format", "{{.State.Running}}", container]) !== "true") {
-            const logs = await docker(["logs", "--tail", "30", container]).catch(() => "");
+          // A restart means the organization already exited once (`--restart unless-stopped` hides it).
+          if (await docker(["inspect", "--format", "{{.State.Running}} {{.RestartCount}}", container]) !== "true 0") {
+            const logs = await docker(["logs", "--tail", "30", container], { combined: true }).catch(() => "");
             throw new SpawnfileError("runtime_error", `trial organization exited before readiness: ${logs.replace(/\s+/gu, " ").slice(-600)}`);
           }
           return call(target, "GET", "/v2/availability").then((response) => response.status === 200, () => false);
