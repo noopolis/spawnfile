@@ -6,6 +6,7 @@ import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, getDaimonEngineDescript
 import { daimonHelperControlCall, type DaimonControlCall, type DaimonControlTarget } from "../../../runtime/daimon/control.js";
 import { RUNTIME_INSTALL_ROOT } from "../../../runtime/container.js";
 import { parseUsageLedger, type UsageRecord } from "../../../runtime/usageLedger.js";
+import { parseUsageRequestLedger } from "../../../runtime/usageRequestLedger.js";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
 import { SpawnfileError } from "../../../shared/index.js";
 import { buildCompiledProject } from "../../buildProject.js";
@@ -49,6 +50,8 @@ export interface TrialWake {
   usage: UsageRecord[];
   /** The engine's own newest session record, bounded; null when none exists. */
   transcript: string | null;
+  /** Per model request of this wake, the tool-call names its response carried; null where the runtime could not say. */
+  requestToolCalls: (readonly string[] | null)[];
 }
 
 export interface BootedTrial {
@@ -73,13 +76,19 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   const docker = options.docker ?? createTrialDocker();
   // Readable and collision-free: trial ids may share long prefixes.
   const slug = `${slugify(options.trialId).slice(0, 32) || "trial"}-${createHash("sha256").update(options.trialId).digest("hex").slice(0, 8)}`;
-  const project = await writeTrialProject(options.agentManifestPath, options.instructions, path.join(options.directory, "project"));
-  const compiled = await compileProject(project, {
-    deploymentLineage: resolveDeploymentLineage(slug, TRAINING_TRIAL_LINEAGE_NAMESPACE),
-    outputDirectory: path.join(options.directory, "out")
-  });
   const image = `spawnfile-training-trial:${slug}`;
-  await buildCompiledProject(project, compiled, { imageTag: image });
+  const compiled = await (async () => {
+    const project = await writeTrialProject(options.agentManifestPath, options.instructions, path.join(options.directory, "project"));
+    const compiled = await compileProject(project, {
+      deploymentLineage: resolveDeploymentLineage(slug, TRAINING_TRIAL_LINEAGE_NAMESPACE),
+      outputDirectory: path.join(options.directory, "out")
+    });
+    await buildCompiledProject(project, compiled, { imageTag: image });
+    return compiled;
+  })().catch(async (error: unknown) => {
+    await rm(options.directory, { recursive: true, force: true });
+    throw error;
+  });
   const instance = compiled.report.container?.runtime_instances.find((entry) => entry.runtime === "daimon");
   const agents = Object.entries(instance?.engine_by_node_id ?? {});
   if (!instance || agents.length !== 1) throw new SpawnfileError("validation_error", "A production-booted trial compiles exactly one Daimon agent");
@@ -135,6 +144,14 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   };
 };
 
+/** Daimon's per-request stream sits beside the usage ledger. */
+const REQUEST_LEDGER = path.posix.join(path.posix.dirname(DAIMON_GROK_TURN_USAGE_LEDGER.filePath), "requests.jsonl");
+
+const readRequestToolCalls = async (docker: TrialDocker, container: string, agentId: string, deliveryId: string): Promise<(readonly string[] | null)[]> => {
+  const text = await docker(["exec", container, "cat", REQUEST_LEDGER]).catch(() => "");
+  return parseUsageRequestLedger(text).filter((row) => row.agent === agentId && row.wake === deliveryId).map((row) => row.tool_calls ?? null);
+};
+
 const readLedger = async (docker: TrialDocker, container: string): Promise<UsageRecord[]> => {
   const text = await docker(["exec", container, "cat", DAIMON_GROK_TURN_USAGE_LEDGER.filePath]).catch(() => "");
   return parseUsageLedger(text);
@@ -176,6 +193,7 @@ const createBootedTrial = (input: {
         acceptanceId: id, code: receipt.code ?? null, executionId: receipt.execution_id ?? null, usage,
         state: TERMINAL.has(receipt.state ?? "") ? receipt.state as TrialWake["state"] : "timeout",
         text: receipt.text ?? "",
+        requestToolCalls: await readRequestToolCalls(input.docker, input.container, input.agentId, options.deliveryId),
         transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath)
       };
     }

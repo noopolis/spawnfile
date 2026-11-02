@@ -1,8 +1,7 @@
 import type { InferenceProviderDescriptor, InferenceProviderRegistry } from '../training/contracts/index.js';
 import { INFERENCE_POLICY_VERSIONS } from '../training/contracts/index.js';
 import { defaultInferenceProviders, DatasetError, InferenceFailure } from '../training/index.js';
-import { createCodexInference } from './daimon/training/providers/codex-subscription/index.js';
-import { createGrokInference } from './daimon/training/providers/grok-subscription/index.js';
+import { createBootedJudgeInference } from './daimon/training/booted/index.js';
 
 /** Frozen `grok-broker` catalog: historical YAML and measurement identities keep validating. */
 const grokGrantModels = ['grok-4.6', 'grok-4.5', 'grok-build'] as const;
@@ -28,20 +27,28 @@ function validate(model: Readonly<Record<string, unknown>>, path: string, reason
   }
 }
 
-/** Engine-owned descriptors extend the neutral built-ins at host composition. */
+/**
+ * Engine-owned descriptors extend the neutral built-ins at host composition.
+ * Every subscription engine id names one booted judge engine (`booted/judge.ts`).
+ */
 export function createTrainingProviderRegistry(): InferenceProviderRegistry {
   const codex: InferenceProviderDescriptor = {
     policyVersion: INFERENCE_POLICY_VERSIONS['codex-subscription']!,
     capabilities: { evaluatorPurposes: ['proposals', 'extraction'], evaluatorBudget: 'requests' },
     validate: (model, path) => validate(model, path, 'none'),
-    create: (_model, context) => createCodexInference({ timeoutMs: context.timeoutMs }),
+    create: (_model, context) => createBootedJudgeInference({ engine: 'codex', timeoutMs: context.timeoutMs }),
   };
   const grok: InferenceProviderDescriptor = {
     policyVersion: INFERENCE_POLICY_VERSIONS['grok-subscription']!, capabilities: {},
     incompatibleWith: ['grok-broker'], incompatibilityReason: 'grok-broker routes cannot fall back to a desktop grok-subscription login',
     validate: (model, path) => validate(model, path, 'optional'),
     normalizeIdentity: model => ({ ...model, reasoning_effort: model.reasoning_effort ?? 'medium' }),
-    create: (model, context) => createGrokInference({ timeoutMs: context.timeoutMs, reasoningEffort: model.reasoning_effort }),
+    create: (model, context) => createBootedJudgeInference({ engine: 'grok', effort: model.reasoning_effort ?? 'medium', timeoutMs: context.timeoutMs }),
+  };
+  const agy: InferenceProviderDescriptor = {
+    policyVersion: INFERENCE_POLICY_VERSIONS['agy-subscription']!, capabilities: {},
+    validate: (model, path) => validate(model, path, 'none'),
+    create: (_model, context) => createBootedJudgeInference({ engine: 'agy', timeoutMs: context.timeoutMs }),
   };
   // Broker grants lived in the removed training container; the ID still validates, and calls fail closed.
   const broker: InferenceProviderDescriptor = {
@@ -67,5 +74,5 @@ export function createTrainingProviderRegistry(): InferenceProviderRegistry {
         }
         defaultInferenceProviders.providers.ollama!.validate(model, path);
       },
-    } } };
+    }, 'agy-subscription': agy } };
 }

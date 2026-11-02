@@ -996,6 +996,14 @@ describe("renderSpawnfile", () => {
     );
   });
 
+  it("keeps a model's reasoning effort", () => {
+    const source = renderSpawnfile({
+      execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } },
+      kind: "agent", name: "grok-agent", runtime: "daimon", spawnfile_version: "0.1"
+    });
+    expect(source).toContain(["      auth:", "        method: grok", "      reasoning_effort: low"].join("\n"));
+  });
+
   it("renders moltnet surfaces and team networks in canonical order", () => {
     const agentSource = renderSpawnfile({
       kind: "agent",

@@ -57,7 +57,8 @@ const orderModelTarget = (target: ModelTarget | undefined): ModelTarget | undefi
     ["provider", target.provider],
     ["name", target.name],
     ["auth", orderModelEntryAuth(target.auth)],
-    ["endpoint", target.endpoint]
+    ["endpoint", target.endpoint],
+    ["reasoning_effort", target.reasoning_effort]
   ]) as unknown as ModelTarget;
 };
 

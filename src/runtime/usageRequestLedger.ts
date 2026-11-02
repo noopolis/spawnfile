@@ -28,6 +28,8 @@ export interface UsageRequestRecord {
   requests: number;
   started_at?: string;
   thread?: string;
+  /** Tool-call names the request's response carried; absent when the runtime could not say. */
+  tool_calls?: string[];
   total: number;
   turn?: string;
   usage_source?: UsageRequestSource;
@@ -53,7 +55,8 @@ export const parseUsageRequestLedgerLine = (line: string): UsageRequestRecord | 
     || (row.ended_at !== undefined && !(text(row.ended_at) && TIMESTAMP.test(row.ended_at)))
     || (row.usage_source !== undefined && !(USAGE_REQUEST_SOURCES as readonly unknown[]).includes(row.usage_source))
     || (row.turn !== undefined && !(typeof row.turn === "string" && /^[a-f0-9]{64}$/u.test(row.turn)))
-    || (row.reasoning !== undefined && !nonNegative(row.reasoning))) return null;
+    || (row.reasoning !== undefined && !nonNegative(row.reasoning))
+    || (row.tool_calls !== undefined && !(Array.isArray(row.tool_calls) && row.tool_calls.every((name) => typeof name === "string")))) return null;
   return {
     agent: row.agent, at: row.at, cache_write: row.cache_write as number, cached_input: row.cached_input as number,
     engine: row.engine, fresh_input: row.fresh_input as number, input: row.input as number, output: row.output as number,
@@ -64,6 +67,7 @@ export const parseUsageRequestLedgerLine = (line: string): UsageRequestRecord | 
     ...(text(row.model) ? { model: row.model } : {}),
     ...(row.reasoning === undefined ? {} : { reasoning: row.reasoning as number }),
     ...(text(row.thread) ? { thread: row.thread } : {}),
+    ...(row.tool_calls === undefined ? {} : { tool_calls: [...row.tool_calls as string[]] }),
     ...(row.turn === undefined ? {} : { turn: row.turn as string }),
     ...(row.usage_source === undefined ? {} : { usage_source: row.usage_source as UsageRequestSource })
   };

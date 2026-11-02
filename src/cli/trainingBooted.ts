@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { requireAuthProfile } from "../auth/index.js";
 import { createBootedTrialRun } from "../compiler/training/trial/index.js";
-import { createDaimonBootedAdapter } from "../runtime/daimon/training/booted/index.js";
+import { bindBootedJudges, createDaimonBootedAdapter } from "../runtime/daimon/training/booted/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { RunTrainingOptions } from "./trainingExecution.js";
 
@@ -16,6 +16,8 @@ const flag = (args: readonly string[], name: string): string | undefined => {
  * Production-booted training for a Daimon subject: the training core and the
  * grader run here, and every trial is the subject's own compiled organization
  * in its own container, sharing the run's one auth gateway (and so one login).
+ * Every subscription judgment of the run wakes one of the run's warm, tool-free
+ * judge containers on that same gateway; none reads a personal login.
  */
 export const runBootedTraining = async (options: RunTrainingOptions): Promise<number> => {
   if (!options.authProfile) throw failure("Production-booted Daimon training requires --auth-profile (the login its auth gateway holds)");
@@ -31,12 +33,14 @@ export const runBootedTraining = async (options: RunTrainingOptions): Promise<nu
     authProfile: await requireAuthProfile(options.authProfile),
     scratchRoot: path.join(path.resolve(out), "booted-trials")
   });
+  bindBootedJudges(run);
   try {
     const { main } = await import("../runtime/trainingCli.js");
     return await main(["train", ...options.args, ...(flag(options.args, "runtime") ? [] : ["--runtime", "daimon"]), ...instructions], {
       cwd: process.cwd(), signal: options.signal, stdout: options.streams.stdout, stderr: options.streams.stderr
     }, { adapter: (_runtime, adapter) => createDaimonBootedAdapter({ launcher: run, timeoutMs: adapter.timeoutMs }) });
   } finally {
+    bindBootedJudges(undefined);
     await run.close();
   }
 };

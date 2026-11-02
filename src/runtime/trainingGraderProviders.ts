@@ -2,8 +2,7 @@ import { createClaudeInference } from '../training/index.js';
 import { configureGraderProviders, type GraderProviderRegistry, type GraderTeacher,
   type ProviderAvailabilityWindow } from '../training/contracts/index.js';
 import { CONTAINED_TEACHER_POLICY, EMPTY_TOOLS_TEACHER_POLICY } from '../shared/trainingLegacy/index.js';
-import { createCodexInference } from './daimon/training/providers/codex-subscription/index.js';
-import { createGrokInference } from './daimon/training/providers/grok-subscription/index.js';
+import { createBootedJudgeInference } from './daimon/training/booted/index.js';
 
 export const defaultGrokWindow: ProviderAvailabilityWindow = { start: '20:30', end: '06:30', timeZone: 'Europe/Berlin' };
 export function grokWindowOpen(now: Date, window: ProviderAvailabilityWindow = defaultGrokWindow): boolean {
@@ -34,13 +33,19 @@ const registry: GraderProviderRegistry = {
       } },
     { id: 'codex', inferenceProviderId: 'codex-subscription', decisionTools: 'contained', teacherPolicy: CONTAINED_TEACHER_POLICY,
       decompositionExtractor: true, atomicExtractor: true, validateAtomicConfig: atomicConfig,
-      create: (teacher, timeoutMs) => createCodexInference({ timeoutMs, reasoningEffort: teacher.effort }) },
+      create: (teacher, timeoutMs) => createBootedJudgeInference({ engine: 'codex', effort: teacher.effort, timeoutMs }) },
     { id: 'grok', inferenceProviderId: 'grok-subscription', decisionTools: 'disabled', teacherPolicy: EMPTY_TOOLS_TEACHER_POLICY,
       decompositionExtractor: false, atomicExtractor: false, validateAtomicConfig: atomicConfig,
       create(teacher, timeoutMs) {
         const effort = teacher.effort;
         if (effort !== undefined && !['low', 'medium', 'high', 'xhigh'].includes(effort)) throw new Error('Unsupported Grok teacher effort');
-        return createGrokInference({ timeoutMs, reasoningEffort: effort as 'low' | 'medium' | 'high' | 'xhigh' | undefined });
+        return createBootedJudgeInference({ engine: 'grok', effort: effort ?? 'medium', timeoutMs });
+      } },
+    { id: 'agy', inferenceProviderId: 'agy-subscription', decisionTools: 'disabled', teacherPolicy: EMPTY_TOOLS_TEACHER_POLICY,
+      decompositionExtractor: false, atomicExtractor: false, validateAtomicConfig: atomicConfig,
+      create(teacher, timeoutMs) {
+        if (teacher.effort !== undefined) throw new Error('AGY teacher effort is unsupported');
+        return createBootedJudgeInference({ engine: 'agy', timeoutMs });
       } },
   ],
   council: { requiredProviders: ['codex', 'claude'], requiredMessage: 'Council requires independent codex and claude teachers',

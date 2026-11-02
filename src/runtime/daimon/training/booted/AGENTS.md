@@ -13,3 +13,9 @@ posts one wake and waits on its receipt, `stop` tears the organization down.
 - Absent usage rows are `usage: null`, never zero. A receipt that never
   reached a terminal state before the trial deadline is a `failed` turn.
 - The transcript is operator-only: a `diagnostic` observation, never output.
+- `judge.ts` is the booted judge: `createBootedJudgeInference` maps one
+  `InferenceRequest` onto one wake of the run's judge for its engine, model and
+  effort (`BootedJudgeLauncher`, bound per run with `bindBootedJudges`). System,
+  prompt and schema become the wake text; the reply is validated after the wake;
+  `transcriptToolActivity` refuses any record or item kind that is tool activity
+  (engine-neutral: kinds only), and a missing transcript is refused too.

@@ -66,9 +66,14 @@ command-local resource map and awaited cleanup hooks; dry-run does not call them
 Provider IDs in existing YAML and receipt/cache/checkpoint identities remain unchanged.
 
 The core's neutral built-ins are saved Claude subscription inference and native
-Ollama inference. Daimon owns `src/runtime/daimon/training/providers/codex-subscription/`
-and `grok-subscription/`, the parent-process grader and evaluator routes over the
-operator's saved logins. The core passes adapter-owned services through unchanged.
+Ollama inference. Every Daimon subscription route (`codex-subscription`,
+`grok-subscription`, `agy-subscription`, and the grader teacher ids `codex`, `grok`,
+`agy`) is one booted judge (`src/runtime/daimon/training/booted/judge.ts`): a
+tool-free one-agent organization booted like a trial on the run's auth profile and
+gateway, one warm container per engine, model and effort, woken once per judgment.
+The reply is validated against the requested schema after the wake, and a wake
+whose transcript shows any tool activity is refused. Nothing reads an operator's
+personal login. The core passes adapter-owned services through unchanged.
 
 `src/runtime/trainingSubjects.ts` composes subjects and provider registrations;
 `trainingProviders.ts` supplies engine descriptors. Grader provider policy is an

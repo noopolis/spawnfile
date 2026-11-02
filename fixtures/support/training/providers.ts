@@ -7,8 +7,6 @@ import * as optimizer from '../../../src/training/cli/training/optimizer.js';
 import * as policies from '../../../src/training/providers/index.js';
 import type { InferenceProviderRegistry } from '../../../src/training/contracts/index.js';
 
-export { createGrokInference } from '../../../src/runtime/daimon/training/providers/grok-subscription/index.js';
-export { createCodexInference } from '../../../src/runtime/daimon/training/providers/codex-subscription/index.js';
 
 export const providers = createTrainingProviderRegistry();
 export const parseDatasetYaml: typeof cases.parseDatasetYaml = (source, options = {}) => cases.parseDatasetYaml(source, { inferenceProviders: providers, ...options });
@@ -26,3 +24,4 @@ export const createTrainingInference: typeof inference.createTrainingInference =
 export type { InferenceProviderRegistry };
 
 export const commandCheckpoint: typeof checkpoint = (args, inputs, dependencies, context, repair) => checkpoint(args, inputs, { ...dependencies, inferenceProviders: dependencies.inferenceProviders ?? createTrainingProviderRegistry() }, context, repair);
+export { bindBootedJudges, createBootedJudgeInference } from '../../../src/runtime/daimon/training/booted/index.js';

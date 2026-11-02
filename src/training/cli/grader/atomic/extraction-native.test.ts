@@ -1,12 +1,14 @@
 import '../../../../../fixtures/support/training/graderProviders.js';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import type { ProcessOptions, RunningProcess } from '../../../platform/process/index.js';
-import { createCodexInference } from '../../../../../fixtures/support/training/providers.js';
+import { bindBootedJudges, createBootedJudgeInference } from '../../../../../fixtures/support/training/providers.js';
 import { createClaudeInference } from '../../../inference/claude/index.js';
 import { runDecompose } from './decompose.js';
 import { fixture } from '../../../../../fixtures/support/training/graderAtomicFixtures.js';
+
+afterEach(() => bindBootedJudges(undefined));
 
 it.each([['codex', false], ['claude', false], ['codex', true], ['claude', true]] as const)(
   'runs actual %s schema validation and resumes a malformed first response (%s)', async (vendor, malformed) => {
@@ -40,7 +42,14 @@ it.each([['codex', false], ['claude', false], ['codex', true], ['claude', true]]
       return { exitCode: 0, stderr: '', cancelled: false };
     })(),
   });
-  const provider = vendor === 'codex' ? createCodexInference({ process }) : createClaudeInference({ process });
+  // Codex judges are booted containers: the fake judge replies through a tool-free wake.
+  bindBootedJudges({ judge: async () => ({ wake: async () => {
+    const attempt = generations++;
+    const text = malformed && attempt === 0 ? '{"units":"bad"}' : '```json\n' + JSON.stringify({ units: attempt === Number(malformed) ? [f.unit] : [] }) + '\n```';
+    return { state: 'completed', acceptanceId: 'a', executionId: 'e', code: null, text, usage: [],
+      transcript: '{"type":"response_item","payload":{"type":"message"}}' };
+  } }) });
+  const provider = vendor === 'codex' ? createBootedJudgeInference({ engine: 'codex' }) : createClaudeInference({ process });
   if (malformed) {
     await expect(runDecompose({ ...f.decompose, extractors: [vendor] }, { provider: () => provider })).rejects.toThrow();
     const file = (await readdir(f.decompose.out)).find(name => name.endsWith('.checkpoint.json'))!;

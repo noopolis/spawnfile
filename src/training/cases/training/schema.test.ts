@@ -26,7 +26,7 @@ describe('dataset-authored training configuration', () => {
     ['missing id', { model: 'chosen' }],
   ])('preserves the exact invalid-provider diagnostic for %s', (_name, model) => {
     expect(() => validateTrainingConfiguration({ models: { one: model } })).toThrow(expect.objectContaining({ message:
-      '$.training.models.one.provider: expected one of claude-subscription, codex-subscription, grok-subscription, grok-broker, ollama' }));
+      '$.training.models.one.provider: expected one of claude-subscription, codex-subscription, grok-subscription, grok-broker, ollama, agy-subscription' }));
   });
   it.each(['foo', '', undefined])('reports unknown fields before invalid provider %s', provider => {
     expect(() => validateTrainingConfiguration({ models: { one: { provider, bogus: 1 } } }))

@@ -21,7 +21,7 @@ import {
 import type { AuthProfile, ImportedAuthKind, ResolvedAuthProfile } from "./types.js";
 
 const importedAuthEntrySchema = z.object({
-  kind: z.enum(["claude-code", "codex"]),
+  kind: z.enum(["claude-code", "codex", "grok"]),
   relativePath: z.string().min(1)
 });
 
@@ -30,7 +30,8 @@ const authProfileSchema = z.object({
   imports: z
     .object({
       "claude-code": importedAuthEntrySchema.optional(),
-      codex: importedAuthEntrySchema.optional()
+      codex: importedAuthEntrySchema.optional(),
+      grok: importedAuthEntrySchema.optional()
     })
     .default({}),
   version: z.literal(1)

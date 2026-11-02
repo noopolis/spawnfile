@@ -14,6 +14,8 @@ export interface BootedWake {
   text: string;
   usage: readonly BootedUsageRow[];
   transcript: string | null;
+  /** Per model request, the tool-call names its response carried; null where the runtime could not say. */
+  requestToolCalls?: readonly (readonly string[] | null)[];
 }
 
 export interface BootedTrialHandle {
@@ -28,7 +30,8 @@ export interface BootedTrialLauncher {
 
 export interface BootedAdapterOptions { launcher: BootedTrialLauncher; timeoutMs: number }
 
-const usageOf = (rows: readonly BootedUsageRow[]): Usage | null => rows.length === 0 ? null : {
+/** Ledger rows to `Usage`; no rows means unmetered, never zero. */
+export const bootedUsage = (rows: readonly BootedUsageRow[]): Usage | null => rows.length === 0 ? null : {
   inputTokens: rows.reduce((sum, row) => sum + row.input, 0),
   cachedInputTokens: rows.reduce((sum, row) => sum + row.cache_read, 0),
   outputTokens: rows.reduce((sum, row) => sum + row.output, 0),
@@ -63,7 +66,7 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
         async run(turn, signal): Promise<SubjectTurnResult> {
           if (stopped) throw new Error('trial organization was already stopped');
           const wake = await trial.wake(turn.text, { deliveryId: `${input.trialId}:${turn.id}`, timeoutMs: options.timeoutMs, signal: signal ?? input.signal });
-          const usage = usageOf(wake.usage);
+          const usage = bootedUsage(wake.usage);
           if (wake.text) await emit(turn.id, { type: 'output', text: wake.text });
           if (usage) await emit(turn.id, { type: 'usage', usage });
           if (wake.transcript) await emit(turn.id, { type: 'diagnostic', native: { schema: BOOTED_EVIDENCE_SCHEMA, transcript: wake.transcript } });
