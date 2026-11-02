@@ -78,9 +78,19 @@ export const renderDaimonWorkspaceResourceSecurity = (
  * `EPERM` the moment root no longer owns the path.
  */
 export const renderDaimonUsageLedgerProvisioning = (): string[] => {
-  const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
+  const { directoryPath, filePath } = DAIMON_GROK_TURN_USAGE_LEDGER;
+  // The ledger file itself is shared too: the broker uid appends Grok rows and
+  // the organization uid appends Codex/AGY rows, and Daimon's wake fuse creates
+  // it empty as the organization uid at 0640 when absent, which leaves the
+  // broker unable to append and every Grok usage row silently lost. Root owns
+  // it first (it holds no CAP_DAC_OVERRIDE or CAP_FOWNER), then hands it to
+  // broker:organization at 0660, on every start so a reattached volume heals.
+  const owner = `${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID}`;
   return [
-    `chown 0:0 ${directoryPath} && chmod 0770 ${directoryPath} && chown ${DAIMON_BROKER_UID}:${DAIMON_ORGANIZATION_UID} ${directoryPath}`,
+    `chown 0:0 ${directoryPath} && chmod 0770 ${directoryPath}`,
+    `if [ -L ${filePath} ] || { [ -e ${filePath} ] && [ ! -f ${filePath} ]; }; then echo "usage ledger ${filePath} is not a regular file" >&2; exit 1; fi`,
+    `if [ -e ${filePath} ]; then chown 0:0 ${filePath}; else (umask 077 && : > ${filePath}); fi && chmod 0660 ${filePath} && chown ${owner} ${filePath}`,
+    `chown ${owner} ${directoryPath}`,
     `setpriv --clear-groups --reuid ${DAIMON_ORGANIZATION_UID} --regid ${DAIMON_ORGANIZATION_UID} --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${directoryPath}/.daimon-usage-probe; umask 007; : > "$probe"; rm "$probe"'`
   ];
 };

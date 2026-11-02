@@ -456,7 +456,11 @@ describe("renderDaimonUidEntrypoint", () => {
     const codexOnlyPlan: RuntimeTargetPlan = { ...daimonPlan, engineByNodeId: { "agent:Codex One": "codex" } };
     const rendered = renderDaimonUidEntrypoint([codexOnlyPlan]);
 
-    expect(rendered).toContain(`chown 0:0 ${usageDirectory} && chmod 0770 ${usageDirectory} && chown 2100:2000 ${usageDirectory}`);
+    const usageFile = DAIMON_GROK_TURN_USAGE_LEDGER.filePath;
+    expect(rendered).toContain([`chown 0:0 ${usageDirectory} && chmod 0770 ${usageDirectory}`,
+      `if [ -L ${usageFile} ] || { [ -e ${usageFile} ] && [ ! -f ${usageFile} ]; }; then echo "usage ledger ${usageFile} is not a regular file" >&2; exit 1; fi`,
+      `if [ -e ${usageFile} ]; then chown 0:0 ${usageFile}; else (umask 077 && : > ${usageFile}); fi && chmod 0660 ${usageFile} && chown 2100:2000 ${usageFile}`,
+      `chown 2100:2000 ${usageDirectory}`].join("\n"));
     expect(rendered).toContain(
       `--reuid 2000 --regid 2000 --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- bash -ceu 'probe=${usageDirectory}/.daimon-usage-probe; umask 007; : > "$probe"; rm "$probe"'`
     );
