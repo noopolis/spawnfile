@@ -56,7 +56,7 @@ const UNLOCK_PROGRAM = [
   "} catch (error) { if (error.code !== 'ENOENT') throw error; }",
   "const fd = fs.openSync(target, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);",
   "const bytes = Buffer.from(crypto.randomBytes(32).toString('hex'));",
-  "fs.writeSync(fd, bytes); bytes.fill(0); fs.fchownSync(fd, Number(uid), Number(uid)); fs.fchmodSync(fd, 0o600); fs.fsyncSync(fd); fs.closeSync(fd);"
+  "fs.writeSync(fd, bytes); bytes.fill(0); fs.fchmodSync(fd, 0o600); fs.fsyncSync(fd); fs.fchownSync(fd, Number(uid), Number(uid)); fs.closeSync(fd);"
 ].join("\n");
 
 export const ensureSubscriptionRealmVolumes = async (
