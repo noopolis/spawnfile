@@ -74,12 +74,19 @@ describe("Daimon broker usage ledger provisioning", () => {
   const plan = grokPlan(["agent:grok"]);
 
   it("fixes the usage ledger directory group-writable so Codex/AGY's organization-uid process can also write it, unconditionally (not just alongside the realm)", () => {
-    const { directoryPath } = DAIMON_GROK_TURN_USAGE_LEDGER;
+    const { directoryPath, filePath } = DAIMON_GROK_TURN_USAGE_LEDGER;
     const lines = renderDaimonUsageLedgerProvisioning();
     // chown-to-root, then chmod, then chown-to-final-owner last: never
     // `install -d`'s create-then-chown-then-chmod order, which needs
     // CAP_FOWNER (not granted; see runProject.ts) once ownership moves off root.
-    expect(lines).toContainEqual(`chown 0:0 ${directoryPath} && chmod 0770 ${directoryPath} && chown 2100:2000 ${directoryPath}`);
+    expect(lines.slice(0, 4)).toEqual([
+      `chown 0:0 ${directoryPath} && chmod 0770 ${directoryPath}`,
+      `if [ -L ${filePath} ] || { [ -e ${filePath} ] && [ ! -f ${filePath} ]; }; then echo "usage ledger ${filePath} is not a regular file" >&2; exit 1; fi`,
+      // The file is shared by the broker (Grok rows) and the organization uid (Codex/AGY rows, and the wake fuse's
+      // empty create): without this the fuse's 0640 organization-owned file locks the broker out of every Grok row.
+      `if [ -e ${filePath} ]; then chown 0:0 ${filePath}; else (umask 077 && : > ${filePath}); fi && chmod 0660 ${filePath} && chown 2100:2000 ${filePath}`,
+      `chown 2100:2000 ${directoryPath}`
+    ]);
     expect(lines.some((line) => line.includes("--reuid 2000") && line.includes(".daimon-usage-probe"))).toBe(true);
     // Unlike the broker realm/registrations, this runs even with no Grok agent at all.
     expect(renderDaimonBrokerProvisioning([])).toEqual([]);
