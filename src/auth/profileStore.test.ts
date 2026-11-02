@@ -10,6 +10,7 @@ import {
   ensureAuthProfile,
   loadAuthProfile,
   registerImportedAuth,
+  registerSubscriptionRealm,
   requireAuthProfile,
   setAuthProfileEnv
 } from "./profileStore.js";
@@ -34,6 +35,19 @@ afterEach(async () => {
 });
 
 describe("auth profile store", () => {
+  it("records a volume-held login by name and keeps it through later imports and env writes", async () => {
+    await createTempSpawnfileHome();
+    const binding = { realmVolume: "realm", unlockVolume: "unlock" };
+    await registerSubscriptionRealm("training", "agy", binding);
+    await registerImportedAuth("training", "codex");
+    await setAuthProfileEnv("training", { A: "1" });
+    const profile = await requireAuthProfile("training");
+    expect(profile.realms).toEqual({ agy: binding });
+    expect(Object.keys(profile.imports)).toEqual(["codex"]);
+    expect(profile.env).toEqual({ A: "1" });
+    expect((await ensureAuthProfile("plain")).realms).toBeUndefined();
+  });
+
   it("creates and loads empty auth profiles", async () => {
     const home = await createTempSpawnfileHome();
 

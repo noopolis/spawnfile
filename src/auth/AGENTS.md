@@ -12,7 +12,7 @@ src/auth/
 ├── trainingGrokWritebackLock.ts # Persistent non-secret SQLite transaction lock; kernel releases it on process death
 ├── types.ts            # Auth profile types
 ├── paths.ts            # Spawnfile auth home and profile path helpers
-├── profileStore.ts     # Read/write auth profiles and imported auth material
+├── profileStore.ts     # Read/write auth profiles, imported auth material and volume-held login names (`realms`)
 ├── importers.ts        # `.env`, Codex, and Claude Code import flows
 ├── targetSecretSourceFsIdentity.ts
 │                       # Shared stat-identity model for the target-secret store:

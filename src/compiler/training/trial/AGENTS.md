@@ -30,10 +30,31 @@ gateway sidecar. The training core drives it through the engine-neutral
 - `judge.ts` writes a judge's tool-free one-agent declaration (no skills, MCP,
   memory, surfaces or schedule), pinning model and effort only where the engine's
   descriptor makes model selection configurable.
-- `launcher.ts` is one run: lazily starts the gateway from the first image,
-  boots trials against it, keeps one warm judge per engine, model and effort
-  (booted through the same trial path), and `close` tears the judges down and
-  stops the gateway. The gateway holds every gatewayed login the run's auth
-  profile imported, read only from the profile, never a personal engine home.
-- Trial organizations never federate or run schedules, and hold no login: an
-  external `DAIMON_GATEWAY_URL` at boot means no realm is mounted or staged.
+- `launcher.ts` is one run: lazily starts the gateway from the first image of a
+  gatewayed engine, boots trials against it, keeps one warm judge per engine,
+  model and effort (booted through the same trial path), and `close` tears the
+  judges down and stops the gateway. The gateway holds every gatewayed login
+  the run's auth profile imported, read only from the profile, never a
+  personal engine home.
+- An engine whose login is one exclusive keyring realm (descriptor staging
+  `secret-service`: AGY) is not gatewayed. Its organizations boot with no
+  gateway, on Docker's default network (the engine needs egress), mounting the
+  profile's own realm and unlock volumes (`auth.realms`, from
+  `spawnfile auth login`) through a profile view holding nothing else.
+  Daimon's flock admits one container per realm, so `realmTurns.ts` gives every
+  such container of the run a first-come turn on the realm: trials hold it from
+  boot to teardown; the judge stays warm while nobody waits and hands over
+  after its current judgment when someone does (its image is kept), with a
+  bounded wait so a judgment can never deadlock behind an open trial. Across
+  processes the realm mount's `exclusive-reattach` reservation refuses a second
+  holder before it starts. Codex and Grok parallelism is unchanged.
+- `login.ts` is `spawnfile auth login <engine>`: it creates the profile's realm
+  and unlock volumes (the unlock secret generated inside a network-less
+  container as the organization uid, never on the host, never replaced), runs
+  the image's own `auth <engine> login` (production's entrypoint command) in a
+  throwaway tool-free judge organization attached to the operator's terminal,
+  and records the volume names on the profile. `--dry-run` stops before the
+  login and prints its command.
+- Trial organizations never federate or run schedules, and hold no gatewayed
+  login: an external `DAIMON_GATEWAY_URL` at boot means no gatewayed realm is
+  mounted or staged.

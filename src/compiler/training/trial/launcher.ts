@@ -20,6 +20,8 @@ export interface BootedTrialLauncherOptions {
   scratchRoot: string;
   docker?: TrialDocker;
   turns?: RealmTurns;
+  /** Compiles and builds one organization (tests only). */
+  prepare?: typeof prepareTrial;
   /** Bound on a judge's wait for a volume-held login another container holds (default 30 minutes). */
   judgeRealmWaitMs?: number;
 }
@@ -46,6 +48,7 @@ export interface BootedTrialRun {
 export const createBootedTrialRun = (options: BootedTrialLauncherOptions): BootedTrialRun => {
   const docker = options.docker ?? createTrialDocker();
   const turns = options.turns ?? createRealmTurns();
+  const prepare = options.prepare ?? prepareTrial;
   const runId = ensureNoopolisRunId();
   const logins = trainingGatewayLogins(options.authProfile);
   let gateway: Promise<{ gateway: TrainingGateway; image: string }> | undefined;
@@ -148,7 +151,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
   };
 
   return {
-    boot: async ({ trialId, instructions, signal }) => start(await prepareTrial({
+    boot: async ({ trialId, instructions, signal }) => start(await prepare({
       agentManifestPath: options.agentManifestPath, docker, instructions, trialId, directory: await directory("trial-")
     }), signal),
     judge: (spec) => {
@@ -158,7 +161,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
       if (!judge) {
         judge = (async () => {
           const root = await directory("judge-");
-          const prepared = await prepareTrial({
+          const prepared = await prepare({
             agentManifestPath: await writeJudgeAgent(spec, path.join(root, "source")), docker, instructions: JUDGE_INSTRUCTIONS,
             trialId: `judge-${spec.engine}-${key}-${runId}`, directory: root
           });
