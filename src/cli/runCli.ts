@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 
+import { loginSubscriptionRealm } from "../compiler/training/trial/index.js";
+
 import { Command } from "commander";
 
 import {
@@ -110,7 +112,7 @@ export interface CliHandlers {
   addProjectSurface: typeof addProjectSurface; addSubagentProject: typeof addSubagentProject;
   addTeamProject: typeof addTeamProject; clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
   importClaudeCodeAuth: typeof importClaudeCodeAuth; importCodexAuth: typeof importCodexAuth;
-  importGrokAuth: typeof importGrokAuth;
+  importGrokAuth: typeof importGrokAuth; loginSubscriptionRealm: typeof loginSubscriptionRealm;
   importEnvFile: typeof importEnvFile; initProject: typeof initProject;
   listInitTemplates: typeof listInitTemplates;
   initializeTargetSecretSourceLifecycle: typeof initializeTargetSecretSourceLifecycle;
@@ -137,7 +139,7 @@ const createDefaultHandlers = (): CliHandlers => ({
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,
   importClaudeCodeAuth, importCodexAuth, importGrokAuth, importEnvFile, initializeTargetSecretSourceLifecycle,
-  provisionCredentials,
+  loginSubscriptionRealm, provisionCredentials,
   createDockerProbeGateway, exportRunArtifacts, downDeployment, inspectDockerDeployment,
   listDeploymentRecords, listHomeDeploymentRecords,
   initProject, listInitTemplates, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,

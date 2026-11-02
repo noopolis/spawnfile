@@ -35,6 +35,7 @@ type AuthCommandHandlers = Pick<
   | "importGrokAuth"
   | "importEnvFile"
   | "initializeTargetSecretSourceLifecycle"
+  | "loginSubscriptionRealm"
   | "provisionCredentials"
   | "requireAuthProfile"
   | "syncProjectAuth"
@@ -43,11 +44,13 @@ type AuthCommandHandlers = Pick<
 const formatAuthProfileSummary = (profile: ResolvedAuthProfile): string[] => {
   const envKeys = Object.keys(profile.env).sort();
   const importedKinds = Object.keys(profile.imports).sort();
+  const realms = Object.keys(profile.realms ?? {}).sort();
 
   return [
     `profile: ${profile.name}`,
     `env: ${envKeys.length > 0 ? envKeys.join(", ") : "none"}`,
-    `imports: ${importedKinds.length > 0 ? importedKinds.join(", ") : "none"}`
+    `imports: ${importedKinds.length > 0 ? importedKinds.join(", ") : "none"}`,
+    ...(realms.length > 0 ? [`logins: ${realms.join(", ")}`] : [])
   ];
 };
 
@@ -142,6 +145,25 @@ export const registerAuthCommands = (
     .action(async (options: { from?: string; profile: string }) => {
       const profile = await handlers.importCodexAuth(options.profile, options.from);
       emitLines(streams, formatAuthProfileSummary(profile));
+    });
+
+  authCommand
+    .command("login")
+    .description("Sign an auth profile into its own volume-held login (AGY) from this terminal")
+    .argument("<engine>", "Daimon engine whose login lives in a keyring realm, e.g. agy")
+    .option("-p, --profile <name>", "Auth profile name", "default")
+    .option("--dry-run", "Prepare the login volumes and print the login command without running it")
+    .action(async (engine: string, options: { dryRun?: boolean; profile: string }) => {
+      if (!options.dryRun && process.stdin.isTTY !== true) {
+        throw new Error("spawnfile auth login is interactive; run it from a terminal");
+      }
+      const result = await handlers.loginSubscriptionRealm({ engine, profileName: options.profile, dryRun: options.dryRun === true });
+      emitLines(streams, [
+        ...formatAuthProfileSummary(result.profile),
+        `realm volume: ${result.binding.realmVolume}`,
+        `unlock volume: ${result.binding.unlockVolume}`,
+        ...(options.dryRun ? [`login command: ${result.command.join(" ")}`] : [])
+      ]);
     });
 
   authCommand

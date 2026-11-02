@@ -359,7 +359,9 @@ export const renderDaimonUidEntrypoint = (
     "  if [ \"$EUID\" -eq 0 ]; then exit 1; fi",
     "  test \"$(sed -n \"s/^CapEff:[[:space:]]*//p\" /proc/self/status)\" = 0000000000000000",
     "  exec \"$@\"",
-    `' bash "\${runtime_command[@]}" &`,
+    // Explicit stdin: a non-interactive shell gives `&` jobs /dev/null, which would
+    // starve the interactive `auth <engine> login` of the operator's terminal.
+    `' bash "\${runtime_command[@]}" <&0 &`,
     "runtime_pid=$!",
     "trap - EXIT TERM INT HUP",
     "stopping=0",

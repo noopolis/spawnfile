@@ -3,3 +3,5 @@ export { startTrainingGateway, trainingGatewayLogins, trainingGatewayRealmVolume
 export { JUDGE_INSTRUCTIONS, writeJudgeAgent, type JudgeSpec } from "./judge.js";
 export { createBootedTrialRun, type BootedTrialLauncherOptions, type BootedTrialRun } from "./launcher.js";
 export { TRIAL_INSTRUCTIONS_FILE, writeTrialProject } from "./project.js";
+export { ensureSubscriptionRealmVolumes, loginSubscriptionRealm, subscriptionRealmBinding, type SubscriptionRealmLoginOptions, type SubscriptionRealmLoginResult } from "./login.js";
+export { createRealmTurns, type RealmTurnOptions, type RealmTurns, type ReleaseRealmTurn } from "./realmTurns.js";

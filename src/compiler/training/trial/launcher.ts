@@ -3,12 +3,14 @@ import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../../../auth/index.js";
 import { daimonGatewayedEngines } from "../../../runtime/daimon/gateway.js";
+import { getDaimonEngineDescriptor } from "../../../runtime/daimon/index.js";
 import { ensureNoopolisRunId } from "../../../runtime/index.js";
 import { SpawnfileError } from "../../../shared/index.js";
 import { prepareTrial, type BootedTrial, type PreparedTrial, type TrialWake } from "./boot.js";
 import { createTrialDocker, type TrialDocker } from "./docker.js";
 import { startTrainingGateway, trainingGatewayLogins, type TrainingGateway } from "./gateway.js";
 import { JUDGE_INSTRUCTIONS, writeJudgeAgent, type JudgeSpec } from "./judge.js";
+import { createRealmTurns, type RealmTurns } from "./realmTurns.js";
 
 export interface BootedTrialLauncherOptions {
   /** The subject agent's own Spawnfile. */
@@ -17,13 +19,16 @@ export interface BootedTrialLauncherOptions {
   /** Trial projects, compile outputs and boot env files live here, one fresh directory per trial. */
   scratchRoot: string;
   docker?: TrialDocker;
+  turns?: RealmTurns;
+  /** Bound on a judge's wait for a volume-held login another container holds (default 30 minutes). */
+  judgeRealmWaitMs?: number;
 }
 
 type Wake = (text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }) => Promise<TrialWake>;
 type Booted = Pick<BootedTrial, "container" | "scanCredentials" | "teardown"> & { wake: Wake };
 
 export interface BootedTrialRun {
-  boot(input: { trialId: string; instructions: string }): Promise<Booted>;
+  boot(input: { trialId: string; instructions: string; signal?: AbortSignal }): Promise<Booted>;
   /** The run's warm judge for this engine, model and effort: booted once, woken once per judgment. */
   judge(spec: JudgeSpec): Promise<Omit<Booted, "teardown">>;
   /** Tears down every judge, stops the run's gateway and removes its image and networks; the realm volumes stay. */
@@ -40,30 +45,102 @@ export interface BootedTrialRun {
  */
 export const createBootedTrialRun = (options: BootedTrialLauncherOptions): BootedTrialRun => {
   const docker = options.docker ?? createTrialDocker();
+  const turns = options.turns ?? createRealmTurns();
   const runId = ensureNoopolisRunId();
   const logins = trainingGatewayLogins(options.authProfile);
   let gateway: Promise<{ gateway: TrainingGateway; image: string }> | undefined;
   const judges = new Map<string, Promise<Booted>>();
   let closed = false;
 
-  const start = async (prepared: PreparedTrial): Promise<Booted> => {
+  /** The gateway this organization needs (null: no gatewayed engine), started on first use. */
+  const gatewayFor = async (prepared: PreparedTrial): Promise<TrainingGateway | null> => {
+    const gatewayed = daimonGatewayedEngines(prepared.engines);
+    if (gatewayed.length === 0) return null;
+    const missing = gatewayed.filter((descriptor) => !logins.includes(descriptor.id));
+    if (missing.length > 0) {
+      throw new SpawnfileError("validation_error", `Auth profile ${options.authProfile.name} has no ${missing.map(({ id }) => id).join(", ")} login; run \`spawnfile auth import <engine> --profile ${options.authProfile.name}\``);
+    }
+    gateway ??= (async () => {
+      const image = `spawnfile-training-gateway:${runId.replace(/[^A-Za-z0-9_.-]/gu, "-").slice(0, 100)}`;
+      await docker(["tag", prepared.image, image]);
+      return { image, gateway: await startTrainingGateway({ authProfile: options.authProfile, docker, engines: logins,
+        image, runId, runtimeRoot: prepared.runtimeRoot }) };
+    })();
+    return (await gateway).gateway;
+  };
+  /**
+   * The volume-held login (`spawnfile auth login`) this organization mounts,
+   * as a profile view that carries nothing else: no env, no imports.
+   */
+  const realmFor = (prepared: PreparedTrial): { volume: string; profile: ResolvedAuthProfile } | undefined => {
+    const engine = prepared.engines.find((id) => getDaimonEngineDescriptor(id)?.auth.staging === "secret-service");
+    if (engine === undefined) return undefined;
+    const binding = options.authProfile.realms?.[engine];
+    if (!binding) {
+      throw new SpawnfileError("validation_error", `Auth profile ${options.authProfile.name} has no ${engine} login; run \`spawnfile auth login ${engine} --profile ${options.authProfile.name}\``);
+    }
+    return { volume: binding.realmVolume, profile: { ...options.authProfile, env: {}, imports: {}, realms: { [engine]: binding } } };
+  };
+  /** Boots one container, holding its login realm's turn (if any) until the container is gone. */
+  const bootContainer = async (prepared: PreparedTrial, turn: { onContended?: () => void; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<Booted> => {
+    const access = await gatewayFor(prepared);
+    const realm = realmFor(prepared);
+    const release = realm ? await turns.take(realm.volume, turn) : undefined;
     try {
-      const missing = daimonGatewayedEngines(prepared.engines).filter((descriptor) => !logins.includes(descriptor.id));
-      if (missing.length > 0) {
-        throw new SpawnfileError("validation_error", `Auth profile ${options.authProfile.name} has no ${missing.map(({ id }) => id).join(", ")} login; run \`spawnfile auth import <engine> --profile ${options.authProfile.name}\``);
-      }
-      gateway ??= (async () => {
-        const image = `spawnfile-training-gateway:${runId.replace(/[^A-Za-z0-9_.-]/gu, "-").slice(0, 100)}`;
-        await docker(["tag", prepared.image, image]);
-        return { image, gateway: await startTrainingGateway({ authProfile: options.authProfile, docker, engines: logins,
-          image, runId, runtimeRoot: prepared.runtimeRoot }) };
-      })();
-      const booted = await prepared.boot((await gateway).gateway);
-      return { container: booted.container, scanCredentials: booted.scanCredentials, wake: booted.wake, teardown: async () => { try { await booted.teardown(); } finally { await prepared.dispose(); } } };
+      const booted = await prepared.boot(access, realm ? { realms: realm.profile } : {});
+      return { ...booted, teardown: async () => { try { await booted.teardown(); } finally { release?.(); } } };
+    } catch (error) {
+      release?.();
+      throw error;
+    }
+  };
+  const start = async (prepared: PreparedTrial, signal?: AbortSignal): Promise<Booted> => {
+    try {
+      const booted = await bootContainer(prepared, signal ? { signal } : {});
+      return { ...booted, teardown: async () => { try { await booted.teardown(); } finally { await prepared.dispose(); } } };
     } catch (error) {
       await prepared.dispose();
       throw error;
     }
+  };
+  /**
+   * A judge on a volume-held login takes turns with the run's trials: it stays
+   * warm while nobody else waits for the realm, and hands the turn over (its
+   * container removed) after its current judgment once someone does. Its image
+   * is built once and kept.
+   */
+  const takeTurnsJudge = (prepared: PreparedTrial): Booted => {
+    let booted: Promise<Booted> | undefined;
+    let container = "";
+    let busy = 0;
+    let evict = false;
+    const down = async (): Promise<void> => {
+      const current = booted;
+      booted = undefined;
+      evict = false;
+      await (await current?.catch(() => undefined))?.teardown();
+    };
+    const timeoutMs = options.judgeRealmWaitMs ?? 30 * 60_000;
+    return {
+      get container() { return container; },
+      scanCredentials: async () => (await booted?.catch(() => undefined))?.scanCredentials() ?? [],
+      wake: async (text, wakeOptions) => {
+        busy++;
+        try {
+          if (!booted) {
+            const pending = bootContainer(prepared, { timeoutMs, ...(wakeOptions.signal ? { signal: wakeOptions.signal } : {}),
+              onContended: () => { evict = true; if (busy === 0) void down(); } });
+            booted = pending;
+            pending.then((judge) => { container = judge.container; }, () => { if (booted === pending) booted = undefined; });
+          }
+          return await (await booted).wake(text, wakeOptions);
+        } finally {
+          busy--;
+          if (evict && busy === 0) await down();
+        }
+      },
+      teardown: async () => { try { await down(); } finally { await prepared.dispose(); } }
+    };
   };
   const directory = async (prefix: string): Promise<string> => {
     await mkdir(options.scratchRoot, { recursive: true });
@@ -71,9 +148,9 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
   };
 
   return {
-    boot: async ({ trialId, instructions }) => start(await prepareTrial({
+    boot: async ({ trialId, instructions, signal }) => start(await prepareTrial({
       agentManifestPath: options.agentManifestPath, docker, instructions, trialId, directory: await directory("trial-")
-    })),
+    }), signal),
     judge: (spec) => {
       if (closed) return Promise.reject(new SpawnfileError("runtime_error", "the training run is closed"));
       const key = JSON.stringify([spec.engine, spec.model, spec.effort ?? null]);
@@ -81,10 +158,13 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
       if (!judge) {
         judge = (async () => {
           const root = await directory("judge-");
-          return start(await prepareTrial({
+          const prepared = await prepareTrial({
             agentManifestPath: await writeJudgeAgent(spec, path.join(root, "source")), docker, instructions: JUDGE_INSTRUCTIONS,
             trialId: `judge-${spec.engine}-${key}-${runId}`, directory: root
-          }));
+          });
+          let turnTaking: boolean;
+          try { turnTaking = realmFor(prepared) !== undefined; } catch (error) { await prepared.dispose(); throw error; }
+          return turnTaking ? takeTurnsJudge(prepared) : start(prepared);
         })();
         judges.set(key, judge);
         // A failed boot is not cached: the next judgment retries it.

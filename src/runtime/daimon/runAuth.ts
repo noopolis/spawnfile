@@ -16,6 +16,7 @@ import {
 import { DAIMON_ENGINE_DESCRIPTORS, DAIMON_ENGINES, DAIMON_PORTABLE_ENGINE_ID, DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "./engines.js";
 import type { DaimonEngineDescriptor } from "./engineDescriptorSchema.js";
 import { DAIMON_ORGANIZATION_UID } from "./runtimeIdentity.js";
+import { daimonProfileUnlockMountArgs } from "./subscriptionRealms.js";
 
 const MAX_OPAQUE_CREDENTIAL_BYTES = 64 * 1024;
 export const DAIMON_GROK_ACCESS_TOKEN_MIN_BYTES = 32;
@@ -336,6 +337,13 @@ export const prepareDaimonRuntimeAuth = async (
     for (const engine of new Set(agents.map((agent) => agent.engine.kind))) {
       const descriptor = descriptorForEngine(engine);
       if (descriptor.auth.staging !== staging) continue;
+      const bound = descriptor.auth.staging === "secret-service" ? input.authProfile?.realms?.[engine] : undefined;
+      if (bound && descriptor.auth.staging === "secret-service") {
+        // The profile's own login (`spawnfile auth login`): its unlock secret lives in a
+        // volume Daimon checks in-container, so no host file and no host owner gate.
+        mountArgs.push(...daimonProfileUnlockMountArgs(bound.unlockVolume, descriptor.auth.realm.unlockMountPath));
+        continue;
+      }
       const source = daimonSourcePathForEngine(engine, process.env, input.authProfile);
       if (descriptor.auth.staging === "portable-realm") {
         const ownerUid = await assertSafeDaimonSourceFile(source, engine, descriptor.auth.maxCredentialBytes, engine);
