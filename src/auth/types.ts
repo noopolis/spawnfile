@@ -7,12 +7,16 @@ export interface ImportedAuthEntry {
 
 /**
  * A login that lives in Docker volumes rather than an importable file: the
- * engine's durable realm volume and the volume holding its unlock secret.
+ * engine's durable realm volume, the volume holding its unlock secret, and the
+ * volume holding the engine's login files from its runtime home (seeded into
+ * each fresh home at boot, written back after the container stops).
  * Created once by `spawnfile auth login <engine>`; the profile records names only.
  */
 export interface SubscriptionRealmBinding {
   realmVolume: string;
   unlockVolume: string;
+  /** Absent on a login recorded before home login files were kept: log in again. */
+  homeVolume?: string;
 }
 
 export interface AuthProfile {

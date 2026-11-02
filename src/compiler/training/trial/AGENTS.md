@@ -41,6 +41,14 @@ gateway sidecar. The training core drives it through the engine-neutral
   gateway, on Docker's default network (the engine needs egress), mounting the
   profile's own realm and unlock volumes (`auth.realms`, from
   `spawnfile auth login`) through a profile view holding nothing else.
+  AGY's login is also a few files in its runtime home (`homeLogin.ts`: the
+  OAuth token AGY rewrites on refresh, installation id, onboarded project).
+  The profile's third volume holds only those: before a container starts, a
+  network-less helper on the same image seeds them into its fresh home volume
+  (mounted where the organization mounts it, as the organization uid); after it
+  stops (inside the same realm turn) the helper writes back what AGY rewrote.
+  Trials never share anything else of a home. A login recorded before this
+  volume existed is refused until `spawnfile auth login` runs again.
   Daimon's flock admits one container per realm, so `realmTurns.ts` gives every
   such container of the run a first-come turn on the realm: trials hold it from
   boot to teardown; the judge stays warm while nobody waits and hands over
@@ -48,11 +56,12 @@ gateway sidecar. The training core drives it through the engine-neutral
   bounded wait so a judgment can never deadlock behind an open trial. Across
   processes the realm mount's `exclusive-reattach` reservation refuses a second
   holder before it starts. Codex and Grok parallelism is unchanged.
-- `login.ts` is `spawnfile auth login <engine>`: it creates the profile's realm
-  and unlock volumes (the unlock secret generated inside a network-less
+- `login.ts` is `spawnfile auth login <engine>`: it creates the profile's realm,
+  unlock and home login volumes (the unlock secret generated inside a network-less
   container as the organization uid, never on the host, never replaced), runs
   the image's own `auth <engine> login` (production's entrypoint command) in a
   throwaway tool-free judge organization attached to the operator's terminal,
+  keeps the login files from that throwaway home in the home login volume,
   and records the volume names on the profile. `--dry-run` stops before the
   login and prints its command.
 - Trial organizations never federate or run schedules, and hold no gatewayed

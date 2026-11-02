@@ -13,7 +13,7 @@ const profile = (realms?: ResolvedAuthProfile["realms"]): ResolvedAuthProfile =>
   profileDirectory: "/nonexistent/training", profilePath: "/nonexistent/training/profile.json", version: 1,
   ...(realms ? { realms } : {})
 });
-const AGY = { realmVolume: "spawnfile-training-training-agy-realm", unlockVolume: "spawnfile-training-training-agy-unlock" };
+const AGY = { homeVolume: "spawnfile-training-training-agy-home", realmVolume: "spawnfile-training-training-agy-realm", unlockVolume: "spawnfile-training-training-agy-unlock" };
 
 const wakeResult: TrialWake = { state: "completed", acceptanceId: "a", executionId: "e", code: null, text: "{}", usage: [], transcript: null, requestToolCalls: [[]] };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -93,4 +93,9 @@ it("refuses an AGY organization when the profile holds no AGY login", async () =
   const { run } = harness(profile());
   await expect(run.boot({ trialId: "one", instructions: "i" })).rejects.toThrow("run `spawnfile auth login agy --profile training`");
   await expect(run.judge({ engine: "agy", model: "default" })).rejects.toThrow("spawnfile auth login agy");
+});
+
+it("refuses an AGY login recorded before its home login files were kept", async () => {
+  const { run } = harness(profile({ agy: { realmVolume: AGY.realmVolume, unlockVolume: AGY.unlockVolume } }));
+  await expect(run.boot({ trialId: "one", instructions: "i" })).rejects.toThrow("run `spawnfile auth login agy --profile training`");
 });

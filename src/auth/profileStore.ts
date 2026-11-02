@@ -36,7 +36,8 @@ const authProfileSchema = z.object({
     .default({}),
   realms: z.record(z.string().regex(/^[a-z][a-z0-9-]*$/u), z.object({
     realmVolume: z.string().min(1),
-    unlockVolume: z.string().min(1)
+    unlockVolume: z.string().min(1),
+    homeVolume: z.string().min(1).optional()
   }).strict()).optional(),
   version: z.literal(1)
 });
