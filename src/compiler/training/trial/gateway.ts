@@ -131,7 +131,7 @@ export const startTrainingGateway = async (options: TrainingGatewayOptions): Pro
     await waitFor(async () => {
       const state = await docker(["inspect", "--format", "{{.State.Running}}", container]);
       if (state !== "true") {
-        const logs = await docker(["logs", "--tail", "20", container]).catch(() => "");
+        const logs = await docker(["logs", "--tail", "20", container], { combined: true }).catch(() => "");
         throw new SpawnfileError("runtime_error", `training auth gateway exited before readiness: ${logs.replace(/\s+/gu, " ").slice(-400)}`);
       }
       return docker(["exec", container, "bash", "-c", `(exec 3<>/dev/tcp/127.0.0.1/${DAIMON_GATEWAY_PORT})`]).then(() => true, () => false);

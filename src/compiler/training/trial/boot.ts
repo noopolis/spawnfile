@@ -159,8 +159,9 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         const target: DaimonControlTarget = { containerRef: container, dockerArgs: [], dockerCommand: "docker", imageRef: image, token };
         const call = options.control ?? daimonHelperControlCall;
         await waitFor(async () => {
-          if (await docker(["inspect", "--format", "{{.State.Running}}", container]) !== "true") {
-            const logs = await docker(["logs", "--tail", "30", container]).catch(() => "");
+          // A restart means the organization already exited once (`--restart unless-stopped` hides it).
+          if (await docker(["inspect", "--format", "{{.State.Running}} {{.RestartCount}}", container]) !== "true 0") {
+            const logs = await docker(["logs", "--tail", "30", container], { combined: true }).catch(() => "");
             throw new SpawnfileError("runtime_error", `trial organization exited before readiness: ${logs.replace(/\s+/gu, " ").slice(-600)}`);
           }
           return call(target, "GET", "/v2/availability").then((response) => response.status === 200, () => false);
