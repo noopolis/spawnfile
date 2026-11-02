@@ -150,7 +150,11 @@ spawnfile auth login agy --profile training
 ```
 
 AGY keeps its login in an encrypted keyring realm that admits one container at
-a time, so containers using a profile's AGY login take turns on it.
+a time, plus a few login files in its home (the OAuth token AGY refreshes, its
+installation id and onboarded project). The profile keeps those files in its own
+volume: each container gets a fresh home seeded with them, and the files AGY
+rewrote are kept when it stops. Containers using a profile's AGY login take
+turns on it, and nothing else in a home (conversations, history) carries over.
 
 ### Viewing Profiles
 

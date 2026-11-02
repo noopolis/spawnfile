@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import { loadAuthProfile, type ResolvedAuthProfile } from "../../../auth/index.js";
+import { loadAuthProfile, registerSubscriptionRealm, type ResolvedAuthProfile } from "../../../auth/index.js";
 import type { PreparedTrial } from "./boot.js";
 import { loginSubscriptionRealm } from "./login.js";
 
@@ -35,13 +35,14 @@ const harness = () => {
 it("creates the profile's AGY volumes, runs the login on them alone and records it", async () => {
   const { docker, logins, disposed, options } = harness();
   const result = await loginSubscriptionRealm({ engine: "agy", profileName: "training", ...options });
-  const binding = { realmVolume: "spawnfile-training-training-agy-realm", unlockVolume: "spawnfile-training-training-agy-unlock" };
+  const binding = { homeVolume: "spawnfile-training-training-agy-home", realmVolume: "spawnfile-training-training-agy-realm", unlockVolume: "spawnfile-training-training-agy-unlock" };
   expect(result.binding).toEqual(binding);
-  expect(docker.slice(0, 2)).toEqual([
+  expect(docker.slice(0, 3)).toEqual([
     ["volume", "create", "--label", "spawnfile.subscription-realm=agy", binding.realmVolume],
-    ["volume", "create", "--label", "spawnfile.subscription-realm=agy", binding.unlockVolume]
+    ["volume", "create", "--label", "spawnfile.subscription-realm=agy", binding.unlockVolume],
+    ["volume", "create", "--label", "spawnfile.subscription-realm=agy", binding.homeVolume]
   ]);
-  const unlock = docker[2]!;
+  const unlock = docker[3]!;
   expect(unlock.slice(0, 4)).toEqual(["run", "--rm", "--network", "none"]);
   expect(unlock).toContain(`type=volume,source=${binding.unlockVolume},target=/unlock`);
   expect(unlock.slice(-2)).toEqual(["2000", "unlock"]);
@@ -50,7 +51,15 @@ it("creates the profile's AGY volumes, runs the login on them alone and records 
   expect(disposed()).toBe(1);
   // A second login re-enrolls the same volumes.
   await loginSubscriptionRealm({ engine: "agy", profileName: "training", ...options });
-  expect(docker[3]).toEqual(docker[0]);
+  expect(docker[4]).toEqual(docker[0]);
+});
+
+it("gives a login recorded before home login files were kept its home volume, keeping its realm", async () => {
+  const { options } = harness();
+  await registerSubscriptionRealm("training", "agy", { realmVolume: "old-realm", unlockVolume: "old-unlock" });
+  const result = await loginSubscriptionRealm({ engine: "agy", profileName: "training", ...options });
+  expect(result.binding).toEqual({ homeVolume: "spawnfile-training-training-agy-home", realmVolume: "old-realm", unlockVolume: "old-unlock" });
+  expect((await loadAuthProfile("training"))?.realms?.agy).toEqual(result.binding);
 });
 
 it("prepares and prints the login on a dry run without recording it", async () => {

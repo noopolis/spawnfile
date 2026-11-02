@@ -18,6 +18,7 @@ import { createDockerRunInvocation, runDockerContainer } from "../../runProject.
 import { executeDockerRunWithSupportCleanup } from "../../runProjectLifecycle.js";
 import { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
 import type { TrainingGatewayAccess } from "./gateway.js";
+import { HOME_LOGIN_FILES, saveHomeLogin, seedHomeLogin, type HomeLogin } from "./homeLogin.js";
 import { writeTrialProject } from "./project.js";
 
 /**
@@ -100,14 +101,28 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   const instance = compiled.report.container?.runtime_instances.find((entry) => entry.runtime === "daimon");
   const agents = Object.entries(instance?.engine_by_node_id ?? {});
   if (!instance || agents.length !== 1) throw new SpawnfileError("validation_error", "A production-booted trial compiles exactly one Daimon agent");
-  const [agentId] = agents[0]!;
+  const [agentId, engine] = agents[0]!;
   const home = instance.agent_paths?.[agentId]?.home_path;
   // The engine writes its own session records under its home inside the agent's runtime home.
-  const engineHome = getDaimonEngineDescriptor(agents[0]![1])?.homeDirectory;
+  const engineHome = getDaimonEngineDescriptor(engine)?.homeDirectory;
   const sessionsPath = home && engineHome !== undefined ? path.posix.join(home, engineHome, "sessions") : null;
   const lineageVolumes = (realms: ResolvedAuthProfile | undefined): string[] => (compiled.report.container?.persistent_mounts ?? [])
     .filter((mount) => !isDaimonGatewayRealmMountId(mount.id) && daimonProfileRealmVolume(mount.id, realms) === undefined)
     .map((mount) => mount.volume_name);
+  /**
+   * The profile's home login (`spawnfile auth login`) for this organization's
+   * fresh runtime home: seeded into it before the container starts, written
+   * back after it stops. Only the engine's login files cross; the home itself
+   * is the trial's own and is removed with it.
+   */
+  const homeLoginFor = (realms: ResolvedAuthProfile | undefined): HomeLogin | undefined => {
+    const files = HOME_LOGIN_FILES[engine];
+    const loginVolume = realms?.realms?.[engine]?.homeVolume;
+    if (!files || !loginVolume) return undefined;
+    const mount = (compiled.report.container?.persistent_mounts ?? []).find((entry) => entry.mount_path === home);
+    if (!mount) throw new SpawnfileError("validation_error", `The ${engine} runtime home of ${agentId} is not a persistent mount; its login cannot be seeded`);
+    return { files, homeMountPath: mount.mount_path, homeVolume: mount.volume_name, loginVolume };
+  };
   const removeVolumes = async (volumes: readonly string[]): Promise<void> => {
     for (const volume of volumes) await docker(["volume", "rm", "-f", volume]).catch(() => undefined);
   };
@@ -120,7 +135,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
     engines: agents.map(([, engine]) => engine),
     runtimeRoot: `${RUNTIME_INSTALL_ROOT}/daimon`,
     login: async (realms, loginOptions = {}) => {
-      const engine = agents[0]![1];
+      const homeLogin = homeLoginFor(realms);
       const invocation = await createDockerRunInvocation(compiled, image, {
         authProfile: realms, command: ["auth", engine, "login", "--config", instance.config_path],
         containerName: `spawnfile-login-${slug}`, interactive: true
@@ -129,8 +144,10 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         await rm(invocation.supportDirectory, { recursive: true, force: true });
         return [invocation.command, ...invocation.args];
       }
-      try { await executeDockerRunWithSupportCleanup(invocation, runDockerContainer); }
-      finally { await removeVolumes(lineageVolumes(realms)); }
+      try {
+        await executeDockerRunWithSupportCleanup(invocation, runDockerContainer);
+        if (homeLogin) await saveHomeLogin(docker, image, homeLogin);
+      } finally { await removeVolumes(lineageVolumes(realms)); }
       return [invocation.command, ...invocation.args];
     },
     boot: async (gateway, bootOptions = {}) => {
@@ -147,13 +164,21 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         ...(gateway ? { network: gateway.network } : {})
       });
       const volumes = lineageVolumes(bootOptions.realms);
+      const homeLogin = homeLoginFor(bootOptions.realms);
       const teardown = async (): Promise<void> => {
-        await docker(["rm", "-f", container]).catch(() => undefined);
-        await removeVolumes(volumes);
-        await rm(invocation.supportDirectory, { recursive: true, force: true });
-        await rm(envFilePath, { force: true });
+        try {
+          // Stopped, not killed, so the engine finishes any login rewrite before it is saved.
+          if (homeLogin) await docker(["stop", "--time", "10", container]).catch(() => undefined);
+          await docker(["rm", "-f", container]).catch(() => undefined);
+          if (homeLogin) await saveHomeLogin(docker, image, homeLogin);
+        } finally {
+          await removeVolumes(volumes);
+          await rm(invocation.supportDirectory, { recursive: true, force: true });
+          await rm(envFilePath, { force: true });
+        }
       };
       try {
+        if (homeLogin) await seedHomeLogin(docker, image, homeLogin);
         await executeDockerRunWithSupportCleanup(invocation, runDockerContainer);
         await rm(envFilePath, { force: true });
         const target: DaimonControlTarget = { containerRef: container, dockerArgs: [], dockerCommand: "docker", imageRef: image, token };

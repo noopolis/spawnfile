@@ -35,10 +35,10 @@ export interface SubscriptionRealmLoginResult {
 }
 
 /** The profile's volume names for an engine's volume-held login. */
-export const subscriptionRealmBinding = (profileName: string, engine: string): SubscriptionRealmBinding => ({
-  realmVolume: trainingGatewayRealmVolume(profileName, engine),
-  unlockVolume: `spawnfile-training-${slugify(profileName) || "profile"}-${engine}-unlock`
-});
+export const subscriptionRealmBinding = (profileName: string, engine: string): Required<SubscriptionRealmBinding> => {
+  const prefix = `spawnfile-training-${slugify(profileName) || "profile"}-${engine}`;
+  return { homeVolume: `${prefix}-home`, realmVolume: trainingGatewayRealmVolume(profileName, engine), unlockVolume: `${prefix}-unlock` };
+};
 
 /**
  * Creates the unlock secret inside its volume exactly once, as the organization
@@ -65,7 +65,7 @@ export const ensureSubscriptionRealmVolumes = async (
   engine: string,
   binding: SubscriptionRealmBinding
 ): Promise<void> => {
-  for (const volume of [binding.realmVolume, binding.unlockVolume]) {
+  for (const volume of [binding.realmVolume, binding.unlockVolume, ...(binding.homeVolume ? [binding.homeVolume] : [])]) {
     await docker(["volume", "create", "--label", `${LABEL}=${engine}`, volume]);
   }
   await docker(["run", "--rm", "--network", "none", "--user", "0:0", "--cap-drop", "ALL", "--cap-add", "CHOWN",
@@ -76,10 +76,12 @@ export const ensureSubscriptionRealmVolumes = async (
 /**
  * `spawnfile auth login <engine>`: gives an auth profile its own volume-held
  * login for an engine that keeps its login in a Daimon secret-service realm
- * (AGY). Creates the profile's realm and unlock volumes, then runs Daimon's
- * own interactive `auth <engine> login` in a throwaway, production-booted
- * one-agent organization (a tool-free judge) attached to the operator's
- * terminal, and records the volume names on the profile once it succeeds.
+ * (AGY). Creates the profile's realm, unlock and home login volumes, then runs
+ * Daimon's own interactive `auth <engine> login` in a throwaway,
+ * production-booted one-agent organization (a tool-free judge) attached to the
+ * operator's terminal, keeps the engine's login files from that throwaway home
+ * in the home login volume, and records the volume names on the profile once
+ * it succeeds.
  * Spawnfile never reads the login or the unlock secret.
  */
 export const loginSubscriptionRealm = async (options: SubscriptionRealmLoginOptions): Promise<SubscriptionRealmLoginResult> => {
@@ -89,7 +91,8 @@ export const loginSubscriptionRealm = async (options: SubscriptionRealmLoginOpti
   }
   const docker = options.docker ?? createTrialDocker();
   const current = await ensureAuthProfile(options.profileName);
-  const binding = current.realms?.[options.engine] ?? subscriptionRealmBinding(current.name, options.engine);
+  // An earlier login keeps its volumes; one recorded before home login files were kept gains its home volume.
+  const binding = { ...subscriptionRealmBinding(current.name, options.engine), ...current.realms?.[options.engine] };
   const realms: ResolvedAuthProfile = { ...current, env: {}, imports: {}, realms: { [options.engine]: binding } };
   const scratch = options.scratchRoot ?? os.tmpdir();
   await mkdir(scratch, { recursive: true });

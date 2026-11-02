@@ -10,6 +10,7 @@ import { prepareTrial, type BootedTrial, type PreparedTrial, type TrialWake } fr
 import { createTrialDocker, type TrialDocker } from "./docker.js";
 import { startTrainingGateway, trainingGatewayLogins, type TrainingGateway } from "./gateway.js";
 import { JUDGE_INSTRUCTIONS, writeJudgeAgent, type JudgeSpec } from "./judge.js";
+import { HOME_LOGIN_FILES } from "./homeLogin.js";
 import { createRealmTurns, type RealmTurns } from "./realmTurns.js";
 
 export interface BootedTrialLauncherOptions {
@@ -79,7 +80,8 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
     const engine = prepared.engines.find((id) => getDaimonEngineDescriptor(id)?.auth.staging === "secret-service");
     if (engine === undefined) return undefined;
     const binding = options.authProfile.realms?.[engine];
-    if (!binding) {
+    // A login recorded before its home login files were kept cannot enroll a fresh home.
+    if (!binding || (HOME_LOGIN_FILES[engine] !== undefined && binding.homeVolume === undefined)) {
       throw new SpawnfileError("validation_error", `Auth profile ${options.authProfile.name} has no ${engine} login; run \`spawnfile auth login ${engine} --profile ${options.authProfile.name}\``);
     }
     return { volume: binding.realmVolume, profile: { ...options.authProfile, env: {}, imports: {}, realms: { [engine]: binding } } };
