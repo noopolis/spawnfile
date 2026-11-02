@@ -32,7 +32,10 @@ entrypoint also fixes this directory group-writable (`0770`, not `0750`):
 Codex and AGY write from the organization-uid runtime process
 (`renderDaimonUsageLedgerProvisioning` in `containerDaimonBrokerRender.ts`),
 not the Grok-only broker, so a mode granting the group only read+execute lets
-that process list the directory but not create `usage.jsonl` inside it. That
+that process list the directory but not create `usage.jsonl` inside it. The
+file itself is handed to broker:organization at `0660` on every start: Daimon's
+wake fuse creates it empty as the organization uid at `0640` when absent, which
+locked the broker out and silently dropped every Grok usage row. That
 fix-up is `chown root, chmod, chown to the final broker:organization owner`
 — in that order, never `install -d`'s create-then-chown-then-chmod — because
 root only ever chmods a path it currently owns: it has `CAP_CHOWN` but not
