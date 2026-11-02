@@ -193,7 +193,8 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         }, bootOptions.readyTimeoutMs ?? 180_000, "trial organization readiness", 1_000);
         return createBootedTrial({ agentId, call, container, docker, sessionsPath, target, teardown });
       } catch (error) {
-        await teardown();
+        // The boot failure is the error to report, not a teardown that follows it.
+        await teardown().catch(() => undefined);
         throw error;
       }
     }

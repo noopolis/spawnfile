@@ -63,8 +63,8 @@ const docker = async (args: readonly string[]): Promise<string> => {
   });
   for (const dir of mounts.values()) await mkdir(dir, { recursive: true });
   const program = args.indexOf("-e");
-  const [uid, from, to, ...files] = args.slice(program + 2);
-  await run(process.execPath, ["-e", args[program + 1]!, uid!, mounts.get(from!)!, mounts.get(to!)!, ...files]);
+  const [uid, direction, home, login, ...files] = args.slice(program + 2);
+  await run(process.execPath, ["-e", args[program + 1]!, uid!, direction!, mounts.get(home!)!, mounts.get(login!)!, ...files]);
   return "";
 };
 
@@ -114,7 +114,7 @@ it("refuses a linked login file and skips absent ones", async () => {
   const from = path.join(state.root, "from"), to = path.join(state.root, "to");
   await mkdir(path.join(from, ".gemini/antigravity-cli"), { recursive: true });
   await mkdir(to);
-  const copy = (...files: string[]) => run(process.execPath, ["-e", HOME_LOGIN_PROGRAM, "2000", from, to, ...files]);
+  const copy = (...files: string[]) => run(process.execPath, ["-e", HOME_LOGIN_PROGRAM, "2000", "seed", to, from, ...files]);
   await copy(...HOME_LOGIN_FILES.agy!);
   await writeFile(path.join(state.root, "elsewhere"), "x");
   await symlink(path.join(state.root, "elsewhere"), path.join(from, TOKEN));

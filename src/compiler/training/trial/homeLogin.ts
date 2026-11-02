@@ -29,16 +29,20 @@ export interface HomeLogin {
 const LOGIN_ROOT = "/spawnfile-home-login";
 
 /**
- * Copies each listed file that exists under `from` to `to`, as the
- * organization uid: regular single-link files only, no link anywhere on either
- * path, written beside the target and renamed over it, identical files left
- * alone. Started as root only to hand the destination root to the uid; the
- * bytes are never printed.
+ * Copies each listed file that exists from the profile's login root into the
+ * runtime home (`seed`) or back (`save`), as the organization uid: regular
+ * single-link files only, no link anywhere on either path, written beside the
+ * target and renamed over it, identical files left alone. Started as root only
+ * to hand the destination root to the uid and to enter the home, whose image
+ * ancestors the uid cannot traverse until the organization's entrypoint opens
+ * them; the bytes are never printed.
  */
 export const HOME_LOGIN_PROGRAM = [
   "const fs = require('node:fs'), path = require('node:path'), { constants } = fs;",
-  "const [uidText, from, to, ...files] = process.argv.slice(1); const uid = Number(uidText);",
+  "const [uidText, direction, home, login, ...files] = process.argv.slice(1); const uid = Number(uidText);",
   "const fail = (message) => { console.error(message); process.exit(3); };",
+  "if (direction !== 'seed' && direction !== 'save') fail('invalid direction');",
+  "process.chdir(home); const [from, to] = direction === 'seed' ? [login, '.'] : ['.', login];",
   "if (process.getuid() === 0) {",
   "  const root = fs.lstatSync(to); if (!root.isDirectory()) fail('login destination is not a directory');",
   "  if (root.uid !== uid || (root.mode & 0o777) !== 0o700) { fs.chmodSync(to, 0o700); fs.chownSync(to, uid, uid); }",
@@ -64,20 +68,21 @@ export const HOME_LOGIN_PROGRAM = [
   "}"
 ].join("\n");
 
-const copy = (docker: TrialDocker, image: string, login: HomeLogin, from: string, to: string): Promise<string> => docker([
+const copy = (docker: TrialDocker, image: string, login: HomeLogin, direction: "seed" | "save"): Promise<string> => docker([
   "run", "--rm", "--network", "none", "--user", "0:0", "--cap-drop", "ALL",
-  "--cap-add", "CHOWN", "--cap-add", "FOWNER", "--cap-add", "SETUID", "--cap-add", "SETGID",
+  // DAC_READ_SEARCH: root enters a home the organization already made its own (0700) to save from it.
+  "--cap-add", "CHOWN", "--cap-add", "DAC_READ_SEARCH", "--cap-add", "FOWNER", "--cap-add", "SETUID", "--cap-add", "SETGID",
   "--security-opt", "no-new-privileges", "--entrypoint", "node",
   "--mount", `type=volume,source=${login.loginVolume},target=${LOGIN_ROOT}`,
   // Mounted where the organization mounts it, so a fresh home gets the image's own preimage first.
   "--mount", `type=volume,source=${login.homeVolume},target=${login.homeMountPath}`,
-  image, "-e", HOME_LOGIN_PROGRAM, String(DAIMON_ORGANIZATION_UID), from, to, ...login.files
+  image, "-e", HOME_LOGIN_PROGRAM, String(DAIMON_ORGANIZATION_UID), direction, login.homeMountPath, LOGIN_ROOT, ...login.files
 ]);
 
 /** Seeds the profile's login files into the organization's fresh runtime home, before it boots. */
 export const seedHomeLogin = (docker: TrialDocker, image: string, login: HomeLogin): Promise<string> =>
-  copy(docker, image, login, LOGIN_ROOT, login.homeMountPath);
+  copy(docker, image, login, "seed");
 
 /** Writes the login files the engine wrote or rewrote (a refreshed token) back to the profile, after the container stops. */
 export const saveHomeLogin = (docker: TrialDocker, image: string, login: HomeLogin): Promise<string> =>
-  copy(docker, image, login, login.homeMountPath, LOGIN_ROOT);
+  copy(docker, image, login, "save");
