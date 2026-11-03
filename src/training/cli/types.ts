@@ -34,6 +34,9 @@ export interface CliDependencies {
   /** Broker-grant authority seam; defaults to the injected subject capability over the container control socket. */
   grantAuthority?: () => Promise<InferenceGrantAuthority>;
   /** Trusted project composition. Registration is static; native factory runs only after preflight. */
+  /** Runtime-composed record preparations (for example a booted subject's moment) and the setup paths records may set. */
+  preparations?: DatasetRegistry['preparations'];
+  unlockedSetupPaths?: readonly string[];
   spawnfile?: SpawnfileCliIntegration;
 }
 

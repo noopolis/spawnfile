@@ -28,7 +28,8 @@ export function resourceMappings(args: CliArguments): ResourceMapping[] {
 }
 
 /** File selection only; deliberately has no runtime or inference construction. */
-export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string, subjects?: CliDependencies['subjects'], inferenceProviders?: InferenceProviderRegistry) {
+export async function prepareInputs(args: CliArguments, io: CliIO, executionIdentity?: string, subjects?: CliDependencies['subjects'], inferenceProviders?: InferenceProviderRegistry,
+  preparation: Pick<CliDependencies, 'preparations' | 'unlockedSetupPaths'> = {}) {
   const runtime = one(args, 'runtime');
   if (!runtime || !subjects || !Object.hasOwn(subjects, runtime)) throw new Error(`Supported native runtimes: ${Object.keys(subjects ?? {}).join(', ') || 'none registered'}`);
   const model = one(args, 'model');
@@ -36,7 +37,8 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
   const out = resolve(io.cwd, one(args, 'out', args.flags['dry-run'] ? '.runtime/training' : undefined));
   const candidate = await snapshotCandidate({ sourceRoot, resources: resourceMappings(args) });
   const judges = pairs(args.flags.judge ?? []);
-  const datasets = new CliDatasets(judges, io.cwd, { inferenceExecutionIdentity: executionIdentity, inferenceProviders }, judgeVersions(args.training, executionIdentity, Object.keys(judges), inferenceProviders), args.frozenDataset);
+  const datasets = new CliDatasets(judges, io.cwd, { inferenceExecutionIdentity: executionIdentity, inferenceProviders,
+    registry: { preparations: preparation.preparations }, unlockedSetupPaths: preparation.unlockedSetupPaths }, judgeVersions(args.training, executionIdentity, Object.keys(judges), inferenceProviders), args.frozenDataset);
   return { context: undefined, readiness: undefined, runtime, model, sourceRoot, out, candidate, judges, datasets,
     citationRepairs: judgeCitationRepairs(args, judges),
     maxTrials: count(args, 'max-trials', 20, 10000),
@@ -46,7 +48,8 @@ export async function prepareInputs(args: CliArguments, io: CliIO, executionIden
 
 export async function prepareCliInputs(args: CliArguments, io: CliIO, dependencies: CliDependencies) {
   return args.flags['spawnfile-context'] || dependencies.spawnfileContext !== undefined
-    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile, dependencies.spawnfileContext, dependencies.inferenceProviders) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects, dependencies.inferenceProviders);
+    ? await prepareSpawnfileInputs(args, io, dependencies.spawnfile, dependencies.spawnfileContext, dependencies.inferenceProviders) : await prepareInputs(args, io, dependencies.spawnfile?.inferenceExecutionIdentity, dependencies.subjects, dependencies.inferenceProviders,
+      { preparations: dependencies.preparations, unlockedSetupPaths: dependencies.unlockedSetupPaths });
 }
 
 export async function prepareNative(args: CliArguments, io: CliIO, dependencies: CliDependencies, timeoutMs: number,

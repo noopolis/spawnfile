@@ -45,6 +45,7 @@ it("lowers each moment into a record with its pinned state, production-shaped wa
   const datasets = await lowerTrainingMoments({ project: loaded, plan, out });
   const train = JSON.parse(await readFile(datasets.train, "utf8"));
   expect(train.schema).toBe("spawnfile.training.dataset.v1");
+  expect(train.setup).toEqual({ profile: "spawnfile/moment" });
   const [moment, plain] = train.records;
   expect(moment).toMatchObject({ id: "case-a", input: { prompt: "[room assignment] brass\n@writer report" },
     context: { grounding: "The ramp is empty.\n" }, outputs: { output: "state/edition/filings/s-1/1.json" },
