@@ -68,7 +68,7 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   try { cacheRoots = await prepareJudgeCaches(args, configured.judges, inputs.out, dependencies.spawnfile?.judgeCacheRoot); }
   catch (error) { await configured.close(); throw error; }
   const inference = args.training?.comparison ? undefined : configured.inference;
-  let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
+  let prepareEnvironment: StoredTrialOptions['prepareEnvironment'] = dependencies.prepareEnvironment;
   if (inputs.context !== undefined) {
     const context = inputs.context;
     const integration = dependencies.spawnfile!;

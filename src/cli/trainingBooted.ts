@@ -56,7 +56,9 @@ export const runBootedTraining = async (options: RunTrainingOptions): Promise<nu
     return await main(["train", ...options.args, ...(flag(options.args, "runtime") ? [] : ["--runtime", "daimon"]), ...model, ...instructions], {
       cwd: process.cwd(), signal: options.signal, stdout: options.streams.stdout, stderr: options.streams.stderr
     }, { adapter: (_runtime, adapter) => createDaimonBootedAdapter({ launcher: run, timeoutMs: adapter.timeoutMs }),
-      preparations: { [TRAINING_MOMENT_PROFILE]: momentPreparation }, unlockedSetupPaths: ["moment"] });
+      preparations: { [TRAINING_MOMENT_PROFILE]: momentPreparation }, unlockedSetupPaths: ["moment"],
+      // The trial container boots its record's moment itself; the host prepares nothing for it.
+      prepareEnvironment: async () => ({}) });
   } finally {
     bindBootedJudges(undefined);
     await run.close();

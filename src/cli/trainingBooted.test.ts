@@ -25,7 +25,9 @@ it("labels trials with the subject's own model, the engine when it pins none, an
 
 it("registers the moment preparation, which admits a valid moment and nothing beside it", async () => {
   await run(["--out", "/o"], { model: null, engine: "codex" });
-  expect(calls.dependencies.at(-1)).toMatchObject({ preparations: { "spawnfile/moment": momentPreparation }, unlockedSetupPaths: ["moment"] });
+  const dependencies = calls.dependencies.at(-1) as { prepareEnvironment: () => Promise<unknown> };
+  expect(dependencies).toMatchObject({ preparations: { "spawnfile/moment": momentPreparation }, unlockedSetupPaths: ["moment"] });
+  expect(await dependencies.prepareEnvironment()).toEqual({});
   const moment = { version: "spawnfile.training-moment.v1", at: "2026-10-05T11:45:40.170Z",
     wake: { surface: "moltnet", room: "assignment", from: "brass", text: "@writer" }, resources: [{ id: "state", fill: { kind: "empty" } }] };
   expect(() => momentPreparation.validate({ moment }, "record.a.setup")).not.toThrow();
