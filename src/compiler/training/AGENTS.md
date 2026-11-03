@@ -19,7 +19,6 @@
 - `execution.mutation.test.ts` deletes one key property at a time in an isolated source copy, restores it before the next runner, and requires that mutant's labelled assertion to fail; it never rewrites the working tree.
 - Execution carries dataset byte pins captured with parsed moments.
 
-- `moments.ts` lowers every unique authored role/dataset/example through rewind, persists refusal reports and explicit training datasets, and exposes fresh trial rewind with identity checks. Preparation hooks are declared names; org semantics stay in registered private integrations.
-- Register each lowering entry before timestamp normalization; normalization failures are per-example refusals with null lineage, and later examples must still run.
+- `moments.ts` lowers every unique authored moment (role/dataset/example) into one executable dataset per role under `<out>/moments`: the wake as production Moltnet renders it, `setup.moment` with each resource's fill pinned (git commit and feed revision, directory digest, inline files), grader context from files, one grader check over the declared output or the reply, and the case or target grader copied beside the datasets. `trainingMomentSchema` validates a moment where the trial boots. Moments carry data only; no hooks.
 - `compiledAgent.ts` validates the consumed compile-report projection and resolves exact agent IDs or names to host and container paths. Shared runtimes publish adapter-owned per-agent paths; missing associations refuse rather than infer layouts.
 - Public exports include the offline SQLite inspector with ordered room/sender filtering.

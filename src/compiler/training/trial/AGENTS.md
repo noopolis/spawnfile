@@ -5,10 +5,17 @@ production way, and every trial of one run shares one login through one auth
 gateway sidecar. The training core drives it through the engine-neutral
 `SubjectAdapter` in `src/runtime/daimon/training/booted/`.
 
-- `project.ts` writes the trial's one-agent organization: a copy of the
-  subject agent's own declaration directory with its Spawnfile re-rendered,
-  the candidate prompt as its system document, and every surface (federation),
-  its schedule and its training block removed.
+- `project.ts` makes the trial's one-agent organization: the subject's own
+  project compiled from its own files, with in-memory manifest overrides (each
+  team on the way down keeps only the member leading to the subject, no
+  networks or external participants; the subject loses surfaces, schedule and
+  training and takes the candidate prompt as its system document). Team
+  inheritance and relative paths therefore hold as in production.
+- `momentVolumes.ts` fills a record's moment (`setup.moment`) into the trial's
+  own fresh volumes before boot: a root, network-less helper on the
+  organization image, content streamed as a tar on stdin (no bind mounts),
+  extracted as the organization uid, feeds landed as `trees/<revision>` behind
+  `current` with the feed identity record, then the replacement sentinel.
 - `boot.ts` compiles that project under its own trial lineage
   (`TRAINING_TRIAL_LINEAGE_NAMESPACE`, so no trial ever attaches another
   deployment's volumes), builds it, and boots it with production's own
@@ -17,8 +24,13 @@ gateway sidecar. The training core drives it through the engine-neutral
   a fresh control token as boot inputs. Wakes go through Daimon's control API
   (`POST /v2/wakes`, `GET /v2/wake-receipts/:id`) via the shared
   `runtime/daimon/control.ts` client; usage is the ledger rows the wake
-  appended, transcript the engine's newest session record. Teardown removes
-  the container, its volumes and its image.
+  appended, transcript the engine's newest session record. Every compiled
+  volume except gatewayed realms is renamed to the trial's own
+  (`TRIAL_VOLUME_PREFIX`), so no trial shares a writable volume. A moment's wake
+  is `kind: message` at the moment's instant, as Moltnet delivers it; `read`
+  returns a declared output from the container workspace. Teardown removes the
+  container, its (prefixed) volumes and its image; the launcher records a
+  credential scan first.
 - `gateway.ts` places Daimon's auth gateway as a sidecar
   (`renderDaimonGatewaySidecarScript`): production Docker security args, the
   realm volume `spawnfile-training-<profile>-<engine>-realm` (kept across

@@ -52,10 +52,10 @@ it("lowers each moment into a record with its pinned state, production-shaped wa
   const parsed = trainingMomentSchema.parse(moment.setup.moment);
   expect(parsed.at).toBe("2026-10-09T08:20:31.000Z");
   const head = (await run("git", ["-C", root, "rev-parse", "HEAD"])).stdout.trim();
-  expect(parsed.resources.map((resource) => resource.fill.kind)).toEqual(["git", "files", "empty"]);
+  expect(parsed.resources.map((resource) => resource.fill.kind), "moment state guarantee").toEqual(["git", "files", "empty"]);
   expect(parsed.resources[0]!.fill).toMatchObject({ commit: head, paths: ["corpus/2026-10-05"], repo: root });
   // The case grader is copied beside the dataset, so it stays a contained relative path; the plain case uses the target's.
-  expect(await readFile(path.join(path.dirname(datasets.train), moment.checks[0].grader), "utf8")).toBe("case grader\n");
+  expect(await readFile(path.join(path.dirname(datasets.train), moment.checks[0].grader), "utf8"), "case grader guarantee").toBe("case grader\n");
   expect(plain).toMatchObject({ input: { prompt: "[room assignment] brass\n@writer report" }, checks: [{ input: "artifact:reply" }] });
   expect(plain.outputs).toBeUndefined();
   expect(await readFile(path.join(path.dirname(datasets.train), plain.checks[0].grader), "utf8")).toBe(dataFiles["training/writing.grader.yaml"]);

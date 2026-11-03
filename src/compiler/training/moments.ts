@@ -119,6 +119,7 @@ const copyGrader = async (graderFile: string, moments: string, copied: Map<strin
 export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions): Promise<LoweredTrainingDatasets> => {
   const { project, plan } = options;
   const moments = path.join(path.resolve(options.out), "moments");
+  await mkdir(path.dirname(moments), { recursive: true, mode: 0o700 });
   await mkdir(moments, { recursive: false, mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
     if (error.code === "EEXIST") invalid(`Lowered moments already exist in ${moments}; select a fresh --out`);
     throw error;

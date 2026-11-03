@@ -43,4 +43,4 @@ Training declarations receive structural validation only; training-plan loading 
 - Validate enough here to produce good user errors before graph walking.
 - Reflect spec terminology directly in local type names.
 
-- `training.preparation` declares a named runtime hook and an optional declaration-relative history directory; schema parsing never executes hooks.
+- `training.preparation` declares a hook name and an optional declaration-relative history directory for rewind; nothing dispatches the hook name any more. Dataset examples are moments (`trainingMomentResourceSchema`: a volume declaration plus `files`, one fixed feed source at most) with optional `grader`, `context` and `output`.

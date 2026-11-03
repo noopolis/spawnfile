@@ -209,8 +209,10 @@ examples:
 `examples` MUST be nonempty; IDs MUST be unique within the file and match
 `^[A-Za-z0-9._-]+$`. `at` is a REQUIRED ISO-8601 instant with an offset or `Z`.
 The strict v1 wake contains only `surface: moltnet` and string `room`, `from`, `text`.
-Optional `resources`, `memory`, and `networks` are full declarations validated by the
-existing workspace-resource, memory-bank, and team-network schemas, respectively.
+Optional `resources` are moment volumes (see "Moments": a volume declaration plus an
+optional fill source); optional `memory` and `networks` are full declarations validated
+by the existing memory-bank and team-network schemas. Optional `grader`, `context` and
+`output` declare how the case is graded (see "Moments").
 Overrides MUST identify an existing effective item; they never add an item. Resource
 IDs resolve against compiled `workspaceResources`; memory IDs resolve against the
 compiler's accessible own and team banks; network IDs resolve against team networks
@@ -218,7 +220,7 @@ present in the agent's resolved surface attachments (including representative at
 Zero matches is unknown; more than one distinct item is ambiguous. The resolved plan
 reports the matching item's declaring node ID. Team-target datasets MUST resolve for
 EVERY consumer; one consumer's failure rejects the plan. Per-agent plans report the
-selected consumer's resolved IDs. There is no dataset `files` field or environments file.
+selected consumer's resolved IDs. There is no dataset-level `files` field or environments file.
 
 The grader file's format is specified by the grader phase; this phase only requires that the path names an existing regular file inside the project.
 
@@ -2527,50 +2529,96 @@ judge/optimizer route deadlines or atomic extraction deadlines.
 ```
 <!-- task-clock-schema:end -->
 
-## Executable moments and named preparation hooks
+## Moments
 
-`training.preparation: {hook: <registered-name>, history: <relative-directory>}`
-optionally names an integration preparation hook and retained local history. The
-complete declaration inherits through direct membership; a local declaration
-replaces it. Resolve history relative to its declaring Spawnfile and carry its
-absolute address through the protected execution receipt and container mapping.
-Never encode credentials or application semantics in the public declaration.
+A dataset example is one **moment**: an optional starting state plus one trigger wake.
+Hand-written, recorded and generated moments use this same format; a plain prompt case
+is a moment with no resources.
 
-An authored-execution image consumer calls `lowerTrainingMoments` with the loaded
-project, resolved plan, a fresh output root and optional case preparation callback.
-It invokes the existing rewind for each unique role/dataset/example; repeated
-target references do not create repeated cases. It writes explicit
-`train.spawnfile-training.json`, optional `validation.spawnfile-training.json`, and `test.spawnfile-training.json`,
-then passes their paths using `--train`, `--validation`, and `--test`. The
-case callback supplies application terminal checks or stages, setup, references
-and outputs; missing checks refuse the case. Each dataset names the declared
-hook as its preparation profile, which the evaluator integration must register. The compiler
-retains authority over case ID, group, lineage, wake, split and provenance.
+```yaml
+examples:
+  - id: 2026-10-05-s-dd60a272
+    at: 2026-10-05T11:45:40.170515066Z
+    wake: { surface: moltnet, room: assignment, from: brass, text: "@tinkerton ..." }
+    resources:
+      - id: research-corpus            # a compiled workspace volume of the subject
+        kind: volume
+        mount: ./repos/newsroom-private
+        mode: mutable
+        feed: { git: { repo: ../../corpus, ref: origin/edition/2026-10-05, paths: [2026-10-05] } }
+      - id: edition-state
+        kind: volume
+        mount: ./state/edition
+        mode: mutable
+        files: { "editions/2026-10-05/seed.json": "{}" }
+      - { id: newsroom-private-tools, kind: volume, mount: ./tools/private, mode: mutable }   # empty
+    grader: ../grading/2026-10-05-s-dd60a272/grader.yaml
+    context: { grounding: { file: ../grading/2026-10-05-s-dd60a272/grounding.md } }
+    output: state/edition/editions/2026-10-05/filings/s-dd60a272/1.json
+```
 
-`lowering.json` records every attempted example, including its authored timestamp,
-wake, dataset, role, group, lineage, rewind report and refusal reason. Refused
-rewinds, timestamp normalization failures and failed hook preparations are skipped
-with no replacement. A timestamp that cannot be normalized retains its authored
-value and refusal reason, with null lineage; later examples are still processed. A role with
-no executable examples stops execution after persisting its report. IDs must be
-unique within a split; Training enforces disjoint IDs, groups and lineage across
-splits. Lineage binds agent, normalized historical instant and exact wake bytes,
-so renaming an example cannot hide the same historical moment in another split.
+- `resources` entries are volume declarations (the workspace volume schema plus
+  `files`) whose `id` MUST name an effective workspace volume of the subject. Each is
+  filled from at most one source: a `feed` with exactly one fixed `git` ref (string,
+  plain `paths`, optional `fetch`) or one `directory`; inline `files` (contained
+  relative path to UTF-8 text); or nothing (empty). A moment feed MUST NOT declare
+  `include`, `prepare`, `validate`, `freeze` or a ref template. Relative feed paths
+  resolve from the dataset file.
+- `grader` (OPTIONAL, relative to the dataset file) is this case's grader; the target's
+  grader applies otherwise. `context` binds grader context names to files relative to
+  the dataset file. `output` (OPTIONAL) is the workspace-relative file the trial leaves
+  as its result; the final reply is graded otherwise. Every grader and context file
+  MUST resolve, by realpath, inside the project.
 
-Each executable case uses `setup.trainingMoment` version
-`spawnfile.training-moment-case.v1` with projectRoot, agent, example (`role:id`),
-role, dataset, at, effectiveAt, wake, group, lineage, momentRoot, optional historyDir
-and hook. `context.trainingMomentProvenance` carries the rewind report. Case input
-is the authored message envelope. The default hook name is `spawnfile/rewind`;
-the executing integration must register it or the explicitly declared name.
+### Lowering
 
-Training dispatches the hook with fresh trial paths before native adapter startup.
-A hook calls `materializeTrainingCase` into that trial's control/moment root,
-then prepares runtime mounts, task clock, external responses and output collection
-from those fresh bytes. Never run from the lowering snapshot or reuse another
-trial's mutable state. The helper verifies declared wake/instant and historical
-startedAt still agree with the accepted lowering. Training requires a matching
-trial-bound preparation receipt and reads the moment/leak-check reports before
-starting the subject. Refusal prevents that trial from running. Application
-reconstruction, responders and accepted-output extraction belong in the named
-integration, outside the public compiler/evaluator.
+Actual authored training lowers every unique role/dataset/example into
+`<out>/moments/{train,validation,test}.spawnfile-training.json` and passes those to the
+training core instead of the authored locators; explicit `--train`, `--validation` or
+`--test` are refused. `--resume` reuses the persisted lowering. Each record has:
+
+- `group`: `moment:<sha256(agent, example id)>`, so one moment never crosses splits.
+- `input.prompt`: the wake as production Moltnet renders a room message for Daimon
+  (`[room <room>] <from>\n<text>`).
+- `setup.moment` (`spawnfile.training-moment.v1`): `at` as an exact millisecond UTC
+  instant, the wake, and each resource's fill pinned at lowering: a git feed resolved to
+  its commit and feed revision (`resolveFeedSource`, the same content address
+  production feeds use), a directory to its content digest, inline files verbatim.
+- `context` read from the declared context files, `outputs: { output: <path> }` when
+  declared, and one check `{ id: grade, eval: grader, input: artifact:output |
+  artifact:reply, context: { <name>: context:<name> } }`. Each grader's directory is
+  copied under `<out>/moments/graders/` so the check names a contained relative path.
+
+### Trial boot
+
+A trial compiles the subject's own project from its own files, with two manifests
+replaced in memory (`CompileProjectOptions.manifestOverrides`): each team on the way
+down keeps only the member leading to the subject and drops `networks` and
+`external_participants`; the subject drops `surfaces`, `schedule` and `training` and
+takes the candidate prompt as its system document. Team inheritance (shared
+environment, MCP servers, workspace resources, docs) therefore matches production.
+
+Every compiled volume except the gatewayed login realms is renamed to
+`spawnfile-training-trial-<trial slug>-<mount hash>`: team volumes declared by name and
+project-derived homes are fresh per trial, two trials never share a writable volume,
+and teardown removes only names with that prefix.
+
+Boot order: create the moment volumes, fill them, boot the production-identical
+organization, post the wake, read evidence, tear down. A fill runs as root in a
+network-less helper on the organization's own image with the volume mounted where the
+organization mounts it, so a fresh volume first receives the image's bootstrap
+preimage. It refuses any other content, hands the volume root to the organization uid,
+streams the content in as a tar on stdin (never a host bind mount) and extracts it as
+that uid. A feed lands as `trees/<revision>` (read-only), served through `current`,
+with the `.spawnfile-feed.json` identity record production writes; inline files land
+at the volume root. It then writes the replacement sentinel with the compiled
+resource identity, so the entrypoint and ownership guard accept the volume as an
+established one.
+
+A moment's wake is posted as production Moltnet delivers a room message: Daimon
+`/v2/wakes` with `kind: message`, the rendered text and `occurred_at` set to the
+moment's `at`. Without a moment the wake is `kind: manual` with the record's input.
+After each turn the adapter reads declared outputs from the trial's workspace inside
+the container (`SubjectSession.collect`), plus the final reply as artifact `reply`.
+Before teardown every credential-shaped file in the container is recorded in
+`<out>/booted-trials/credential-scan.jsonl` (expected: none).
