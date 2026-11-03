@@ -114,6 +114,19 @@ describe("Daimon contract manifest", () => {
       expect(() => parseDaimonContractManifest({ ...capable, wakeMoments: value })).toThrow(/wakeMoments/u);
     }
   });
+  it("reads the optional wake text bound only from its consumed field and host schema together", () => {
+    expect(parseDaimonContractManifest(manifest()).maxWakeTextBytesCeiling).toBeUndefined();
+    const base = manifest();
+    const host = (bound: unknown) => ({ ...base.organizationRuntimeConfigV2Schema, properties: { ...base.organizationRuntimeConfigV2Schema.properties,
+      host: { properties: { maxWakeTextBytes: bound } } } });
+    const capable = { ...base, consumedConfigFields: [...base.consumedConfigFields, "host.maxWakeTextBytes"],
+      organizationRuntimeConfigV2Schema: host({ type: "integer", minimum: 16_384, maximum: 262_144 }) };
+    expect(parseDaimonContractManifest(capable).maxWakeTextBytesCeiling).toBe(262_144);
+    for (const bound of [undefined, { type: "integer", minimum: 1, maximum: 262_144 }, { type: "integer", minimum: 16_384 }]) {
+      expect(() => parseDaimonContractManifest({ ...capable, organizationRuntimeConfigV2Schema: host(bound) })).toThrow(/maxWakeTextBytes/u);
+    }
+    expect(() => parseDaimonContractManifest({ ...base, consumedConfigFields: [...base.consumedConfigFields, "host.other"] })).toThrow(/configuration contract/u);
+  });
   it("accepts canonical source-free contract bytes", async () => {
     const source = `${canonical(manifest())}\n`;
     await expect(readVerifiedDaimonContractManifest(await writeManifest(source))).resolves.toMatchObject({

@@ -15,6 +15,9 @@ export const DAIMON_CONTRACT_MANIFEST_SHA256 =
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";
+/** Daimon's default wake text bound on its control API, and the optional config field that widens it. */
+export const DAIMON_DEFAULT_WAKE_TEXT_BYTES = 16_384;
+export const DAIMON_WAKE_TEXT_FIELD = "host.maxWakeTextBytes";
 /** Compatibility aliases; all runtime facts come from the generated static descriptors. */
 export const DAIMON_ENGINE_KINDS = Object.freeze(Object.keys(DAIMON_V5_ENGINE_DESCRIPTORS).sort());
 export const DAIMON_ORGANIZATION_RUNTIME_CONFIG_VERSIONS = ["noopolis.daimon.organization-runtime.v1", "noopolis.daimon.organization-runtime.v2"] as const;
@@ -63,6 +66,8 @@ type DaimonCredentialMaterial = { readonly destinationRelativePath: string; read
 export interface DaimonContractManifest {
   readonly engines: DaimonEngineDescriptors;
   readonly wakeMoments?: typeof DAIMON_WAKE_MOMENTS;
+  /** Ceiling of the organization's optional `host.maxWakeTextBytes`; absent when the runtime has no such bound. */
+  readonly maxWakeTextBytesCeiling?: number;
   readonly agySubscriptionRealm: typeof DAIMON_AGY_SUBSCRIPTION_REALM;
   readonly consumedConfigFields: readonly string[];
   readonly engineCredentialMaterial: Readonly<Record<string, DaimonCredentialMaterial>>;
@@ -171,7 +176,8 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   const engineKinds = Object.keys(engines).sort();
   const hasWakeMoments = Object.hasOwn(root, "wakeMoments");
   if (hasWakeMoments && !isDaimonWakeMoments(root.wakeMoments)) return fail("has an unsupported wakeMoments contract");
-  const configFields = hasWakeMoments ? [...expectedConfigFields, DAIMON_WAKE_MOMENTS.configField] : expectedConfigFields;
+  const declaresWakeText = Array.isArray(root.consumedConfigFields) && root.consumedConfigFields.at(-1) === DAIMON_WAKE_TEXT_FIELD;
+  const configFields = [...expectedConfigFields, ...(hasWakeMoments ? [DAIMON_WAKE_MOMENTS.configField] : []), ...(declaresWakeText ? [DAIMON_WAKE_TEXT_FIELD] : [])];
   if (
     (!described && root.version !== "noopolis.daimon.runtime-contract-manifest.v5") ||
     !Array.isArray(root.supportedEngineKinds) ||
@@ -188,6 +194,8 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
   const v2AgentProperties = asRecord(v2Agent.properties, "organizationRuntimeConfigV2Schema.properties.agents.items.properties");
   const schedule = asRecord(v2AgentProperties.schedule, "organizationRuntimeConfigV2Schema schedule");
   if (v2.$id !== "noopolis.daimon.organization-runtime.v2" || !Array.isArray(schedule.oneOf) || schedule.oneOf.length !== 3) return fail("does not attest the organization runtime v2 schedule contract");
+  const wakeText = declaresWakeText ? asRecord(asRecord(asRecord(v2Properties.host, "organizationRuntimeConfigV2Schema host").properties, "organizationRuntimeConfigV2Schema host properties").maxWakeTextBytes, "organizationRuntimeConfigV2Schema host.maxWakeTextBytes") : undefined;
+  if (wakeText && (wakeText.type !== "integer" || wakeText.minimum !== DAIMON_DEFAULT_WAKE_TEXT_BYTES || !Number.isSafeInteger(wakeText.maximum) || (wakeText.maximum as number) < DAIMON_DEFAULT_WAKE_TEXT_BYTES)) return fail("has an unsupported host.maxWakeTextBytes bound");
   const semantics = asRecord(root.deliverySemantics, "deliverySemantics");
   if (!exactKeys(semantics, ["activeDeliveryIdempotency", "terminalReceiptHorizon", "recovery", "concurrentSameAgentTurns", "externalEffectsExactlyOnce"]) ||
     semantics.activeDeliveryIdempotency !== "unbounded-until-terminal" || semantics.terminalReceiptHorizon !== 2_048 ||
@@ -233,6 +241,7 @@ export const parseDaimonContractManifest = (raw: unknown): DaimonContractManifes
     agySubscriptionRealm: Object.freeze({ ...DAIMON_AGY_SUBSCRIPTION_REALM }),
     consumedConfigFields: Object.freeze([...configFields]),
     ...(hasWakeMoments ? { wakeMoments: DAIMON_WAKE_MOMENTS } : {}),
+    ...(wakeText ? { maxWakeTextBytesCeiling: wakeText.maximum as number } : {}),
     ...(v7 ? { codexSubscriptionRealm: Object.freeze({ ...DAIMON_CODEX_SUBSCRIPTION_REALM }) } : {}),
     engineCredentialMaterial: Object.freeze(described ? materials as Record<string, DaimonCredentialMaterial> : { ...DAIMON_ENGINE_CREDENTIALS }),
     grokSubscriptionRealm: Object.freeze({ ...DAIMON_GROK_SUBSCRIPTION_REALM }),
