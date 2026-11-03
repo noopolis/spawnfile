@@ -62,7 +62,8 @@ export interface TrialOptions {
 }
 
 export interface TrialWake {
-  state: "completed" | "failed" | "stopped" | "timeout";
+  /** `deferred`: the subject ended its turn deferring the delivery (with `code` when a failure deferred it). */
+  state: "completed" | "deferred" | "failed" | "stopped" | "timeout";
   acceptanceId: string;
   executionId: string | null;
   code: string | null;
@@ -279,9 +280,12 @@ const createBootedTrial = (input: {
         throw new SpawnfileError("runtime_error", `trial wake was not accepted (HTTP ${accepted.status}${acceptance.code ? `, ${acceptance.code}` : ""})`);
       }
       const id = acceptance.acceptance_id;
-      let receipt: { state?: string; execution_id?: string; code?: string; text?: string } = {};
+      let receipt: { state?: string; execution_id?: string; code?: string; text?: string; deferred?: boolean } = {};
       const deadline = Date.now() + options.timeoutMs;
-      while (!TERMINAL.has(receipt.state ?? "") && Date.now() < deadline && !options.signal?.aborted) {
+      // The subject may end its turn by deferring the delivery: Daimon returns it to `accepted`, marked deferred,
+      // to wait for input a trial never sends. That ends the trial's turn as surely as completing it.
+      const ended = (): boolean => TERMINAL.has(receipt.state ?? "") || (receipt.state === "accepted" && receipt.deferred === true);
+      while (!ended() && Date.now() < deadline && !options.signal?.aborted) {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         const response = await input.call(input.target, "GET", `/v2/wake-receipts/${id}`);
         if (response.status === 200) receipt = JSON.parse(response.body) as typeof receipt;
@@ -291,7 +295,7 @@ const createBootedTrial = (input: {
       seenRows = rows.length;
       return {
         acceptanceId: id, code: receipt.code ?? null, executionId: receipt.execution_id ?? null, usage,
-        state: TERMINAL.has(receipt.state ?? "") ? receipt.state as TrialWake["state"] : "timeout",
+        state: TERMINAL.has(receipt.state ?? "") ? receipt.state as TrialWake["state"] : ended() ? "deferred" : "timeout",
         text: receipt.text ?? "",
         requestToolCalls: await readRequestToolCalls(input.docker, input.container, input.agentId, options.deliveryId),
         transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath)

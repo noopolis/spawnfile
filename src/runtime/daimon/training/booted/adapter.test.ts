@@ -41,6 +41,13 @@ test('boots one organization per trial, wakes it per turn and reports the runtim
   await expect(session.run({ id: 'turn-3', text: 'late' })).rejects.toThrow('already stopped');
 });
 
+test('ends the turn when the subject defers its delivery, and fails it when a failure deferred it', async () => {
+  const session = await start([wake({ state: 'deferred', text: 'Deferred: missing row' }), wake({ state: 'deferred', code: 'engine_failed' })], []);
+  expect(await session.run({ id: 'turn-1', text: 'x' })).toMatchObject({ status: 'completed', text: 'Deferred: missing row',
+    evidence: { payload: { state: 'deferred' } } });
+  expect(await session.run({ id: 'turn-2', text: 'x' })).toMatchObject({ status: 'failed', error: 'trial wake deferred (engine_failed)' });
+});
+
 test('never invents usage or success', async () => {
   const session = await start([wake({ state: 'timeout', text: '', usage: [], transcript: null }), wake({ state: 'stopped', code: 'host_stopped' })], []);
   const timedOut = await session.run({ id: 'turn-1', text: 'x' });

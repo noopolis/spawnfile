@@ -7,7 +7,7 @@ export const BOOTED_EVIDENCE_SCHEMA = 'spawnfile.training.daimon-booted.wake.v1'
 export interface BootedUsageRow { input: number; cache_read: number; output: number; notional_usd: number; complete: boolean }
 
 export interface BootedWake {
-  state: 'completed' | 'failed' | 'stopped' | 'timeout';
+  state: 'completed' | 'deferred' | 'failed' | 'stopped' | 'timeout';
   acceptanceId: string;
   executionId: string | null;
   code: string | null;
@@ -87,13 +87,15 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
           if (wake.text) await emit(turn.id, { type: 'output', text: wake.text });
           if (usage) await emit(turn.id, { type: 'usage', usage });
           if (wake.transcript) await emit(turn.id, { type: 'diagnostic', native: { schema: BOOTED_EVIDENCE_SCHEMA, transcript: wake.transcript } });
-          const status = wake.state === 'completed' ? 'completed' : wake.state === 'stopped' ? 'cancelled' : 'failed';
+          // A deferral is the subject's own choice to end its turn: graded like any completed turn, unless a failure deferred it.
+          const ended = wake.state === 'completed' || wake.state === 'deferred' && wake.code === null;
+          const status = ended ? 'completed' : wake.state === 'stopped' ? 'cancelled' : 'failed';
           return {
             status, text: wake.text, usage,
             evidence: { adapterId: BOOTED_ADAPTER_ID, payload: { schema: BOOTED_EVIDENCE_SCHEMA, acceptanceId: wake.acceptanceId,
               executionId: wake.executionId, state: wake.state, code: wake.code } },
             coverage: [
-              { channel: 'output', completeness: wake.state === 'completed' ? 'complete' : 'partial', ordering: 'none' },
+              { channel: 'output', completeness: ended ? 'complete' : 'partial', ordering: 'none' },
               { channel: 'usage', completeness: usage === null ? 'absent' : wake.usage.every((row) => row.complete) ? 'complete' : 'partial', ordering: 'none' },
               { channel: 'tools', completeness: 'absent', ordering: 'none' },
             ],
