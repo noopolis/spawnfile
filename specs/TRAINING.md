@@ -2625,5 +2625,11 @@ A moment's wake is posted as production Moltnet delivers a room message: Daimon
 moment's `at`. Without a moment the wake is `kind: manual` with the record's input.
 After each turn the adapter reads declared outputs from the trial's workspace inside
 the container (`SubjectSession.collect`), plus the final reply as artifact `reply`.
+Lowered datasets declare the preparation profile `spawnfile/moment`; booted training
+registers it (a record sets only `setup.moment`, validated before any trial) and needs
+no host environment preparation. Trials are labelled with the subject's own model
+(`--model` defaults to the agent's model, else its engine). The booted adapter declares
+`trialIsolation: per-start` (every trial is its own container, which reaches no host
+path), so `--concurrency` needs no host slot descriptors.
 Before teardown every credential-shaped file in the container is recorded in
 `<out>/booted-trials/credential-scan.jsonl` (expected: none).
