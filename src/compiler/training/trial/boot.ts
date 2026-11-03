@@ -80,11 +80,18 @@ export interface PreparedTrial {
   dispose(): Promise<void>;
 }
 
+/**
+ * Readable and collision-free: trial ids may share long prefixes. The cut can
+ * land just after a hyphen, so it is trimmed: the slug names a kebab-case
+ * deployment, which refuses a doubled hyphen.
+ */
+export const trialSlug = (trialId: string): string =>
+  `${slugify(trialId).slice(0, 32).replace(/-+$/u, "") || "trial"}-${createHash("sha256").update(trialId).digest("hex").slice(0, 8)}`;
+
 /** Compiles and builds the trial's one-agent organization under its own lineage, as production does. */
 export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial> => {
   const docker = options.docker ?? createTrialDocker();
-  // Readable and collision-free: trial ids may share long prefixes.
-  const slug = `${slugify(options.trialId).slice(0, 32) || "trial"}-${createHash("sha256").update(options.trialId).digest("hex").slice(0, 8)}`;
+  const slug = trialSlug(options.trialId);
   const image = `spawnfile-training-trial:${slug}`;
   const compiled = await (async () => {
     const project = await writeTrialProject(options.agentManifestPath, options.instructions, path.join(options.directory, "project"));
