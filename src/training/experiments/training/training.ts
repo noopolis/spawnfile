@@ -77,7 +77,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   const trialRetries = trialRetryCount(options.trialRetries);
   const testRepeats = testRepeatCount(options.testRepeats);
   if ('maxRunRequests' in options) throw new Error('Run-wide provider request admission is not implemented; maxRunRequests cannot be enforced');
-  const { concurrency, pool, slots } = await loadTrialSlots(options);
+  const { concurrency, pool, slots } = await loadTrialSlots({ ...options, selfIsolated: options.native.adapter.capabilities.trialIsolation === 'per-start' });
   const progress = options.onProgress;
   const mutations = new MutationQueue();
   options = { ...options, concurrency, slots,

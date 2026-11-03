@@ -45,6 +45,7 @@ it("lowers each moment into a record with its pinned state, production-shaped wa
   const datasets = await lowerTrainingMoments({ project: loaded, plan, out });
   const train = JSON.parse(await readFile(datasets.train, "utf8"));
   expect(train.schema).toBe("spawnfile.training.dataset.v1");
+  expect(train.setup).toEqual({ profile: "spawnfile/moment" });
   const [moment, plain] = train.records;
   expect(moment).toMatchObject({ id: "case-a", input: { prompt: "[room assignment] brass\n@writer report" },
     context: { grounding: "The ramp is empty.\n" }, outputs: { output: "state/edition/filings/s-1/1.json" },
@@ -63,6 +64,15 @@ it("lowers each moment into a record with its pinned state, production-shaped wa
   expect(moment.group).not.toBe(plain.group);
   expect(resumedMomentDatasets(out, plan)).toEqual(datasets);
   await expect(lowerTrainingMoments({ project: loaded, plan, out })).rejects.toThrow("already exist");
+});
+
+it("carries a declared optimizer provider to the core as the train dataset's training block", async () => {
+  const { loaded, plan, out } = await project([{ ...example, id: "case-a" }]);
+  const datasets = await lowerTrainingMoments({ project: loaded, plan: { ...plan, optimizer: { ...plan.optimizer!, provider: "codex-subscription" } }, out });
+  expect(JSON.parse(await readFile(datasets.train, "utf8")).training).toEqual({
+    models: { optimizer: { provider: "codex-subscription", model: plan.optimizer!.model } },
+    optimizer: { model: "optimizer", method: "gepa", variants: plan.optimizer!.variants, keep: plan.optimizer!.keep, budget: { rounds: plan.optimizer!.budget.rounds } } });
+  expect(JSON.parse(await readFile(datasets.test, "utf8")).training).toBeUndefined();
 });
 
 it("replaces the authored locators with the lowered datasets", () => {

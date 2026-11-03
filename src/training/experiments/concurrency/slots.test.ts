@@ -148,3 +148,7 @@ it('maps zero-based leased port offsets and rejects every out-of-block index', a
   expect(lease.port(0)).toBe(slots[0]!.ports.base);
   lease.release(true);
 });
+
+it('a self-isolating subject runs concurrent trials without host slot descriptors', async () => {
+  expect(await loadTrialSlots({ concurrency: 2, selfIsolated: true })).toEqual({ concurrency: 2, pool: undefined, slots: undefined });
+});

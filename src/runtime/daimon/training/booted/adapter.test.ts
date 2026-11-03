@@ -75,5 +75,9 @@ test('boots from the record moment and collects declared outputs from the trial,
   expect(await session.collect!({ output: 'state/filing.json', missing: 'nope.json' })).toEqual({
     output: { bytes: '{"headline":"h"}', provenance: 'trial-workspace:state/filing.json' } });
   await session.run({ id: 'turn-1', text: 'x' });
-  expect((await session.collect!({})).reply).toEqual({ bytes: 'filed', provenance: 'trial-reply' });
+  const final = await session.collect!({ output: 'state/filing.json' });
+  expect(final.reply).toEqual({ bytes: 'filed', provenance: 'trial-reply' });
+  // After the trial stops its container is gone: the last reading stands as the final collection.
+  await session.stop('done');
+  expect(await session.collect!({ output: 'state/filing.json' })).toEqual(final);
 });

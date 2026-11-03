@@ -86,7 +86,12 @@ export async function runDspyOptimization(options: DspyOptimizationOptions): Pro
     });
     processResult = await running.completion;
     closure = await running.stop('DSPy bridge process completed');
-    if (!await host.drain(options.bridge.closureDrainMs ?? 2_000)) throw new Error('DSPy host callbacks did not drain');
+    if (!await host.drain(options.bridge.closureDrainMs ?? 2_000)) {
+      // Name why the bridge ended with work in flight; the undrained callbacks are the symptom, not the cause.
+      const cause = protocolFailure?.message ?? processResult.error ?? (processResult.cancelled ? 'cancelled'
+        : processResult.exitCode !== 0 ? `exit ${processResult.exitCode}` : terminal === undefined ? 'no terminal result' : 'terminal result');
+      throw new Error(`DSPy host callbacks did not drain after the bridge ended (${cause})`);
+    }
     if (closure.quiescence !== 'confirmed') throw new Error('DSPy process closure is unconfirmed');
     if (protocolFailure !== undefined) throw protocolFailure;
     if (processResult.error !== undefined || processResult.cancelled || processResult.exitCode !== 0) {

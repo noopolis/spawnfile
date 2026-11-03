@@ -156,7 +156,9 @@ training:
   volumes MUST be unique nonempty resource IDs. Recording is off without an effective
   `record`; `record: {}` enables recording with a default retention of **30d**.
 - Every optimizer field is OPTIONAL at declaration time. `method` and `model` MUST
-  be nonempty strings; `variants`, `keep`, and `budget.rounds` MUST be positive integers.
+  be nonempty strings; `provider` (OPTIONAL, not required for a complete optimizer)
+  names the training inference provider serving `model`, and actual training passes it
+  to the core as the train dataset's `training` block; `variants`, `keep`, and `budget.rounds` MUST be positive integers.
   An agent plan with any target MUST have all five effective fields and `keep <= variants`;
   a validation error MUST name missing fields. An incomplete optimizer without targets
   is represented by `null` in the plan.
@@ -1499,6 +1501,10 @@ judge/optimizer route deadlines or atomic extraction deadlines.
               "type": "string",
               "minLength": 1
             },
+            "provider": {
+              "type": "string",
+              "minLength": 1
+            },
             "variants": {
               "type": "integer",
               "minimum": 1,
@@ -2625,5 +2631,11 @@ A moment's wake is posted as production Moltnet delivers a room message: Daimon
 moment's `at`. Without a moment the wake is `kind: manual` with the record's input.
 After each turn the adapter reads declared outputs from the trial's workspace inside
 the container (`SubjectSession.collect`), plus the final reply as artifact `reply`.
+Lowered datasets declare the preparation profile `spawnfile/moment`; booted training
+registers it (a record sets only `setup.moment`, validated before any trial) and needs
+no host environment preparation. Trials are labelled with the subject's own model
+(`--model` defaults to the agent's model, else its engine). The booted adapter declares
+`trialIsolation: per-start` (every trial is its own container, which reaches no host
+path), so `--concurrency` needs no host slot descriptors.
 Before teardown every credential-shaped file in the container is recorded in
 `<out>/booted-trials/credential-scan.jsonl` (expected: none).
