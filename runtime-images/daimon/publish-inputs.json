@@ -19,8 +19,8 @@
     "version": "0.162.1"
   },
   "daimon": {
-    "commit": "a42a2b23722eadc44874e8caf117d17237e1095f",
-    "package_version": "0.2.15",
+    "commit": "c5337565df0b60151ae731b17878f784c13a9337",
+    "package_version": "0.2.16",
     "source": "https://github.com/noopolis/daimon-harness.git"
   },
   "image": "noopolis/spawnfile-runtime-daimon",
