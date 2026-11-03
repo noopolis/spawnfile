@@ -2569,6 +2569,11 @@ examples:
   the dataset file. `output` (OPTIONAL) is the workspace-relative file the trial leaves
   as its result; the final reply is graded otherwise. Every grader and context file
   MUST resolve, by realpath, inside the project.
+- A dataset MAY declare top-level `after_boot`: steps production's operator runs inside
+  the started organization before it takes work (`{ user: "<uid>:<gid>", command: [argv],
+  env?: {NAME: value} }`, for example materializing a token file from the container's
+  own environment). Every moment of that dataset runs them, in order, after readiness
+  and before the wake, as `docker exec`; a failing step fails the boot.
 
 ### Lowering
 

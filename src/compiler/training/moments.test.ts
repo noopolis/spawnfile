@@ -20,7 +20,7 @@ afterEach(async () => {
 const project = async (train: Record<string, unknown>[]) => {
   const resources = ["research-corpus", "edition-state", "tools"].map((id) => ({ id, kind: "volume", mount: `./${id}`, mode: "mutable" }));
   const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({ workspace: { docs: { system: "AGENTS.md" }, resources } }),
-    "training/train.yaml": { examples: train },
+    "training/train.yaml": { after_boot: [{ user: "0:0", command: ["node", "token.mjs"] }], examples: train },
     "grading/case-a/grader.yaml": "case grader\n", "grading/case-a/grounding.md": "The ramp is empty.\n" });
   await writeTrainingFile(root, "corpus/2026-10-05/desks/writer.index", "row\n");
   for (const args of [["init", "-q"], ["add", "corpus"], ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", "c"]]) {
@@ -51,6 +51,7 @@ it("lowers each moment into a record with its pinned state, production-shaped wa
     checks: [{ id: "grade", eval: "grader", input: "artifact:output", context: { grounding: "context:grounding" } }] });
   const parsed = trainingMomentSchema.parse(moment.setup.moment);
   expect(parsed.at).toBe("2026-10-09T08:20:31.000Z");
+  expect(parsed.afterBoot).toEqual([{ user: "0:0", command: ["node", "token.mjs"] }]);
   const head = (await run("git", ["-C", root, "rev-parse", "HEAD"])).stdout.trim();
   expect(parsed.resources.map((resource) => resource.fill.kind), "moment state guarantee").toEqual(["git", "files", "empty"]);
   expect(parsed.resources[0]!.fill).toMatchObject({ commit: head, paths: ["corpus/2026-10-05"], repo: root });

@@ -61,7 +61,19 @@ const trainingExampleSchema = z.object({
   output: containedPath.optional()
 }).strict();
 
+/**
+ * A step production runs inside the started organization before it takes work (an operator's
+ * `docker exec`, such as materializing a token file from the container's own environment).
+ * Every moment of the dataset reproduces it after boot, before the wake.
+ */
+export const trainingAfterBootStepSchema = z.object({
+  user: z.string().regex(/^\d+:\d+$/u, "user must be <uid>:<gid>"),
+  command: z.array(z.string().min(1)).min(1),
+  env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u), z.string()).optional()
+}).strict();
+
 export const trainingDatasetSchema = z.object({
+  after_boot: z.array(trainingAfterBootStepSchema).optional(),
   examples: z.array(trainingExampleSchema).min(1).superRefine(uniqueIds)
 }).strict();
 

@@ -30,6 +30,8 @@ export interface TrainingMoment {
   at: string;
   wake: { surface: "moltnet"; room: string; from: string; text: string };
   resources: { id: string; fill: TrainingMomentFill }[];
+  /** Steps production runs in the started organization before it takes work, in order. */
+  afterBoot?: { user: string; command: string[]; env?: Record<string, string> }[];
 }
 
 const fillPath = z.string().min(1).refine((value) => !value.startsWith("/") && !value.split("/").some((part) => !part || part === "." || part === ".."));
@@ -48,7 +50,9 @@ export const trainingMomentSchema = z.object({
     z.object({ kind: z.literal("git"), repo: z.string().min(1), commit: z.string().regex(/^[0-9a-f]{40,64}$/u),
       paths: z.array(fillPath).nullable(), revision: z.string().regex(/^[0-9a-f]{64}$/u), source: provenance }).strict(),
     z.object({ kind: z.literal("directory"), directory: z.string().min(1), revision: z.string().regex(/^[0-9a-f]{64}$/u), source: provenance }).strict()
-  ]) }).strict())
+  ]) }).strict()),
+  afterBoot: z.array(z.object({ user: z.string().regex(/^\d+:\d+$/u), command: z.array(z.string().min(1)).min(1),
+    env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u), z.string()).optional() }).strict()).optional()
 }).strict() satisfies z.ZodType<TrainingMoment>;
 
 export interface LowerTrainingMomentsOptions { project: LoadedTrainingProject; plan: TrainingPlan; out: string }
@@ -150,7 +154,8 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
       }
       const moment: TrainingMoment = {
         version: TRAINING_MOMENT_VERSION, at: wakeInstant(example.at), wake: { ...example.wake },
-        resources: (example.resources ?? []).map((resource) => ({ id: resource.id, fill: fillFor(resource, base) }))
+        resources: (example.resources ?? []).map((resource) => ({ id: resource.id, fill: fillFor(resource, base) })),
+        ...(loaded.value.after_boot ? { afterBoot: loaded.value.after_boot.map((step) => ({ ...step, command: [...step.command] })) } : {})
       };
       records[role].push({
         id: example.id,

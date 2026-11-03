@@ -226,6 +226,11 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
           }
           return call(target, "GET", "/v2/availability").then((response) => response.status === 200, () => false);
         }, bootOptions.readyTimeoutMs ?? 180_000, "trial organization readiness", 1_000);
+        // Production's own post-start operator steps, inside the container with its environment.
+        for (const step of moment?.afterBoot ?? []) {
+          await docker(["exec", "--user", step.user, ...Object.entries(step.env ?? {}).flatMap(([name, value]) => ["-e", `${name}=${value}`]),
+            container, ...step.command], { timeoutMs: 120_000 });
+        }
         return createBootedTrial({ agentId, call, container, docker, moment, sessionsPath, target, teardown, workspace });
       } catch (error) {
         // The boot failure is the error to report, not a teardown that follows it.

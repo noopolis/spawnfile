@@ -142,6 +142,18 @@ it("boots each trial on its moment's state, filled into its own volume before th
   expect(removed).not.toContain("desk-corpus");
 });
 
+it("runs the dataset's after-boot steps in the started organization, in order, before it is handed over", async () => {
+  const moment = { ...await momentOf("row"), afterBoot: [
+    { user: "0:0", command: ["node", "bootstrap.mjs", "materialize"], env: { CONTROL_URL: "http://127.0.0.1:19700" } },
+    { user: "2000:2000", command: ["node", "bootstrap.mjs", "verify"] }] };
+  const trial = await boot("steps", moment);
+  const execs = calls.filter((args) => args[0] === "exec");
+  expect(execs.slice(0, 2)).toEqual([
+    ["exec", "--user", "0:0", "-e", "CONTROL_URL=http://127.0.0.1:19700", trial.container, "node", "bootstrap.mjs", "materialize"],
+    ["exec", "--user", "2000:2000", trial.container, "node", "bootstrap.mjs", "verify"]]);
+  await trial.teardown();
+});
+
 it("boots on empty state without a moment", async () => {
   await (await boot("plain", undefined)).teardown();
   expect(state.boots).toEqual([expect.objectContaining({ index: null, seed: null, sentinel: null })]);
