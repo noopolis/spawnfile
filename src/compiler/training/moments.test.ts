@@ -66,6 +66,15 @@ it("lowers each moment into a record with its pinned state, production-shaped wa
   await expect(lowerTrainingMoments({ project: loaded, plan, out })).rejects.toThrow("already exist");
 });
 
+it("carries a declared optimizer provider to the core as the train dataset's training block", async () => {
+  const { loaded, plan, out } = await project([{ ...example, id: "case-a" }]);
+  const datasets = await lowerTrainingMoments({ project: loaded, plan: { ...plan, optimizer: { ...plan.optimizer!, provider: "codex-subscription" } }, out });
+  expect(JSON.parse(await readFile(datasets.train, "utf8")).training).toEqual({
+    models: { optimizer: { provider: "codex-subscription", model: plan.optimizer!.model } },
+    optimizer: { model: "optimizer", method: "gepa", variants: plan.optimizer!.variants, keep: plan.optimizer!.keep, budget: { rounds: plan.optimizer!.budget.rounds } } });
+  expect(JSON.parse(await readFile(datasets.test, "utf8")).training).toBeUndefined();
+});
+
 it("replaces the authored locators with the lowered datasets", () => {
   expect(withLoweredDatasets(["--train", "/a.yaml", "--test", "/b.yaml", "--out", "/o"], { train: "/t.json", test: "/s.json" }))
     .toEqual(["--out", "/o", "--train", "/t.json", "--test", "/s.json"]);

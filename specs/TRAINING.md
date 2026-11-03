@@ -156,7 +156,9 @@ training:
   volumes MUST be unique nonempty resource IDs. Recording is off without an effective
   `record`; `record: {}` enables recording with a default retention of **30d**.
 - Every optimizer field is OPTIONAL at declaration time. `method` and `model` MUST
-  be nonempty strings; `variants`, `keep`, and `budget.rounds` MUST be positive integers.
+  be nonempty strings; `provider` (OPTIONAL, not required for a complete optimizer)
+  names the training inference provider serving `model`, and actual training passes it
+  to the core as the train dataset's `training` block; `variants`, `keep`, and `budget.rounds` MUST be positive integers.
   An agent plan with any target MUST have all five effective fields and `keep <= variants`;
   a validation error MUST name missing fields. An incomplete optimizer without targets
   is represented by `null` in the plan.
@@ -1496,6 +1498,10 @@ judge/optimizer route deadlines or atomic extraction deadlines.
               "minLength": 1
             },
             "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "provider": {
               "type": "string",
               "minLength": 1
             },

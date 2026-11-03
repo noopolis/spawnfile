@@ -20,7 +20,7 @@ export const trainingPlanDatasetSchema = source.extend({
 }).strict();
 
 export const trainingPlanOptimizerSchema = z.object({
-  method: text, model: text, variants: z.number().int().min(1), keep: z.number().int().min(1),
+  method: text, model: text, provider: text.optional(), variants: z.number().int().min(1), keep: z.number().int().min(1),
   budget: z.object({ rounds: z.number().int().min(1) }).strict()
 }).strict();
 

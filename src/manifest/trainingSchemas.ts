@@ -32,6 +32,8 @@ const trainingRecordSchema = z.object({
 const trainingOptimizerSchema = z.object({
   method: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
+  /** The inference provider that serves `model` (a training provider id, e.g. a subscription); the core default otherwise. */
+  provider: z.string().min(1).optional(),
   variants: z.number().int().min(1).optional(),
   keep: z.number().int().min(1).optional(),
   budget: z.object({ rounds: z.number().int().min(1).optional() }).strict().optional()

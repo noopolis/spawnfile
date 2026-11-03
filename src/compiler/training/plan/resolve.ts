@@ -17,7 +17,8 @@ const optimizerFor = (agent: TrainingAgentNode, hasTargets: boolean): TrainingPl
     invalidTraining(`Training optimizer for ${agent.id} requires keep <= variants`);
   }
   return {
-    method: optimizer!.method!, model: optimizer!.model!, variants: optimizer!.variants!, keep: optimizer!.keep!,
+    method: optimizer!.method!, model: optimizer!.model!, ...(optimizer!.provider === undefined ? {} : { provider: optimizer!.provider }),
+    variants: optimizer!.variants!, keep: optimizer!.keep!,
     budget: { rounds: optimizer!.budget!.rounds! }
   };
 };

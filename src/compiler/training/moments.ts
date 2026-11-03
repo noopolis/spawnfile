@@ -176,8 +176,14 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
   const datasets: Partial<LoweredTrainingDatasets> = {};
   for (const role of roles) if (declared.has(role)) {
     const file = path.join(moments, `${role}.spawnfile-training.json`);
+    // The train dataset carries the optimizer's declared provider; without one the core's default serves it.
+    const optimizer = plan.optimizer;
+    const training = role === "train" && optimizer?.provider ? { training: {
+      models: { optimizer: { provider: optimizer.provider, model: optimizer.model } },
+      optimizer: { model: "optimizer", method: optimizer.method, variants: optimizer.variants, keep: optimizer.keep, budget: { rounds: optimizer.budget.rounds } }
+    } } : {};
     await writeFile(file, `${JSON.stringify({ schema: "spawnfile.training.dataset.v1", id: `${plan.agent.id}:${role}`,
-      setup: { profile: TRAINING_MOMENT_PROFILE }, records: records[role] }, null, 2)}\n`,
+      setup: { profile: TRAINING_MOMENT_PROFILE }, ...training, records: records[role] }, null, 2)}\n`,
       { flag: "wx", mode: 0o600 });
     datasets[role] = file;
   }
