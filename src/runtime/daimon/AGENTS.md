@@ -257,3 +257,9 @@ omission defaults, historical wire identities and compiler admission stay local
 policy. Training providers own subscription transport and engine-broker grants;
 training/services owns durable slot freshness. Presence in the runtime inventory
 does not imply verified training containment.
+
+`contractManifest.ts` also reads Daimon's optional organization wake text bound:
+a manifest whose `consumedConfigFields` ends in `host.maxWakeTextBytes` must
+publish that integer in its v2 host schema (minimum Daimon's 16,384-byte
+default), and its maximum becomes `maxWakeTextBytesCeiling`. A manifest without
+the field parses as before and has no ceiling.
