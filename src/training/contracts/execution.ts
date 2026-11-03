@@ -50,6 +50,11 @@ export interface SubjectCapabilities {
   isolation: string;
   readIsolation: 'none' | 'declared-paths';
   protectedPaths: boolean;
+  /**
+   * `per-start`: every `start` is its own isolated environment (a container of its own), so trials
+   * run concurrently without host slot descriptors. Absent: concurrency needs provisioned slots.
+   */
+  trialIsolation?: 'per-start';
 }
 
 /**

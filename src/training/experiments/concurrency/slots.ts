@@ -17,7 +17,7 @@ const slotsDocumentSchema = z.discriminatedUnion('schema', [
 ]);
 export const trialConcurrency = (value: number): number => z.number().int().min(1).max(8).parse(value);
 
-export async function loadTrialSlots(options: { concurrency?: number; slotsFile?: string; slots?: readonly TrialSlot[] } = {}) {
+export async function loadTrialSlots(options: { concurrency?: number; slotsFile?: string; slots?: readonly TrialSlot[]; selfIsolated?: boolean } = {}) {
   if (options.concurrency !== undefined) trialConcurrency(options.concurrency);
   let slots: readonly TrialSlot[] | undefined = options.slots;
   if (!slots) {
@@ -32,6 +32,8 @@ export async function loadTrialSlots(options: { concurrency?: number; slotsFile?
     }
   }
   if (!slots) {
+    // A subject that isolates every trial itself (its own container) needs no host slots to run several at once.
+    if (options.selfIsolated) return { concurrency: options.concurrency ?? 1, pool: undefined, slots: undefined };
     if ((options.concurrency ?? 1) > 1) throw new Error('Concurrent trials require provisioned slot descriptors');
     return { concurrency: 1, pool: undefined, slots: undefined };
   }
