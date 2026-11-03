@@ -61,6 +61,7 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
       const trial = await options.launcher.boot({ trialId: input.trialId, instructions: input.instructions,
         ...(input.setup?.moment === undefined ? {} : { moment: input.setup.moment }), signal: input.signal });
       let reply: string | undefined;
+      let lastCollected: Record<string, SubjectOutput> = {};
       const source = `${BOOTED_ADAPTER_ID}:${input.trialId}`;
       let seq = 0;
       let stopped: Promise<StopReceipt> | undefined;
@@ -72,13 +73,16 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
       return {
         stop,
         async collect(outputs) {
+          // The container is gone once the trial stops; its last reading is the final one.
+          if (stopped) return { ...lastCollected };
           const collected: Record<string, SubjectOutput> = {};
           for (const [name, path] of Object.entries(outputs)) {
             const bytes = await trial.read(path);
             if (bytes !== null) collected[name] = { bytes, provenance: `trial-workspace:${path}` };
           }
           if (reply !== undefined && !Object.hasOwn(collected, BOOTED_REPLY_OUTPUT)) collected[BOOTED_REPLY_OUTPUT] = { bytes: reply, provenance: 'trial-reply' };
-          return collected;
+          lastCollected = collected;
+          return { ...collected };
         },
         async run(turn, signal): Promise<SubjectTurnResult> {
           if (stopped) throw new Error('trial organization was already stopped');
