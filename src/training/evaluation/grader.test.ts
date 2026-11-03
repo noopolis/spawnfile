@@ -60,6 +60,15 @@ describe('grader builtin evaluation', () => {
     expect((await evaluateNode(check, { ...context, snapshot: snapshot({ artifacts: {} }) }, createEvaluationRegistry())).status).toBe('unknown');
     expect((await evaluateNode({ ...check, context: { unknown: 'input:files' } }, context, createEvaluationRegistry())).reason).toContain('Unknown grader context');
   });
+
+  it('scores a graded artifact a completed, fully accounted subject never produced as a measured zero', async () => {
+    const { context, check, backend } = await fixture();
+    const closed = snapshot({ artifacts: {}, closed: true, subjectUsage: { status: 'complete', usage: null, settled: true } });
+    expect(await evaluateGrader(check, { ...context, snapshot: closed })).toMatchObject({ status: 'fail', score: 0 });
+    expect(backend.score).not.toHaveBeenCalled();
+    const unsettled = snapshot({ artifacts: {}, closed: true, subjectUsage: { status: 'complete', usage: null } });
+    expect((await evaluateGrader(check, { ...context, snapshot: unsettled })).status).toBe('unknown');
+  });
   it('refuses absent runtimes and swapped definition/calibration identity before inference', async () => {
     const { context, check, runtime, backend } = await fixture();
     const registry = createEvaluationRegistry();

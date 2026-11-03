@@ -4,7 +4,7 @@ import type { EvaluationContext, EvaluationResult } from '../contracts/evaluatio
 import type { GraderBinding } from '../cases/index.js';
 import { allQuestions, DecisionAccountingError, gradeOutput, type GateOutcome } from '../graders/index.js';
 import { collectJudgeCalls, result } from './logic/index.js';
-import { selectEvidence } from './selectors.js';
+import { observedAbsence, selectEvidence } from './selectors.js';
 
 /** All provider construction belongs to the host; this evaluator only consumes injected routes. */
 export async function evaluateGrader(check: CheckNode, context: EvaluationContext): Promise<EvaluationResult> {
@@ -17,7 +17,14 @@ export async function evaluateGrader(check: CheckNode, context: EvaluationContex
     throw new Error('Grader runtime identity does not match resolved grader/calibration files');
   }
   const selected = selectEvidence(check.input as string, context.snapshot);
-  if (!selected.found) return { ...result('unknown', 'Graded artifact was not observed', context.snapshot.closed), evidence: selected.evidence };
+  if (!selected.found) {
+    // As for every artifact check: a subject that closed its own execution without producing the graded
+    // artifact failed the task (a measured zero), while an absence the run could not observe stays unknown.
+    if (observedAbsence(check.input as string, context.snapshot)) {
+      return { ...result('fail', `Graded artifact ${String(check.input)} is missing from a completed, fully accounted subject execution`), score: 0, evidence: selected.evidence };
+    }
+    return { ...result('unknown', 'Graded artifact was not observed', context.snapshot.closed), evidence: selected.evidence };
+  }
   const bound: Record<string, unknown> = {};
   const evidence = [...selected.evidence];
   const selectors = (check.context ?? {}) as Record<string, string>;
