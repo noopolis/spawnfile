@@ -22,7 +22,15 @@ import {
 } from "./buildCompilePlanTraversal.js";
 import { resolveMoltnetExternalParticipantIntents, resolveOrganizationIdentity, validateB31MoltnetAuth } from "./organizationIdentity.js";
 
-export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> => {
+export interface BuildCompilePlanOptions {
+  /**
+   * Manifests to use in place of the files at these canonical paths, already validated. Relative paths in an
+   * override still resolve from its file's directory. Training trials compile one member of an organization this way.
+   */
+  manifestOverrides?: ReadonlyMap<string, LoadedManifest["manifest"]>;
+}
+
+export const buildCompilePlan = async (inputPath: string, options: BuildCompilePlanOptions = {}): Promise<CompilePlan> => {
   const rootManifestPath = getCanonicalManifestPath(getManifestPath(inputPath));
   const loadCache = new Map<string, Promise<LoadedManifest>>();
   const nodeCache = new Map<string, InternalNode>();
@@ -37,7 +45,8 @@ export const buildCompilePlan = async (inputPath: string): Promise<CompilePlan> 
       return cached;
     }
 
-    const promise = loadManifest(canonicalPath);
+    const override = options.manifestOverrides?.get(canonicalPath);
+    const promise = override ? Promise.resolve({ manifest: override, manifestPath: canonicalPath }) : loadManifest(canonicalPath);
     loadCache.set(canonicalPath, promise);
     return promise;
   };

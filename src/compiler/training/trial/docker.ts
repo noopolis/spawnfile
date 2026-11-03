@@ -4,7 +4,7 @@ import { SpawnfileError } from "../../../shared/index.js";
 
 /** Bounded Docker CLI call for trial lifecycle; stdout trimmed, stderr bounded into the error. */
 /** `combined` returns stderr after stdout (container logs write both). */
-export type TrialDocker = (args: readonly string[], options?: { timeoutMs?: number; stdin?: string; combined?: boolean }) => Promise<string>;
+export type TrialDocker = (args: readonly string[], options?: { timeoutMs?: number; stdin?: string | Buffer; combined?: boolean }) => Promise<string>;
 
 export const createTrialDocker = (dockerCommand = "docker"): TrialDocker => (args, options = {}) =>
   new Promise((resolve, reject) => {

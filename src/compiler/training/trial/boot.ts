@@ -19,7 +19,9 @@ import { executeDockerRunWithSupportCleanup } from "../../runProjectLifecycle.js
 import { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
 import type { TrainingGatewayAccess } from "./gateway.js";
 import { HOME_LOGIN_FILES, saveHomeLogin, seedHomeLogin, type HomeLogin } from "./homeLogin.js";
+import { fillMomentVolumes, momentVolumesFor } from "./momentVolumes.js";
 import { writeTrialProject } from "./project.js";
+import { renderMomentWake, trainingMomentSchema, type TrainingMoment } from "../moments.js";
 
 /**
  * Lineage namespace for training trials: every trial derives its own durable
@@ -31,9 +33,26 @@ const CONTROL_TOKEN_ENV = "SPAWNFILE_DAIMON_CONTROL_TOKEN";
 const WAKE_VERSION = "noopolis.daimon.wake.v2";
 const TERMINAL = new Set(["completed", "failed", "stopped"]);
 const MAX_TRANSCRIPT_BYTES = 1024 * 1024;
+const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+const ABSENT = "__spawnfile_trial_output_absent__";
+/** Every trial volume is named for the trial: no trial ever holds production's, dev's or another trial's state. */
+export const TRIAL_VOLUME_PREFIX = "spawnfile-training-trial-";
+
+/**
+ * Renames every compiled volume except the gatewayed login realms (which a gatewayed trial never mounts)
+ * to one of the trial's own, so team resources declared by name and project-derived homes are fresh per trial.
+ */
+export const isolateTrialVolumes = (container: { persistent_mounts?: { id: string; volume_name: string }[] } | undefined, slug: string): void => {
+  for (const mount of container?.persistent_mounts ?? []) {
+    if (isDaimonGatewayRealmMountId(mount.id)) continue;
+    mount.volume_name = `${TRIAL_VOLUME_PREFIX}${slug}-${createHash("sha256").update(mount.id).digest("hex").slice(0, 12)}`;
+  }
+};
 
 export interface TrialOptions {
   agentManifestPath: string;
+  /** The subject's project root manifest (default: the agent's own); its team context compiles with the subject. */
+  projectManifestPath?: string;
   instructions: string;
   trialId: string;
   /** Fresh per trial; holds the trial project, compile output and boot env file. */
@@ -59,6 +78,8 @@ export interface TrialWake {
 export interface BootedTrial {
   container: string;
   wake(text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }): Promise<TrialWake>;
+  /** A workspace-relative file the subject left; null when absent. */
+  read(path: string): Promise<string | null>;
   /** Credential-shaped files anywhere in the trial container (expected: none). */
   scanCredentials(): Promise<string[]>;
   teardown(): Promise<void>;
@@ -74,7 +95,7 @@ export interface PreparedTrial {
    * gatewayed engine; `realms` is a profile view holding only the
    * volume-held logins (`spawnfile auth login`) this organization mounts.
    */
-  boot(gateway: TrainingGatewayAccess | null, options?: { readyTimeoutMs?: number; realms?: ResolvedAuthProfile }): Promise<BootedTrial>;
+  boot(gateway: TrainingGatewayAccess | null, options?: { readyTimeoutMs?: number; realms?: ResolvedAuthProfile; moment?: unknown }): Promise<BootedTrial>;
   /** Runs the organization's own `auth <engine> login` attached to the operator's terminal, or returns its argv on `dryRun`. */
   login(realms: ResolvedAuthProfile, options?: { dryRun?: boolean }): Promise<readonly string[]>;
   dispose(): Promise<void>;
@@ -94,12 +115,15 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   const slug = trialSlug(options.trialId);
   const image = `spawnfile-training-trial:${slug}`;
   const compiled = await (async () => {
-    const project = await writeTrialProject(options.agentManifestPath, options.instructions, path.join(options.directory, "project"));
-    const compiled = await compileProject(project, {
+    const project = await writeTrialProject(options.projectManifestPath ?? options.agentManifestPath, options.agentManifestPath,
+      options.instructions, path.join(options.directory, "project"));
+    const compiled = await compileProject(project.manifestPath, {
       deploymentLineage: resolveDeploymentLineage(slug, TRAINING_TRIAL_LINEAGE_NAMESPACE),
+      manifestOverrides: project.manifestOverrides,
       outputDirectory: path.join(options.directory, "out")
     });
-    await buildCompiledProject(project, compiled, { imageTag: image });
+    await buildCompiledProject(project.manifestPath, compiled, { imageTag: image });
+    isolateTrialVolumes(compiled.report.container, slug);
     return compiled;
   })().catch(async (error: unknown) => {
     await rm(options.directory, { recursive: true, force: true });
@@ -110,6 +134,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   if (!instance || agents.length !== 1) throw new SpawnfileError("validation_error", "A production-booted trial compiles exactly one Daimon agent");
   const [agentId, engine] = agents[0]!;
   const home = instance.agent_paths?.[agentId]?.home_path;
+  const workspace = instance.agent_paths?.[agentId]?.workspace_path ?? null;
   // The engine writes its own session records under its home inside the agent's runtime home.
   const engineHome = getDaimonEngineDescriptor(engine)?.homeDirectory;
   const sessionsPath = home && engineHome !== undefined ? path.posix.join(home, engineHome, "sessions") : null;
@@ -131,7 +156,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
     return { files, homeMountPath: mount.mount_path, homeVolume: mount.volume_name, loginVolume };
   };
   const removeVolumes = async (volumes: readonly string[]): Promise<void> => {
-    for (const volume of volumes) await docker(["volume", "rm", "-f", volume]).catch(() => undefined);
+    for (const volume of volumes) if (volume.startsWith(TRIAL_VOLUME_PREFIX)) await docker(["volume", "rm", "-f", volume]).catch(() => undefined);
   };
   const dispose = async (): Promise<void> => {
     await docker(["image", "rm", "-f", image]).catch(() => undefined);
@@ -171,6 +196,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         ...(gateway ? { network: gateway.network } : {})
       });
       const volumes = lineageVolumes(bootOptions.realms);
+      const moment = bootOptions.moment === undefined ? undefined : trainingMomentSchema.parse(bootOptions.moment);
       const homeLogin = homeLoginFor(bootOptions.realms);
       const teardown = async (): Promise<void> => {
         try {
@@ -186,6 +212,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
       };
       try {
         if (homeLogin) await seedHomeLogin(docker, image, homeLogin);
+        if (moment) await fillMomentVolumes(docker, image, momentVolumesFor(moment, compiled.report.container ?? {}));
         await executeDockerRunWithSupportCleanup(invocation, runDockerContainer);
         await rm(envFilePath, { force: true });
         const target: DaimonControlTarget = { containerRef: container, dockerArgs: [], dockerCommand: "docker", imageRef: image, token };
@@ -198,7 +225,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
           }
           return call(target, "GET", "/v2/availability").then((response) => response.status === 200, () => false);
         }, bootOptions.readyTimeoutMs ?? 180_000, "trial organization readiness", 1_000);
-        return createBootedTrial({ agentId, call, container, docker, sessionsPath, target, teardown });
+        return createBootedTrial({ agentId, call, container, docker, moment, sessionsPath, target, teardown, workspace });
       } catch (error) {
         // The boot failure is the error to report, not a teardown that follows it.
         await teardown().catch(() => undefined);
@@ -222,8 +249,8 @@ const readLedger = async (docker: TrialDocker, container: string): Promise<Usage
 };
 
 const createBootedTrial = (input: {
-  agentId: string; call: DaimonControlCall; container: string; docker: TrialDocker;
-  sessionsPath: string | null; target: DaimonControlTarget; teardown: () => Promise<void>;
+  agentId: string; call: DaimonControlCall; container: string; docker: TrialDocker; moment: TrainingMoment | undefined;
+  sessionsPath: string | null; target: DaimonControlTarget; teardown: () => Promise<void>; workspace: string | null;
 }): BootedTrial => {
   let seenRows = 0;
   return {
@@ -234,9 +261,18 @@ const createBootedTrial = (input: {
         "-not", "-path", "/proc/*", "-not", "-path", "/sys/*", "-not", "-path", "/usr/*", "-not", "-path", "/opt/spawnfile/runtime-installs/*"], { timeoutMs: 60_000 }).catch((error: Error) => error.message);
       return found.split("\n").filter(Boolean);
     },
+    read: async (file) => {
+      if (input.workspace === null || file.startsWith("/") || file.split("/").some((part) => !part || part === "." || part === "..")) return null;
+      const text = await input.docker(["exec", input.container, "sh", "-c",
+        'if [ -f "$1" ]; then head -c "$2" -- "$1"; else printf "%s" "$3"; fi', "sh", path.posix.join(input.workspace, file), String(MAX_OUTPUT_BYTES), ABSENT]);
+      return text === ABSENT ? null : text;
+    },
     wake: async (text, options) => {
-      const body = { agent_id: input.agentId, delivery_id: options.deliveryId,
-        event: { version: WAKE_VERSION, kind: "manual", text, occurred_at: new Date().toISOString() } };
+      // A moment's wake arrives as production Moltnet delivers a room message: kind message at its own instant.
+      const event = input.moment
+        ? { version: WAKE_VERSION, kind: "message", text: renderMomentWake(input.moment.wake), occurred_at: input.moment.at }
+        : { version: WAKE_VERSION, kind: "manual", text, occurred_at: new Date().toISOString() };
+      const body = { agent_id: input.agentId, delivery_id: options.deliveryId, event };
       const accepted = await input.call(input.target, "POST", "/v2/wakes", body);
       const acceptance = JSON.parse(accepted.body) as { state?: string; acceptance_id?: string; code?: string };
       if (accepted.status !== 202 || acceptance.state !== "accepted" || !acceptance.acceptance_id) {

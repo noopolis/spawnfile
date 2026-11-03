@@ -26,7 +26,7 @@ import {
   clearProjectModelFallbacks,
   compileProject,
   createTrainingContext,
-  createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, allocateTrainingOutputParent,
+  createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, lowerTrainingMoments, allocateTrainingOutputParent,
   initProject,
   listInitTemplates,
   preflightCompilePlan,
@@ -101,7 +101,7 @@ const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
 export interface CliHandlers {
   createTrainingContext: typeof createTrainingContext;
   createTrainingPlan: typeof createTrainingPlan;
-  lowerTrainingExecution: typeof lowerTrainingExecution; allocateTrainingOutputParent: typeof allocateTrainingOutputParent;
+  lowerTrainingExecution: typeof lowerTrainingExecution; lowerTrainingMoments: typeof lowerTrainingMoments; allocateTrainingOutputParent: typeof allocateTrainingOutputParent;
   loadTrainingProject: typeof loadTrainingProject; resolveTrainingPlan: typeof resolveTrainingPlan;
   materializeTrainingMoment: typeof materializeTrainingMoment;
   runTraining: typeof runTraining;
@@ -134,7 +134,7 @@ export interface CliHandlers {
   syncProjectAuth: typeof syncProjectAuth;
 }
 const createDefaultHandlers = (): CliHandlers => ({
-  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, allocateTrainingOutputParent, runTraining,
+  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, lowerTrainingMoments, allocateTrainingOutputParent, runTraining,
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,

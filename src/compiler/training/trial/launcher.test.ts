@@ -35,7 +35,7 @@ const harness = (authProfile = profile({ agy: AGY }), turns?: RealmTurns) => {
       events.push(`boot ${name}`);
       await tick();
       return {
-        container: `c-${name}`, scanCredentials: async () => [],
+        container: `c-${name}`, scanCredentials: async () => [], read: async () => null,
         wake: async () => { await tick(); return wakeResult; },
         teardown: async () => { await tick(); active--; events.push(`down ${name}`); }
       };

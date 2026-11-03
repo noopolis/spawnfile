@@ -87,10 +87,13 @@ export async function collectOutputs(outputs: Readonly<Record<string, string>>, 
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
       throw error;
     }
-    let value: unknown = bytes;
-    try { value = JSON.parse(bytes); } catch { /* Plain text is a first-class output. */ }
-    artifacts[name] = { name, checkpointId: `${boundary}/${name}`, digest: digest(bytes), bytes, value,
-      provenance: `workspace:${path}` };
+    artifacts[name] = outputArtifact(name, bytes, boundary, `workspace:${path}`);
   }
   return artifacts;
+}
+
+export function outputArtifact(name: string, bytes: string, boundary: string, provenance: string): ArtifactSnapshot {
+  let value: unknown = bytes;
+  try { value = JSON.parse(bytes); } catch { /* Plain text is a first-class output. */ }
+  return { name, checkpointId: `${boundary}/${name}`, digest: digest(bytes), bytes, value, provenance };
 }

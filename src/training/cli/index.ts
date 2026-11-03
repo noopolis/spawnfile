@@ -3,5 +3,3 @@ export type { CliIO, CliDependencies, InvocationIndex, SpawnfileCliIntegration, 
 export type { SpawnfileTrainingContext } from './spawnfile/index.js';
 export { launch } from './launch.js';
 
-export type { TrainingMomentCase, TrainingMomentReceipt, TrainingMomentPreparation } from './spawnfile/index.js';
-export { spawnfileEnvironment } from './spawnfile/index.js';

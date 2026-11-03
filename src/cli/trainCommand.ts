@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 
 import { SpawnfileError } from "../shared/index.js";
+import { resumedMomentDatasets, withLoweredDatasets } from "../compiler/training/moments.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
 
 const forwarded = ["train", "validation", "test", "editable", "resource", "judge", "judge-citation-repairs", "validation-group", "optimizer-model",
@@ -100,7 +101,16 @@ export const registerTrainCommand = (
       throw new SpawnfileError("validation_error", `Actual training boots Daimon trials; agent ${context.agent.id} runs on ${context.agent.runtime}`);
     }
     if (lowered) await handlers.allocateTrainingOutputParent(lowered.execution.output);
-    setExitCode(await handlers.runTraining({ context, args: lowered?.execution.args ?? args,
+    // Authored moments become one executable dataset per role; a resume reuses the persisted lowering.
+    if (lowered && options.dryRun !== true && ["train", "validation", "test"].some((role) => options[role] !== undefined)) {
+      throw new SpawnfileError("validation_error", "Authored training lowers its declared datasets; --train, --validation and --test do not apply");
+    }
+    const executable = lowered && options.dryRun !== true
+      ? withLoweredDatasets(lowered.execution.args, options.resume === true
+        ? resumedMomentDatasets(lowered.execution.output, plan)
+        : await handlers.lowerTrainingMoments({ project, plan, out: lowered.execution.output }))
+      : lowered?.execution.args ?? args;
+    setExitCode(await handlers.runTraining({ context, args: executable,
       authProfile: options.authProfile as string | undefined,
       dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));

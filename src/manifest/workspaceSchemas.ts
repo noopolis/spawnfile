@@ -137,7 +137,8 @@ const teamWorkspaceResourceGitSchema = z
     }
   });
 
-const teamWorkspaceResourceVolumeSchema = z
+/** The volume declaration's fields, before the fed-volume rules; training moments extend it. */
+export const workspaceResourceVolumeObjectSchema = z
   .object({
     feed: volumeFeedSchema.optional(),
     id: z.string().trim().min(1),
@@ -147,7 +148,9 @@ const teamWorkspaceResourceVolumeSchema = z
     name: z.string().trim().optional(),
     sharing: workspaceResourceSharingSchema.optional()
   })
-  .strict()
+  .strict();
+
+const teamWorkspaceResourceVolumeSchema = workspaceResourceVolumeObjectSchema
   .superRefine((value, context) => {
     if (!value.feed) return;
     // The host job addresses the volume by its exact host name, so a derived, unpublished name cannot be fed.

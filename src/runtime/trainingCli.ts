@@ -7,10 +7,8 @@ import { trainingDependencies } from './trainingSubjects.js';
 
 export { main } from './trainingSubjects.js';
 export { trainingDependencies } from './trainingSubjects.js';
-export { spawnfileEnvironment } from '../training/cli/index.js';
 export type {
   CliExecutionIdentityContext, SpawnfileCliIntegration, SpawnfileTrainingContext,
-  TrainingMomentCase, TrainingMomentPreparation,
 } from '../training/cli/index.js';
 export { CliDatasets } from '../training/cli/datasets.js';
 export { createTrainingInference } from '../training/cli/training/index.js';

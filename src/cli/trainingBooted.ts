@@ -30,6 +30,7 @@ export const runBootedTraining = async (options: RunTrainingOptions): Promise<nu
     : [];
   const run = createBootedTrialRun({
     agentManifestPath: options.context.agent.source,
+    projectManifestPath: options.context.project.manifest,
     authProfile: await requireAuthProfile(options.authProfile),
     scratchRoot: path.join(path.resolve(out), "booted-trials")
   });

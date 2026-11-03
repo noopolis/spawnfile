@@ -22,12 +22,13 @@ it.each([
   ["agy", { engine: "agy", model: "ignored" }, undefined]
 ] as const)("compiles a tool-free %s judge through the trial project path", async (engine, spec, primary) => {
   const root = await scratch();
-  const project = await writeTrialProject(await writeJudgeAgent(spec, path.join(root, "source")), JUDGE_INSTRUCTIONS, path.join(root, "project"));
-  const { manifest } = await loadManifest(project);
+  const source = await writeJudgeAgent(spec, path.join(root, "source"));
+  const project = await writeTrialProject(source, source, JUDGE_INSTRUCTIONS, path.join(root, "project"));
+  const manifest = project.manifestOverrides.get(path.resolve(source))!;
   expect(manifest).toMatchObject({ kind: "agent", runtime: { name: "daimon", options: { engine } } });
   expect((manifest as { execution?: { model?: { primary?: unknown } } }).execution?.model?.primary).toEqual(primary);
   for (const key of ["skills", "mcp_servers", "surfaces", "schedule", "memory"]) expect(JSON.stringify(manifest)).not.toContain(`"${key}"`);
-  const compiled = await compileProject(project, { outputDirectory: path.join(root, "out") });
+  const compiled = await compileProject(project.manifestPath, { manifestOverrides: project.manifestOverrides, outputDirectory: path.join(root, "out") });
   expect(Object.values(compiled.report.container!.runtime_instances[0]!.engine_by_node_id ?? {})).toEqual([engine]);
 });
 
