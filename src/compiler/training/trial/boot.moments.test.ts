@@ -168,3 +168,26 @@ it("gives two concurrent trials of one project separate volumes, each with its o
   for (const volume of [...left!, ...right!]) expect(volume).toMatch(/^spawnfile-training-trial-/u);
   await Promise.all(trials.map((trial) => trial.teardown()));
 });
+
+it("reads a wake's usage after its turn ends, not when a mid-turn disposition settles its receipt", async () => {
+  const execution = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";
+  const usage = JSON.stringify({ v: "noopolis.daimon.turn-usage.v1", agent: "agent:writer", wake: execution, engine: "codex", at: "2026-11-04T00:00:00.000Z",
+    input: 11_138, output: 35, cache_read: 0, cache_write: 0, total: 11_173, calls: 1, complete: true, notional_usd: 0 });
+  let running = 2;
+  const control = async (_target: unknown, method: string, route: string) => {
+    if (method === "POST" && route === "/v2/wakes") return { status: 202, body: JSON.stringify({ state: "accepted", acceptance_id: "a-1" }) };
+    // The subject disposed of its delivery with a tool call; its engine turn is still finishing.
+    if (route.startsWith("/v2/wake-receipts/")) return { status: 200, body: JSON.stringify({ state: "completed", execution_id: execution, text: "filed" }) };
+    if (route === "/v2/activity") return { status: 200, body: JSON.stringify({ executions: running-- > 0 ? [{ agent_id: "agent:writer", execution_id: execution, state: "running" }] : [] }) };
+    return { status: 200, body: "{}" };
+  };
+  // The engine appends its usage row only when the turn ends.
+  const ledger = async (args: readonly string[], options?: { stdin?: string | Buffer }) =>
+    args[0] === "exec" && args.at(-1)?.endsWith("usage.jsonl") ? (running < 0 ? `${usage}\n` : "") : docker(args, options);
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "usage"), docker: ledger,
+    instructions: "i", trialId: "usage", control: control as never });
+  const trial = await prepared.boot(null, { readyTimeoutMs: 1_000 });
+  const wake = await trial.wake("go", { deliveryId: "d-1", timeoutMs: 10_000 });
+  expect(wake.usage.map((row) => [row.input, row.output])).toEqual([[11_138, 35]]);
+  await trial.teardown();
+}, 20_000);

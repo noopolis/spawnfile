@@ -295,6 +295,15 @@ const createBootedTrial = (input: {
         const response = await input.call(input.target, "GET", `/v2/wake-receipts/${id}`);
         if (response.status === 200) receipt = JSON.parse(response.body) as typeof receipt;
       }
+      // A delivery can be disposed mid-turn (attention's disposition tool), so its receipt ends before its turn
+      // does; the turn's usage and transcript land when the execution ends, which only the activity shows.
+      const execution = receipt.execution_id;
+      while (execution && Date.now() < deadline && !options.signal?.aborted) {
+        const activity = await input.call(input.target, "GET", "/v2/activity");
+        const executions = activity.status === 200 ? (JSON.parse(activity.body) as { executions?: { execution_id?: string }[] }).executions ?? [] : [];
+        if (!executions.some((entry) => entry.execution_id === execution)) break;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      }
       const rows = await readLedger(input.docker, input.container);
       const usage = rows.slice(seenRows).filter((row) => row.agent === input.agentId);
       seenRows = rows.length;
