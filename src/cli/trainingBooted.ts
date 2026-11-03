@@ -37,7 +37,10 @@ export const runBootedTraining = async (options: RunTrainingOptions): Promise<nu
   bindBootedJudges(run);
   try {
     const { main } = await import("../runtime/trainingCli.js");
-    return await main(["train", ...options.args, ...(flag(options.args, "runtime") ? [] : ["--runtime", "daimon"]), ...instructions], {
+    // The subject's own model labels its trials; an engine that pins no model is labelled by the engine.
+    const agent = options.context.agent;
+    const model = flag(options.args, "model") === undefined ? ["--model", agent.model?.name ?? agent.engine ?? agent.runtime] : [];
+    return await main(["train", ...options.args, ...(flag(options.args, "runtime") ? [] : ["--runtime", "daimon"]), ...model, ...instructions], {
       cwd: process.cwd(), signal: options.signal, stdout: options.streams.stdout, stderr: options.streams.stderr
     }, { adapter: (_runtime, adapter) => createDaimonBootedAdapter({ launcher: run, timeoutMs: adapter.timeoutMs }) });
   } finally {
