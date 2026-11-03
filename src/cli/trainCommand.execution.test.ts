@@ -22,16 +22,23 @@ it("prints a complete lowered dry-run without auth, Docker, delegation, context 
   expect(plan.output.startsWith(path.join(defaultTrainingOutputRoot(root), "agent%3Awriter") + path.sep)).toBe(true);
   expect(await readdir(root)).toEqual(before);
 });
-it("hands the lowered authored execution to production-booted training with explicit overrides kept", async () => {
+it("hands the lowered moment datasets to production-booted training with explicit overrides kept", async () => {
   const root = await executionFixture();
   const delegate = vi.fn(async () => 0);
   const output = path.join(root, "chosen-output");
-  expect(await runCli(["train", root, "--agent", "writer", "--train", path.join(root, "training/test.yaml"),
-    "--out", output, "--optimizer-model", "override", "--auth-profile", "training"], {
-    handlers: { runTraining: delegate }, streams: { stdout() {}, stderr() {} }
+  expect(await runCli(["train", root, "--agent", "writer", "--out", output, "--optimizer-model", "override", "--auth-profile", "training"], {
+    handlers: { runTraining: delegate }, streams: { stdout() {}, stderr: (value) => { throw new Error(value); } }
   })).toBe(0);
   expect(delegate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ authProfile: "training", dryRun: false,
-    args: expect.arrayContaining(["--train", path.join(root, "training/test.yaml"), "--out", output, "--optimizer-model", "override"]) }));
+    args: expect.arrayContaining(["--train", path.join(output, "moments/train.spawnfile-training.json"), "--out", output, "--optimizer-model", "override"]) }));
+});
+it("refuses an explicit dataset override of authored training", async () => {
+  const root = await executionFixture(), stderr: string[] = [];
+  const delegate = vi.fn(async () => 0);
+  expect(await runCli(["train", root, "--agent", "writer", "--train", path.join(root, "training/test.yaml"), "--out", path.join(root, "o"),
+    "--auth-profile", "training"], { handlers: { runTraining: delegate }, streams: { stdout() {}, stderr: value => stderr.push(value) } })).toBe(2);
+  expect(stderr.join("\n")).toContain("do not apply");
+  expect(delegate).not.toHaveBeenCalled();
 });
 it("refuses actual training for a subject that is not a Daimon agent", async () => {
   const root = await executionFixture(), stderr: string[] = [];

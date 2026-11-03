@@ -22,7 +22,7 @@ import {
   resolveNoopolisRunId
 } from "../runtime/index.js";
 
-import { buildCompilePlan } from "./buildCompilePlan.js";
+import { buildCompilePlan, type BuildCompilePlanOptions } from "./buildCompilePlan.js";
 import { createContainerArtifacts } from "./containerArtifacts.js";
 import {
   stageRuntimePackageOverrides,
@@ -87,6 +87,8 @@ export interface CompileProjectOptions {
   runtimePackageOverrides?: RuntimePackageOverrideRequest;
   /** Runner-owned path to a bounded, secret-free simfile.world-bindings.v1 artifact. */
   worldBindingsPath?: string;
+  /** In-memory manifests replacing files of the graph (see `BuildCompilePlanOptions`); training trials only. */
+  manifestOverrides?: BuildCompilePlanOptions["manifestOverrides"];
 }
 
 export interface CompileProjectResult {
@@ -275,7 +277,7 @@ export const compileProject = async (
   inputPath: string,
   options: CompileProjectOptions = {}
 ): Promise<CompileProjectResult> => {
-  const plan = await buildCompilePlan(inputPath);
+  const plan = await buildCompilePlan(inputPath, options.manifestOverrides ? { manifestOverrides: options.manifestOverrides } : {});
   await assertRecordingCapability(plan, options.daimonContractManifest);
   const worldBindings = options.worldBindingsPath === undefined
     ? undefined

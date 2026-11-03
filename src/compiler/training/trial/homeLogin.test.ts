@@ -14,20 +14,21 @@ const TOKEN = HOME_LOGIN_FILES.agy![0]!;
 const HOME = "/var/lib/spawnfile/instances/daimon/runtime-homes/subject";
 
 const state = vi.hoisted(() => ({
-  root: "", compiled: 0, homes: [] as string[],
+  root: "", compiled: 0, mounts: [] as Array<{ volume_name: string }>,
   /** What the booted organization saw in its home: enrollment and leftovers from earlier trials. */
   sightings: [] as Array<{ token: string | null; history: boolean }>
 }));
-vi.mock("./project.js", () => ({ writeTrialProject: async () => "/nonexistent/Spawnfile" }));
+vi.mock("./project.js", () => ({ writeTrialProject: async () => ({ manifestPath: "/nonexistent/Spawnfile", manifestOverrides: new Map() }) }));
 vi.mock("../../buildProject.js", () => ({ buildCompiledProject: async () => undefined }));
 vi.mock("../../compileProject.js", () => ({
   compileProject: async () => {
-    const volume = `trial-home-${state.compiled++}`;
-    state.homes.push(volume);
+    const mount = { id: "daimon-agy-runtime-home-subject", mount_path: HOME, volume_name: `trial-home-${state.compiled++}` };
+    // The trial renames it to its own volume; the test follows the mount it handed out.
+    state.mounts.push(mount);
     return { report: { container: {
       runtime_instances: [{ runtime: "daimon", config_path: "/c.json", engine_by_node_id: { "agent:subject": "agy" },
         agent_paths: { "agent:subject": { home_path: HOME } } }],
-      persistent_mounts: [{ id: "daimon-agy-runtime-home-subject", mount_path: HOME, volume_name: volume }]
+      persistent_mounts: [mount]
     } } };
   }
 }));
@@ -38,7 +39,7 @@ vi.mock("../../runProject.js", () => ({
 // The organization: AGY probes its login in the home, works (writes history) and refreshes its token.
 vi.mock("../../runProjectLifecycle.js", () => ({
   executeDockerRunWithSupportCleanup: async () => {
-    const home = path.join(state.root, "volumes", state.homes.at(-1)!);
+    const home = path.join(state.root, "volumes", homes().at(-1)!);
     const token = await readFile(path.join(home, ".gemini/antigravity-cli/antigravity-oauth-token"), "utf8").catch(() => null);
     const history = await readFile(path.join(home, ".gemini/antigravity-cli/history.jsonl")).then(() => true, () => false);
     state.sightings.push({ token, history });
@@ -48,6 +49,7 @@ vi.mock("../../runProjectLifecycle.js", () => ({
 }));
 
 const { prepareTrial } = await import("./boot.js");
+const homes = (): string[] => state.mounts.map((mount) => mount.volume_name);
 
 /** Docker volumes as local directories; helper containers run the copy program on them for real. */
 const docker = async (args: readonly string[]): Promise<string> => {
@@ -75,7 +77,7 @@ const profile: ResolvedAuthProfile = {
 
 beforeEach(async () => {
   state.root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-home-login-"));
-  Object.assign(state, { compiled: 0, homes: [], sightings: [] });
+  Object.assign(state, { compiled: 0, mounts: [], sightings: [] });
 });
 afterEach(async () => { await rm(state.root, { recursive: true, force: true }); });
 
@@ -97,17 +99,17 @@ it("enrolls each fresh home from the profile and keeps the token AGY refreshed, 
   expect(await readFile(path.join(state.root, "volumes", "profile-home", TOKEN), "utf8")).toBe("refreshed-2");
   // Only login files ever reach the profile; every trial home is removed with its trial.
   await expect(readFile(path.join(login, "history.jsonl"))).rejects.toThrow();
-  expect(state.homes.map((home) => path.join(state.root, "volumes", home))).toHaveLength(2);
-  for (const home of state.homes) await expect(readFile(path.join(state.root, "volumes", home, TOKEN))).rejects.toThrow();
+  expect(homes().map((home) => path.join(state.root, "volumes", home))).toHaveLength(2);
+  for (const home of homes()) await expect(readFile(path.join(state.root, "volumes", home, TOKEN))).rejects.toThrow();
 });
 
 it("keeps the login files of the throwaway login home on the profile", async () => {
   const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "login"), docker, instructions: "i", trialId: "login" });
-  await mkdir(path.join(state.root, "volumes", state.homes[0]!, ".gemini/antigravity-cli"), { recursive: true });
+  await mkdir(path.join(state.root, "volumes", homes()[0]!, ".gemini/antigravity-cli"), { recursive: true });
   await prepared.login(profile);
   expect(await readFile(path.join(state.root, "volumes", "profile-home", TOKEN), "utf8")).toBe("refreshed-1");
   await expect(readFile(path.join(state.root, "volumes", "profile-home", ".gemini/antigravity-cli/history.jsonl"))).rejects.toThrow();
-  await expect(readFile(path.join(state.root, "volumes", state.homes[0]!, TOKEN))).rejects.toThrow();
+  await expect(readFile(path.join(state.root, "volumes", homes()[0]!, TOKEN))).rejects.toThrow();
 });
 
 it("refuses a linked login file and skips absent ones", async () => {

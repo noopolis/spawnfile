@@ -8,7 +8,6 @@ import { createEvaluationRegistry } from '../evaluation/index.js';
 import { count, judgeCitationRepairs, one, pairs, type CliArguments } from './arguments.js';
 import { CliDatasets } from './datasets.js';
 import type { CliDependencies, CliIO } from './types.js';
-import { spawnfileEnvironment } from './spawnfile/index.js';
 import { prepareSpawnfileInputs } from './spawnfile/index.js';
 import type { StoredTrialOptions } from '../experiments/index.js';
 
@@ -69,7 +68,8 @@ export async function prepareNative(args: CliArguments, io: CliIO, dependencies:
   let prepareEnvironment: StoredTrialOptions['prepareEnvironment'];
   if (inputs.context !== undefined) {
     const context = inputs.context;
-    prepareEnvironment = spawnfileEnvironment(dependencies.spawnfile!, context, services!);
+    const integration = dependencies.spawnfile!;
+    prepareEnvironment = (paths, signal, trial) => integration.prepareEnvironment(paths, signal, trial, context, services!);
   }
   const subjectRoot = inputs.context !== undefined ? dependencies.spawnfile!.subjectRoot : undefined;
   return { ...inputs, adapter, inference, prepareEnvironment, cacheRoots, subjectRoot, closeInference: configured.close,

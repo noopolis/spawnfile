@@ -1,10 +1,10 @@
 import { resolve } from 'node:path';
 import type { EvaluationSnapshot, EvaluationResult, JudgeAttemptObservation } from '../../contracts/evaluation.js';
-import type { Observation, ObservationCoverage, SubjectTurnResult } from '../../contracts/execution.js';
+import type { Observation, ObservationCoverage, SubjectSession, SubjectTurnResult } from '../../contracts/execution.js';
 import { captureObservation } from '../../capture/index.js';
 import { combine, evaluatePlan, mayStop, result } from '../../evaluation/index.js';
 import { captureBindings, resolveTurnInput } from './bindings.js';
-import { collectOutputs, stageInput } from './files.js';
+import { collectOutputs, outputArtifact, stageInput } from './files.js';
 import { createLiveMonitor } from './live.js';
 import { trialControl } from './control.js';
 import { requireMechanicalTurn } from './preflight.js';
@@ -68,6 +68,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     { channel: 'output', completeness: 'partial', ordering: 'source' }];
   let output = '';
   let prepared: PreparedTrial | undefined;
+  let subjectSession: SubjectSession | undefined;
   let error: string | undefined;
   let execution: TrialReport['execution'] = 'completed';
   let failureKind: TrialReport['failureKind'];
@@ -104,8 +105,14 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         events: structuredClone(events), coverage: structuredClone(coverage), output, inputFiles: { ...inputFiles },
         context: record.context ?? {} };
       let artifacts: EvaluationSnapshot['artifacts'] = {};
-      for (const [name, path] of Object.entries(record.outputs ?? {})) {
-        const captured = await collectOutputs({ [name]: path }, paths.workspace, `${options.id}/${events.length}`);
+      const boundary = `${options.id}/${events.length}`;
+      if (subjectSession?.collect) {
+        for (const [name, output] of Object.entries(await subjectSession.collect(record.outputs ?? {}))) {
+          artifacts = { ...artifacts, [name]: outputArtifact(name, output.bytes, boundary, output.provenance) };
+          collectedBehavior ||= output.bytes.length > 0;
+        }
+      } else for (const [name, path] of Object.entries(record.outputs ?? {})) {
+        const captured = await collectOutputs({ [name]: path }, paths.workspace, boundary);
         collectedBehavior ||= Object.values(captured).some(artifact => artifact.bytes.length > 0);
         artifacts = { ...artifacts, ...captured };
       }
@@ -135,6 +142,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     if (control.signal.aborted) throw new Error(control.reason);
     const session = await control.owned(adapter.start({ trialId: options.id, slot: options.slot, workspacePath: paths.workspace,
       runtimeHomePath: paths.runtimeHome, instructions: prepared.instructions, tools: prepared.tools, model: options.model,
+      ...(record.setup ? { setup: record.setup } : {}),
       protectedPaths: [resolve(options.root), paths.control, paths.runtimeHome, ...Object.values(options.resources ?? {}), ...(options.protectedPaths ?? [])],
       signal: control.signal,
       onObservation: event => {
@@ -153,7 +161,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
         }).catch(caught => { observationFailure = String(caught); control.stop('Native observation failed'); throw caught; });
         observationTail = operation.catch(() => undefined);
         return control.owned(operation);
-      } }).then(session => { control.attach(session); return session; }));
+      } }).then(session => { control.attach(session); subjectSession = session; return session; }));
     for (const turn of inputs) {
       if (control.signal.aborted) break;
       const text = await stageInput(resolveTurnInput(turn.input, bindings), paths.workspace, options.resources ?? {}, inputFiles);

@@ -58,7 +58,6 @@ const surface = {
       "inspectMoltnetSqlite",
       "resolveCompiledAgent",
       "createTrainingPlan",
-      "materializeTrainingCase",
       "materializedMomentSchema",
       "selectCommitAt",
       "leakCheckSchema",
@@ -74,7 +73,6 @@ const surface = {
   },
   "cli": {
     "values": [
-      "spawnfileEnvironment",
       "launch",
       "createTrainingInference",
       "CliDatasets",
@@ -83,8 +81,6 @@ const surface = {
     "types": [
       "CliExecutionIdentityContext",
       "SpawnfileTrainingContext",
-      "TrainingMomentCase",
-      "TrainingMomentPreparation",
       "SpawnfileCliIntegration"
     ]
   }

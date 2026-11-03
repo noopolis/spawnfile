@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp } from "node:fs/promises";
 import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../../../auth/index.js";
@@ -16,6 +16,8 @@ import { createRealmTurns, type RealmTurns } from "./realmTurns.js";
 export interface BootedTrialLauncherOptions {
   /** The subject agent's own Spawnfile. */
   agentManifestPath: string;
+  /** The subject's project root manifest; its team context compiles with the subject. */
+  projectManifestPath?: string;
   authProfile: ResolvedAuthProfile;
   /** Trial projects, compile outputs and boot env files live here, one fresh directory per trial. */
   scratchRoot: string;
@@ -28,10 +30,10 @@ export interface BootedTrialLauncherOptions {
 }
 
 type Wake = (text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }) => Promise<TrialWake>;
-type Booted = Pick<BootedTrial, "container" | "scanCredentials" | "teardown"> & { wake: Wake };
+type Booted = Pick<BootedTrial, "container" | "read" | "scanCredentials" | "teardown"> & { wake: Wake };
 
 export interface BootedTrialRun {
-  boot(input: { trialId: string; instructions: string; signal?: AbortSignal }): Promise<Booted>;
+  boot(input: { trialId: string; instructions: string; moment?: unknown; signal?: AbortSignal }): Promise<Booted>;
   /** The run's warm judge for this engine, model and effort: booted once, woken once per judgment. */
   judge(spec: JudgeSpec): Promise<Omit<Booted, "teardown">>;
   /** Tears down every judge, stops the run's gateway and removes its image and networks; the realm volumes stay. */
@@ -87,22 +89,29 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
     return { volume: binding.realmVolume, profile: { ...options.authProfile, env: {}, imports: {}, realms: { [engine]: binding } } };
   };
   /** Boots one container, holding its login realm's turn (if any) until the container is gone. */
-  const bootContainer = async (prepared: PreparedTrial, turn: { onContended?: () => void; timeoutMs?: number; signal?: AbortSignal } = {}): Promise<Booted> => {
+  const bootContainer = async (prepared: PreparedTrial, turn: { onContended?: () => void; timeoutMs?: number; signal?: AbortSignal } = {}, moment?: unknown): Promise<Booted> => {
     const access = await gatewayFor(prepared);
     const realm = realmFor(prepared);
     const release = realm ? await turns.take(realm.volume, turn) : undefined;
     try {
-      const booted = await prepared.boot(access, realm ? { realms: realm.profile } : {});
+      const booted = await prepared.boot(access, { ...(realm ? { realms: realm.profile } : {}), ...(moment === undefined ? {} : { moment }) });
       return { ...booted, teardown: async () => { try { await booted.teardown(); } finally { release?.(); } } };
     } catch (error) {
       release?.();
       throw error;
     }
   };
-  const start = async (prepared: PreparedTrial, signal?: AbortSignal): Promise<Booted> => {
+  const start = async (prepared: PreparedTrial, signal?: AbortSignal, moment?: unknown): Promise<Booted> => {
     try {
-      const booted = await bootContainer(prepared, signal ? { signal } : {});
-      return { ...booted, teardown: async () => { try { await booted.teardown(); } finally { await prepared.dispose(); } } };
+      const booted = await bootContainer(prepared, signal ? { signal } : {}, moment);
+      return { ...booted, teardown: async () => {
+        try {
+          // Evidence that no login reached the trial: every credential-shaped file it holds, recorded before removal.
+          const found = await booted.scanCredentials().catch((error: Error) => [`scan failed: ${error.message}`]);
+          await appendFile(path.join(options.scratchRoot, "credential-scan.jsonl"), `${JSON.stringify({ container: booted.container, found })}\n`).catch(() => undefined);
+          await booted.teardown();
+        } finally { await prepared.dispose(); }
+      } };
     } catch (error) {
       await prepared.dispose();
       throw error;
@@ -129,6 +138,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
     return {
       get container() { return container; },
       scanCredentials: async () => (await booted?.catch(() => undefined))?.scanCredentials() ?? [],
+      read: async (file) => (await booted?.catch(() => undefined))?.read(file) ?? null,
       wake: async (text, wakeOptions) => {
         busy++;
         try {
@@ -153,9 +163,10 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
   };
 
   return {
-    boot: async ({ trialId, instructions, signal }) => start(await prepare({
-      agentManifestPath: options.agentManifestPath, docker, instructions, trialId, directory: await directory("trial-")
-    }), signal),
+    boot: async ({ trialId, instructions, moment, signal }) => start(await prepare({
+      agentManifestPath: options.agentManifestPath, docker, instructions, trialId, directory: await directory("trial-"),
+      ...(options.projectManifestPath ? { projectManifestPath: options.projectManifestPath } : {})
+    }), signal, moment),
     judge: (spec) => {
       if (closed) return Promise.reject(new SpawnfileError("runtime_error", "the training run is closed"));
       const key = JSON.stringify([spec.engine, spec.model, spec.effort ?? null]);

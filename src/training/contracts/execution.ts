@@ -215,6 +215,8 @@ export interface SubjectStart {
   instructions: string;
   model?: string;
   tools?: readonly FixtureTool[];
+  /** The record's native setup, unchanged; adapters that boot the subject read their own keys. */
+  setup?: Readonly<Record<string, unknown>>;
   onObservation: (observation: Observation) => void | Promise<void>;
   signal?: AbortSignal;
 }
@@ -267,8 +269,16 @@ export interface SubjectTurnResult {
   stop?: StopReceipt;
 }
 
+/** A file the subject left, read by its adapter where the subject runs. */
+export interface SubjectOutput { bytes: string; provenance: string }
+
 export interface SubjectSession {
   run(turn: { id: string; text: string }, signal?: AbortSignal): Promise<SubjectTurnResult>;
+  /**
+   * Reads the record's declared outputs (name to workspace-relative path) where the subject runs, plus any
+   * output the adapter itself names; absent files are omitted. Without it, outputs are read from the host workspace.
+   */
+  collect?(outputs: Readonly<Record<string, string>>): Promise<Record<string, SubjectOutput>>;
   stop(reason: string): Promise<StopReceipt>;
 }
 

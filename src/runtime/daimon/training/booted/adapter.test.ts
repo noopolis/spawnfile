@@ -12,6 +12,7 @@ const launcher = (wakes: BootedWake[], log: string[]): BootedTrialLauncher => ({
     log.push(`boot ${trialId} ${instructions}`);
     return {
       wake: async (text, options) => { log.push(`wake ${options.deliveryId} ${text}`); return wakes.shift()!; },
+      read: async () => null,
       teardown: async () => { log.push('teardown'); },
     };
   },
@@ -40,6 +41,13 @@ test('boots one organization per trial, wakes it per turn and reports the runtim
   await expect(session.run({ id: 'turn-3', text: 'late' })).rejects.toThrow('already stopped');
 });
 
+test('ends the turn when the subject defers its delivery, and fails it when a failure deferred it', async () => {
+  const session = await start([wake({ state: 'deferred', text: 'Deferred: missing row' }), wake({ state: 'deferred', code: 'engine_failed' })], []);
+  expect(await session.run({ id: 'turn-1', text: 'x' })).toMatchObject({ status: 'completed', text: 'Deferred: missing row',
+    evidence: { payload: { state: 'deferred' } } });
+  expect(await session.run({ id: 'turn-2', text: 'x' })).toMatchObject({ status: 'failed', error: 'trial wake deferred (engine_failed)' });
+});
+
 test('never invents usage or success', async () => {
   const session = await start([wake({ state: 'timeout', text: '', usage: [], transcript: null }), wake({ state: 'stopped', code: 'host_stopped' })], []);
   const timedOut = await session.run({ id: 'turn-1', text: 'x' });
@@ -50,7 +58,22 @@ test('never invents usage or success', async () => {
 
 test('reports an unconfirmed stop when teardown fails', async () => {
   const session = await createDaimonBootedAdapter({ timeoutMs: 1, launcher: { boot: async () => ({
-    wake: async () => wake(), teardown: async () => { throw new Error('docker gone'); } }) } })
+    wake: async () => wake(), read: async () => null, teardown: async () => { throw new Error('docker gone'); } }) } })
     .start({ trialId: 't', workspacePath: '/w', runtimeHomePath: '/h', instructions: 'i', onObservation: () => undefined });
   expect(await session.stop('done')).toMatchObject({ state: 'unknown', quiescence: 'unknown', detail: 'docker gone' });
+});
+
+test('boots from the record moment and collects declared outputs from the trial, plus the reply', async () => {
+  const booted: unknown[] = [];
+  const session = await createDaimonBootedAdapter({ timeoutMs: 1, launcher: { boot: async (input) => {
+    booted.push(input.moment);
+    return { wake: async () => wake({ text: 'filed' }), teardown: async () => undefined,
+      read: async (path) => path === 'state/filing.json' ? '{"headline":"h"}' : null };
+  } } }).start({ trialId: 't', workspacePath: '/w', runtimeHomePath: '/h', instructions: 'i', setup: { moment: { at: 'x' } },
+    onObservation: () => undefined });
+  expect(booted).toEqual([{ at: 'x' }]);
+  expect(await session.collect!({ output: 'state/filing.json', missing: 'nope.json' })).toEqual({
+    output: { bytes: '{"headline":"h"}', provenance: 'trial-workspace:state/filing.json' } });
+  await session.run({ id: 'turn-1', text: 'x' });
+  expect((await session.collect!({})).reply).toEqual({ bytes: 'filed', provenance: 'trial-reply' });
 });
