@@ -195,3 +195,23 @@ it.each([
   expect(wake.usage.map((row) => [row.input, row.output])).toEqual([[11_138, 35]]);
   await trial.teardown();
 }, 20_000);
+
+it("accounts a turn the engine never closed from its measured model requests, marked incomplete", async () => {
+  const row = (request: number, input: number, output: number) => JSON.stringify({ v: "noopolis.daimon.turn-requests.v1", agent: "agent:writer",
+    wake: "e-1", engine: "codex", at: "2026-11-04T00:00:00.000Z", request, requests: 2, input, cached_input: 10, fresh_input: input - 10,
+    cache_write: 0, output, total: input + output });
+  const control = async (_target: unknown, method: string, route: string) => {
+    if (method === "POST" && route === "/v2/wakes") return { status: 202, body: JSON.stringify({ state: "accepted", acceptance_id: "a-1" }) };
+    // A wall-clock bound killed the turn: no turn.completed, so no per-turn row; the retried failure deferred it.
+    if (route.startsWith("/v2/wake-receipts/")) return { status: 200, body: JSON.stringify({ state: "accepted", deferred: true }) };
+    return { status: 200, body: JSON.stringify({ executions: [] }) };
+  };
+  const ledgers = async (args: readonly string[], options?: { stdin?: string | Buffer }) =>
+    args[0] === "exec" && args.at(-1)?.endsWith("requests.jsonl") ? `${row(0, 100, 5)}\n${row(1, 300, 7)}\n` : docker(args, options);
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "requests"), docker: ledgers,
+    instructions: "i", trialId: "requests", control: control as never });
+  const trial = await prepared.boot(null, { readyTimeoutMs: 1_000 });
+  const wake = await trial.wake("go", { deliveryId: "d-1", timeoutMs: 5_000 });
+  expect(wake.usage).toEqual([expect.objectContaining({ input: 400, cache_read: 20, output: 12, calls: 2, complete: false })]);
+  await trial.teardown();
+}, 20_000);
