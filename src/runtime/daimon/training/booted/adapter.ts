@@ -16,7 +16,23 @@ export interface BootedWake {
   transcript: string | null;
   /** Per model request, the tool-call names its response carried; null where the runtime could not say. */
   requestToolCalls?: readonly (readonly string[] | null)[];
+  /** The engine failure Daimon reported for this delivery, including one it deferred after retrying; null when none. */
+  failure?: string | null;
 }
+
+/**
+ * Subscription quota and rate-limit refusals, in the words engines report them. Engine-neutral: it reads only the
+ * failure text Daimon relays, and a match means a refused turn, never the subject's behaviour.
+ */
+const QUOTA_FAILURE = /\b(?:quota|rate[ -]?limit(?:ed)?|usage limit|too many requests|resets? in)\b/iu;
+
+/** The quota sentence of a failure, bounded, or undefined when the failure is not a quota refusal. */
+export const quotaFailure = (failure: string | null | undefined): string | undefined => {
+  const match = failure ? QUOTA_FAILURE.exec(failure) : null;
+  if (!failure || !match) return undefined;
+  const start = Math.max(0, failure.lastIndexOf('"', match.index) + 1, match.index - 200);
+  return failure.slice(start, match.index + 200).split('"')[0]!.trim();
+};
 
 export interface BootedTrialHandle {
   wake(text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }): Promise<BootedWake>;
@@ -93,7 +109,9 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
           if (usage) await emit(turn.id, { type: 'usage', usage });
           if (wake.transcript) await emit(turn.id, { type: 'diagnostic', native: { schema: BOOTED_EVIDENCE_SCHEMA, transcript: wake.transcript } });
           // A deferral is the subject's own choice to end its turn: graded like any completed turn, unless a failure deferred it.
-          const ended = wake.state === 'completed' || wake.state === 'deferred' && wake.code === null;
+          // A delivery Daimon deferred because the engine refused on quota is a refused turn, never the subject's choice.
+          const quota = wake.state === 'completed' || wake.state === 'stopped' ? undefined : quotaFailure(wake.failure);
+          const ended = wake.state === 'completed' || wake.state === 'deferred' && wake.code === null && quota === undefined;
           const status = ended ? 'completed' : wake.state === 'stopped' ? 'cancelled' : 'failed';
           return {
             status, text: wake.text, usage,
@@ -104,7 +122,8 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
               { channel: 'usage', completeness: usage === null ? 'absent' : wake.usage.every((row) => row.complete) ? 'complete' : 'partial', ordering: 'none' },
               { channel: 'tools', completeness: 'absent', ordering: 'none' },
             ],
-            ...(status === 'completed' ? {} : { error: `trial wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}` }),
+            ...(quota === undefined ? {} : { failure: 'quota' as const }),
+            ...(status === 'completed' ? {} : { error: `trial wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}${quota ? `: subscription quota: ${quota}` : ''}` }),
           };
         },
       };

@@ -9,9 +9,10 @@ function atomicMeasurementFailed(check: EvaluationResult): boolean {
 
 /** A missing or interrupted measurement is not a cheap zero-quality observation. */
 export function trialScore(
-  report: Pick<TrialReport, 'id' | 'execution' | 'hostWork' | 'stop' | 'decisiveFailure' | 'status' | 'preDeferralStatus' | 'evaluation'>,
+  report: Pick<TrialReport, 'id' | 'execution' | 'hostWork' | 'stop' | 'decisiveFailure' | 'status' | 'preDeferralStatus' | 'evaluation'> & Partial<Pick<TrialReport, 'failureKind' | 'error'>>,
   scoring?: TrainingScoring,
 ): number {
+  if (report.execution === 'failed' && report.failureKind === 'quota') throw new Error(`Trial ${report.id} stopped on subscription quota${report.error ? `: ${report.error}` : ''}`);
   if (report.execution === 'failed') throw new Error(`Trial ${report.id} failed in infrastructure`);
   if (report.hostWork !== 'settled' || report.stop?.state !== 'acknowledged') throw new Error(`Trial ${report.id} has incomplete infrastructure cleanup`);
   const decisive = report.decisiveFailure?.status === 'fail' && report.decisiveFailure.finality === 'final' && report.status === 'fail';

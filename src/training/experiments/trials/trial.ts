@@ -131,7 +131,9 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     // collector cannot publish a snapshot. Only a never-acting subject is replaceable.
     const acted = collectedBehavior || collectionFailed && !hasUnadmittedExecution(turns) || pendingCollections > 0 ||
       hasSubjectBehavior({ turns, snapshot: { events, output, artifacts: {} }, decisiveFailure: live.decisive });
-    failureKind = live.decisive ? 'behavioral' : acted ? 'measurement' : 'native-infrastructure';
+    // A subscription quota refusal is neither the subject's nor a replaceable machine fault: it outlasts any retry.
+    failureKind = live.decisive ? 'behavioral' : turns.some(turn => turn.native.failure === 'quota') ? 'quota'
+      : acted ? 'measurement' : 'native-infrastructure';
   };
   const evaluate = (state: EvaluationSnapshot) => ({ ...evaluationServices, snapshot: state, results: {}, scores: {}, signal: control.signal });
   try {
