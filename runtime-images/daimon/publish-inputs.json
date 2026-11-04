@@ -19,8 +19,8 @@
     "version": "0.162.1"
   },
   "daimon": {
-    "commit": "c5337565df0b60151ae731b17878f784c13a9337",
-    "package_version": "0.2.16",
+    "commit": "a911e81b76067a80385f4490d97b829a040c1192",
+    "package_version": "0.2.17",
     "source": "https://github.com/noopolis/daimon-harness.git"
   },
   "image": "noopolis/spawnfile-runtime-daimon",
@@ -30,5 +30,5 @@
   ],
   "registry": "docker.io",
   "version": "spawnfile.daimon-runtime-publish-inputs.v1",
-  "contract_manifest_sha256": "sha256:85de96d75cf1e02e0e88bd6e1dcce39a125c1d5b97f1eb9c01911a0d5c3316e8"
+  "contract_manifest_sha256": "sha256:0f9d9c57f4455da7f4e07d399245e926d9d13a1092f607f41ba8e9e5cc964be6"
 }
