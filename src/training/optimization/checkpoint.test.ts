@@ -89,8 +89,9 @@ it('restores classified failed inference usage and stops GEPA cleanly at the cum
   let failing = true;
   const attempt = { id: 'actual-provider-attempt', ordinal: 1, providerId: 'local', requestedModel: 'model',
     responseModel: null, responseRoute: null, outcome: 'failed' as const, failureKind: 'transport' as const,
+    // A booted judge's ledger usage carries its notional USD.
     startedAt: 'start', completedAt: 'end', usage: { inputTokens: 10, cachedInputTokens: 0, outputTokens: 2,
-      reasoningTokens: null, source: 'provider' } };
+      reasoningTokens: null, notionalUsd: 0.0004, source: 'daimon-turn-usage-ledger' } };
   options.generate = async (request, signal) => {
     if (failing) { failing = false; throw new InferenceFailure('transport', 'interrupted generation', { attempts: [attempt] }); }
     return generate(request, signal);
