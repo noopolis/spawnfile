@@ -31,7 +31,7 @@ it.each([
   const compiled = await compileProject(project.manifestPath, { manifestOverrides: project.manifestOverrides, outputDirectory: path.join(root, "out") });
   expect(Object.values(compiled.report.container!.runtime_instances[0]!.engine_by_node_id ?? {})).toEqual([engine]);
   // A judge admits a whole reflection prompt; Daimon's default bound would refuse it.
-  const config = JSON.parse(await readFile(path.join(root, "out", compiled.report.container!.runtime_instances[0]!.config_path), "utf8"));
+  const config = JSON.parse(await readFile(path.join(root, "out/container/rootfs", compiled.report.container!.runtime_instances[0]!.config_path), "utf8"));
   expect(config.host.maxWakeTextBytes).toBe(JUDGE_MAX_WAKE_TEXT_BYTES);
 });
 
