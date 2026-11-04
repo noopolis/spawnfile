@@ -296,12 +296,13 @@ const createBootedTrial = (input: {
         if (response.status === 200) receipt = JSON.parse(response.body) as typeof receipt;
       }
       // A delivery can be disposed mid-turn (attention's disposition tool), so its receipt ends before its turn
-      // does; the turn's usage and transcript land when the execution ends, which only the activity shows.
+      // does; the turn's usage and transcript land when the execution ends, which only the activity shows. A
+      // deferral clears the receipt's execution id, so the execution is found by the delivery it carries.
       const execution = receipt.execution_id;
-      while (execution && Date.now() < deadline && !options.signal?.aborted) {
+      while (Date.now() < deadline && !options.signal?.aborted) {
         const activity = await input.call(input.target, "GET", "/v2/activity");
-        const executions = activity.status === 200 ? (JSON.parse(activity.body) as { executions?: { execution_id?: string }[] }).executions ?? [] : [];
-        if (!executions.some((entry) => entry.execution_id === execution)) break;
+        const executions = activity.status === 200 ? (JSON.parse(activity.body) as { executions?: { execution_id?: string; delivery_ids?: string[] }[] }).executions ?? [] : [];
+        if (!executions.some((entry) => entry.execution_id === execution || entry.delivery_ids?.includes(options.deliveryId))) break;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
       const rows = await readLedger(input.docker, input.container);

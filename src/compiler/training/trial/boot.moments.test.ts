@@ -169,7 +169,11 @@ it("gives two concurrent trials of one project separate volumes, each with its o
   await Promise.all(trials.map((trial) => trial.teardown()));
 });
 
-it("reads a wake's usage after its turn ends, not when a mid-turn disposition settles its receipt", async () => {
+it.each([
+  ["completes", { state: "completed", execution_id: "0b1c2d3e-4f50-4617-8899-aabbccddeeff", text: "filed" }],
+  // A deferral returns the delivery to the inbox and clears its execution id while the turn is still finishing.
+  ["defers", { state: "accepted", deferred: true }]
+] as const)("reads a wake's usage after its turn ends, not when a mid-turn disposition %s its delivery", async (_label, settled) => {
   const execution = "0b1c2d3e-4f50-4617-8899-aabbccddeeff";
   const usage = JSON.stringify({ v: "noopolis.daimon.turn-usage.v1", agent: "agent:writer", wake: execution, engine: "codex", at: "2026-11-04T00:00:00.000Z",
     input: 11_138, output: 35, cache_read: 0, cache_write: 0, total: 11_173, calls: 1, complete: true, notional_usd: 0 });
@@ -177,8 +181,8 @@ it("reads a wake's usage after its turn ends, not when a mid-turn disposition se
   const control = async (_target: unknown, method: string, route: string) => {
     if (method === "POST" && route === "/v2/wakes") return { status: 202, body: JSON.stringify({ state: "accepted", acceptance_id: "a-1" }) };
     // The subject disposed of its delivery with a tool call; its engine turn is still finishing.
-    if (route.startsWith("/v2/wake-receipts/")) return { status: 200, body: JSON.stringify({ state: "completed", execution_id: execution, text: "filed" }) };
-    if (route === "/v2/activity") return { status: 200, body: JSON.stringify({ executions: running-- > 0 ? [{ agent_id: "agent:writer", execution_id: execution, state: "running" }] : [] }) };
+    if (route.startsWith("/v2/wake-receipts/")) return { status: 200, body: JSON.stringify(settled) };
+    if (route === "/v2/activity") return { status: 200, body: JSON.stringify({ executions: running-- > 0 ? [{ agent_id: "agent:writer", execution_id: execution, state: "running", delivery_ids: ["d-1"] }] : [] }) };
     return { status: 200, body: "{}" };
   };
   // The engine appends its usage row only when the turn ends.
