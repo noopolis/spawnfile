@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Observation } from '../../../../training/index.js';
-import { createDaimonBootedAdapter, quotaFailure, type BootedTrialLauncher, type BootedWake } from './index.js';
+import { createDaimonBootedAdapter, quotaFailure, timeoutFailure, type BootedTrialLauncher, type BootedWake } from './index.js';
 
 const row = { input: 100, cache_read: 40, output: 5, notional_usd: 0.01, complete: true };
 const wake = (overrides: Partial<BootedWake> = {}): BootedWake => ({
@@ -88,12 +88,54 @@ const AGY_QUOTA = 'engine_failed: CLI engine exited 1: {"event":"init","conversa
 
 test('a delivery Daimon deferred after the engine refused on quota is a failed quota turn, never the subject deferring', async () => {
   const session = await start([wake({ state: 'deferred', executionId: null, text: '', usage: [], failure: AGY_QUOTA }),
-    wake({ state: 'deferred', text: 'Deferred: missing row', failure: 'engine_failed: CLI engine timed out' })], []);
+    wake({ state: 'deferred', text: 'Deferred: missing row', failure: 'engine_failed: CLI engine exited 1' })], []);
   // Mutation guard: before the failure was read, this turn was graded as the subject's own deferral.
   expect(await session.run({ id: 'turn-1', text: 'x' })).toMatchObject({ status: 'failed', failure: 'quota',
     error: 'trial wake deferred: subscription quota: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 95h51m47s.' });
-  // Any other failure Daimon deferred keeps today's meaning.
-  expect(await session.run({ id: 'turn-2', text: 'x' })).toMatchObject({ status: 'completed' });
+  // Any other failure Daimon deferred is still a failed turn: Daimon deferred it, the subject did not.
+  const other = await session.run({ id: 'turn-2', text: 'x' });
+  expect(other).toMatchObject({ status: 'failed', error: 'trial wake deferred' });
+  expect(other.limit).toBeUndefined();
+});
+
+// What Daimon relayed for the slice C Grok variant: both 30 minute turns sealed by the broker's wall-clock bound.
+const GROK_TIMEOUT = 'engine_failed: engine broker turn failed (limit_exceeded; limit=timeout; mcp=41/41 answered)';
+// Its usage row: Grok's `input` is the fresh prompt only, cached reads sit beside it in their own bucket.
+const grokRow = { input: 1_279_022, cache_read: 4_771_712, output: 266_795, total: 1_279_022 + 4_771_712 + 266_795, notional_usd: 0, complete: false };
+
+test('a turn killed at its wall-clock bound while the model worked is a declared timeout, scored; a hang is not', async () => {
+  const session = await start([wake({ state: 'deferred', executionId: null, text: '', usage: [grokRow], failure: GROK_TIMEOUT }),
+    wake({ state: 'deferred', executionId: null, text: '', usage: [], failure: GROK_TIMEOUT }),
+    wake({ state: 'failed', text: '', usage: [{ ...row, output: 0 }], failure: 'engine_failed: Codex wake exceeded its 1800000ms per-wake wall-clock bound' }),
+    wake({ state: 'failed', text: '', usage: [row], failure: 'engine_failed: CLI engine exited 1' })], []);
+  // Mutation guard: before this, Daimon's deferral read as the subject's own and every filing check was unknown.
+  const worked = await session.run({ id: 'turn-1', text: 'x' });
+  expect(worked).toMatchObject({ status: 'failed', limit: 'timeout', usage: { outputTokens: 266_795 },
+    error: 'trial wake deferred: wall-clock bound reached while the subject was working' });
+  // No measured model work: an infrastructure hang, never the subject's score.
+  for (const id of ['turn-2', 'turn-3']) {
+    const hung = await session.run({ id, text: 'x' });
+    expect(hung.status).toBe('failed'); expect(hung.limit).toBeUndefined();
+  }
+  // A failure that is not the wall-clock bound is never labelled a timeout.
+  expect((await session.run({ id: 'turn-4', text: 'x' })).limit).toBeUndefined();
+  // Its usage is counted whole (cached reads are a subset of input, as the core requires to settle the turn).
+  expect(worked.usage).toMatchObject({ inputTokens: 1_279_022 + 4_771_712, cachedInputTokens: 4_771_712 });
+});
+
+test('reads every engine\'s prompt tokens whole, whether cached reads are inside input or beside it', async () => {
+  const session = await start([wake({ usage: [{ ...row, total: 105 }] }), wake({ usage: [grokRow] })], []);
+  expect((await session.run({ id: 'turn-1', text: 'x' })).usage).toMatchObject({ inputTokens: 100, cachedInputTokens: 40 });
+  // Mutation guard: reading a disjoint `input` as the whole put cached reads above it and the core dropped the usage.
+  const disjoint = await session.run({ id: 'turn-2', text: 'x' });
+  expect(disjoint.usage).toMatchObject({ inputTokens: 6_050_734, cachedInputTokens: 4_771_712 });
+});
+
+test('classifies wall-clock bound wording engine-neutrally, and nothing else', () => {
+  for (const text of [GROK_TIMEOUT, 'engine_failed: CLI engine timed out', 'Codex wake exceeded its 5ms per-wake wall-clock bound'])
+    expect(timeoutFailure(text)).toBe(true);
+  for (const text of ['engine broker turn failed (limit_exceeded; limit=tokens)', 'engine_failed: CLI engine exited 1', '', null, undefined])
+    expect(timeoutFailure(text)).toBe(false);
 });
 
 test('classifies quota and rate-limit wording engine-neutrally, and nothing else', () => {
