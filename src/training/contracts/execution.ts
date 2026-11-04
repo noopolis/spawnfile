@@ -267,6 +267,11 @@ export interface SubjectTurnResult {
    * carries it.
    */
   limit?: DeclaredLimit;
+  /**
+   * The engine refused the turn on a subscription quota or rate limit, as its runtime reported it.
+   * Only on a `failed` turn. Not retried (the refusal outlasts a trial) and never scored.
+   */
+  failure?: 'quota';
   text: string;
   coverage: ObservationCoverage[];
   usage: Usage | null;

@@ -73,7 +73,7 @@ export interface TrialReport {
   /** Present exactly on `limit-exceeded`: the declared budget the subject exhausted. */
   limit?: DeclaredLimit;
   /** Present on classified failures only; absent legacy failures are not retryable. */
-  failureKind?: 'native-infrastructure' | 'behavioral' | 'measurement';
+  failureKind?: 'native-infrastructure' | 'behavioral' | 'measurement' | 'quota';
   /** A failed collector requires explicit zero-admission evidence before replacement. */
   collectionFailed?: true;
   hostWork: 'settled' | 'incomplete';

@@ -15,7 +15,7 @@ const profile = (realms?: ResolvedAuthProfile["realms"]): ResolvedAuthProfile =>
 });
 const AGY = { homeVolume: "spawnfile-training-training-agy-home", realmVolume: "spawnfile-training-training-agy-realm", unlockVolume: "spawnfile-training-training-agy-unlock" };
 
-const wakeResult: TrialWake = { state: "completed", acceptanceId: "a", executionId: "e", code: null, text: "{}", usage: [], transcript: null, requestToolCalls: [[]] };
+const wakeResult: TrialWake = { state: "completed", acceptanceId: "a", executionId: "e", code: null, text: "{}", usage: [], transcript: null, requestToolCalls: [[]], failure: null };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 /** Fake organizations on the AGY engine that record how many containers hold the realm at once. */

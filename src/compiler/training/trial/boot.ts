@@ -74,6 +74,11 @@ export interface TrialWake {
   transcript: string | null;
   /** Per model request of this wake, the tool-call names its response carried; null where the runtime could not say. */
   requestToolCalls: (readonly string[] | null)[];
+  /**
+   * The engine failure Daimon reported for this delivery: a failed receipt's detail, or the agent's
+   * execution error when Daimon deferred the delivery after retrying a failed execution. Null when none.
+   */
+  failure: string | null;
 }
 
 export interface BootedTrial {
@@ -317,6 +322,9 @@ const createBootedTrial = (input: {
         if (!executions.some((entry) => entry.execution_id === execution || entry.delivery_ids?.includes(options.deliveryId))) break;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
+      // Daimon defers a delivery whose execution failed twice; only its availability names that failure.
+      const failure = receipt.state === "failed" ? receipt.text || null
+        : ended() && !TERMINAL.has(receipt.state ?? "") ? await agentExecutionError(input.call, input.target, input.agentId) : null;
       const rows = await readLedger(input.docker, input.container);
       const requests = await readRequestLedger(input.docker, input.container);
       const fresh = requests.slice(seenRequests).filter((row) => row.agent === input.agentId);
@@ -328,11 +336,20 @@ const createBootedTrial = (input: {
         acceptanceId: id, code: receipt.code ?? null, executionId: receipt.execution_id ?? null, usage,
         state: TERMINAL.has(receipt.state ?? "") ? receipt.state as TrialWake["state"] : ended() ? "deferred" : "timeout",
         text: receipt.text ?? "",
+        failure,
         requestToolCalls: fresh.filter((row) => row.wake === options.deliveryId).map((row) => row.tool_calls ?? null),
         transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath)
       };
     }
   };
+};
+
+/** The agent's execution error from Daimon's availability, or null. */
+const agentExecutionError = async (call: DaimonControlCall, target: DaimonControlTarget, agentId: string): Promise<string | null> => {
+  const response = await call(target, "GET", "/v2/availability").catch(() => undefined);
+  if (response?.status !== 200) return null;
+  const agents = (JSON.parse(response.body) as { agents?: { agent_id?: string; error?: string }[] }).agents ?? [];
+  return agents.find((agent) => agent.agent_id === agentId)?.error || null;
 };
 
 /** The engine's newest session record, bounded. */

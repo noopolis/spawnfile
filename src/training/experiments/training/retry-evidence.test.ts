@@ -3,6 +3,7 @@ import type { Usage } from '../../contracts/execution.js';
 import { artifact, observation, snapshot } from '../../testing/index.js';
 import type { TrialReport } from '../trials/index.js';
 import { retryTrial } from './retry.js';
+import { trialScore } from './scoring.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -129,3 +130,30 @@ it.each(['valid', 'missing', 'empty-turns', 'tool-event', 'output-event',
     expect(execute).toHaveBeenCalledTimes(kind === 'valid' ? 2 : 1);
     expect(report).toEqual(before);
   });
+
+it('stops a trial whose engine refused on subscription quota: classified quota, never replaced, never scored', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'training-quota-'));
+  try {
+    const record = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
+id: quota
+checks: [{id: answer, eval: equals, input: output.text, value: DONE}]
+records: [{id: task, input: {prompt: work}}]
+`)).records[0]!;
+    let runs = 0;
+    const report = await retryTrial({ key: 'validation', maximum: 2, execute: async () => runTrial({ id: `attempt-${runs}`, phase: 'validation', record,
+      candidateId: 'candidate', datasetDigest: 'dataset', planDigest: 'plan', model: 'test', root, timeoutMs: 1000,
+      adapter: { id: 'quota-facade', capabilities: { toolTrace: 'none', liveObservations: false, cancellation: 'native-handle', multiTurn: false,
+        resources: ['instructions'], isolation: 'unit', readIsolation: 'declared-paths', protectedPaths: true }, start: async () => ({
+          run: async () => { runs++; return { status: 'failed', failure: 'quota', text: '', usage: null, coverage: [],
+            error: 'trial wake deferred: subscription quota: Individual quota reached. Resets in 95h51m47s.' }; },
+          stop: async () => historicalReport().stop!,
+        }) },
+      prepare: async () => ({ instructions: 'work', collect: async () => ({}) }),
+      registry: createEvaluationRegistry(), evaluation: { judges: {}, embeddings: {}, readText: async () => '' },
+      persist: async () => undefined }) });
+    // Mutation guard: classified native-infrastructure, the refusal was retried twice against the same exhausted quota.
+    expect(runs).toBe(1);
+    expect(report).toMatchObject({ execution: 'failed', failureKind: 'quota', status: 'error' });
+    expect(() => trialScore(report)).toThrow('stopped on subscription quota: trial wake deferred: subscription quota: Individual quota reached');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

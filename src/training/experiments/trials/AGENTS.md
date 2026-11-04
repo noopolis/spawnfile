@@ -110,7 +110,9 @@ absence unless every failed turn carries explicit all-zero neutral admission
 counters, with no retained behavior. Persist collectionFailed so replay/retry must
 re-derive that exception; missing or partial counters cannot authorize replacement.
 Unfinished collections always block; other collection/closure/evaluation failures
-are measurement failures, and decisive witnesses are behavioral failures. Operator
+are measurement failures, and decisive witnesses are behavioral failures. A turn whose
+adapter reports `failure: 'quota'` (the engine refused on subscription quota) is a
+`quota` failure: never replaced, and scoring stops the run naming the quota. Operator
 and trial-deadline cancellation outrank finalization failures: execution stays
 interrupted without failureKind and is never replaceable.
 

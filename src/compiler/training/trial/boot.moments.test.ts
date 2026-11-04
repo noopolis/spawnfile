@@ -215,3 +215,19 @@ it("accounts a turn the engine never closed from its measured model requests, ma
   expect(wake.usage).toEqual([expect.objectContaining({ input: 400, cache_read: 20, output: 12, calls: 2, complete: false })]);
   await trial.teardown();
 }, 20_000);
+
+it("reports the execution error of a delivery Daimon deferred after its failed retry, read from availability", async () => {
+  const control = async (_target: unknown, method: string, route: string) => {
+    if (method === "POST" && route === "/v2/wakes") return { status: 202, body: JSON.stringify({ state: "accepted", acceptance_id: "a-1" }) };
+    if (route.startsWith("/v2/wake-receipts/")) return { status: 200, body: JSON.stringify({ state: "accepted", deferred: true }) };
+    if (route === "/v2/availability") return { status: 200, body: JSON.stringify({ agents: [{ agent_id: "agent:other", error: "x" },
+      { agent_id: "agent:writer", error: "engine_failed: Individual quota reached. Resets in 95h51m47s." }] }) };
+    return { status: 200, body: JSON.stringify({ executions: [] }) };
+  };
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "failure"), docker,
+    instructions: "i", trialId: "failure", control: control as never });
+  const trial = await prepared.boot(null, { readyTimeoutMs: 1_000 });
+  const wake = await trial.wake("go", { deliveryId: "d-1", timeoutMs: 5_000 });
+  expect(wake).toMatchObject({ state: "deferred", code: null, failure: "engine_failed: Individual quota reached. Resets in 95h51m47s." });
+  await trial.teardown();
+}, 20_000);

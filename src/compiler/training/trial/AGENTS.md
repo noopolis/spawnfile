@@ -23,7 +23,9 @@ gateway sidecar. The training core drives it through the engine-neutral
   mounts) joined to the run's internal network, with the gateway URL, key and
   a fresh control token as boot inputs. Wakes go through Daimon's control API
   (`POST /v2/wakes`, `GET /v2/wake-receipts/:id`) via the shared
-  `runtime/daimon/control.ts` client; usage is the ledger rows the wake
+  `runtime/daimon/control.ts` client; a wake's `failure` is a failed
+  receipt's text or, for a delivery Daimon deferred, the agent's execution
+  error from `/v2/availability`; usage is the ledger rows the wake
   appended, transcript the engine's newest session record. Every compiled
   volume except gatewayed realms is renamed to the trial's own
   (`TRIAL_VOLUME_PREFIX`), so no trial shares a writable volume. A moment's wake

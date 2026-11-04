@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Observation } from '../../../../training/index.js';
-import { createDaimonBootedAdapter, type BootedTrialLauncher, type BootedWake } from './index.js';
+import { createDaimonBootedAdapter, quotaFailure, type BootedTrialLauncher, type BootedWake } from './index.js';
 
 const row = { input: 100, cache_read: 40, output: 5, notional_usd: 0.01, complete: true };
 const wake = (overrides: Partial<BootedWake> = {}): BootedWake => ({
@@ -80,4 +80,25 @@ test('boots from the record moment and collects declared outputs from the trial,
   // After the trial stops its container is gone: the last reading stands as the final collection.
   await session.stop('done');
   expect(await session.collect!({ output: 'state/filing.json' })).toEqual(final);
+});
+
+// What Daimon reported for the slice C AGY trial: the CLI's JSON stdout, elided in the middle, quota error at the end.
+const AGY_QUOTA = 'engine_failed: CLI engine exited 1: {"event":"init","conversation_id":"44ff69fd","init":{"tools":["ask_permission"]}[… 3274 bytes elided …]'
+  + 'conversation_id":"44ff69fd","status":"ERROR","response":"","error":"Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 95h51m47s.","num_turns":1}}';
+
+test('a delivery Daimon deferred after the engine refused on quota is a failed quota turn, never the subject deferring', async () => {
+  const session = await start([wake({ state: 'deferred', executionId: null, text: '', usage: [], failure: AGY_QUOTA }),
+    wake({ state: 'deferred', text: 'Deferred: missing row', failure: 'engine_failed: CLI engine timed out' })], []);
+  // Mutation guard: before the failure was read, this turn was graded as the subject's own deferral.
+  expect(await session.run({ id: 'turn-1', text: 'x' })).toMatchObject({ status: 'failed', failure: 'quota',
+    error: 'trial wake deferred: subscription quota: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 95h51m47s.' });
+  // Any other failure Daimon deferred keeps today's meaning.
+  expect(await session.run({ id: 'turn-2', text: 'x' })).toMatchObject({ status: 'completed' });
+});
+
+test('classifies quota and rate-limit wording engine-neutrally, and nothing else', () => {
+  for (const text of ['429 Too Many Requests', "You've hit your usage limit. Try again later.", 'rate limited by provider', 'Rate-limit exceeded'])
+    expect(quotaFailure(text)).toBeDefined();
+  for (const text of ['engine broker turn limit reached', 'CLI engine timed out', 'do not use quotation marks', '', null, undefined])
+    expect(quotaFailure(text)).toBeUndefined();
 });

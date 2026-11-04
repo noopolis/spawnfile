@@ -10,6 +10,10 @@ posts one wake and waits on its receipt, `stop` tears the organization down.
   ledger rows a wake appended to `Usage`, and the receipt and transcript as
   adapter-owned evidence. It never compiles, runs Docker or names an engine;
   composition (`src/cli/trainingExecution.ts`) injects the launcher.
+- A failed turn, or a delivery Daimon deferred after its failed retry, whose relayed
+  failure text reads as a subscription quota or rate limit (`quotaFailure`,
+  engine-neutral wording) is `failed` with `failure: 'quota'` and the quota sentence
+  in its error; other failure-deferrals keep their meaning.
 - Absent usage rows are `usage: null`, never zero. A receipt that never
   reached a terminal state before the trial deadline is a `failed` turn.
 - The transcript is operator-only: a `diagnostic` observation, never output.
