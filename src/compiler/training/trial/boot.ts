@@ -6,8 +6,8 @@ import type { ResolvedAuthProfile } from "../../../auth/index.js";
 import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, daimonProfileRealmVolume, getDaimonEngineDescriptor, isDaimonGatewayRealmMountId } from "../../../runtime/daimon/index.js";
 import { daimonHelperControlCall, type DaimonControlCall, type DaimonControlTarget } from "../../../runtime/daimon/control.js";
 import { RUNTIME_INSTALL_ROOT } from "../../../runtime/container.js";
-import { parseUsageLedger, type UsageRecord } from "../../../runtime/usageLedger.js";
-import { parseUsageRequestLedger } from "../../../runtime/usageRequestLedger.js";
+import { parseUsageLedger, USAGE_TURN_RECORD_VERSION, type UsageRecord } from "../../../runtime/usageLedger.js";
+import { parseUsageRequestLedger, type UsageRequestRecord } from "../../../runtime/usageRequestLedger.js";
 import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
 import { SpawnfileError } from "../../../shared/index.js";
 import { buildCompiledProject } from "../../buildProject.js";
@@ -244,9 +244,20 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
 /** Daimon's per-request stream sits beside the usage ledger. */
 const REQUEST_LEDGER = path.posix.join(path.posix.dirname(DAIMON_GROK_TURN_USAGE_LEDGER.filePath), "requests.jsonl");
 
-const readRequestToolCalls = async (docker: TrialDocker, container: string, agentId: string, deliveryId: string): Promise<(readonly string[] | null)[]> => {
-  const text = await docker(["exec", container, "cat", REQUEST_LEDGER]).catch(() => "");
-  return parseUsageRequestLedger(text).filter((row) => row.agent === agentId && row.wake === deliveryId).map((row) => row.tool_calls ?? null);
+const readRequestLedger = async (docker: TrialDocker, container: string): Promise<UsageRequestRecord[]> =>
+  parseUsageRequestLedger(await docker(["exec", container, "cat", REQUEST_LEDGER]).catch(() => ""));
+
+/**
+ * A turn the engine never closed (a wall-clock or token bound killed it) has no per-turn usage row, but its
+ * model requests were measured one by one. Their sum is the spend, marked incomplete so no reader takes it
+ * for a closed turn's own account.
+ */
+const requestUsage = (requests: readonly UsageRequestRecord[], agentId: string): UsageRecord[] => {
+  if (requests.length === 0) return [];
+  const sum = (key: "input" | "cached_input" | "cache_write" | "output" | "total") => requests.reduce((total, row) => total + row[key], 0);
+  return [{ v: USAGE_TURN_RECORD_VERSION, agent: agentId, at: requests.at(-1)!.at, wake: requests[0]!.wake, engine: requests[0]!.engine,
+    input: sum("input"), cache_read: sum("cached_input"), cache_write: sum("cache_write"), output: sum("output"), total: sum("total"),
+    calls: requests.length, complete: false, notional_usd: 0 }];
 };
 
 const readLedger = async (docker: TrialDocker, container: string): Promise<UsageRecord[]> => {
@@ -259,6 +270,7 @@ const createBootedTrial = (input: {
   sessionsPath: string | null; target: DaimonControlTarget; teardown: () => Promise<void>; workspace: string | null;
 }): BootedTrial => {
   let seenRows = 0;
+  let seenRequests = 0;
   return {
     container: input.container,
     teardown: input.teardown,
@@ -306,13 +318,17 @@ const createBootedTrial = (input: {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
       const rows = await readLedger(input.docker, input.container);
-      const usage = rows.slice(seenRows).filter((row) => row.agent === input.agentId);
+      const requests = await readRequestLedger(input.docker, input.container);
+      const fresh = requests.slice(seenRequests).filter((row) => row.agent === input.agentId);
+      const turnUsage = rows.slice(seenRows).filter((row) => row.agent === input.agentId);
+      const usage = turnUsage.length ? turnUsage : requestUsage(fresh, input.agentId);
       seenRows = rows.length;
+      seenRequests = requests.length;
       return {
         acceptanceId: id, code: receipt.code ?? null, executionId: receipt.execution_id ?? null, usage,
         state: TERMINAL.has(receipt.state ?? "") ? receipt.state as TrialWake["state"] : ended() ? "deferred" : "timeout",
         text: receipt.text ?? "",
-        requestToolCalls: await readRequestToolCalls(input.docker, input.container, input.agentId, options.deliveryId),
+        requestToolCalls: fresh.filter((row) => row.wake === options.deliveryId).map((row) => row.tool_calls ?? null),
         transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath)
       };
     }
