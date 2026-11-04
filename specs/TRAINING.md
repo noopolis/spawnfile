@@ -2580,6 +2580,13 @@ examples:
   env?: {NAME: value} }`, for example materializing a token file from the container's
   own environment). Every moment of that dataset runs them, in order, after readiness
   and before the wake, as `docker exec`; a failing step fails the boot.
+- `checks` (OPTIONAL) are mechanical checks beside the grader, as training core check
+  nodes with `eval` one of `word-count`, `values-in-source` or `json-schema`; a
+  `values-in-source` `source` entry MAY be `{ file }`, a sidecar relative to the dataset
+  file. `score` (OPTIONAL) maps `grade` and declared check ids to linear weights;
+  `gate` (OPTIONAL) lists the checks that must pass for the record to count. Every
+  `score` and `gate` id MUST be `grade` or a declared check, and no declared check may
+  be named `grade`. These are data the core grader reads; no code is involved.
 
 ### Lowering
 
@@ -2599,6 +2606,11 @@ training core instead of the authored locators; explicit `--train`, `--validatio
   declared, and one check `{ id: grade, eval: grader, input: artifact:output |
   artifact:reply, context: { <name>: context:<name> } }`. Each grader's directory is
   copied under `<out>/moments/graders/` so the check names a contained relative path.
+- With declared `checks` only, they follow `grade` in the record's `checks` (every check
+  must pass). With `score` or `gate`, the record instead carries one stage
+  `record-checks` with `grade` and the declared checks, `score.linear` and
+  `gate.all: [{ passed: <id> }]`. Each `{ file }` source is copied under
+  `<out>/moments/sidecars/` and named by that contained relative path.
 
 ### Trial boot
 

@@ -84,3 +84,30 @@ it("refuses a grader or context file outside the project", async () => {
   const { loaded, plan, out } = await project([{ ...example, context: { grounding: { file: "../../outside.md" } } }]);
   await expect(lowerTrainingMoments({ project: loaded, plan, out })).rejects.toThrow("context grounding");
 });
+
+it("lowers an example's declared checks, weights and gate into one scored stage beside its grade", async () => {
+  const { loaded, plan, out } = await project([{ ...example, id: "case-a", output: "filing.json",
+    context: { grounding: { file: "../grading/case-a/grounding.md" } },
+    checks: [
+      { id: "filed", eval: "json-schema", input: "artifact:output", schema: { type: "object", required: ["body"] } },
+      { id: "length", eval: "word-count", input: "artifact:output#/body", ignore: ["\\[E\\d+\\]"], min: 200, max: 400 },
+      { id: "values", eval: "values-in-source", input: ["artifact:output#/body"], source: ["context:grounding", { file: "../grading/case-a/grounding.md" }], max_missing: 0 }
+    ],
+    score: { grade: 0.7, length: 0.15, values: 0.15 }, gate: ["filed"] }]);
+  const datasets = await lowerTrainingMoments({ project: loaded, plan, out });
+  const [record] = JSON.parse(await readFile(datasets.train, "utf8")).records;
+  expect(record.checks).toBeUndefined();
+  const [stage] = record.stages;
+  expect(stage).toMatchObject({ id: "record-checks", score: { linear: { grade: 0.7, length: 0.15, values: 0.15 } }, gate: { all: [{ passed: "filed" }] } });
+  expect(stage.checks.map((check: { id: string }) => check.id)).toEqual(["grade", "filed", "length", "values"]);
+  expect(stage.checks[2]).toEqual({ id: "length", eval: "word-count", input: "artifact:output#/body", ignore: ["\\[E\\d+\\]"], min: 200, max: 400 });
+  // A sidecar source is copied beside the dataset and named by its contained relative path.
+  const [, sidecar] = stage.checks[3].source;
+  expect(sidecar).toMatch(/^sidecars\/[0-9a-f]{16}\/grounding\.md$/u);
+  expect(await readFile(path.join(path.dirname(datasets.train), sidecar), "utf8")).toBe("The ramp is empty.\n");
+});
+
+it("refuses weights or gates over undeclared checks", async () => {
+  await expect(project([{ ...example, id: "case-a", score: { grade: 1, length: 1 } }])).rejects.toThrow(/undeclared check: length/u);
+  await expect(project([{ ...example, id: "case-a", checks: [{ id: "grade", eval: "word-count", input: "artifact:reply", min: 1 }] }])).rejects.toThrow(/grader's/u);
+});

@@ -116,6 +116,17 @@ const copyGrader = async (graderFile: string, moments: string, copied: Map<strin
   }
   return path.posix.join(target.split(path.sep).join("/"), path.basename(graderFile));
 };
+/** Copies one sidecar file a declared check reads beside the lowered datasets; returns its dataset-relative path. */
+const copySidecar = async (file: string, moments: string, copied: Map<string, string>): Promise<string> => {
+  let target = copied.get(file);
+  if (!target) {
+    target = path.posix.join("sidecars", hash(file).slice(0, 16), path.basename(file));
+    await mkdir(path.join(moments, path.dirname(target)), { recursive: true, mode: 0o700 });
+    await cp(file, path.join(moments, target), { errorOnExist: true, force: false });
+    copied.set(file, target);
+  }
+  return target;
+};
 
 /**
  * Lowers every authored moment example into one executable training dataset per role, under `<out>/moments`.
@@ -167,9 +178,11 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
         setup: { moment },
         ...(Object.keys(context).length ? { context } : {}),
         ...(example.output ? { outputs: { output: example.output } } : {}),
-        checks: [{ id: "grade", eval: "grader", grader: await copyGrader(grader, moments, copied),
+        ...await recordChecks(example, {
+          id: "grade", eval: "grader", grader: await copyGrader(grader, moments, copied),
           input: example.output ? "artifact:output" : "artifact:reply",
-          ...(Object.keys(context).length ? { context: Object.fromEntries(Object.keys(context).map((name) => [name, `context:${name}`])) } : {}) }]
+          ...(Object.keys(context).length ? { context: Object.fromEntries(Object.keys(context).map((name) => [name, `context:${name}`])) } : {})
+        }, async (file) => copySidecar(await contained(project.root, base, file, `Example ${example.id} check source`), moments, copied))
       });
     }
   }
@@ -188,6 +201,22 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
     datasets[role] = file;
   }
   return datasets as LoweredTrainingDatasets;
+};
+
+type AuthoredExample = { checks?: Array<Record<string, unknown> & { source?: Array<string | { file: string }> }>; score?: Record<string, number>; gate?: string[] };
+
+/**
+ * The record's checks: the grader's `grade`, then the example's declared mechanical checks with their
+ * sidecar sources copied. Declared weights or gates make one stage; otherwise every check must pass.
+ */
+const recordChecks = async (example: AuthoredExample, grade: Record<string, unknown>, sidecar: (file: string) => Promise<string>) => {
+  const declared = await Promise.all((example.checks ?? []).map(async (check) => check.source === undefined ? check
+    : { ...check, source: await Promise.all(check.source.map((entry) => typeof entry === "string" ? entry : sidecar(entry.file))) }));
+  const checks = [grade, ...declared];
+  if (!example.score && !example.gate) return { checks };
+  return { stages: [{ id: "record-checks", checks,
+    ...(example.score ? { score: { linear: { ...example.score } } } : {}),
+    ...(example.gate ? { gate: { all: example.gate.map((id) => ({ passed: id })) } } : {}) }] };
 };
 
 /** Replaces the authored dataset locators with the lowered datasets. */
