@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -6,7 +6,7 @@ import { afterEach, expect, it } from "vitest";
 
 import { loadManifest } from "../../../manifest/index.js";
 import { compileProject } from "../../compileProject.js";
-import { JUDGE_INSTRUCTIONS, writeJudgeAgent } from "./judge.js";
+import { JUDGE_INSTRUCTIONS, JUDGE_MAX_WAKE_TEXT_BYTES, writeJudgeAgent } from "./judge.js";
 import { writeTrialProject } from "./project.js";
 
 const roots: string[] = [];
@@ -30,6 +30,9 @@ it.each([
   for (const key of ["skills", "mcp_servers", "surfaces", "schedule", "memory"]) expect(JSON.stringify(manifest)).not.toContain(`"${key}"`);
   const compiled = await compileProject(project.manifestPath, { manifestOverrides: project.manifestOverrides, outputDirectory: path.join(root, "out") });
   expect(Object.values(compiled.report.container!.runtime_instances[0]!.engine_by_node_id ?? {})).toEqual([engine]);
+  // A judge admits a whole reflection prompt; Daimon's default bound would refuse it.
+  const config = JSON.parse(await readFile(path.join(root, "out", compiled.report.container!.runtime_instances[0]!.config_path), "utf8"));
+  expect(config.host.maxWakeTextBytes).toBe(JUDGE_MAX_WAKE_TEXT_BYTES);
 });
 
 it("refuses an effort the engine does not accept and an unknown engine", async () => {

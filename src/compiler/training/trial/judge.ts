@@ -11,6 +11,9 @@ export interface JudgeSpec {
   effort?: string;
 }
 
+/** A judge's wake text bound: the largest reflection prompt (about 2 x 64 KiB history plus instructions) with headroom. */
+export const JUDGE_MAX_WAKE_TEXT_BYTES = 196_608;
+
 /** The judge's system document: one self-contained judgment per wake, answered in the reply alone. */
 export const JUDGE_INSTRUCTIONS = [
   "You are a judge in a training run. Every message is one self-contained judging task.",
@@ -38,7 +41,9 @@ export const writeJudgeAgent = async (spec: JudgeSpec, directory: string): Promi
     kind: "agent",
     name: `judge-${spec.engine}`,
     description: `Tool-free ${spec.engine} training judge`,
-    runtime: { name: "daimon", options: { engine: spec.engine } },
+    // A judgment carries whole documents (a reflection prompt holds the instructions plus two
+    // 64 KiB history projections), so the judge admits wider wakes than Daimon's 16 KiB default.
+    runtime: { name: "daimon", options: { engine: spec.engine, max_wake_text_bytes: JUDGE_MAX_WAKE_TEXT_BYTES } },
     ...(pinned ? { execution: { model: { primary: {
       provider, name: spec.model, auth: { method }, ...(spec.effort === undefined ? {} : { reasoning_effort: spec.effort })
     } } } } : {})
