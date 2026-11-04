@@ -64,7 +64,9 @@ export const usageSchema = z.object({
   inputTokens: count.nullable(), cachedInputTokens: count.nullable(), outputTokens: count.nullable(),
   cacheWriteInputTokens: count.nullable().optional(), cacheWrite5mInputTokens: count.nullable().optional(),
   cacheWrite1hInputTokens: count.nullable().optional(),
-  reasoningTokens: count.nullable(), source: id,
+  reasoningTokens: count.nullable(),
+  /** A runtime's notional API-equivalent USD (`Usage.notionalUsd`), as a booted judge's ledger reports it. */
+  notionalUsd: z.number().nonnegative().nullable().optional(), source: id,
 }).strict().nullable();
 const inferenceAttemptSchema = z.object({
   id, ordinal: z.number().int().positive(), providerId: id, requestedModel: id,
