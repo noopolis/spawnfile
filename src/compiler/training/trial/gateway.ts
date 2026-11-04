@@ -15,6 +15,7 @@ import {
   DAIMON_GATEWAY_SIDECAR_ALIAS,
   DAIMON_GATEWAY_SIDECAR_KEY_ENV,
   DAIMON_GATEWAY_SIDECAR_URL,
+  DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV,
   renderDaimonGatewaySidecarScript
 } from "../../containerDaimonGatewayRender.js";
 import { slugify } from "../../helpers.js";
@@ -118,7 +119,9 @@ export const startTrainingGateway = async (options: TrainingGatewayOptions): Pro
     const support = await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-gateway-"));
     try {
       const envFile = path.join(support, "gateway.env");
-      await writeFile(envFile, `${DAIMON_GATEWAY_SIDECAR_KEY_ENV}=${key}\n`, { mode: 0o600 });
+      // Test-only: `SPAWNFILE_TRAINING_TEST_FORCE_REFRESH=1` makes the gateway rotate each login once, on its first request.
+      const forced = process.env.SPAWNFILE_TRAINING_TEST_FORCE_REFRESH === "1" ? `${DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV}=1\n` : "";
+      await writeFile(envFile, `${DAIMON_GATEWAY_SIDECAR_KEY_ENV}=${key}\n${forced}`, { mode: 0o600 });
       const script = renderDaimonGatewaySidecarScript(options.engines, options.runtimeRoot);
       await docker(["create", "--name", container, "--restart", "no", "--network", egress, "--label", `${LABEL}=${suffix}`,
         ...DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, ...mounts, "--env-file", envFile,

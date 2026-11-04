@@ -24,6 +24,7 @@ import {
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
 import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
+import { assertDaimonWakeTextBound, resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
 import { assertDaimonRecordingIsolation, daimonRecordingMountId, resolveDaimonAgentRecording } from "./recording.js";
 
@@ -224,6 +225,9 @@ export const createDaimonContainerTargets = async (
   const hasAttention = [...attentionById.values()].some((attention) => attention !== undefined);
   if (hasAttention) await assertDaimonAttentionAuthority();
   if (hasSchedules) await assertDaimonScheduleAuthority();
+  const declaredWakeText = agents.map((input) => resolveDaimonWakeTextBytes(input.value.runtime.options.max_wake_text_bytes, input.id)).filter((bytes) => bytes !== undefined);
+  const maxWakeTextBytes = declaredWakeText.length ? Math.max(...declaredWakeText) : undefined;
+  if (maxWakeTextBytes !== undefined) await assertDaimonWakeTextBound(maxWakeTextBytes);
   const configAgents = agents
     .map((input) => {
       const memory = resolveDaimonAgentMemory(input.value);
@@ -304,6 +308,7 @@ export const createDaimonContainerTargets = async (
     host: {
       bindHost: "127.0.0.1",
       controlTokenEnv: "SPAWNFILE_DAIMON_CONTROL_TOKEN",
+      ...(maxWakeTextBytes === undefined ? {} : { maxWakeTextBytes }),
       port: DAIMON_CONTROL_PORT
     },
     version: hasSchedules || hasAttention

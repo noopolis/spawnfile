@@ -13,17 +13,17 @@
 runtimes:
   daimon:
     remote: git@github.com:noopolis/daimon-harness.git
-    ref: c5337565df0b60151ae731b17878f784c13a9337
+    ref: a911e81b76067a80385f4490d97b829a040c1192
     default_branch: main
     install:
       kind: container_image
       image: noopolis/spawnfile-runtime-daimon
-      tag: 0.2.16-c533756
-      digest: sha256:cec10f3e0b0547d352de0a61d7d2345efe66f8ece6bf6fe7e5178cee1465f239
+      tag: 0.2.17-a911e81
+      digest: sha256:e80fd365748d326499d0a572764e125a2085d95f94e0f2eecbbeb35914c720a1
       capability_receipts:
-        amd64: sha256:effee312a6ad276d19176e11eb34eea20f3dcb823a0141117e00f81ef970a491
-        arm64: sha256:01a5c19684a2a61de82b7630cafe8085bee7164f53555e5a3680b9e11f657c6a
-      contract_manifest_sha256: sha256:85de96d75cf1e02e0e88bd6e1dcce39a125c1d5b97f1eb9c01911a0d5c3316e8
+        amd64: sha256:b7db24ab7f5e2feba53619be0636f5df52d196ae521d5a738e4f7993e4719e87
+        arm64: sha256:e469272b4daec6b4383510221cbc63ac15e7352309e1bf015bd03adc5d78816c
+      contract_manifest_sha256: sha256:0f9d9c57f4455da7f4e07d399245e926d9d13a1092f607f41ba8e9e5cc964be6
     status: active
 
   openclaw:

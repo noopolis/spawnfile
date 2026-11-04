@@ -170,6 +170,8 @@ export const DAIMON_GATEWAY_SIDECAR_ALIAS = "daimon-gateway";
 export const DAIMON_GATEWAY_SIDECAR_URL = `http://${DAIMON_GATEWAY_SIDECAR_ALIAS}:${DAIMON_GATEWAY_PORT}`;
 /** Env name carrying the run's 64-hex gateway key into the sidecar's root shell; unset before anything else starts. */
 export const DAIMON_GATEWAY_SIDECAR_KEY_ENV = "SPAWNFILE_DAIMON_GATEWAY_KEY";
+/** Daimon's test-only hook: each realm refreshes once on its first request. Only a training sidecar forwards it. */
+export const DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV = "DAIMON_GATEWAY_TEST_FORCE_REFRESH";
 
 /**
  * Root script for the sidecar placement: the same binary, state provisioning
@@ -188,6 +190,6 @@ export const renderDaimonGatewaySidecarScript = (engines: readonly string[], run
     `unset ${DAIMON_GATEWAY_SIDECAR_KEY_ENV}`,
     ...renderDaimonGatewayStateProvisioning(descriptors, "0.0.0.0"),
     `unset ${KEY_VARIABLE}`,
-    `exec ${drop(DAIMON_GATEWAY_UID)} env -i PATH="$PATH" HOME=/nonexistent LANG=C.UTF-8 ${path.posix.join(runtimeRoot, "bin/daimon-runtime")} gateway --config ${DAIMON_GATEWAY_CONFIG}`
+    `exec ${drop(DAIMON_GATEWAY_UID)} env -i PATH="$PATH" HOME=/nonexistent LANG=C.UTF-8 ${DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV}="\${${DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV}:-}" ${path.posix.join(runtimeRoot, "bin/daimon-runtime")} gateway --config ${DAIMON_GATEWAY_CONFIG}`
   ].join("\n") + "\n";
 };

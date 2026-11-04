@@ -263,3 +263,10 @@ a manifest whose `consumedConfigFields` ends in `host.maxWakeTextBytes` must
 publish that integer in its v2 host schema (minimum Daimon's 16,384-byte
 default), and its maximum becomes `maxWakeTextBytesCeiling`. A manifest without
 the field parses as before and has no ceiling.
+
+`wakeTextBound.ts` owns runtime option `max_wake_text_bytes` (integer, at least
+16,384): an organization's `host.maxWakeTextBytes` is the widest any agent
+declares, emitted only when the pinned manifest declares the field and the
+value fits its ceiling. Training judges declare it (`JUDGE_MAX_WAKE_TEXT_BYTES`,
+192 KiB: a reflection prompt carries the instructions plus two 64 KiB history
+projections). Production agents leave it unset, so their config is unchanged.
