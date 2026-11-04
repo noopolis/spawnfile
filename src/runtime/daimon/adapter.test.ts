@@ -408,7 +408,7 @@ describe("daimonAdapter", () => {
 
   it("uses the pinned image because it attests the exact compiler contract", async () => {
     const recipe = await createRuntimeInstallRecipe("daimon");
-    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:e80fd365748d326499d0a572764e125a2085d95f94e0f2eecbbeb35914c720a1");
+    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:69735c256d6bcb5937ab61f903771168c461f03c34c4e125b297732284fb3252");
   });
 
   it("lowers schedules while retaining the MCP and non-Moltnet surface boundary", async () => {
