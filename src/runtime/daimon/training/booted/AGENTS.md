@@ -13,7 +13,16 @@ posts one wake and waits on its receipt, `stop` tears the organization down.
 - A failed turn, or a delivery Daimon deferred after its failed retry, whose relayed
   failure text reads as a subscription quota or rate limit (`quotaFailure`,
   engine-neutral wording) is `failed` with `failure: 'quota'` and the quota sentence
-  in its error; other failure-deferrals keep their meaning.
+  in its error. Any other delivery Daimon deferred with a failure is a `failed` turn:
+  only a deferral with no failure is the subject's own choice.
+- A failed turn whose failure reads as the wall-clock bound (`timeoutFailure`:
+  `limit=timeout`, "timed out", "wall-clock bound") after measured model output
+  (a usage row with output tokens) is the subject missing its deadline: `failed`
+  with `limit: 'timeout'`, scored as a declared-limit stop (absent filing fails
+  its checks, usage counted). With no measured model output it is a hang and stays
+  an unlabelled failure for the infrastructure policy.
+- Prompt tokens are `total - output` of each row, so cached reads count inside
+  input whether the engine reports them inside `input` or beside it.
 - Absent usage rows are `usage: null`, never zero. A receipt that never
   reached a terminal state before the trial deadline is a `failed` turn.
 - The transcript is operator-only: a `diagnostic` observation, never output.

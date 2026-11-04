@@ -62,7 +62,7 @@ export interface TrialOptions {
 }
 
 export interface TrialWake {
-  /** `deferred`: the subject ended its turn deferring the delivery (with `code` when a failure deferred it). */
+  /** `deferred`: Daimon left the delivery deferred: the subject's own choice when `failure` is null, else Daimon deferring it after a failed retry. */
   state: "completed" | "deferred" | "failed" | "stopped" | "timeout";
   acceptanceId: string;
   executionId: string | null;
