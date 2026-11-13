@@ -270,3 +270,8 @@ declares, emitted only when the pinned manifest declares the field and the
 value fits its ceiling. Training judges declare it (`JUDGE_MAX_WAKE_TEXT_BYTES`,
 192 KiB: a reflection prompt carries the instructions plus two 64 KiB history
 projections). Production agents leave it unset, so their config is unchanged.
+
+It reads the optional per-agent CLI turn bound the same way: a manifest whose
+`consumedConfigFields` ends in `agents[].engine.turnTimeoutMs` (after the wake
+text field when both are present) must publish that integer in its v2 agent
+engine schema, and its minimum and maximum become `turnTimeoutMsBounds`.
