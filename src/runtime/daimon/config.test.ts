@@ -178,12 +178,12 @@ describe("Daimon memory lowering", () => {
   });
 
   it("lowers a Codex or AGY agent's turn_limits.timeout_ms into Daimon's engine turnTimeoutMs, and only that", async () => {
-    const agy = await emitConfig(createDaimonNode({ runtime: { name: "daimon", options: { engine: "agy", turn_limits: { timeout_ms: 1_800_000 } } } }));
+    const agy = await emitConfig(createDaimonNode({ execution: undefined, runtime: { name: "daimon", options: { engine: "agy", turn_limits: { timeout_ms: 1_800_000 } } } }));
     expect(agy.agents[0]!.engine).toEqual({ kind: "agy", turnTimeoutMs: 1_800_000 });
     const codex = await emitConfig(createDaimonNode({ runtime: { name: "daimon", options: { engine: "codex", turn_limits: { timeout_ms: 600_000 } } } }));
     expect(codex.agents[0]!.engine).toMatchObject({ kind: "codex", turnTimeoutMs: 600_000 });
     expect((await emitConfig(createDaimonNode())).agents[0]!.engine).not.toHaveProperty("turnTimeoutMs");
-    await expect(emitConfig(createDaimonNode({ runtime: { name: "daimon", options: { engine: "agy", turn_limits: { timeout_ms: 1_800_000, max_requests: 4 } } } })))
+    await expect(emitConfig(createDaimonNode({ execution: undefined, runtime: { name: "daimon", options: { engine: "agy", turn_limits: { timeout_ms: 1_800_000, max_requests: 4 } } } })))
       .rejects.toThrow(/turn_limits declares only timeout_ms on a Codex or AGY agent/u);
   });
 
