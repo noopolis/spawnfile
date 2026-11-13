@@ -2,19 +2,25 @@ import { fileURLToPath } from "node:url";
 
 import { SpawnfileError } from "../../shared/index.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256, readVerifiedDaimonContractManifest, type DaimonContractManifest } from "./contractManifest.js";
-import type { DaimonGrokTurnLimits } from "./grokTurnLimits.js";
 
 /**
  * A CLI engine agent's (Codex, AGY) `turn_limits`: only `timeout_ms`, the wall clock
  * one turn may run, lowered to Daimon's per-agent `engine.turnTimeoutMs`. Request and
- * token budgets stay a Grok broker registration. Absent keeps Daimon's engine default.
+ * token budgets are Grok broker registrations a CLI engine cannot honor, so they are
+ * refused. The value's bounds are the pinned manifest's (`assertDaimonTurnTimeoutBound`).
+ * Absent keeps Daimon's engine default.
  */
-export const resolveDaimonCliTurnTimeoutMs = (agentId: string, limits: DaimonGrokTurnLimits | undefined): number | undefined => {
-  if (limits === undefined) return undefined;
-  if (limits.maxRequests !== undefined || limits.maxTokens !== undefined || limits.timeoutMs === undefined) {
+export const resolveDaimonCliTurnTimeoutMs = (agentId: string, value: unknown): number | undefined => {
+  if (value === undefined) return undefined;
+  const timeoutMs = value !== null && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value).length === 1 ? (value as Record<string, unknown>).timeout_ms : undefined;
+  if (timeoutMs === undefined) {
     throw new SpawnfileError("validation_error", `Daimon runtime option turn_limits declares only timeout_ms on a Codex or AGY agent: ${agentId}`);
   }
-  return limits.timeoutMs;
+  if (typeof timeoutMs !== "number" || !Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
+    throw new SpawnfileError("validation_error", `Daimon runtime option turn_limits.timeout_ms must be a positive integer: ${agentId}`);
+  }
+  return timeoutMs;
 };
 
 /** The pinned Daimon must read `engine.turnTimeoutMs`, and the declared value must fit its bounds. */

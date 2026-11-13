@@ -6,9 +6,13 @@ import { assertDaimonTurnTimeoutBound, resolveDaimonCliTurnTimeoutMs } from "./t
 describe("Daimon CLI engine turn timeout", () => {
   it("reads only timeout_ms from a Codex or AGY agent's turn_limits", () => {
     expect(resolveDaimonCliTurnTimeoutMs("agent:a", undefined)).toBeUndefined();
-    expect(resolveDaimonCliTurnTimeoutMs("agent:a", { timeoutMs: 1_800_000 })).toBe(1_800_000);
-    for (const limits of [{ maxRequests: 4 }, { timeoutMs: 1_000, maxTokens: 10 }]) {
+    // Bounds are the pinned manifest's, never the Grok broker's: 2 h passes here and is judged at compile.
+    expect(resolveDaimonCliTurnTimeoutMs("agent:a", { timeout_ms: 7_200_000 })).toBe(7_200_000);
+    for (const limits of [{}, { max_requests: 4 }, { timeout_ms: 1_000, max_tokens: 10 }, null, []]) {
       expect(() => resolveDaimonCliTurnTimeoutMs("agent:a", limits)).toThrow(/declares only timeout_ms on a Codex or AGY agent: agent:a/u);
+    }
+    for (const timeout of [0, 1.5, "1800000"]) {
+      expect(() => resolveDaimonCliTurnTimeoutMs("agent:a", { timeout_ms: timeout })).toThrow(/timeout_ms must be a positive integer/u);
     }
   });
 

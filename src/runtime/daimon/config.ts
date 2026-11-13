@@ -99,7 +99,7 @@ const assertPublicInstructionBounds = (agentId: string, instructions: string): v
 // A Grok agent's turn_limits are its broker registration; a CLI engine's are only its turn timeout.
 const cliTurnTimeoutMs = (agentId: string, node: ResolvedAgentNode): number | undefined =>
   daimonEngineHasBroker(resolveDaimonEngine(node)) ? undefined
-    : resolveDaimonCliTurnTimeoutMs(agentId, resolveDaimonGrokTurnLimits(node.runtime.options.turn_limits));
+    : resolveDaimonCliTurnTimeoutMs(agentId, node.runtime.options.turn_limits);
 
 // Daimon lowers only the primary model; an effort on a fallback would be accepted and dropped.
 const assertNoFallbackReasoningEffort = (agentId: string, node: ResolvedAgentNode): void => {
