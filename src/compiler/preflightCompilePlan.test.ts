@@ -92,6 +92,6 @@ describe("preflightCompilePlan", () => {
     ].join("\n"));
     const failure = preflight(directory);
     await expect(failure).rejects.toThrow("Compile would refuse 1 agent(s):");
-    await expect(failure).rejects.toThrow("turn_limits is only supported on a brokered Grok agent: agent:writer");
+    await expect(failure).rejects.toThrow("turn_limits declares only timeout_ms on a Codex or AGY agent: agent:writer");
   });
 });
