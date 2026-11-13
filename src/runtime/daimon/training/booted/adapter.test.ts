@@ -103,6 +103,15 @@ const GROK_TIMEOUT = 'engine_failed: engine broker turn failed (limit_exceeded; 
 // Its usage row: Grok's `input` is the fresh prompt only, cached reads sit beside it in their own bucket.
 const grokRow = { input: 1_279_022, cache_read: 4_771_712, output: 266_795, total: 1_279_022 + 4_771_712 + 266_795, notional_usd: 0, complete: false };
 
+// An AGY turn killed at its clock (Daimon 0.2.20+): the finished steps metered from its stream, after the one retry.
+const AGY_TIMEOUT = 'engine_failed: CLI engine timed out';
+const agyRow = { input: 29_658, cache_read: 0, output: 368, total: 30_026, notional_usd: 0, complete: false };
+
+test('an AGY turn killed at its clock after metered steps is a declared timeout, scored', async () => {
+  const session = await start([wake({ state: 'deferred', executionId: null, text: '', usage: [agyRow], failure: AGY_TIMEOUT })], []);
+  expect(await session.run({ id: 'turn-1', text: 'x' })).toMatchObject({ status: 'failed', limit: 'timeout', usage: { outputTokens: 368 } });
+});
+
 test('a turn killed at its wall-clock bound while the model worked is a declared timeout, scored; a hang is not', async () => {
   const session = await start([wake({ state: 'deferred', executionId: null, text: '', usage: [grokRow], failure: GROK_TIMEOUT }),
     wake({ state: 'deferred', executionId: null, text: '', usage: [], failure: GROK_TIMEOUT }),
