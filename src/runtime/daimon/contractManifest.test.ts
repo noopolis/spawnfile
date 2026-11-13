@@ -127,6 +127,26 @@ describe("Daimon contract manifest", () => {
     }
     expect(() => parseDaimonContractManifest({ ...base, consumedConfigFields: [...base.consumedConfigFields, "host.other"] })).toThrow(/configuration contract/u);
   });
+  it("reads the optional engine turn timeout only from its consumed field and agent engine schema together", () => {
+    expect(parseDaimonContractManifest(manifest()).turnTimeoutMsBounds).toBeUndefined();
+    const base = manifest();
+    const v2 = base.organizationRuntimeConfigV2Schema as Record<string, any>;
+    const engine = (bound: unknown) => ({ ...v2, properties: { ...v2.properties, agents: { ...v2.properties.agents,
+      items: { ...v2.properties.agents.items, properties: { ...v2.properties.agents.items.properties, engine: { properties: { turnTimeoutMs: bound } } } } } } });
+    const fields = (...extra: string[]) => [...base.consumedConfigFields, ...extra];
+    const capable = { ...base, consumedConfigFields: fields("agents[].engine.turnTimeoutMs"),
+      organizationRuntimeConfigV2Schema: engine({ type: "integer", minimum: 1_000, maximum: 3_600_000 }) };
+    expect(parseDaimonContractManifest(capable).turnTimeoutMsBounds).toEqual({ minimum: 1_000, maximum: 3_600_000 });
+    // Beside the wake text bound, in its declared order only.
+    const both = { ...capable, consumedConfigFields: fields("host.maxWakeTextBytes", "agents[].engine.turnTimeoutMs"),
+      organizationRuntimeConfigV2Schema: { ...capable.organizationRuntimeConfigV2Schema, properties: { ...capable.organizationRuntimeConfigV2Schema.properties,
+        host: { properties: { maxWakeTextBytes: { type: "integer", minimum: 16_384, maximum: 262_144 } } } } } };
+    expect(parseDaimonContractManifest(both)).toMatchObject({ maxWakeTextBytesCeiling: 262_144, turnTimeoutMsBounds: { minimum: 1_000, maximum: 3_600_000 } });
+    expect(() => parseDaimonContractManifest({ ...both, consumedConfigFields: fields("agents[].engine.turnTimeoutMs", "host.maxWakeTextBytes") })).toThrow(/configuration contract/u);
+    for (const bound of [undefined, { type: "number", minimum: 1_000, maximum: 3_600_000 }, { type: "integer", minimum: 0, maximum: 3_600_000 }, { type: "integer", minimum: 1_000 }, { type: "integer", minimum: 5_000, maximum: 1_000 }]) {
+      expect(() => parseDaimonContractManifest({ ...capable, organizationRuntimeConfigV2Schema: engine(bound) })).toThrow(/turnTimeoutMs/u);
+    }
+  });
   it("accepts canonical source-free contract bytes", async () => {
     const source = `${canonical(manifest())}\n`;
     await expect(readVerifiedDaimonContractManifest(await writeManifest(source))).resolves.toMatchObject({
