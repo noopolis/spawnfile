@@ -11,7 +11,7 @@ import { daimonContractManifestV6Schema, daimonContractManifestV7Schema } from "
 export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v7" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
-  "sha256:0f9d9c57f4455da7f4e07d399245e926d9d13a1092f607f41ba8e9e5cc964be6" as const;
+  "sha256:481f189e8b7d7e5927e215ed0d30d0d963b5b6d1677b87374bed929ee6a39608" as const;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";

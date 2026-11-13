@@ -177,6 +177,16 @@ describe("Daimon memory lowering", () => {
     expect(config.agents[0]!.engine).toEqual({ kind: "grok", model: "grok-4.5", reasoningEffort: "medium" });
   });
 
+  it("lowers a Codex or AGY agent's turn_limits.timeout_ms into Daimon's engine turnTimeoutMs, and only that", async () => {
+    const agy = await emitConfig(createDaimonNode({ execution: undefined, runtime: { name: "daimon", options: { engine: "agy", turn_limits: { timeout_ms: 1_800_000 } } } }));
+    expect(agy.agents[0]!.engine).toEqual({ kind: "agy", turnTimeoutMs: 1_800_000 });
+    const codex = await emitConfig(createDaimonNode({ runtime: { name: "daimon", options: { engine: "codex", turn_limits: { timeout_ms: 600_000 } } } }));
+    expect(codex.agents[0]!.engine).toMatchObject({ kind: "codex", turnTimeoutMs: 600_000 });
+    expect((await emitConfig(createDaimonNode())).agents[0]!.engine).not.toHaveProperty("turnTimeoutMs");
+    await expect(emitConfig(createDaimonNode({ execution: undefined, runtime: { name: "daimon", options: { engine: "agy", turn_limits: { timeout_ms: 1_800_000, max_requests: 4 } } } })))
+      .rejects.toThrow(/turn_limits declares only timeout_ms on a Codex or AGY agent/u);
+  });
+
   it("never restates a Grok agent's runtime home mode, which its worker's group must traverse for spills", async () => {
     const [target] = await createDaimonContainerTargets([{ emittedFiles: [], id: "agent:grok", kind: "agent", slug: "grok", value: createDaimonTestNode({
       execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } },

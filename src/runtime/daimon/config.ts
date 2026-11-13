@@ -24,6 +24,7 @@ import {
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
 import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
+import { assertDaimonTurnTimeoutBound, resolveDaimonCliTurnTimeoutMs } from "./turnTimeout.js";
 import { assertDaimonWakeTextBound, resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
 import { assertDaimonRecordingIsolation, daimonRecordingMountId, resolveDaimonAgentRecording } from "./recording.js";
@@ -95,11 +96,10 @@ const assertPublicInstructionBounds = (agentId: string, instructions: string): v
   }
 };
 
-const assertTurnLimitsEngine = (agentId: string, engine: DaimonEngine, turnLimits: unknown): void => {
-  if (!daimonEngineHasBroker(engine) && turnLimits !== undefined) {
-    throw new SpawnfileError("validation_error", `Daimon runtime option turn_limits is only supported on a brokered Grok agent: ${agentId}`);
-  }
-};
+// A Grok agent's turn_limits are its broker registration; a CLI engine's are only its turn timeout.
+const cliTurnTimeoutMs = (agentId: string, node: ResolvedAgentNode): number | undefined =>
+  daimonEngineHasBroker(resolveDaimonEngine(node)) ? undefined
+    : resolveDaimonCliTurnTimeoutMs(agentId, node.runtime.options.turn_limits);
 
 // Daimon lowers only the primary model; an effort on a fallback would be accepted and dropped.
 const assertNoFallbackReasoningEffort = (agentId: string, node: ResolvedAgentNode): void => {
@@ -112,7 +112,7 @@ const assertNoFallbackReasoningEffort = (agentId: string, node: ResolvedAgentNod
 export const assertDaimonAgentOptions = (agentId: string, node: ResolvedAgentNode): void => {
   resolveDaimonAttention(node.runtime.options.attention);
   assertNoFallbackReasoningEffort(agentId, node);
-  assertTurnLimitsEngine(agentId, resolveDaimonEngine(node), resolveDaimonGrokTurnLimits(node.runtime.options.turn_limits));
+  cliTurnTimeoutMs(agentId, node);
 };
 
 /** The instruction-size check compile applies in `createDaimonContainerTargets`, for preflight. */
@@ -131,8 +131,8 @@ export const resolveDaimonEngine = (node: ResolvedAgentNode): DaimonEngine => {
 };
 
 const resolveDaimonEngineConfig = (
-  node: ResolvedAgentNode
-): { kind: DaimonEngine; model?: string; reasoningEffort?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY } => {
+  agentId: string, node: ResolvedAgentNode
+): { kind: DaimonEngine; model?: string; reasoningEffort?: string; codexSandbox?: typeof DAIMON_CODEX_WORKSPACE_NO_NETWORK_POLICY; turnTimeoutMs?: number } => {
   const kind = resolveDaimonEngine(node);
   const descriptor = getDaimonEngineDescriptor(kind)!;
   if (descriptor.broker) {
@@ -141,6 +141,7 @@ const resolveDaimonEngineConfig = (
   }
   const model = descriptor.modelSelection.configurable ? node.execution?.model?.primary?.name : undefined;
   const reasoningEffort = descriptor.modelSelection.configurable ? node.execution?.model?.primary?.reasoning_effort : undefined;
+  const turnTimeoutMs = cliTurnTimeoutMs(agentId, node);
   const codexSandbox = descriptor.sandbox.policy && node.runtime.options.codex_policy === "workspace-no-network"
     ? descriptor.sandbox.policy
     : undefined;
@@ -148,7 +149,8 @@ const resolveDaimonEngineConfig = (
     kind,
     ...(model === undefined ? {} : { model }),
     ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-    ...(codexSandbox === undefined ? {} : { codexSandbox })
+    ...(codexSandbox === undefined ? {} : { codexSandbox }),
+    ...(turnTimeoutMs === undefined ? {} : { turnTimeoutMs })
   };
 };
 
@@ -218,9 +220,8 @@ export const createDaimonContainerTargets = async (
   for (const input of agents) assertNoFallbackReasoningEffort(input.id, input.value);
   const hasSchedules = agents.some((input) => input.value.schedule !== undefined);
   const attentionById = new Map(agents.map((input) => [input.id, resolveDaimonAttention(input.value.runtime.options.attention)]));
-  // Declared per agent and carried to the broker's service config, never into the Daimon
-  // organization config: `turn_limits` is a registration budget, and the contract's
-  // `consumedConfigFields` does not include it.
+  // A Grok agent's `turn_limits` is a registration budget carried to the broker's service
+  // config; a Codex or AGY agent's lowers to `engine.turnTimeoutMs` (`turnTimeout.ts`).
   const turnLimitsById = new Map(agents.map((input) => [input.id, resolveDaimonGrokTurnLimits(input.value.runtime.options.turn_limits)]));
   const hasAttention = [...attentionById.values()].some((attention) => attention !== undefined);
   if (hasAttention) await assertDaimonAttentionAuthority();
@@ -228,12 +229,16 @@ export const createDaimonContainerTargets = async (
   const declaredWakeText = agents.map((input) => resolveDaimonWakeTextBytes(input.value.runtime.options.max_wake_text_bytes, input.id)).filter((bytes) => bytes !== undefined);
   const maxWakeTextBytes = declaredWakeText.length ? Math.max(...declaredWakeText) : undefined;
   if (maxWakeTextBytes !== undefined) await assertDaimonWakeTextBound(maxWakeTextBytes);
+  for (const input of agents) {
+    const timeoutMs = cliTurnTimeoutMs(input.id, input.value);
+    if (timeoutMs !== undefined) await assertDaimonTurnTimeoutBound(input.id, timeoutMs);
+  }
   const configAgents = agents
     .map((input) => {
       const memory = resolveDaimonAgentMemory(input.value);
       const recording = resolveDaimonAgentRecording(input, DAIMON_ORGANIZATION_TARGET_ID, agents.length);
       return {
-      engine: resolveDaimonEngineConfig(input.value),
+      engine: resolveDaimonEngineConfig(input.id, input.value),
       id: input.id,
       instructions: formatInstructions(input.value),
       name: input.value.name,
@@ -263,7 +268,6 @@ export const createDaimonContainerTargets = async (
     reason: `Daimon wake recording for ${agent.id}`
   }] : []);
   const engineByNodeId = Object.fromEntries(configAgents.map((agent) => [agent.id, agent.engine.kind]));
-  for (const agent of configAgents) assertTurnLimitsEngine(agent.id, agent.engine.kind, turnLimitsById.get(agent.id));
   const grokTurnLimitsByNodeId = Object.fromEntries(configAgents
     .filter((agent) => daimonEngineHasBroker(agent.engine.kind) && turnLimitsById.get(agent.id) !== undefined)
     .map((agent) => [agent.id, turnLimitsById.get(agent.id)!]));
