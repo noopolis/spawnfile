@@ -126,3 +126,16 @@ PreparedTrial.collect(outcome?) receives cloned returned turns, including adapte
 stop-proven, independent of token accounting; only it certifies an observed artifact absence.
 `status` still requires complete usage, so a retried trial can be settled with partial usage:
 absent required artifacts fail while token-efficiency stays unknown.
+
+Every trial has an evidence directory, `<trial root>/evidence`, handed to the
+adapter as `SubjectStart.evidencePath`: an adapter that owns a runtime saves that
+runtime's full logs there before tearing it down, on every path. A turn result's
+`failureText` (the runtime's whole account of a turn that did not complete) is
+written there once as `turn-<id>.failure.txt` (`0600`) and removed from the
+result before anything is persisted; the durable record keeps the one-line
+`error`. Like the operator capture it is the operator's own disk, never the
+content store, so no replay, report or viewer reaches it.
+
+A stop is given `capabilities.stopAcknowledgementMs` to acknowledge (default 2
+seconds): an adapter whose stop saves its runtime's logs before removing it
+declares what that needs, and a stop still open past the bound is unconfirmed.

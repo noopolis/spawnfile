@@ -26,13 +26,36 @@ gateway sidecar. The training core drives it through the engine-neutral
   `runtime/daimon/control.ts` client; a wake's `failure` is a failed
   receipt's text or, for a delivery Daimon deferred, the agent's execution
   error from `/v2/availability`; usage is the ledger rows the wake
-  appended, transcript the engine's newest session record. Every compiled
+  appended, transcript the engine's newest session record. A wake still open
+  at the trial's deadline reports the same execution error (the failed
+  execution behind an open retry); every failure text is whole, secrets masked. Every compiled
   volume except gatewayed realms is renamed to the trial's own
   (`TRIAL_VOLUME_PREFIX`), so no trial shares a writable volume. A moment's wake
   is `kind: message` at the moment's instant, as Moltnet delivers it; `read`
-  returns a declared output from the container workspace. Teardown removes the
-  container, its (prefixed) volumes and its image; the launcher records a
-  credential scan first.
+  returns a declared output from the container workspace. Teardown saves the
+  container's evidence, removes the container, its (prefixed) volumes and its
+  image, and resolves with the runtime's last reported failure; the launcher
+  records a credential scan first.
+- `evidence.ts` keeps what a container can still say before it is removed
+  (`captureTrialEvidence`), in the boot's evidence directory on the operator's
+  disk: the whole container log (`docker logs --timestamps`, stdout and stderr
+  in separate files, never a tail) and each engine record the runtime's
+  descriptor declares (`diagnostics.paths`, relative to the agent's runtime
+  home; one tar per path through `docker cp`), plus `runtime-failure.txt` (the
+  agent's execution error at teardown) and the `evidence.json` manifest.
+  Everything is streamed through the Docker CLI to a file (no bind mount, never
+  buffered whole) and through `maskSecrets` (the container's control token and
+  gateway key by value, credential shapes by pattern, byte for byte so an
+  archive stays valid). One stream is bounded at
+  `TRIAL_EVIDENCE_STREAM_BOUND_BYTES`; a capture that reaches it, or cannot be
+  made, says so in the manifest and nothing is cut silently. A declared path at,
+  above or below a login file (`HOME_LOGIN_FILES`, the descriptor's credential
+  destination and auth file) is refused and listed. `boot.ts` calls it in the
+  one teardown every path takes (success, failure, deadline, abort, a boot that
+  never became ready): stop, capture, then remove the container and volumes.
+  What an engine exposes is Daimon's declaration; Spawnfile only collects it.
+- `trialReads.ts` reads a running organization: usage and request ledgers, the
+  engine's newest session record, the agent's execution error.
 - `gateway.ts` places Daimon's auth gateway as a sidecar
   (`renderDaimonGatewaySidecarScript`): production Docker security args, the
   realm volume `spawnfile-training-<profile>-<engine>-realm` (kept across
@@ -44,6 +67,9 @@ gateway sidecar. The training core drives it through the engine-neutral
 - `judge.ts` writes a judge's tool-free one-agent declaration (no skills, MCP,
   memory, surfaces or schedule), pinning model and effort only where the engine's
   descriptor makes model selection configurable.
+- Every boot has its own evidence directory: a trial's is the training core's
+  (`<trial root>/evidence`, passed down by the adapter), a judge's a fresh
+  `<scratch root>/evidence/judge-*` per boot.
 - `launcher.ts` is one run: lazily starts the gateway from the first image of a
   gatewayed engine, boots trials against it, keeps one warm judge per engine,
   model and effort (booted through the same trial path), and `close` tears the

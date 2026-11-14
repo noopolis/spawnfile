@@ -52,6 +52,11 @@ export const daimonEngineDescriptorSchema = z.strictObject({
   piAuthMethod: nonblank.optional(), piProvider: nonblank.optional(), piSourceProvider: nonblank.optional(),
   homeDirectory: z.union([z.literal(""), relativePath]), homeEnvironment: environmentName,
   requiredBinaries: z.array(identifier).min(1),
+  /**
+   * The engine's own records of its turns (transcripts, CLI logs), as paths relative to an agent's runtime home.
+   * Never a login file or directory. Absent on a Daimon that predates the declaration.
+   */
+  diagnostics: z.strictObject({ paths: z.array(relativePath).max(32) }).optional(),
   modelSelection: z.strictObject({
     configurable: z.boolean(), models: z.union([z.strictObject({ kind: z.literal("non-empty-string") }), z.strictObject({ kind: z.literal("enum"), values: z.array(nonblank).min(1) }), z.null()]),
     reasoningEfforts: z.array(nonblank), defaults: z.strictObject({ model: nonblank.nullable(), reasoningEffort: nonblank.nullable() }),

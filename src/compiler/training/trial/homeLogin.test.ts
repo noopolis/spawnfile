@@ -82,9 +82,9 @@ beforeEach(async () => {
 afterEach(async () => { await rm(state.root, { recursive: true, force: true }); });
 
 const bootOnce = async (trialId: string): Promise<void> => {
-  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, trialId), docker, instructions: "i", trialId,
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, trialId), docker, instructions: "i", trialId, evidence: (async () => ({})) as never,
     control: async () => ({ status: 200, body: "{}" }) });
-  const trial = await prepared.boot(null, { realms: profile, readyTimeoutMs: 1_000 });
+  const trial = await prepared.boot(null, { evidenceDirectory: path.join(state.root, "evidence"), realms: profile, readyTimeoutMs: 1_000 });
   await trial.teardown();
 };
 

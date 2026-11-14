@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest';
-import { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './diagnostics.js';
+import { subjectStartupCapture, subjectStartupDiagnostic, TRIAL_EVIDENCE_DIRECTORY, writeOperatorCapture, writeTurnFailure } from './diagnostics.js';
+import { runTrial } from './trial.js';
+import { complete, setup } from './fixture.js';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -83,3 +85,44 @@ it('writes the operator capture once, privately, and never overwrites an existin
     expect(await writeOperatorCapture(join(root, 'absent'), capture)).toBeUndefined();
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+it('keeps a failed turn\'s whole runtime failure text in the trial evidence directory and out of the durable record', async () => {
+  const account = `engine_failed: CLI engine exited with code 1\n${'stderr line\n'.repeat(5_000)}last line`;
+  let evidencePath = '';
+  const task = await setup(async input => {
+    evidencePath = input.evidencePath!;
+    return { ...complete, status: 'failed', text: '', failureText: account, error: 'trial wake failed: engine_failed: CLI engine exited with code 1' };
+  });
+  const report = await runTrial(task.options);
+  expect(evidencePath).toBe(join(report.paths.root, TRIAL_EVIDENCE_DIRECTORY));
+  const file = join(evidencePath, 'turn-task.failure.txt');
+  expect(await readFile(file, 'utf8')).toBe(`${account}\n`);
+  expect((await stat(file)).mode & 0o777).toBe(0o600);
+  expect(report.error).toBe('trial wake failed: engine_failed: CLI engine exited with code 1');
+  // Operator-only: neither the report nor any journal event carries the text.
+  expect(JSON.stringify([report, task.journal])).not.toContain('last line');
+});
+
+it('names the failure file safely and never throws when it cannot be written', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'training-failure-'));
+  try {
+    expect(await writeTurnFailure(join(root, 'evidence'), '../turn 1', 'why')).toBe(join(root, 'evidence', 'turn-.._turn_1.failure.txt'));
+    expect(await writeTurnFailure('/dev/null/evidence', 'turn', 'why')).toBeUndefined();
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('gives a stop the acknowledgement bound its adapter declares, so a slow teardown is still a proven closure', async () => {
+  // A turn stopped at a limit the subject declared is scored only when its closure is proven.
+  const run = async (stopAcknowledgementMs?: number) => {
+    const task = await setup(async () => ({ ...complete, status: 'failed', text: '', limit: 'timeout', error: 'wall-clock bound reached' }));
+    const { adapter } = task.options;
+    task.options.adapter = { ...adapter, capabilities: { ...adapter.capabilities, ...(stopAcknowledgementMs ? { stopAcknowledgementMs } : {}) },
+      start: async input => { const session = await adapter.start(input);
+        return { ...session, stop: async reason => { await new Promise(resolve => setTimeout(resolve, 2_300)); return session.stop(reason); } }; } };
+    const report = await runTrial(task.options);
+    return { execution: report.execution, error: report.error };
+  };
+  expect(await run(10_000)).toEqual({ execution: 'limit-exceeded', error: 'wall-clock bound reached' });
+  // Mutation guard: under the default bound the same teardown demoted the trial to a machine failure.
+  expect(await run()).toEqual({ execution: 'failed', error: 'Native closure unproven; wall-clock bound reached' });
+}, 20_000);

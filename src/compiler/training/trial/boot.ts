@@ -6,10 +6,8 @@ import type { ResolvedAuthProfile } from "../../../auth/index.js";
 import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, daimonProfileRealmVolume, getDaimonEngineDescriptor, isDaimonGatewayRealmMountId } from "../../../runtime/daimon/index.js";
 import { daimonHelperControlCall, type DaimonControlCall, type DaimonControlTarget } from "../../../runtime/daimon/control.js";
 import { RUNTIME_INSTALL_ROOT } from "../../../runtime/container.js";
-import { parseUsageLedger, USAGE_TURN_RECORD_VERSION, type UsageRecord } from "../../../runtime/usageLedger.js";
-import { parseUsageRequestLedger, type UsageRequestRecord } from "../../../runtime/usageRequestLedger.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
-import { SpawnfileError } from "../../../shared/index.js";
+import type { UsageRecord } from "../../../runtime/usageLedger.js";
+import { maskSecrets, SpawnfileError } from "../../../shared/index.js";
 import { buildCompiledProject } from "../../buildProject.js";
 import { compileProject } from "../../compileProject.js";
 import { resolveDeploymentLineage } from "../../deploymentLineage.js";
@@ -17,10 +15,12 @@ import { slugify } from "../../helpers.js";
 import { createDockerRunInvocation, runDockerContainer } from "../../runProject.js";
 import { executeDockerRunWithSupportCleanup } from "../../runProjectLifecycle.js";
 import { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
+import { captureTrialEvidence, type TrialEvidenceCaptureCall } from "./evidence.js";
 import type { TrainingGatewayAccess } from "./gateway.js";
 import { HOME_LOGIN_FILES, saveHomeLogin, seedHomeLogin, type HomeLogin } from "./homeLogin.js";
 import { fillMomentVolumes, momentVolumesFor } from "./momentVolumes.js";
 import { writeTrialProject } from "./project.js";
+import { agentExecutionError, readLedger, readRequestLedger, readTranscript, requestUsage } from "./trialReads.js";
 import { renderMomentWake, trainingMomentSchema, type TrainingMoment } from "../moments.js";
 
 /**
@@ -32,7 +32,6 @@ export const TRAINING_TRIAL_LINEAGE_NAMESPACE = "training";
 const CONTROL_TOKEN_ENV = "SPAWNFILE_DAIMON_CONTROL_TOKEN";
 const WAKE_VERSION = "noopolis.daimon.wake.v2";
 const TERMINAL = new Set(["completed", "failed", "stopped"]);
-const MAX_TRANSCRIPT_BYTES = 1024 * 1024;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const ABSENT = "__spawnfile_trial_output_absent__";
 /** Every trial volume is named for the trial: no trial ever holds production's, dev's or another trial's state. */
@@ -59,6 +58,8 @@ export interface TrialOptions {
   directory: string;
   docker?: TrialDocker;
   control?: DaimonControlCall;
+  /** Saves the container's evidence before teardown (tests only; default: the real capture). */
+  evidence?: TrialEvidenceCaptureCall;
 }
 
 export interface TrialWake {
@@ -75,8 +76,9 @@ export interface TrialWake {
   /** Per model request of this wake, the tool-call names its response carried; null where the runtime could not say. */
   requestToolCalls: (readonly string[] | null)[];
   /**
-   * The engine failure Daimon reported for this delivery: a failed receipt's detail, or the agent's
-   * execution error when Daimon deferred the delivery after retrying a failed execution. Null when none.
+   * The engine failure Daimon reported for this delivery, in full, secrets masked: a failed receipt's detail, or
+   * the agent's execution error when the delivery did not complete (Daimon deferred it after retrying a failed
+   * execution, or its retry was still open at the trial's deadline). Null when none.
    */
   failure: string | null;
 }
@@ -88,7 +90,22 @@ export interface BootedTrial {
   read(path: string): Promise<string | null>;
   /** Credential-shaped files anywhere in the trial container (expected: none). */
   scanCredentials(): Promise<string[]>;
-  teardown(): Promise<void>;
+  /**
+   * Saves the container's evidence, then removes it and its volumes. Resolves with the failure its runtime
+   * still reported for the agent at that moment (secrets masked), or null: what a turn cut short never returned.
+   */
+  teardown(): Promise<string | null>;
+}
+
+export interface TrialBootOptions {
+  /**
+   * Where this container's evidence is kept before it is removed, on every teardown path: its whole log and
+   * the engine records its runtime declares (`evidence.ts`). The operator's own disk, outside any volume.
+   */
+  evidenceDirectory: string;
+  readyTimeoutMs?: number;
+  realms?: ResolvedAuthProfile;
+  moment?: unknown;
 }
 
 export interface PreparedTrial {
@@ -101,7 +118,7 @@ export interface PreparedTrial {
    * gatewayed engine; `realms` is a profile view holding only the
    * volume-held logins (`spawnfile auth login`) this organization mounts.
    */
-  boot(gateway: TrainingGatewayAccess | null, options?: { readyTimeoutMs?: number; realms?: ResolvedAuthProfile; moment?: unknown }): Promise<BootedTrial>;
+  boot(gateway: TrainingGatewayAccess | null, options: TrialBootOptions): Promise<BootedTrial>;
   /** Runs the organization's own `auth <engine> login` attached to the operator's terminal, or returns its argv on `dryRun`. */
   login(realms: ResolvedAuthProfile, options?: { dryRun?: boolean }): Promise<readonly string[]>;
   dispose(): Promise<void>;
@@ -142,7 +159,13 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   const home = instance.agent_paths?.[agentId]?.home_path;
   const workspace = instance.agent_paths?.[agentId]?.workspace_path ?? null;
   // The engine writes its own session records under its home inside the agent's runtime home.
-  const engineHome = getDaimonEngineDescriptor(engine)?.homeDirectory;
+  const descriptor = getDaimonEngineDescriptor(engine);
+  const engineHome = descriptor?.homeDirectory;
+  // What the engine's runtime declares of its own turn records, and every login file no declared path may reach.
+  const diagnostics = home ? [{ agentId, home, paths: descriptor?.diagnostics?.paths ?? [] }] : [];
+  const loginPaths = [...new Set([...(HOME_LOGIN_FILES[engine] ?? []), descriptor?.credentialMaterial?.destinationRelativePath,
+    descriptor && "fileName" in descriptor.auth ? path.posix.join(descriptor.homeDirectory, descriptor.auth.fileName) : undefined]
+    .filter((file): file is string => Boolean(file && home)).map((file) => path.posix.join(home!, file)))];
   const sessionsPath = home && engineHome !== undefined ? path.posix.join(home, engineHome, "sessions") : null;
   const lineageVolumes = (realms: ResolvedAuthProfile | undefined): string[] => (compiled.report.container?.persistent_mounts ?? [])
     .filter((mount) => !isDaimonGatewayRealmMountId(mount.id) && daimonProfileRealmVolume(mount.id, realms) === undefined)
@@ -188,7 +211,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
       } finally { await removeVolumes(lineageVolumes(realms)); }
       return [invocation.command, ...invocation.args];
     },
-    boot: async (gateway, bootOptions = {}) => {
+    boot: async (gateway, bootOptions) => {
       const token = randomBytes(32).toString("base64url");
       const container = `spawnfile-trial-${slug}`;
       await mkdir(options.directory, { recursive: true });
@@ -201,15 +224,25 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         authProfile: bootOptions.realms ?? null, containerName: container, deploymentName: slug, detach: true, envFilePath,
         ...(gateway ? { network: gateway.network } : {})
       });
+      const secrets = [token, ...(gateway ? [gateway.key] : [])];
       const volumes = lineageVolumes(bootOptions.realms);
       const moment = bootOptions.moment === undefined ? undefined : trainingMomentSchema.parse(bootOptions.moment);
       const homeLogin = homeLoginFor(bootOptions.realms);
-      const teardown = async (): Promise<void> => {
+      const target: DaimonControlTarget = { containerRef: container, dockerArgs: [], dockerCommand: "docker", imageRef: image, token };
+      const call = options.control ?? daimonHelperControlCall;
+      let ready = false;
+      const teardown = async (): Promise<string | null> => {
         try {
-          // Stopped, not killed, so the engine finishes any login rewrite before it is saved.
-          if (homeLogin) await docker(["stop", "--time", "10", container]).catch(() => undefined);
+          const reported = ready ? await agentExecutionError(call, target, agentId) : null;
+          const failure = reported === null ? null : maskSecrets(reported, secrets);
+          // Stopped, not killed: the runtime's last lines reach its log, and the engine finishes any login rewrite.
+          await docker(["stop", "--time", "10", container]).catch(() => undefined);
+          // Everything the container can still say, before it and its volumes are gone.
+          await (options.evidence ?? captureTrialEvidence)({ container, diagnostics, directory: bootOptions.evidenceDirectory, loginPaths, secrets,
+            notes: failure === null ? {} : { "runtime-failure.txt": failure } });
           await docker(["rm", "-f", container]).catch(() => undefined);
           if (homeLogin) await saveHomeLogin(docker, image, homeLogin);
+          return failure;
         } finally {
           await removeVolumes(volumes);
           await rm(invocation.supportDirectory, { recursive: true, force: true });
@@ -221,8 +254,6 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
         if (moment) await fillMomentVolumes(docker, image, momentVolumesFor(moment, compiled.report.container ?? {}));
         await executeDockerRunWithSupportCleanup(invocation, runDockerContainer);
         await rm(envFilePath, { force: true });
-        const target: DaimonControlTarget = { containerRef: container, dockerArgs: [], dockerCommand: "docker", imageRef: image, token };
-        const call = options.control ?? daimonHelperControlCall;
         await waitFor(async () => {
           // A restart means the organization already exited once (`--restart unless-stopped` hides it).
           if (await docker(["inspect", "--format", "{{.State.Running}} {{.RestartCount}}", container]) !== "true 0") {
@@ -231,12 +262,13 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
           }
           return call(target, "GET", "/v2/availability").then((response) => response.status === 200, () => false);
         }, bootOptions.readyTimeoutMs ?? 180_000, "trial organization readiness", 1_000);
+        ready = true;
         // Production's own post-start operator steps, inside the container with its environment.
         for (const step of moment?.afterBoot ?? []) {
           await docker(["exec", "--user", step.user, ...Object.entries(step.env ?? {}).flatMap(([name, value]) => ["-e", `${name}=${value}`]),
             container, ...step.command], { timeoutMs: 120_000 });
         }
-        return createBootedTrial({ agentId, call, container, docker, moment, sessionsPath, target, teardown, workspace });
+        return createBootedTrial({ agentId, call, container, docker, moment, secrets, sessionsPath, target, teardown, workspace });
       } catch (error) {
         // The boot failure is the error to report, not a teardown that follows it.
         await teardown().catch(() => undefined);
@@ -246,33 +278,9 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
   };
 };
 
-/** Daimon's per-request stream sits beside the usage ledger. */
-const REQUEST_LEDGER = path.posix.join(path.posix.dirname(DAIMON_GROK_TURN_USAGE_LEDGER.filePath), "requests.jsonl");
-
-const readRequestLedger = async (docker: TrialDocker, container: string): Promise<UsageRequestRecord[]> =>
-  parseUsageRequestLedger(await docker(["exec", container, "cat", REQUEST_LEDGER]).catch(() => ""));
-
-/**
- * A turn the engine never closed (a wall-clock or token bound killed it) has no per-turn usage row, but its
- * model requests were measured one by one. Their sum is the spend, marked incomplete so no reader takes it
- * for a closed turn's own account.
- */
-const requestUsage = (requests: readonly UsageRequestRecord[], agentId: string): UsageRecord[] => {
-  if (requests.length === 0) return [];
-  const sum = (key: "input" | "cached_input" | "cache_write" | "output" | "total") => requests.reduce((total, row) => total + row[key], 0);
-  return [{ v: USAGE_TURN_RECORD_VERSION, agent: agentId, at: requests.at(-1)!.at, wake: requests[0]!.wake, engine: requests[0]!.engine,
-    input: sum("input"), cache_read: sum("cached_input"), cache_write: sum("cache_write"), output: sum("output"), total: sum("total"),
-    calls: requests.length, complete: false, notional_usd: 0 }];
-};
-
-const readLedger = async (docker: TrialDocker, container: string): Promise<UsageRecord[]> => {
-  const text = await docker(["exec", container, "cat", DAIMON_GROK_TURN_USAGE_LEDGER.filePath]).catch(() => "");
-  return parseUsageLedger(text);
-};
-
 const createBootedTrial = (input: {
   agentId: string; call: DaimonControlCall; container: string; docker: TrialDocker; moment: TrainingMoment | undefined;
-  sessionsPath: string | null; target: DaimonControlTarget; teardown: () => Promise<void>; workspace: string | null;
+  secrets: readonly string[]; sessionsPath: string | null; target: DaimonControlTarget; teardown: () => Promise<string | null>; workspace: string | null;
 }): BootedTrial => {
   let seenRows = 0;
   let seenRequests = 0;
@@ -322,9 +330,11 @@ const createBootedTrial = (input: {
         if (!executions.some((entry) => entry.execution_id === execution || entry.delivery_ids?.includes(options.deliveryId))) break;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
-      // Daimon defers a delivery whose execution failed twice; only its availability names that failure.
-      const failure = receipt.state === "failed" ? receipt.text || null
-        : ended() && !TERMINAL.has(receipt.state ?? "") ? await agentExecutionError(input.call, input.target, input.agentId) : null;
+      // Daimon defers a delivery whose execution failed twice, and a delivery still open at the deadline may be
+      // on the retry of a failed execution; only the agent's availability names that failure.
+      const reported = receipt.state === "failed" ? receipt.text || null
+        : TERMINAL.has(receipt.state ?? "") ? null : await agentExecutionError(input.call, input.target, input.agentId);
+      const failure = reported === null ? null : maskSecrets(reported, input.secrets);
       const rows = await readLedger(input.docker, input.container);
       const requests = await readRequestLedger(input.docker, input.container);
       const fresh = requests.slice(seenRequests).filter((row) => row.agent === input.agentId);
@@ -342,20 +352,4 @@ const createBootedTrial = (input: {
       };
     }
   };
-};
-
-/** The agent's execution error from Daimon's availability, or null. */
-const agentExecutionError = async (call: DaimonControlCall, target: DaimonControlTarget, agentId: string): Promise<string | null> => {
-  const response = await call(target, "GET", "/v2/availability").catch(() => undefined);
-  if (response?.status !== 200) return null;
-  const agents = (JSON.parse(response.body) as { agents?: { agent_id?: string; error?: string }[] }).agents ?? [];
-  return agents.find((agent) => agent.agent_id === agentId)?.error || null;
-};
-
-/** The engine's newest session record, bounded. */
-const readTranscript = async (docker: TrialDocker, container: string, sessionsPath: string): Promise<string | null> => {
-  const newest = await docker(["exec", container, "sh", "-c", 'find "$1" -name "*.jsonl" -type f -printf "%T@ %p\\n" 2>/dev/null | sort -n | tail -1 | cut -d" " -f2-', "sh", sessionsPath]).catch(() => "");
-  if (!newest) return null;
-  const text = await docker(["exec", container, "head", "-c", String(MAX_TRANSCRIPT_BYTES), newest]).catch(() => "");
-  return text || null;
 };

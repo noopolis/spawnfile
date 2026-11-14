@@ -59,6 +59,9 @@ vi.mock("../../runProjectLifecycle.js", () => ({
 
 const { prepareTrial } = await import("./boot.js");
 
+/** Evidence capture is covered in `boot.evidence.test.ts`; these trials keep none. */
+const noEvidence = (async () => ({})) as never;
+
 /** Docker volumes as local directories; a fill helper runs its program on them for real, as this uid. */
 const calls: string[][] = [];
 const docker = async (args: readonly string[], options: { stdin?: string | Buffer } = {}): Promise<string> => {
@@ -120,9 +123,9 @@ const momentOf = async (index: string): Promise<TrainingMoment> => {
 };
 
 const boot = async (trialId: string, moment: TrainingMoment | undefined) => {
-  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, trialId), docker,
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, trialId), docker, evidence: noEvidence,
     instructions: "i", trialId, control: async () => ({ status: 200, body: "{}" }) });
-  return prepared.boot(null, { readyTimeoutMs: 1_000, ...(moment ? { moment } : {}) });
+  return prepared.boot(null, { evidenceDirectory: path.join(state.root, "evidence"), readyTimeoutMs: 1_000, ...(moment ? { moment } : {}) });
 };
 
 it("boots each trial on its moment's state, filled into its own volume before the organization starts", async () => {
@@ -188,9 +191,9 @@ it.each([
   // The engine appends its usage row only when the turn ends.
   const ledger = async (args: readonly string[], options?: { stdin?: string | Buffer }) =>
     args[0] === "exec" && args.at(-1)?.endsWith("usage.jsonl") ? (running < 0 ? `${usage}\n` : "") : docker(args, options);
-  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "usage"), docker: ledger,
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "usage"), docker: ledger, evidence: noEvidence,
     instructions: "i", trialId: "usage", control: control as never });
-  const trial = await prepared.boot(null, { readyTimeoutMs: 1_000 });
+  const trial = await prepared.boot(null, { evidenceDirectory: path.join(state.root, "evidence"), readyTimeoutMs: 1_000 });
   const wake = await trial.wake("go", { deliveryId: "d-1", timeoutMs: 10_000 });
   expect(wake.usage.map((row) => [row.input, row.output])).toEqual([[11_138, 35]]);
   await trial.teardown();
@@ -208,9 +211,9 @@ it("accounts a turn the engine never closed from its measured model requests, ma
   };
   const ledgers = async (args: readonly string[], options?: { stdin?: string | Buffer }) =>
     args[0] === "exec" && args.at(-1)?.endsWith("requests.jsonl") ? `${row(0, 100, 5)}\n${row(1, 300, 7)}\n` : docker(args, options);
-  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "requests"), docker: ledgers,
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "requests"), docker: ledgers, evidence: noEvidence,
     instructions: "i", trialId: "requests", control: control as never });
-  const trial = await prepared.boot(null, { readyTimeoutMs: 1_000 });
+  const trial = await prepared.boot(null, { evidenceDirectory: path.join(state.root, "evidence"), readyTimeoutMs: 1_000 });
   const wake = await trial.wake("go", { deliveryId: "d-1", timeoutMs: 5_000 });
   expect(wake.usage).toEqual([expect.objectContaining({ input: 400, cache_read: 20, output: 12, calls: 2, complete: false })]);
   await trial.teardown();
@@ -224,9 +227,9 @@ it("reports the execution error of a delivery Daimon deferred after its failed r
       { agent_id: "agent:writer", error: "engine_failed: Individual quota reached. Resets in 95h51m47s." }] }) };
     return { status: 200, body: JSON.stringify({ executions: [] }) };
   };
-  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "failure"), docker,
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "failure"), docker, evidence: noEvidence,
     instructions: "i", trialId: "failure", control: control as never });
-  const trial = await prepared.boot(null, { readyTimeoutMs: 1_000 });
+  const trial = await prepared.boot(null, { evidenceDirectory: path.join(state.root, "evidence"), readyTimeoutMs: 1_000 });
   const wake = await trial.wake("go", { deliveryId: "d-1", timeoutMs: 5_000 });
   expect(wake).toMatchObject({ state: "deferred", code: null, failure: "engine_failed: Individual quota reached. Resets in 95h51m47s." });
   await trial.teardown();
