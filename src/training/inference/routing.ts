@@ -78,9 +78,12 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
           // The routed wrapper is what a judge classifies from, so the last route's
           // closed refinement has to survive it; rebuilding from `kind` alone put
           // a refused grant, an expired one and a dead broker back in one bucket.
-          throw new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts,
+          const stopped = new InferenceFailure(failure!.kind, `Routed inference stopped (${failure!.kind})`, { attempts,
             ...(failure!.detail === null ? {} : { detail: failure!.detail }),
             ...(failure!.status === null ? {} : { status: failure!.status }) });
+          // The last route's own account stays with the failure for the operator; the message above is all a report sees.
+          Object.defineProperty(stopped, 'cause', { value: failure, configurable: true, enumerable: false, writable: true });
+          throw stopped;
         }
       }
       throw new Error('Unreachable inference route state');

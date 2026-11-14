@@ -1,4 +1,5 @@
 import { testRepeatCount } from '../contracts/training-config.js';
+import { failureAccount } from '../inference/index.js';
 import { resolveSpawnfileContext } from './spawnfile/index.js';
 import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget, resolveTrainingBridgeCommand } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
@@ -220,7 +221,7 @@ export async function main(argv: readonly string[], io: CliIO, dependencies: Cli
     // A persisted completion is authoritative even if cancellation arrives while closing optional UI.
     return code;
   } catch (error) {
-    io.stderr(`${timedOut ? 'CLI command deadline exceeded' : error instanceof Error ? error.message : String(error)}\n`);
+    io.stderr(`${timedOut ? 'CLI command deadline exceeded' : failureAccount(error)}\n`);
     return io.signal?.aborted === true && !timedOut ? 130 : 2;
   } finally { clearTimeout(timer); }
 }

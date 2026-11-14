@@ -117,3 +117,15 @@ it('fails a stale credential authority fast: later routes on it are skipped, oth
   await expect(createRoutedInference(options([on(undefined, unnamed), on(undefined, plainTwin)])).generate({ prompt: 'p', model: 'm' })).rejects.toMatchObject({ kind: 'auth-stale' });
   expect(plainTwin).not.toHaveBeenCalled();
 });
+it('keeps the last route\'s own account as the cause of a routed stop, for the operator and never in the message', async () => {
+  const { failureAccount } = await import('./failure.js');
+  const route = createRoutedInference(options([provider(async () => { throw new InferenceFailure('unavailable', 'codex judge did not boot: training auth gateway exited before readiness: realm is held'); })]));
+  const stopped = await route.generate({ prompt: 'p', model: 'm' }).then(() => undefined, (error: unknown) => error as InferenceFailure);
+  // The message is what a report's check reason carries; it names the kind only.
+  expect(stopped!.message).toBe('Routed inference stopped (unavailable)');
+  expect(JSON.stringify(stopped)).not.toContain('realm is held');
+  // Mutation guard: without the cause the operator's terminal and diagnostic said "unavailable" and nothing else.
+  expect(failureAccount(stopped)).toBe('Routed inference stopped (unavailable)\ncaused by: codex judge did not boot: training auth gateway exited before readiness: realm is held');
+  expect(failureAccount(new Error('plain'))).toBe('plain');
+  expect(failureAccount('text')).toBe('text');
+});

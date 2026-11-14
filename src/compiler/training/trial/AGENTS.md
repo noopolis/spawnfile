@@ -63,7 +63,11 @@ gateway sidecar. The training core drives it through the engine-neutral
   as `spawnfile up`, an internal run network (the target data-network spec)
   the trials join, and a dedicated egress network only the gateway sits on.
   Nothing is published to the host. `restart` replaces the sidecar in place
-  with the same key and networks.
+  with the same key and networks. Before every removal (stop, restart, a
+  start that never became ready) the sidecar's whole log is kept as evidence
+  under `<scratch root>/evidence/gateway-*/capture-<n>` with its key masked:
+  it is every gatewayed login's only route, so it is where an "unavailable"
+  judge or trial is explained.
 - `judge.ts` writes a judge's tool-free one-agent declaration (no skills, MCP,
   memory, surfaces or schedule), pinning model and effort only where the engine's
   descriptor makes model selection configurable.
