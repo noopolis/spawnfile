@@ -85,3 +85,10 @@ test('names the runtime failure behind a judge wake that did not complete', asyn
   const failed = await failure(judge('codex').generate({ prompt: 'p', model: 'm' }));
   expect(failed.message).toBe('codex-subscription judge wake failed (engine_failed): engine_failed: gateway refused the request: realm unavailable');
 });
+
+test('tells the operator why a judge never booted, where the optimizer bridge keeps only the kind', async () => {
+  const lines: string[] = [];
+  bindBootedJudges({ judge: async () => { throw new Error('training auth gateway exited before readiness: Codex subscription credential realm is unavailable or stale'); } }, (line) => { lines.push(line); });
+  expect(await failure(judge('codex').generate({ prompt: 'p', model: 'm' }))).toMatchObject({ kind: 'unavailable' });
+  expect(lines).toEqual(['codex-subscription judge did not boot: training auth gateway exited before readiness: Codex subscription credential realm is unavailable or stale']);
+});

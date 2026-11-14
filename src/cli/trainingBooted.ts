@@ -47,7 +47,7 @@ export const runBootedTraining = async (options: RunTrainingOptions): Promise<nu
     authProfile: await requireAuthProfile(options.authProfile),
     scratchRoot: path.join(path.resolve(out), "booted-trials")
   });
-  bindBootedJudges(run);
+  bindBootedJudges(run, (line) => options.streams.stderr(line));
   try {
     const { main } = await import("../runtime/trainingCli.js");
     // The subject's own model labels its trials; an engine that pins no model is labelled by the engine.

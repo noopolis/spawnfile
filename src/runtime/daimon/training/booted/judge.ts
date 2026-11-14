@@ -18,7 +18,14 @@ let bound: BootedJudgeLauncher | undefined;
  * (`spawnfile train` runs one run per process). Providers resolve it per
  * judgment, so grader and model registries stay static data.
  */
-export function bindBootedJudges(launcher: BootedJudgeLauncher | undefined): void { bound = launcher; }
+export function bindBootedJudges(launcher: BootedJudgeLauncher | undefined, report?: (line: string) => void): void { bound = launcher; reportFailure = report; }
+
+/**
+ * The operator's own channel (the run's stderr) for why a judge could not answer. A judgment requested through the
+ * optimizer bridge comes back as a failure kind alone, so without this line a judge that never booted (its gateway
+ * exited, its login was held) read only as "unavailable".
+ */
+let reportFailure: ((line: string) => void) | undefined;
 
 export interface BootedJudgeOptions { engine: string; effort?: string; timeoutMs?: number }
 
@@ -89,7 +96,11 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
       if (!bound) throw new InferenceFailure('unavailable', 'Subscription judges run only as booted containers inside `spawnfile train --auth-profile <name>`');
       const evidence = { responseModel: null, responseRoute: route };
       const judge = await bound.judge({ engine: options.engine, model: request.model, ...(options.effort === undefined ? {} : { effort: options.effort }) })
-        .catch((error: unknown) => { throw new InferenceFailure('unavailable', `${route} judge did not boot: ${error instanceof Error ? error.message : String(error)}`, evidence); });
+        .catch((error: unknown) => {
+          const message = `${route} judge did not boot: ${error instanceof Error ? error.message : String(error)}`;
+          reportFailure?.(message);
+          throw new InferenceFailure('unavailable', message, evidence);
+        });
       const schema = request.responseSchema === undefined ? '' : [
         '', '', 'Reply with exactly one JSON value that validates against this JSON Schema and nothing else:',
         JSON.stringify(request.responseSchema),
@@ -99,7 +110,11 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
       const usage = bootedUsage(wake.usage);
       const withUsage = { ...evidence, usage };
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', `${route} judgment cancelled`, withUsage);
-      if (wake.state !== 'completed') throw new InferenceFailure(wakeFailure(wake), `${route} judge wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}${wakeReason(wake)}`, withUsage);
+      if (wake.state !== 'completed') {
+        const message = `${route} judge wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}${wakeReason(wake)}`;
+        reportFailure?.(message);
+        throw new InferenceFailure(wakeFailure(wake), message, withUsage);
+      }
       const requests = wake.requestToolCalls ?? [];
       if ((wake.transcript !== null && transcriptToolActivity(wake.transcript).length > 0) || requests.some(calls => calls !== null && calls.length > 0)) {
         throw new InferenceFailure('protocol', `${route} attempt refused: tool-call`, { ...withUsage, detail: 'tool-call' });
