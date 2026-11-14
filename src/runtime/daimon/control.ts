@@ -39,29 +39,31 @@ export class DaimonControlError extends Error {}
 export const DAIMON_CONTROL_CALL_TIMEOUT_MS = 60_000;
 const MAX_CONTROL_OUTPUT_BYTES = 1024 * 1024;
 
-export const daimonControlHelperArgs = (target: DaimonControlTarget, method: DaimonControlMethod, route: string): string[] => [
+/**
+ * The helper's script: the first stdin line is the bearer header, kept in a private temp file for curl's `-H @file`;
+ * the rest of stdin is the request body, streamed as it is. The body used to ride a `data-binary` line of a curl
+ * config, and Debian bookworm's curl (7.88) refuses a config line of 100 KiB or more ("option --config: error
+ * encountered when reading a file", exit 26), so a judge wake with a large reflection prompt could never be posted.
+ */
+const CONTROL_HELPER_SCRIPT = [
+  "set -eu", "umask 077", 'h=$(mktemp)', "trap 'rm -f \"$h\"' EXIT", "IFS= read -r line", 'printf \'%s\\n\' "$line" > "$h"',
+  'if [ "$3" = body ]; then set -- "$1" "$2" -H "Content-Type: application/json" --data-binary @-; else set -- "$1" "$2"; fi',
+  'method=$1; url=$2; shift 2',
+  'curl -sS --max-time 15 -X "$method" -H @"$h" "$@" --output - --write-out "\\n%{http_code}" "$url"'
+].join("; ");
+
+export const daimonControlHelperArgs = (target: DaimonControlTarget, method: DaimonControlMethod, route: string, withBody = false): string[] => [
   ...target.dockerArgs,
   "run", "--rm", "-i", "--pull", "never",
   "--network", `container:${target.containerRef}`,
-  "--entrypoint", "curl",
+  "--entrypoint", "sh",
   target.imageRef,
-  "-sS", "--max-time", "15", "-X", method, "--config", "-",
-  "--output", "-", "--write-out", "\\n%{http_code}",
-  `http://127.0.0.1:${DAIMON_CONTROL_PORT}${route}`
+  "-c", CONTROL_HELPER_SCRIPT, "sh", method, `http://127.0.0.1:${DAIMON_CONTROL_PORT}${route}`, withBody ? "body" : "none"
 ];
 
-/** curl config quoting: a double-quoted value with `\` and `"` escaped and no raw newlines. */
-const quoteCurlConfig = (value: string): string =>
-  `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, "\\\"").replace(/\n/gu, "\\n").replace(/\r/gu, "\\r")}"`;
-
-/** The stdin config: bearer header, plus a JSON content type and body when one is sent. */
-export const daimonControlHelperConfig = (token: string, body?: unknown): string => [
-  `header = ${quoteCurlConfig(`Authorization: Bearer ${token}`)}`,
-  ...(body === undefined ? [] : [
-    `header = ${quoteCurlConfig("Content-Type: application/json")}`,
-    `data-binary = ${quoteCurlConfig(JSON.stringify(body))}`
-  ])
-].join("\n") + "\n";
+/** The helper's stdin: the bearer header line, then the JSON body when one is sent. */
+export const daimonControlHelperInput = (token: string, body?: unknown): string =>
+  `Authorization: Bearer ${token}\n${body === undefined ? "" : JSON.stringify(body)}`;
 
 const redact = (text: string, token: string): string =>
   (token ? text.split(token).join("[redacted]") : text).replace(/\s+/gu, " ").slice(0, 240);
@@ -76,7 +78,7 @@ export const parseDaimonControlHelperOutput = (stdout: string): DaimonControlRes
 
 export const daimonHelperControlCall: DaimonControlCall = (target, method, route, body) =>
   new Promise<DaimonControlResponse>((resolve, reject) => {
-    const child = spawn(target.dockerCommand, daimonControlHelperArgs(target, method, route), {
+    const child = spawn(target.dockerCommand, daimonControlHelperArgs(target, method, route, body !== undefined), {
       stdio: ["pipe", "pipe", "pipe"]
     });
     const out: Buffer[] = [];
@@ -112,5 +114,5 @@ export const daimonHelperControlCall: DaimonControlCall = (target, method, route
       try { finish(null, parseDaimonControlHelperOutput(Buffer.concat(out).toString("utf8"))); } catch (error) { finish(error as Error); }
     });
     child.stdin.on("error", () => undefined);
-    child.stdin.end(daimonControlHelperConfig(target.token, body));
+    child.stdin.end(daimonControlHelperInput(target.token, body));
   });
