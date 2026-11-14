@@ -106,8 +106,10 @@ AGY still refuses any `execution.model`; Codex refuses Grok auth.
 
 `control.ts` is the one client for a running organization's control API
 (port 19700): an ephemeral same-image curl helper in the container's network
-namespace, with the bearer token and any JSON body passed as a curl config on
-stdin, never argv. `spawnfile release` and production-booted training trials
+namespace, with the bearer token and any JSON body on stdin, never argv: the
+first line is the bearer header (curl reads it from a private temp file), the
+rest is the body, streamed. A curl config line cannot carry the body: bookworm's
+curl refuses lines of 100 KiB or more, which a judge's reflection wake exceeds. `spawnfile release` and production-booted training trials
 both use it.
 
 `gateway.ts` is the in-container auth gateway contract: env names, fixed
