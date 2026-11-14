@@ -106,7 +106,15 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
         JSON.stringify(request.responseSchema),
       ].join('\n');
       const text = `${request.system === undefined ? '' : `${request.system}\n\n`}${request.prompt}${schema}`;
-      const wake = await judge.wake(text, { deliveryId: `judge-${randomUUID()}`, timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal });
+      // A wake that throws (not accepted, the container unreachable) is a failure with a reason like any other: left
+      // unclassified it reached the operator as "Routed inference stopped (unknown)" and nothing else.
+      const wake = await judge.wake(text, { deliveryId: `judge-${randomUUID()}`, timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal })
+        .catch((error: unknown) => {
+          if (request.signal?.aborted) throw new InferenceFailure('cancelled', `${route} judgment cancelled`, evidence);
+          const message = `${route} judge wake failed: ${(error instanceof Error ? error.message : String(error)).replace(/\s+/gu, ' ').trim().slice(0, 400)}`;
+          reportFailure?.(message);
+          throw new InferenceFailure('unavailable', message, evidence);
+        });
       const usage = bootedUsage(wake.usage);
       const withUsage = { ...evidence, usage };
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', `${route} judgment cancelled`, withUsage);

@@ -86,6 +86,14 @@ test('names the runtime failure behind a judge wake that did not complete', asyn
   expect(failed.message).toBe('codex-subscription judge wake failed (engine_failed): engine_failed: gateway refused the request: realm unavailable');
 });
 
+test('classifies and names a judge wake that threw, instead of an unknown stop', async () => {
+  const lines: string[] = [];
+  bindBootedJudges({ judge: async () => ({ wake: async () => { throw new Error('trial wake was not accepted (HTTP 503,\n not_ready)'); } }) }, (line) => { lines.push(line); });
+  const failed = await failure(judge('codex').generate({ prompt: 'p', model: 'm' }));
+  expect(failed).toMatchObject({ kind: 'unavailable', message: 'codex-subscription judge wake failed: trial wake was not accepted (HTTP 503, not_ready)' });
+  expect(lines).toEqual([failed.message]);
+});
+
 test('tells the operator why a judge never booted, where the optimizer bridge keeps only the kind', async () => {
   const lines: string[] = [];
   bindBootedJudges({ judge: async () => { throw new Error('training auth gateway exited before readiness: Codex subscription credential realm is unavailable or stale'); } }, (line) => { lines.push(line); });

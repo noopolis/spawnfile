@@ -126,6 +126,9 @@ it('keeps the last route\'s own account as the cause of a routed stop, for the o
   expect(JSON.stringify(stopped)).not.toContain('realm is held');
   // Mutation guard: without the cause the operator's terminal and diagnostic said "unavailable" and nothing else.
   expect(failureAccount(stopped)).toBe('Routed inference stopped (unavailable)\ncaused by: codex judge did not boot: training auth gateway exited before readiness: realm is held');
+  const plain = createRoutedInference(options([provider(async () => { throw new Error('socket hang up'); })]));
+  const unknown = await plain.generate({ prompt: 'p', model: 'm' }).then(() => undefined, (error: unknown) => error);
+  expect(failureAccount(unknown)).toBe('Routed inference stopped (unknown)\ncaused by: Inference provider failed without a classified refusal\ncaused by: socket hang up');
   expect(failureAccount(new Error('plain'))).toBe('plain');
   expect(failureAccount('text')).toBe('text');
 });
