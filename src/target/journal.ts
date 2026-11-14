@@ -44,12 +44,15 @@ export interface LookupTargetOperationOptions {
   root?: string;
 }
 
-interface JournalFilesystem { syncDirectory(directory: string): Promise<void>; }
-const nativeFilesystem: JournalFilesystem = { syncDirectory: async (directory) => { const handle = await open(directory, constants.O_RDONLY); try { await handle.sync(); } finally { await handle.close(); } } };
+interface JournalFilesystem { syncDirectory(directory: string): Promise<void>; waitForLock(): Promise<void>; }
+const nativeFilesystem: JournalFilesystem = {
+  syncDirectory: async (directory) => { const handle = await open(directory, constants.O_RDONLY); try { await handle.sync(); } finally { await handle.close(); } },
+  waitForLock: async () => new Promise((resolve) => setTimeout(resolve, 2))
+};
 let filesystem: JournalFilesystem = nativeFilesystem;
-/** Test seam for observing the required post-replacement directory sync. */
-export const setTargetJournalFilesystemForTests = (replacement: JournalFilesystem): (() => void) => {
-  const previous = filesystem; filesystem = replacement; return () => { filesystem = previous; };
+/** Test seam for observing the required post-replacement directory sync and the wait of a contended lock. */
+export const setTargetJournalFilesystemForTests = (replacement: Partial<JournalFilesystem>): (() => void) => {
+  const previous = filesystem; filesystem = { ...nativeFilesystem, ...replacement }; return () => { filesystem = previous; };
 };
 
 const fail = (): never => { throw new SpawnfileError("runtime_error", JOURNAL_ERROR); };
@@ -151,7 +154,7 @@ const placeLock = async (lockPath: string): Promise<boolean> => {
   } catch { return fail(); } finally { if (handle) await handle.close().catch(() => undefined); await unlink(temporaryPath).catch(() => undefined); }
 };
 const releaseLock = async (lockPath: string): Promise<void> => { await unlink(lockPath).catch(fail); await filesystem.syncDirectory(directoryOf(lockPath)).catch(fail); };
-const pause = async (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 2));
+const pause = async (): Promise<void> => filesystem.waitForLock();
 
 const recoverStaleLock = async (lockPath: string): Promise<void> => {
   const recoveryPath = `${lockPath}.recover`;

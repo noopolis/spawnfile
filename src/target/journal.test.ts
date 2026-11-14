@@ -35,20 +35,30 @@ const complete = async (journal: TargetJournalStore, raw: Record<string, unknown
 describe("target journal", () => {
   it("serializes full lifecycle work separately from nested journal mutations", async () => {
     const journal = await open();
-    let release: (() => void) | undefined;
+    const events: string[] = [];
+    let entered: (() => void) | undefined, release: (() => void) | undefined, contended: (() => void) | undefined;
+    const firstEntered = new Promise<void>((resolve) => { entered = resolve; });
     const held = new Promise<void>((resolve) => { release = resolve; });
-    let secondEntered = false;
+    const secondContended = new Promise<void>((resolve) => { contended = resolve; });
     const first = journal.withLifecycleLease!(async () => {
+      events.push("first entered");
       await journal.reserve(request());
+      entered!();
       await held;
+      events.push("first leaving");
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    const second = journal.withLifecycleLease!(async () => { secondEntered = true; });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(secondEntered).toBe(false);
-    release!();
-    await Promise.all([first, second]);
-    expect(secondEntered).toBe(true);
+    await firstEntered;
+    // The contender reports the moment it finds the lease held, then waits for the holder itself
+    // instead of the clock, so "blocked" is observed rather than inferred from elapsed time.
+    const restore = setTargetJournalFilesystemForTests({ waitForLock: async () => { events.push("second blocked"); contended!(); await first; } });
+    try {
+      const second = journal.withLifecycleLease!(async () => { events.push("second entered"); });
+      await Promise.race([secondContended, second]);
+      expect(events).toEqual(["first entered", "second blocked"]);
+      release!();
+      await Promise.all([first, second]);
+      expect(events).toEqual(["first entered", "second blocked", "first leaving", "second entered"]);
+    } finally { restore(); release!(); await first; }
   });
 
   it("opens an existing correlation read-only and never seeds a missing one", async () => {
