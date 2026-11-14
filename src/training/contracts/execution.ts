@@ -55,6 +55,12 @@ export interface SubjectCapabilities {
    * run concurrently without host slot descriptors. Absent: concurrency needs provisioned slots.
    */
   trialIsolation?: 'per-start';
+  /**
+   * How long `stop` may take to acknowledge (default 2 seconds). An adapter whose stop does real work before
+   * its runtime is gone (saving the runtime's logs, then removing it) declares the bound that work needs;
+   * a stop still open past it is an unconfirmed closure.
+   */
+  stopAcknowledgementMs?: number;
 }
 
 /**

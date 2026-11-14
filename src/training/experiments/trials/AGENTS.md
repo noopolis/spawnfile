@@ -135,3 +135,7 @@ written there once as `turn-<id>.failure.txt` (`0600`) and removed from the
 result before anything is persisted; the durable record keeps the one-line
 `error`. Like the operator capture it is the operator's own disk, never the
 content store, so no replay, report or viewer reaches it.
+
+A stop is given `capabilities.stopAcknowledgementMs` to acknowledge (default 2
+seconds): an adapter whose stop saves its runtime's logs before removing it
+declares what that needs, and a stop still open past the bound is unconfirmed.

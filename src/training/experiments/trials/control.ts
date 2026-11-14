@@ -1,7 +1,11 @@
 import type { StopReceipt, SubjectSession } from '../../contracts/execution.js';
 
-export function trialControl(timeoutMs: number, outer?: AbortSignal) {
+/** The stop acknowledgement bound of an adapter that declares none. */
+export const DEFAULT_STOP_ACKNOWLEDGEMENT_MS = 2_000;
+
+export function trialControl(timeoutMs: number, outer?: AbortSignal, stopAcknowledgementMs = DEFAULT_STOP_ACKNOWLEDGEMENT_MS) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new Error('Trial timeout must be a positive integer');
+  if (!Number.isSafeInteger(stopAcknowledgementMs) || stopAcknowledgementMs < 1) throw new Error('Stop acknowledgement bound must be a positive integer');
   const controller = new AbortController();
   let session: SubjectSession | undefined;
   let stopping: Promise<StopReceipt> | undefined;
@@ -38,7 +42,7 @@ export function trialControl(timeoutMs: number, outer?: AbortSignal) {
       if (!stopping) return closingReason ? unknown('Native handle is unavailable for stop acknowledgement') : undefined;
       let drain: ReturnType<typeof setTimeout> | undefined;
       try { return await Promise.race([stopping,
-        new Promise<StopReceipt>(resolve => { drain = setTimeout(() => resolve(unknown('Stop acknowledgement deadline exceeded')), 2_000); })]); }
+        new Promise<StopReceipt>(resolve => { drain = setTimeout(() => resolve(unknown('Stop acknowledgement deadline exceeded')), stopAcknowledgementMs); })]); }
       finally { clearTimeout(drain); }
     },
     async owned<T>(work: Promise<T>): Promise<T> {

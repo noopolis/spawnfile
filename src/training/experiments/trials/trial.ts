@@ -62,7 +62,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   }
   const paths = await createTrialPaths(options.root, options.subjectRoot);
   const evidencePath = join(paths.root, TRIAL_EVIDENCE_DIRECTORY);
-  const control = trialControl(options.timeoutMs, options.signal);
+  const control = trialControl(options.timeoutMs, options.signal, adapter.capabilities.stopAcknowledgementMs);
   const turns: TurnReport[] = [];
   let events: Observation[] = [];
   let coverage: ObservationCoverage[] = [{ channel: 'tools', completeness: 'partial', ordering: 'none' },

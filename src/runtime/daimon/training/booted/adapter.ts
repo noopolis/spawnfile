@@ -56,6 +56,9 @@ const failureReason = (failure: string | null): string => {
   return line ? `: ${line.length > 400 ? `${line.slice(0, 400)}...` : line}` : '';
 };
 
+/** A trial's teardown: a graceful stop, its evidence (logs and engine records, streamed whole) and removal. */
+export const BOOTED_STOP_ACKNOWLEDGEMENT_MS = 10 * 60_000;
+
 export interface BootedAdapterOptions { launcher: BootedTrialLauncher; timeoutMs: number }
 
 /**
@@ -94,6 +97,8 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
     capabilities: { toolTrace: 'none', liveObservations: false, cancellation: 'native-handle', multiTurn: true,
       // The container is the isolation: it reaches no host path, so every evaluator-owned file is out of reach.
       resources: ['instructions'], readIsolation: 'declared-paths', protectedPaths: true, trialIsolation: 'per-start',
+      // Stopping saves the organization's whole log and engine records before the container is removed.
+      stopAcknowledgementMs: BOOTED_STOP_ACKNOWLEDGEMENT_MS,
       isolation: 'One production-booted organization container per trial; the subscription login stays in the run auth gateway.' },
     async start(input) {
       const trial = await options.launcher.boot({ trialId: input.trialId, instructions: input.instructions,

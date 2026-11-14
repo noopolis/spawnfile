@@ -191,3 +191,8 @@ test('names the failure the runtime still reported at teardown in the stop recei
   expect(await session.stop('Trial deadline exceeded')).toMatchObject({ state: 'acknowledged',
     detail: 'trial organization container removed; last runtime failure: engine_failed: CLI engine exited with code 1' });
 });
+
+test('declares a stop acknowledgement bound that covers saving the organization evidence', () => {
+  // The core's default (2 seconds) read a teardown that saves logs first as an unproven closure and failed the trial.
+  expect(createDaimonBootedAdapter({ launcher: launcher([], []), timeoutMs: 1 }).capabilities.stopAcknowledgementMs).toBe(600_000);
+});

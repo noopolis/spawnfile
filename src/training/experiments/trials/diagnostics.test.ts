@@ -110,3 +110,19 @@ it('names the failure file safely and never throws when it cannot be written', a
     expect(await writeTurnFailure('/dev/null/evidence', 'turn', 'why')).toBeUndefined();
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+it('gives a stop the acknowledgement bound its adapter declares, so a slow teardown is still a proven closure', async () => {
+  // A turn stopped at a limit the subject declared is scored only when its closure is proven.
+  const run = async (stopAcknowledgementMs?: number) => {
+    const task = await setup(async () => ({ ...complete, status: 'failed', text: '', limit: 'timeout', error: 'wall-clock bound reached' }));
+    const { adapter } = task.options;
+    task.options.adapter = { ...adapter, capabilities: { ...adapter.capabilities, ...(stopAcknowledgementMs ? { stopAcknowledgementMs } : {}) },
+      start: async input => { const session = await adapter.start(input);
+        return { ...session, stop: async reason => { await new Promise(resolve => setTimeout(resolve, 2_300)); return session.stop(reason); } }; } };
+    const report = await runTrial(task.options);
+    return { execution: report.execution, error: report.error };
+  };
+  expect(await run(10_000)).toEqual({ execution: 'limit-exceeded', error: 'wall-clock bound reached' });
+  // Mutation guard: under the default bound the same teardown demoted the trial to a machine failure.
+  expect(await run()).toEqual({ execution: 'failed', error: 'Native closure unproven; wall-clock bound reached' });
+}, 20_000);

@@ -45,3 +45,19 @@ it.each(['operator', 'deadline'] as const)('keeps %s cancellation above earlier 
     control.dispose();
   }
 });
+
+it('waits for a stop that does real work up to the bound its adapter declares, and no longer', async () => {
+  vi.useFakeTimers();
+  const slow = (): SubjectSession => ({ stop: () => new Promise(resolve => { setTimeout(() => resolve(receipt), 5_000); }) } as unknown as SubjectSession);
+  // The default bound gives up on a stop that saves its runtime's logs first: a proven closure read as unproven.
+  const brief = trialControl(60_000); brief.attach(slow()); brief.closeNative('ended');
+  const early = brief.receipt(); await vi.advanceTimersByTimeAsync(5_000);
+  expect((await early)!.detail).toBe('Stop acknowledgement deadline exceeded'); brief.dispose();
+  const declared = trialControl(60_000, undefined, 30_000); declared.attach(slow()); declared.closeNative('ended');
+  const waited = declared.receipt(); await vi.advanceTimersByTimeAsync(5_000);
+  expect(await waited).toEqual(receipt); declared.dispose();
+  const stalled = trialControl(60_000, undefined, 30_000); stalled.attach({ stop: () => new Promise(() => {}) } as unknown as SubjectSession); stalled.closeNative('ended');
+  const never = stalled.receipt(); await vi.advanceTimersByTimeAsync(30_000);
+  expect((await never)!.state).toBe('unknown'); stalled.dispose();
+  expect(() => trialControl(10, undefined, 0)).toThrow('Stop acknowledgement bound');
+});
