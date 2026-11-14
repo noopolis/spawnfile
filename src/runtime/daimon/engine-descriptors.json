@@ -1,6 +1,6 @@
 {
   "version": "noopolis.spawnfile.daimon-engine-descriptors.v1",
-  "sourceCommit": "d9f7862b864295fb8baff36231b0407a4f8683d4",
+  "sourceCommit": "730d85bfe998fcd5ae9f45a3ab95c915dc0c9156",
   "engines": {
     "agy": {
       "auth": {
@@ -35,7 +35,8 @@
           ".gemini/antigravity-cli/cli.log",
           ".gemini/antigravity-cli/brain",
           ".gemini/antigravity-cli/conversations",
-          ".gemini/antigravity-cli/crashes"
+          ".gemini/antigravity-cli/crashes",
+          ".local/state/daimon-engine-output"
         ]
       },
       "homeDirectory": "",
@@ -121,7 +122,8 @@
       "diagnostics": {
         "paths": [
           ".codex/sessions",
-          ".codex/log"
+          ".codex/log",
+          ".local/state/daimon-engine-output"
         ]
       },
       "homeDirectory": ".codex",
