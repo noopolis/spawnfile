@@ -77,6 +77,8 @@
   exact world-service authority and bounded public-command execution.
 - `evidenceExport*.ts` is the private, operator-destination export lowering. It
   keeps publication fault-injection contracts in `evidenceExportPublicationTypes.ts`.
+  `evidenceExportPublicationRetry.ts` owns the bounded backoff between publication attempts: a retry
+  waits for a peer's durable step instead of spending the attempt budget on immediate re-reads.
   It reconstructs one recorded evidence volume, inspects a bound helper image and
   helper container exactly, and records an immutable secret-free export index for
   replay semantics. It never exports
