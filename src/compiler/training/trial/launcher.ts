@@ -33,7 +33,8 @@ type Wake = (text: string, options: { deliveryId: string; timeoutMs: number; sig
 type Booted = Pick<BootedTrial, "container" | "read" | "scanCredentials" | "teardown"> & { wake: Wake };
 
 export interface BootedTrialRun {
-  boot(input: { trialId: string; instructions: string; moment?: unknown; signal?: AbortSignal }): Promise<Booted>;
+  /** `evidenceDirectory`: where the trial's container log and engine records are kept before teardown (default: under the scratch root). */
+  boot(input: { trialId: string; instructions: string; moment?: unknown; signal?: AbortSignal; evidenceDirectory?: string }): Promise<Booted>;
   /** The run's warm judge for this engine, model and effort: booted once, woken once per judgment. */
   judge(spec: JudgeSpec): Promise<Omit<Booted, "teardown">>;
   /** Tears down every judge, stops the run's gateway and removes its image and networks; the realm volumes stay. */
@@ -57,6 +58,10 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
   let gateway: Promise<{ gateway: TrainingGateway; image: string }> | undefined;
   const judges = new Map<string, Promise<Booted>>();
   let closed = false;
+  const directory = async (prefix: string): Promise<string> => {
+    await mkdir(path.dirname(path.join(options.scratchRoot, prefix)), { recursive: true });
+    return mkdtemp(path.join(options.scratchRoot, prefix));
+  };
 
   /** The gateway this organization needs (null: no gatewayed engine), started on first use. */
   const gatewayFor = async (prepared: PreparedTrial): Promise<TrainingGateway | null> => {
@@ -89,27 +94,29 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
     return { volume: binding.realmVolume, profile: { ...options.authProfile, env: {}, imports: {}, realms: { [engine]: binding } } };
   };
   /** Boots one container, holding its login realm's turn (if any) until the container is gone. */
-  const bootContainer = async (prepared: PreparedTrial, turn: { onContended?: () => void; timeoutMs?: number; signal?: AbortSignal } = {}, moment?: unknown): Promise<Booted> => {
+  const bootContainer = async (prepared: PreparedTrial, kind: "trial" | "judge", turn: { onContended?: () => void; timeoutMs?: number; signal?: AbortSignal } = {}, moment?: unknown, evidence?: string): Promise<Booted> => {
     const access = await gatewayFor(prepared);
     const realm = realmFor(prepared);
     const release = realm ? await turns.take(realm.volume, turn) : undefined;
     try {
-      const booted = await prepared.boot(access, { ...(realm ? { realms: realm.profile } : {}), ...(moment === undefined ? {} : { moment }) });
-      return { ...booted, teardown: async () => { try { await booted.teardown(); } finally { release?.(); } } };
+      // Every boot keeps its own evidence: a judge that hands its realm turn over boots again, into a new directory.
+      const evidenceDirectory = evidence ?? await directory(`evidence/${kind}-`);
+      const booted = await prepared.boot(access, { evidenceDirectory, ...(realm ? { realms: realm.profile } : {}), ...(moment === undefined ? {} : { moment }) });
+      return { ...booted, teardown: async () => { try { return await booted.teardown(); } finally { release?.(); } } };
     } catch (error) {
       release?.();
       throw error;
     }
   };
-  const start = async (prepared: PreparedTrial, signal?: AbortSignal, moment?: unknown): Promise<Booted> => {
+  const start = async (prepared: PreparedTrial, kind: "trial" | "judge", signal?: AbortSignal, moment?: unknown, evidence?: string): Promise<Booted> => {
     try {
-      const booted = await bootContainer(prepared, signal ? { signal } : {}, moment);
+      const booted = await bootContainer(prepared, kind, signal ? { signal } : {}, moment, evidence);
       return { ...booted, teardown: async () => {
         try {
           // Evidence that no login reached the trial: every credential-shaped file it holds, recorded before removal.
           const found = await booted.scanCredentials().catch((error: Error) => [`scan failed: ${error.message}`]);
           await appendFile(path.join(options.scratchRoot, "credential-scan.jsonl"), `${JSON.stringify({ container: booted.container, found })}\n`).catch(() => undefined);
-          await booted.teardown();
+          return await booted.teardown();
         } finally { await prepared.dispose(); }
       } };
     } catch (error) {
@@ -128,11 +135,11 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
     let container = "";
     let busy = 0;
     let evict = false;
-    const down = async (): Promise<void> => {
+    const down = async (): Promise<string | null> => {
       const current = booted;
       booted = undefined;
       evict = false;
-      await (await current?.catch(() => undefined))?.teardown();
+      return await (await current?.catch(() => undefined))?.teardown() ?? null;
     };
     const timeoutMs = options.judgeRealmWaitMs ?? 30 * 60_000;
     return {
@@ -143,7 +150,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
         busy++;
         try {
           if (!booted) {
-            const pending = bootContainer(prepared, { timeoutMs, ...(wakeOptions.signal ? { signal: wakeOptions.signal } : {}),
+            const pending = bootContainer(prepared, "judge", { timeoutMs, ...(wakeOptions.signal ? { signal: wakeOptions.signal } : {}),
               onContended: () => { evict = true; if (busy === 0) void down(); } });
             booted = pending;
             pending.then((judge) => { container = judge.container; }, () => { if (booted === pending) booted = undefined; });
@@ -154,19 +161,15 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
           if (evict && busy === 0) await down();
         }
       },
-      teardown: async () => { try { await down(); } finally { await prepared.dispose(); } }
+      teardown: async () => { try { return await down(); } finally { await prepared.dispose(); } }
     };
-  };
-  const directory = async (prefix: string): Promise<string> => {
-    await mkdir(options.scratchRoot, { recursive: true });
-    return mkdtemp(path.join(options.scratchRoot, prefix));
   };
 
   return {
-    boot: async ({ trialId, instructions, moment, signal }) => start(await prepare({
+    boot: async ({ trialId, instructions, moment, signal, evidenceDirectory }) => start(await prepare({
       agentManifestPath: options.agentManifestPath, docker, instructions, trialId, directory: await directory("trial-"),
       ...(options.projectManifestPath ? { projectManifestPath: options.projectManifestPath } : {})
-    }), signal, moment),
+    }), "trial", signal, moment, evidenceDirectory),
     judge: (spec) => {
       if (closed) return Promise.reject(new SpawnfileError("runtime_error", "the training run is closed"));
       const key = JSON.stringify([spec.engine, spec.model, spec.effort ?? null]);
@@ -180,7 +183,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
           });
           let turnTaking: boolean;
           try { turnTaking = realmFor(prepared) !== undefined; } catch (error) { await prepared.dispose(); throw error; }
-          return turnTaking ? takeTurnsJudge(prepared) : start(prepared);
+          return turnTaking ? takeTurnsJudge(prepared) : start(prepared, "judge");
         })();
         judges.set(key, judge);
         // A failed boot is not cached: the next judgment retries it.

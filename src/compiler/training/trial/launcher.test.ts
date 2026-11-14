@@ -21,15 +21,15 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 /** Fake organizations on the AGY engine that record how many containers hold the realm at once. */
 const harness = (authProfile = profile({ agy: AGY }), turns?: RealmTurns) => {
   const events: string[] = [];
-  const boots: Array<{ gateway: unknown; realms: ResolvedAuthProfile | undefined }> = [];
+  const boots: Array<{ gateway: unknown; realms: ResolvedAuthProfile | undefined; evidenceDirectory: string }> = [];
   let active = 0;
   let maxActive = 0;
   const prepare = async (input: { trialId: string }): Promise<PreparedTrial> => ({
     agentId: input.trialId, engines: ["agy"], image: `image-${input.trialId}`, runtimeRoot: "/opt/runtime",
     dispose: async () => { events.push(`dispose ${input.trialId.split("-")[0]}`); },
     login: async () => [],
-    boot: async (gateway, options = {}) => {
-      boots.push({ gateway, realms: options.realms });
+    boot: async (gateway, options) => {
+      boots.push({ gateway, realms: options.realms, evidenceDirectory: options.evidenceDirectory });
       active++; maxActive = Math.max(maxActive, active);
       const name = input.trialId.split("-")[0]!;
       events.push(`boot ${name}`);
@@ -37,7 +37,7 @@ const harness = (authProfile = profile({ agy: AGY }), turns?: RealmTurns) => {
       return {
         container: `c-${name}`, scanCredentials: async () => [], read: async () => null,
         wake: async () => { await tick(); return wakeResult; },
-        teardown: async () => { await tick(); active--; events.push(`down ${name}`); }
+        teardown: async () => { await tick(); active--; events.push(`down ${name}`); return `last failure of ${name}`; }
       };
     }
   });
@@ -54,13 +54,14 @@ it("boots AGY trials one at a time on a profile's login and never reaches the re
     run.boot({ trialId: "one", instructions: "i" }).then(async (trial) => { await tick(); await trial.teardown(); }),
     run.boot({ trialId: "two", instructions: "i" }).then((trial) => trial.teardown())
   ]);
-  expect([first, second]).toEqual([undefined, undefined]);
+  expect([first, second]).toEqual([undefined, "last failure of two"]);
   expect(maxActive()).toBe(1);
   const lifecycle = events.filter((event) => !event.startsWith("dispose"));
   expect(lifecycle.map((event) => event.split(" ")[0])).toEqual(["boot", "down", "boot", "down"]);
   expect(lifecycle[0]!.split(" ")[1]).toBe(lifecycle[1]!.split(" ")[1]);
   // No gateway for an engine that is not gatewayed; the login is the only profile content the trial sees.
-  expect(boots[0]).toEqual({ gateway: null, realms: expect.objectContaining({ env: {}, imports: {}, realms: { agy: AGY } }) });
+  expect(boots[0]).toEqual({ gateway: null, realms: expect.objectContaining({ env: {}, imports: {}, realms: { agy: AGY } }),
+    evidenceDirectory: expect.stringContaining(path.join("evidence", "trial-")) });
   await run.close();
 });
 
@@ -98,4 +99,26 @@ it("refuses an AGY organization when the profile holds no AGY login", async () =
 it("refuses an AGY login recorded before its home login files were kept", async () => {
   const { run } = harness(profile({ agy: { realmVolume: AGY.realmVolume, unlockVolume: AGY.unlockVolume } }));
   await expect(run.boot({ trialId: "one", instructions: "i" })).rejects.toThrow("run `spawnfile auth login agy --profile training`");
+});
+
+it("gives every boot its own evidence directory: the trial's own when the caller names one, a fresh one per judge boot", async () => {
+  const { boots, run } = harness();
+  const judge = await run.judge({ engine: "agy", model: "default" });
+  await judge.wake("first", { deliveryId: "d1", timeoutMs: 1_000 });
+  const trial = await run.boot({ trialId: "trial", instructions: "i", evidenceDirectory: "/trial-root/evidence" });
+  await trial.teardown();
+  await judge.wake("second", { deliveryId: "d2", timeoutMs: 1_000 });
+  await run.close();
+  const directories = boots.map((boot) => boot.evidenceDirectory);
+  expect(directories[1]).toBe("/trial-root/evidence");
+  expect(directories[0]).toContain(path.join("evidence", "judge-"));
+  expect(directories[2]).toContain(path.join("evidence", "judge-"));
+  expect(directories[2]).not.toBe(directories[0]);
+});
+
+it("passes the runtime's last failure at teardown through to the trial's caller", async () => {
+  const { run } = harness();
+  const trial = await run.boot({ trialId: "trial", instructions: "i" });
+  expect(await trial.teardown()).toBe("last failure of trial");
+  await run.close();
 });
