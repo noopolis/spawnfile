@@ -51,6 +51,8 @@ export function createRoutedInference(options: RoutedInferenceOptions): Inferenc
         try { result = await generateBounded(route, request, Math.min(remaining, share, attemptTimeoutMs)); }
         catch (error) {
           failure = error instanceof InferenceFailure ? error : new InferenceFailure('unknown', 'Inference provider failed without a classified refusal');
+          // The provider's own error stays with the failure for the operator's account.
+          if (failure !== error) Object.defineProperty(failure, 'cause', { value: error, configurable: true, enumerable: false, writable: true });
         }
         const attempt = immutableAttempts([{ id: randomUUID(), ordinal: ordinal + 1,
           providerId: route.provider.id, requestedModel: route.model,
