@@ -56,7 +56,8 @@ it("saves the container's evidence after it stops and before the container or an
   const token = /SPAWNFILE_DAIMON_CONTROL_TOKEN=(\S+)/u.exec(state.envFile)![1]!;
   // Every secret the container was given is masked, and no declared engine path may reach its login file.
   expect(captured[0]).toMatchObject({ container: booted.container, directory: evidenceDirectory, secrets: [token, gateway.key],
-    diagnostics: [{ agentId: "agent:writer", home: HOME }], loginPaths: [`${HOME}/.codex/auth.json`] });
+    // The engine records the pinned Daimon declares for this engine: Spawnfile names none of its own.
+    diagnostics: [{ agentId: "agent:writer", home: HOME, paths: [".codex/sessions", ".codex/log"] }], loginPaths: [`${HOME}/.codex/auth.json`] });
 });
 
 it("saves the evidence of an organization that never became ready, then reports the boot failure", async () => {

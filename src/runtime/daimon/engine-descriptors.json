@@ -1,6 +1,6 @@
 {
   "version": "noopolis.spawnfile.daimon-engine-descriptors.v1",
-  "sourceCommit": "9d9712f8b2460ce4a35dfce117143c352fad3431",
+  "sourceCommit": "d9f7862b864295fb8baff36231b0407a4f8683d4",
   "engines": {
     "agy": {
       "auth": {
@@ -29,6 +29,15 @@
         "secretService": true
       },
       "credentialMaterial": null,
+      "diagnostics": {
+        "paths": [
+          ".gemini/antigravity-cli/log",
+          ".gemini/antigravity-cli/cli.log",
+          ".gemini/antigravity-cli/brain",
+          ".gemini/antigravity-cli/conversations",
+          ".gemini/antigravity-cli/crashes"
+        ]
+      },
       "homeDirectory": "",
       "homeEnvironment": "ANTIGRAVITY_CLI_HOME",
       "id": "agy",
@@ -108,6 +117,12 @@
         "fileMode": 384,
         "sourceRelativePath": ".daimon-inbound/codex-auth",
         "sourceSlot": "codex-auth"
+      },
+      "diagnostics": {
+        "paths": [
+          ".codex/sessions",
+          ".codex/log"
+        ]
       },
       "homeDirectory": ".codex",
       "homeEnvironment": "CODEX_HOME",
@@ -522,6 +537,12 @@
       },
       "credentialMaterial": {
         "destinationRelativePath": ".grok/auth.json"
+      },
+      "diagnostics": {
+        "paths": [
+          ".grok/sessions",
+          ".grok/logs"
+        ]
       },
       "homeDirectory": ".grok",
       "homeEnvironment": "GROK_HOME",
