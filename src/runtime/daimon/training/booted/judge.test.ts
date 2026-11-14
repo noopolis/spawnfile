@@ -79,3 +79,9 @@ test('reads tool activity from record and item kinds, at any engine', () => {
     'not json',
   ].join('\n'))).toEqual(['exec_command_begin', 'mcp_tool_call', 'tool_use', 'unparseable-record']);
 });
+
+test('names the runtime failure behind a judge wake that did not complete', async () => {
+  bind({ state: 'failed', code: 'engine_failed', text: '', failure: 'engine_failed: gateway refused the\n  request: realm unavailable' });
+  const failed = await failure(judge('codex').generate({ prompt: 'p', model: 'm' }));
+  expect(failed.message).toBe('codex-subscription judge wake failed (engine_failed): engine_failed: gateway refused the request: realm unavailable');
+});

@@ -48,3 +48,19 @@ export function immutableAttempts(attempts: readonly InferenceAttempt[]): readon
     usage: attempt.usage === null ? null : Object.freeze(structuredClone(attempt.usage)),
   })));
 }
+
+/**
+ * A failure in the operator's words: its message, then the cause chain behind it. A routed failure carries only
+ * its kind in its own message (that line reaches reports); the route's own account is its `cause`, and the
+ * operator's terminal and protected diagnostic are where that account belongs.
+ */
+export function failureAccount(error: unknown): string {
+  const lines: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current !== undefined && current !== null; depth++) {
+    const line = current instanceof Error ? current.message : String(current);
+    if (line && !lines.includes(line)) lines.push(line);
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return lines.join('\ncaused by: ');
+}

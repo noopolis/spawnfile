@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { failureAccount } from '../../inference/index.js';
 import { subjectStartupDiagnostic, summarizeCosts, type ModelPrice, type OptimizerGeneration, type TrainingCostPlan, type TrialReport } from '../../experiments/index.js';
 import { blobContentPath, type ExperimentStore } from '../../storage/index.js';
 import type { RescoreReport } from '../../experiments/replay/index.js';
@@ -84,7 +85,7 @@ export async function createProgressJournal(options: ProgressOptions) {
     },
     async failed(error: unknown) {
       generations.interrupt();
-      const diagnostic = await options.store.putBlob(runId, String(error).slice(0, 16384), 'evaluator');
+      const diagnostic = await options.store.putBlob(runId, [String(error), ...failureAccount(error).split('\n').slice(1)].join('\n').slice(0, 16384), 'evaluator');
       const diagnosticId = randomUUID();
       await options.store.appendEvent(runId, { id: diagnosticId,
         payload: { type: 'experiment.diagnostic', diagnostic } }, 'evaluator');

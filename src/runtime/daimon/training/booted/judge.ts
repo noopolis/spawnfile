@@ -52,6 +52,12 @@ export function transcriptToolActivity(transcript: string): string[] {
   return [...found].sort();
 }
 
+/** The runtime's own failure for a judge wake that did not complete, as one bounded line. */
+function wakeReason(wake: BootedWake): string {
+  const line = (wake.failure ?? '').replace(/\s+/gu, ' ').trim();
+  return line ? `: ${line.slice(0, 400)}` : '';
+}
+
 function wakeFailure(wake: BootedWake): InferenceFailureKind {
   if (wake.state === 'timeout') return 'timeout';
   if (wake.state === 'stopped') return 'cancelled';
@@ -93,7 +99,7 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
       const usage = bootedUsage(wake.usage);
       const withUsage = { ...evidence, usage };
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', `${route} judgment cancelled`, withUsage);
-      if (wake.state !== 'completed') throw new InferenceFailure(wakeFailure(wake), `${route} judge wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}`, withUsage);
+      if (wake.state !== 'completed') throw new InferenceFailure(wakeFailure(wake), `${route} judge wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}${wakeReason(wake)}`, withUsage);
       const requests = wake.requestToolCalls ?? [];
       if ((wake.transcript !== null && transcriptToolActivity(wake.transcript).length > 0) || requests.some(calls => calls !== null && calls.length > 0)) {
         throw new InferenceFailure('protocol', `${route} attempt refused: tool-call`, { ...withUsage, detail: 'tool-call' });
