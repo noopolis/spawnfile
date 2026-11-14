@@ -75,7 +75,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
       const image = `spawnfile-training-gateway:${runId.replace(/[^A-Za-z0-9_.-]/gu, "-").slice(0, 100)}`;
       await docker(["tag", prepared.image, image]);
       return { image, gateway: await startTrainingGateway({ authProfile: options.authProfile, docker, engines: logins,
-        image, runId, runtimeRoot: prepared.runtimeRoot }) };
+        image, runId, runtimeRoot: prepared.runtimeRoot, evidenceDirectory: await directory("evidence/gateway-") }) };
     })();
     return (await gateway).gateway;
   };

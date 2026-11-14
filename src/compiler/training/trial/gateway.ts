@@ -20,6 +20,7 @@ import {
 } from "../../containerDaimonGatewayRender.js";
 import { slugify } from "../../helpers.js";
 import { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
+import { captureTrialEvidence, type TrialEvidenceCaptureCall } from "./evidence.js";
 
 export interface TrainingGatewayOptions {
   /** Any compiled image of the subject: it carries the pinned Daimon runtime the gateway binary comes from. */
@@ -33,6 +34,13 @@ export interface TrainingGatewayOptions {
   /** Overrides the rendered sidecar script (tests and diagnostics only). */
   script?: (script: string) => string;
   readyTimeoutMs?: number;
+  /**
+   * Where the sidecar's whole log is kept before it is removed (stop, restart, a start that never became ready),
+   * one `capture-<n>` directory per removal: the same evidence a trial container leaves, with the gateway key masked.
+   */
+  evidenceDirectory: string;
+  /** Saves the sidecar's evidence (tests only; default: the real capture). */
+  evidence?: TrialEvidenceCaptureCall;
 }
 
 /** What a trial needs to boot against the sidecar: one agent contract, never a login. */
@@ -110,7 +118,15 @@ export const startTrainingGateway = async (options: TrainingGatewayOptions): Pro
     mounts.push("--mount", `type=volume,source=${volume},target=${daimonGatewayRealmPath(descriptor)}`,
       "-v", `${source}:${daimonGatewayBootstrapMountPath(descriptor.auth.realm)}:ro`);
   }
+  let captures = 0;
+  /** The sidecar is every gatewayed login's only route: when a judge or trial reads "unavailable", this log says why. */
+  const keepEvidence = async (): Promise<void> => {
+    await docker(["stop", "--time", "10", container]).catch(() => undefined);
+    await (options.evidence ?? captureTrialEvidence)({ container, directory: path.join(options.evidenceDirectory, `capture-${++captures}`), secrets: [key] })
+      .catch(() => undefined);
+  };
   const stop = async (): Promise<void> => {
+    await keepEvidence();
     await docker(["rm", "-f", container]).catch(() => undefined);
     await docker(["network", "rm", egress]).catch(() => undefined);
     await removeExactDockerResource(internal, { context, executor, timeoutMs: 30_000 }).catch(() => undefined);
@@ -151,6 +167,7 @@ export const startTrainingGateway = async (options: TrainingGatewayOptions): Pro
   return {
     container, key, network: internal.name, realmVolumes, stop, url: DAIMON_GATEWAY_SIDECAR_URL,
     restart: async (wrap) => {
+      await keepEvidence();
       await docker(["rm", "-f", container]);
       await launch(wrap);
     }
