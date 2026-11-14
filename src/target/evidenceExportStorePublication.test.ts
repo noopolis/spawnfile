@@ -297,11 +297,11 @@ describe("evidence export destination publication", () => {
     const pendingPath = path.join(directory, ".destination-hmac.pending");
     const creatorPause = deferred();
     const creatorResume = deferred();
+    const creatorTemporaryGone = deferred();
     const contenderPause = deferred();
     const contenderResume = deferred();
-    const readerPause = deferred();
     const readerResume = deferred();
-    const readerSecondPass = deferred();
+    const readerWaiting = deferred();
     const readerFirstPass = deferred<{
       finalNlink: number;
       pendingNlink: number;
@@ -309,12 +309,18 @@ describe("evidence export destination publication", () => {
       pendingBytes: string;
     }>();
     let readerPasses = 0;
+    let staleReaderPasses = 0;
 
+    // Every retry below is held on the event it needs rather than on the clock: nobody can finish
+    // until the creator has unlinked its temporary link, and the creator reaches its next hook only
+    // after that unlink. No actor can therefore spend its attempt budget re-reading a state that
+    // another actor has not yet been allowed to change.
     const creator = destinationKey(directory, {
       afterDestinationKeyPendingLinkBeforeTempUnlink: async () => {
         creatorPause.resolve();
         await creatorResume.promise;
       },
+      beforeDestinationKeyLink: async () => { creatorTemporaryGone.resolve(); },
     });
     await creatorPause.promise;
 
@@ -323,14 +329,15 @@ describe("evidence export destination publication", () => {
         contenderPause.resolve();
         await contenderResume.promise;
       },
+      beforePublicationRetry: async () => creatorTemporaryGone.promise,
     });
     await contenderPause.promise;
 
     const reader = destinationKey(directory, {
       afterDestinationKeyFinalSnapshot: async () => {
         readerPasses += 1;
+        if ((await lstat(finalPath)).nlink === 3) staleReaderPasses += 1;
         if (readerPasses === 1) {
-          readerPause.resolve();
           const final = await lstat(finalPath);
           const pending = await lstat(pendingPath);
           const finalBytes = await readFile(finalPath, "utf8");
@@ -343,27 +350,30 @@ describe("evidence export destination publication", () => {
           });
           await readerResume.promise;
         }
-        if (readerPasses === 2) {
-          readerSecondPass.resolve();
-        }
+      },
+      // The first retry re-reads the still-stale generation; the second waits for the peers' cleanup.
+      beforePublicationRetry: async (attempt) => {
+        if (attempt === 1) return;
+        readerWaiting.resolve();
+        await creatorTemporaryGone.promise;
       },
     });
 
-    await readerPause.promise;
-    const first = await readerFirstPass.promise;
+    const first = await Promise.race([readerFirstPass.promise, reader.then(() => { throw new Error("reader finished early"); })]);
     expect(first.finalNlink).toBe(3);
     expect(first.pendingNlink).toBe(3);
     expect(first.pendingBytes).toBe(first.finalBytes);
     readerResume.resolve();
-    await readerSecondPass.promise;
+    await Promise.race([readerWaiting.promise, reader]);
+    expect(staleReaderPasses).toBe(2);
+    expect((await lstat(finalPath)).nlink).toBe(3);
     creatorResume.resolve();
     contenderResume.resolve();
-    await creator;
     const [creatorValue, contenderValue, readerValue] = await Promise.all([creator, contender, reader]);
     expect(creatorValue.equals(contenderValue)).toBe(true);
     expect(readerValue.equals(contenderValue)).toBe(true);
     expect((await lstat(finalPath)).nlink).toBe(1);
     await expect(lstat(pendingPath)).rejects.toThrow();
-    expect(readerPasses).toBeGreaterThanOrEqual(2);
+    expect(readerPasses).toBeGreaterThanOrEqual(3);
   });
 });

@@ -5,6 +5,7 @@ import { chmod, link, lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { EVIDENCE_EXPORT_ERROR } from "./evidenceExportProvider.js";
+import { waitBeforePublicationRetry } from "./evidenceExportPublicationRetry.js";
 import type { EvidenceExportPublicationOptions } from "./evidenceExportPublicationTypes.js";
 
 export type { EvidenceExportPublicationOptions } from "./evidenceExportPublicationTypes.js";
@@ -106,6 +107,7 @@ export const publishImmutable = async (
   const file = path.join(root, fileName);
 
   for (let attempt = 0; attempt < 24; attempt += 1) {
+    await waitBeforePublicationRetry(attempt, options);
     const prior = await readDestinationKey(file, [1, 2], options);
     if (prior !== null) {
       if (prior.bytes !== content && !joinExisting) return fail();
@@ -241,6 +243,7 @@ const destination = async (
 
   let owned: DestinationKeySnapshot | null = null;
   for (let attempt = 0; attempt < 24; attempt += 1) {
+    await waitBeforePublicationRetry(attempt, options);
     const currentFinal = await finalGeneration();
     if (currentFinal !== null) {
       if (!validDestinationKey(currentFinal.bytes)) return fail();

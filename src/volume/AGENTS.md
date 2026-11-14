@@ -79,5 +79,7 @@ src/volume/
   it deleted; and path checks are lstat-then-act, not descriptor-relative (Node has
   no openat), so an agent racing a host operation on a tree it can still reach is
   detected by the next verify rather than prevented.
+  The link swap is atomic where rename(2) is: on Linux, where fed volumes run. On macOS (APFS) a
+  lookup through `current` that is in flight during the swap can fail with EINVAL.
 - `feedAtomicity.test.ts` and `feedLock.test.ts` are the guarantees. A change that
   weakens a rename, a link swap or the lock must turn one of them red.

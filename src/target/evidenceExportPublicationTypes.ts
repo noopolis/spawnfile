@@ -13,4 +13,6 @@ export interface EvidenceExportPublicationOptions {
   readonly afterDestinationKeyPendingLink?: () => Promise<void>;
   readonly afterDestinationKeyRecovered?: () => Promise<void>;
   readonly afterDestinationKeyFinalSnapshot?: () => Promise<void>;
+  /** Replaces the timed backoff before retry `attempt` (1-based), so a test can hold a retry on a peer. */
+  readonly beforePublicationRetry?: (attempt: number) => Promise<void>;
 }
