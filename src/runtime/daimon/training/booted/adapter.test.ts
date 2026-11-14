@@ -94,7 +94,7 @@ test('a delivery Daimon deferred after the engine refused on quota is a failed q
     error: 'trial wake deferred: subscription quota: Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 95h51m47s.' });
   // Any other failure Daimon deferred is still a failed turn: Daimon deferred it, the subject did not.
   const other = await session.run({ id: 'turn-2', text: 'x' });
-  expect(other).toMatchObject({ status: 'failed', error: 'trial wake deferred' });
+  expect(other).toMatchObject({ status: 'failed', error: 'trial wake deferred: engine_failed: CLI engine exited 1' });
   expect(other.limit).toBeUndefined();
 });
 
@@ -152,4 +152,42 @@ test('classifies quota and rate-limit wording engine-neutrally, and nothing else
     expect(quotaFailure(text)).toBeDefined();
   for (const text of ['engine broker turn limit reached', 'CLI engine timed out', 'do not use quotation marks', '', null, undefined])
     expect(quotaFailure(text)).toBeUndefined();
+});
+
+test('hands the whole runtime failure text over and names its reason in the error, never a bare state', async () => {
+  const long = `engine_failed: CLI engine exited with code 1: ${'stream closed before a reply. '.repeat(40)}end of account`;
+  const session = await start([wake({ state: 'deferred', failure: long, text: '' }), wake({ state: 'failed', code: 'engine_failed', failure: 'engine_failed: model\n  refused the request' })], []);
+  const deferred = await session.run({ id: 'turn-1', text: 'x' });
+  expect(deferred.failureText).toBe(long);
+  expect(deferred.error).toMatch(/^trial wake deferred: engine_failed: CLI engine exited with code 1: stream closed/u);
+  expect(deferred.error!.length).toBeLessThan(450);
+  expect(await session.run({ id: 'turn-2', text: 'x' })).toMatchObject({ status: 'failed', failureText: 'engine_failed: model\n  refused the request',
+    error: 'trial wake failed (engine_failed): engine_failed: model refused the request' });
+});
+
+test('explains a wake still open at the trial deadline by its failed execution without scoring it as a declared limit', async () => {
+  const session = await start([wake({ state: 'timeout', text: '', failure: 'engine_failed: CLI engine timed out after 2700000ms' })], []);
+  const result = await session.run({ id: 'turn-1', text: 'x' });
+  expect(result).toMatchObject({ status: 'failed', failureText: 'engine_failed: CLI engine timed out after 2700000ms',
+    error: 'trial wake timeout: engine_failed: CLI engine timed out after 2700000ms' });
+  expect(result.limit).toBeUndefined();
+  expect(result.failure).toBeUndefined();
+});
+
+test('gives the launcher the trial evidence directory and keeps no failure text on a completed turn', async () => {
+  const seen: unknown[] = [];
+  const session = await createDaimonBootedAdapter({ timeoutMs: 1_000, launcher: { boot: async (input) => {
+    seen.push(input.evidenceDirectory);
+    return { wake: async () => wake({ failure: 'stale text from an earlier failed execution' }), read: async () => null, teardown: async () => undefined };
+  } } }).start({ trialId: 't-1', workspacePath: '/w', runtimeHomePath: '/h', evidencePath: '/trial/evidence', instructions: 'i', onObservation: () => undefined });
+  expect(seen).toEqual(['/trial/evidence']);
+  expect((await session.run({ id: 'turn-1', text: 'x' })).failureText).toBeUndefined();
+});
+
+test('names the failure the runtime still reported at teardown in the stop receipt of a turn cut short', async () => {
+  const session = await createDaimonBootedAdapter({ timeoutMs: 1_000, launcher: { boot: async () => ({
+    wake: async () => wake(), read: async () => null, teardown: async () => 'engine_failed: CLI engine exited with code 1' }) } })
+    .start({ trialId: 't-1', workspacePath: '/w', runtimeHomePath: '/h', instructions: 'i', onObservation: () => undefined });
+  expect(await session.stop('Trial deadline exceeded')).toMatchObject({ state: 'acknowledged',
+    detail: 'trial organization container removed; last runtime failure: engine_failed: CLI engine exited with code 1' });
 });

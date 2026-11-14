@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { EvaluationSnapshot, EvaluationResult, JudgeAttemptObservation } from '../../contracts/evaluation.js';
 import type { Observation, ObservationCoverage, SubjectSession, SubjectTurnResult } from '../../contracts/execution.js';
 import { captureObservation } from '../../capture/index.js';
@@ -11,7 +11,7 @@ import { requireMechanicalTurn } from './preflight.js';
 import { drainObservations } from './closure.js';
 import { subjectUsageSnapshot } from './subject-usage.js';
 import { createTrialPaths, releaseTrialScratch } from './paths.js';
-import { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './diagnostics.js';
+import { subjectStartupCapture, subjectStartupDiagnostic, TRIAL_EVIDENCE_DIRECTORY, writeOperatorCapture, writeTurnFailure } from './diagnostics.js';
 import type { PreparedTrial, TrialOptions, TrialReport, TurnReport } from './types.js';
 
 /** Missing or partial admission evidence never proves a never-acting execution. */
@@ -61,6 +61,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     throw new Error('Trial requires native protection for evaluator-owned files');
   }
   const paths = await createTrialPaths(options.root, options.subjectRoot);
+  const evidencePath = join(paths.root, TRIAL_EVIDENCE_DIRECTORY);
   const control = trialControl(options.timeoutMs, options.signal);
   const turns: TurnReport[] = [];
   let events: Observation[] = [];
@@ -143,7 +144,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
     prepared = await control.owned(options.prepare(paths, control.signal));
     if (control.signal.aborted) throw new Error(control.reason);
     const session = await control.owned(adapter.start({ trialId: options.id, slot: options.slot, workspacePath: paths.workspace,
-      runtimeHomePath: paths.runtimeHome, instructions: prepared.instructions, tools: prepared.tools, model: options.model,
+      runtimeHomePath: paths.runtimeHome, evidencePath, instructions: prepared.instructions, tools: prepared.tools, model: options.model,
       ...(record.setup ? { setup: record.setup } : {}),
       protectedPaths: [resolve(options.root), paths.control, paths.runtimeHome, ...Object.values(options.resources ?? {}), ...(options.protectedPaths ?? [])],
       signal: control.signal,
@@ -168,7 +169,9 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       if (control.signal.aborted) break;
       const text = await stageInput(resolveTurnInput(turn.input, bindings), paths.workspace, options.resources ?? {}, inputFiles);
       await persist('turn.input', { id: turn.id, input: text });
-      const native = await control.owned(session.run({ id: turn.id, text }, control.signal));
+      // The runtime's whole failure text goes to the evidence directory once; the durable record keeps `error`.
+      const { failureText, ...native } = await control.owned(session.run({ id: turn.id, text }, control.signal));
+      if (failureText) await writeTurnFailure(evidencePath, turn.id, failureText);
       // Native work is evidence even if observation draining, collection or
       // evaluation fails afterwards. Never make retaining usage depend on them.
       const turnReport: TurnReport = { id: turn.id, native, checks: [] };

@@ -21,6 +21,13 @@ posts one wake and waits on its receipt, `stop` tears the organization down.
   with `limit: 'timeout'`, scored as a declared-limit stop (absent filing fails
   its checks, usage counted). With no measured model output it is a hang and stays
   an unlabelled failure for the infrastructure policy.
+- Every turn that did not complete hands the runtime's whole failure text to the
+  core as `failureText` (kept in the trial's evidence directory) and names it in
+  one bounded line of `error`, so no failure reads as a bare state. A wake still
+  open at the trial's deadline carries the failed execution behind its retry as
+  explanation only: it is never classified as quota or a declared limit. `start`
+  passes the core's `evidencePath` to the launcher, and `stop` names the failure
+  the runtime still reported at teardown in the stop receipt's detail.
 - Prompt tokens are `total - output` of each row, so cached reads count inside
   input whether the engine reports them inside `input` or beside it.
 - Absent usage rows are `usage: null`, never zero. A receipt that never

@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SubjectStartupCapture, SubjectStartupDiagnostic } from '../../contracts/execution.js';
 
@@ -84,4 +84,21 @@ export async function writeOperatorCapture(root: string, capture: SubjectStartup
   const file = join(root, capture.basename);
   try { await writeFile(file, capture.content, { flag: 'wx', mode: 0o600 }); return file; }
   catch { return undefined; }
+}
+
+/** The trial's evidence directory, inside the trial's own root: the operator's disk, never the content store. */
+export const TRIAL_EVIDENCE_DIRECTORY = 'evidence';
+
+/**
+ * Keeps a turn's whole runtime failure text (`SubjectTurnResult.failureText`) as an operator-only `0600` file in
+ * the trial's evidence directory. The durable record carries the reason in one line; this is the full account,
+ * so a failed trial can be diagnosed after its runtime is gone. Returns the file, or undefined when it could not be written.
+ */
+export async function writeTurnFailure(directory: string, turnId: string, text: string): Promise<string | undefined> {
+  const file = join(directory, `turn-${turnId.replace(/[^A-Za-z0-9._-]+/gu, '_')}.failure.txt`);
+  try {
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    await writeFile(file, text.endsWith('\n') ? text : `${text}\n`, { mode: 0o600 });
+    return file;
+  } catch { return undefined; }
 }

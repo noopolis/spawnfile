@@ -16,7 +16,7 @@ export interface BootedWake {
   transcript: string | null;
   /** Per model request, the tool-call names its response carried; null where the runtime could not say. */
   requestToolCalls?: readonly (readonly string[] | null)[];
-  /** The engine failure Daimon reported for this delivery, including one it deferred after retrying; null when none. */
+  /** The engine failure Daimon reported for a delivery that did not complete, in full; null when none. */
   failure?: string | null;
 }
 
@@ -38,16 +38,23 @@ export interface BootedTrialHandle {
   wake(text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }): Promise<BootedWake>;
   /** A workspace-relative file the subject left in its container; null when absent. */
   read(path: string): Promise<string | null>;
-  teardown(): Promise<void>;
+  /** Resolves with the failure the runtime still reported at teardown, in full, or null. */
+  teardown(): Promise<string | null | void>;
 }
 
 /** Boots one trial organization of the subject with the candidate's instructions, from the record's moment if it has one. */
 export interface BootedTrialLauncher {
-  boot(input: { trialId: string; instructions: string; moment?: unknown; signal?: AbortSignal }): Promise<BootedTrialHandle>;
+  boot(input: { trialId: string; instructions: string; moment?: unknown; signal?: AbortSignal; evidenceDirectory?: string }): Promise<BootedTrialHandle>;
 }
 
 /** The artifact holding a trial's final reply, beside its declared outputs. */
 export const BOOTED_REPLY_OUTPUT = 'reply';
+
+/** The runtime's failure as one bounded line of the trial's error; the whole text is the turn's `failureText`. */
+const failureReason = (failure: string | null): string => {
+  const line = failure?.replace(/\s+/gu, ' ').trim() ?? '';
+  return line ? `: ${line.length > 400 ? `${line.slice(0, 400)}...` : line}` : '';
+};
 
 export interface BootedAdapterOptions { launcher: BootedTrialLauncher; timeoutMs: number }
 
@@ -90,7 +97,8 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
       isolation: 'One production-booted organization container per trial; the subscription login stays in the run auth gateway.' },
     async start(input) {
       const trial = await options.launcher.boot({ trialId: input.trialId, instructions: input.instructions,
-        ...(input.setup?.moment === undefined ? {} : { moment: input.setup.moment }), signal: input.signal });
+        ...(input.setup?.moment === undefined ? {} : { moment: input.setup.moment }), signal: input.signal,
+        ...(input.evidencePath === undefined ? {} : { evidenceDirectory: input.evidencePath }) });
       let reply: string | undefined;
       let lastCollected: Record<string, SubjectOutput> = {};
       const source = `${BOOTED_ADAPTER_ID}:${input.trialId}`;
@@ -99,7 +107,9 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
       const emit = (wakeId: string, value: Partial<Observation> & Pick<Observation, 'type'>) =>
         input.onObservation({ id: `${source}:${++seq}`, source, seq, trialId: input.trialId, wakeId, timestamp: new Date().toISOString(), ...value });
       const stop = (reason: string): Promise<StopReceipt> => stopped ??= trial.teardown().then(
-        () => ({ state: 'acknowledged', scope: 'native-handle', quiescence: 'confirmed', remoteWork: 'unknown', reason, detail: 'trial organization container removed' }),
+        // A turn cut short (the trial's deadline, an abort) never returned its failure; the stop receipt names it.
+        (failure) => ({ state: 'acknowledged', scope: 'native-handle', quiescence: 'confirmed', remoteWork: 'unknown', reason,
+          detail: `trial organization container removed${failure ? `; last runtime failure${failureReason(failure)}` : ''}` }),
         (error: unknown) => ({ state: 'unknown', scope: 'native-handle', quiescence: 'unknown', remoteWork: 'unknown', reason, detail: error instanceof Error ? error.message : String(error) }));
       return {
         stop,
@@ -127,13 +137,15 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
           // delivery whose execution failed again after its one retry, and then reports that failure. Such a delivery
           // is a failed turn, never the subject deferring.
           const failure = wake.state === 'completed' || wake.state === 'stopped' ? null : wake.failure ?? null;
-          const quota = quotaFailure(failure);
+          // A wake still open at the trial's deadline is classified by that deadline alone; its failure only explains it.
+          const classified = wake.state === 'timeout' ? null : failure;
+          const quota = quotaFailure(classified);
           const ended = wake.state === 'completed' || wake.state === 'deferred' && wake.code === null && failure === null;
           const status = ended ? 'completed' : wake.state === 'stopped' ? 'cancelled' : 'failed';
           // A turn killed at its wall-clock bound after its model made measured progress is the subject missing its
           // deadline, as production would: a declared timeout, scored on what it left. One with no measured model
           // work is a hang, and stays an unlabelled failure for the infrastructure policy.
-          const limit = status === 'failed' && quota === undefined && timeoutFailure(failure) && wake.usage.some((row) => row.output > 0) ? 'timeout' as const : undefined;
+          const limit = status === 'failed' && quota === undefined && timeoutFailure(classified) && wake.usage.some((row) => row.output > 0) ? 'timeout' as const : undefined;
           return {
             status, text: wake.text, usage,
             evidence: { adapterId: BOOTED_ADAPTER_ID, payload: { schema: BOOTED_EVIDENCE_SCHEMA, acceptanceId: wake.acceptanceId,
@@ -145,7 +157,8 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
             ],
             ...(quota === undefined ? {} : { failure: 'quota' as const }),
             ...(limit === undefined ? {} : { limit }),
-            ...(status === 'completed' ? {} : { error: `trial wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}${quota ? `: subscription quota: ${quota}` : limit ? ': wall-clock bound reached while the subject was working' : ''}` }),
+            ...(failure === null ? {} : { failureText: failure }),
+            ...(status === 'completed' ? {} : { error: `trial wake ${wake.state}${wake.code ? ` (${wake.code})` : ''}${quota ? `: subscription quota: ${quota}` : limit ? ': wall-clock bound reached while the subject was working' : failureReason(failure)}` }),
           };
         },
       };

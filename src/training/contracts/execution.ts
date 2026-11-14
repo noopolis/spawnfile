@@ -220,6 +220,12 @@ export interface SubjectStart {
   instructions: string;
   model?: string;
   tools?: readonly FixtureTool[];
+  /**
+   * The trial's own evidence directory on the operator's disk: an adapter that owns a runtime saves that
+   * runtime's full logs here before it tears it down, on every path. Operator-only, like an operator capture:
+   * beside the trial's scratch, never in the content store, so no replay, report or viewer reaches it.
+   */
+  evidencePath?: string;
   /** The record's native setup, unchanged; adapters that boot the subject read their own keys. */
   setup?: Readonly<Record<string, unknown>>;
   onObservation: (observation: Observation) => void | Promise<void>;
@@ -272,6 +278,12 @@ export interface SubjectTurnResult {
    * Only on a `failed` turn. Not retried (the refusal outlasts a trial) and never scored.
    */
   failure?: 'quota';
+  /**
+   * The runtime's own account of why this turn did not complete, whole and as the runtime reported it, with
+   * every credential already removed by the adapter. Handed over exactly once: the runner writes it to the
+   * trial's evidence directory and keeps it out of the durable record, where `error` names the reason in one line.
+   */
+  failureText?: string;
   text: string;
   coverage: ObservationCoverage[];
   usage: Usage | null;
