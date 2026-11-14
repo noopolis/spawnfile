@@ -80,9 +80,9 @@ describe("runtime container install recipes", () => {
   it("copies the CI-published Daimon index and checks the per-architecture receipt by default", async () => {
     const recipe = await createRuntimeInstallRecipe("daimon");
     expect(recipe.copyCommands).toEqual([
-      `COPY --from=noopolis/spawnfile-runtime-daimon@sha256:49be70c1de393d114efdfa92ee5a921f906acfaaee94e836196593d045bd7b1d ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
+      `COPY --from=noopolis/spawnfile-runtime-daimon@sha256:39b31029b7a0fe22b1b0372ba34d2f11ea746e15b6ecf407fa9b968fc189f474 ${RUNTIME_INSTALL_ROOT}/daimon ${RUNTIME_INSTALL_ROOT}/daimon`
     ]);
-    expect(recipe.commands[0]).toContain('case "$arch" in amd64) expected="sha256:88cb197f3d5fcc3ffedebde48609605bb52601f67ee62a9c2623776c4141eb99" ;; arm64) expected="sha256:72c434ebb39ae49924d8e561c62fb05cd39f604670cf7d5575f302fa6ae11c28" ;;');
+    expect(recipe.commands[0]).toContain('case "$arch" in amd64) expected="sha256:8eec2ef86b1e6d4e734baa777d3cdce77681c6225646f192ac08c00f886e915a" ;; arm64) expected="sha256:54139e769e2cffee0e5b9a8a4f080e6156cc96998abdc951f34d9bf87710f3ba" ;;');
   });
 
   it("consumes an explicit local Daimon identity by immutable manifest and exact receipt digest", async () => {
@@ -148,7 +148,7 @@ describe("runtime container install recipes", () => {
     process.env.SPAWNFILE_DAIMON_RUNTIME_BASE_IMAGE = "noopolis/spawnfile-runtime-daimon:legacy";
     const recipe = await createRuntimeInstallRecipe("daimon");
     expect(recipe.baseImage).toBeUndefined();
-    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:49be70c1de393d114efdfa92ee5a921f906acfaaee94e836196593d045bd7b1d");
+    expect(recipe.copyCommands[0]).toContain("noopolis/spawnfile-runtime-daimon@sha256:39b31029b7a0fe22b1b0372ba34d2f11ea746e15b6ecf407fa9b968fc189f474");
   });
 
   it("omits NOOPOLIS_RUN_ID from every recipe's env when unset", async () => {
