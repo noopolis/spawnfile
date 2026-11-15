@@ -1,5 +1,6 @@
 import { isTextSelector, textSelectors } from './text-checks.js';
 import { resolveGraderCheck } from './grader.js';
+import { resolveQuestionnaire } from './questionnaire.js';
 import { createHash } from 'node:crypto';
 import type { CheckNode, Dataset, DatasetRegistry, LiveCheck, Stage } from '../contracts/dataset.js';
 import { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
@@ -66,7 +67,7 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
     artifacts(node, context, path);
     const sidecar = node.eval === 'json-schema' && typeof node.schema === 'string' ? node.schema :
       node.eval === 'llm-rubric' && node.rubric && typeof node.rubric === 'object' ?
-        (node.rubric as { file?: string }).file : undefined;
+        (node.rubric as { file?: string }).file : node.eval === 'questionnaire' ? node.bank as string : undefined;
     const sidecars = node.eval === 'values-in-source' ? textSelectors(node.source).filter(source => !isTextSelector(source)) : sidecar ? [sidecar] : [];
     for (const sidecar of sidecars) {
       if (!context.readCriterionFile || !context.criterionFileDigests) fail(path, `criterion sidecar requires protected bytes: ${sidecar}`);
@@ -76,6 +77,7 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
         bytes = Buffer.from(context.readCriterionFile(sidecar));
         files.set(sidecar, bytes);
       }
+      if (node.eval === 'questionnaire') resolveQuestionnaire(node, context, new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes), path);
       if (node.eval === 'json-schema') compileJsonSchema(JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)));
       context.criterionFileDigests[sidecar] = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
       context.versions[`criterion-file:${sidecar}`] = context.criterionFileDigests[sidecar];

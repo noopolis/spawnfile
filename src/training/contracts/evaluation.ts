@@ -1,6 +1,7 @@
 import type { AtomicRuntime, AtomicGradeResult } from '../graders/atomic/index.js';
 import type { DecisionAccounting } from './grading.js';
 import type { GradingRuntime, GradeResult } from '../graders/index.js';
+import type { QuestionnaireResult } from '../questionnaire/index.js';
 import type { CheckNode, EvaluatorDefinition, DataMap } from './dataset.js';
 import type { Observation, ObservationCoverage, InferenceProvider, Usage, InferenceFailureKind, InferenceDiagnostic } from './execution.js';
 
@@ -56,6 +57,8 @@ export interface JudgeRoute {
   citationRepairs?: 0 | 1;
   protocol?: 'citations' | 'evidence-ids';
   identity?: string;
+  /** The reasoning effort this route was built with, when its model declares one. */
+  effort?: string;
   template?: { language: 'jinja'; text: string };
   cache?: JudgeCache;
   /** Host-frozen dataset and phase identity, required for persistent reuse. */
@@ -140,6 +143,8 @@ export interface EvaluationResult {
   children?: EvaluationResult[];
   grading?: GradeResult;
   atomicGrading?: AtomicGradeResult;
+  /** Per-question answers of a questionnaire check, hidden ones included: evaluator evidence, never optimizer feedback. */
+  questionnaire?: QuestionnaireResult;
   /** Infrastructure stopped atomic grading before extraction; no grade was produced. */
   atomicFailure?: { cause: 'acceptance-gate'; gateId: string };
   /** Paid grader attempts retained even when no grade was produced. */

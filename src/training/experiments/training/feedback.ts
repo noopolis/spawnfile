@@ -3,6 +3,7 @@ import type { DataMap, ResolvedRecord } from '../../contracts/dataset.js';
 import type { TrialReport } from '../trials/index.js';
 import type { AtomicFeedback } from '../../graders/atomic/index.js';
 import { createHash } from 'node:crypto';
+import { questionnaireFeedback } from '../../questionnaire/index.js';
 
 export const trainingFeedbackLimits = { outputBytes: 16384, feedbackBytes: 32768, atomicBytes: 8192, atomicChecks: 40, unitChars: 1000 } as const;
 
@@ -78,6 +79,12 @@ function taskOutput(record: ResolvedRecord, report: TrialReport): string {
 }
 
 function checkFeedback(check: EvaluationResult, measurementsOnly = false): unknown {
+  if (check.questionnaire) {
+    // Only the open projection leaves the evaluator: no hidden question, working step or full score.
+    const open = questionnaireFeedback(check.questionnaire);
+    return { id: check.id, status: open.status, score: open.score ?? undefined, finality: check.finality,
+      ...(!measurementsOnly ? { reason: `Questionnaire: ${open.failed.length} failed`, failed: open.failed } : {}) };
+  }
   return { id: check.id, status: check.status, score: check.score, finality: check.finality,
     ...(!measurementsOnly ? { reason: check.reason,
       ...(check.atomicGrading ? { atomic: compactAtomic(check.atomicGrading.feedback) } : {}) } : {}),

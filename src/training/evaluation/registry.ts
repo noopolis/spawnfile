@@ -4,6 +4,7 @@ import { builtinEvaluatorDefinitions } from '../cases/index.js';
 import type { EvaluationRegistry, RegisteredEvaluator } from '../contracts/evaluation.js';
 import { evaluateSequence, evaluateTextCheck, evaluateText, evaluateTokenEfficiency, evaluateTool } from './mechanical/index.js';
 import { evaluateGrader } from './grader.js';
+import { evaluateQuestionnaire, questionnaireResources } from './questionnaire.js';
 import { evaluateRubric } from './semantic/index.js';
 import { evaluateSimilarity } from './embedding/index.js';
 
@@ -21,7 +22,7 @@ export function createEvaluationRegistry(custom: EvaluationRegistry = {}): Evalu
     equals: evaluateText, 'contains-any': evaluateText, 'json-schema': evaluateText,
     'tool-called': evaluateTool, 'tool-count': evaluateTool, 'tool-sequence': evaluateSequence,
     'token-efficiency': evaluateTokenEfficiency,
-    grader: evaluateGrader,
+    grader: evaluateGrader, questionnaire: evaluateQuestionnaire,
     'llm-rubric': evaluateRubric, 'embedding-similarity': evaluateSimilarity,
   };
   const builtins: Record<string, RegisteredEvaluator> = Object.fromEntries(Object.entries(functions).map(([id, evaluate]) => [id,
@@ -35,6 +36,7 @@ export function createEvaluationRegistry(custom: EvaluationRegistry = {}): Evalu
     const cache = named(context.judges, check.judge)?.cache;
     return cache ? [cache] : [];
   };
+  builtins.questionnaire!.concurrency = (_check, context) => questionnaireResources(context);
   builtins.grader!.concurrency = (check, context) => {
     const route = named(context.graders ?? {}, check.grader);
     const resources = route ? [...route.resources ?? [route.resource]] : [];
