@@ -330,3 +330,23 @@ describe("spawnfile train", () => {
   });
 });
 
+
+describe("spawnfile train --regrade", () => {
+  it("delegates to the regrade with the manifest, output and auth profile, loading no project", async () => {
+    const forbidden = vi.fn(async () => { throw Error("a regrade loads no project and runs no training"); });
+    const runTrainingRegrade = vi.fn(async () => 0);
+    const code = await runCli(["train", "--regrade", "regrade.json", "--out", "graded", "--auth-profile", "training"], {
+      handlers: { runTrainingRegrade, loadTrainingProject: forbidden, createTrainingPlan: forbidden, createTrainingContext: forbidden, runTraining: forbidden },
+      streams: { stdout() {}, stderr() {} } });
+    expect(code).toBe(0);
+    expect(runTrainingRegrade).toHaveBeenCalledWith(expect.objectContaining({ manifest: "regrade.json", out: "graded", authProfile: "training" }));
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+  it("requires --out and, in the composed command, an auth profile", async () => {
+    const stderr: string[] = [];
+    expect(await runCli(["train", "--regrade", "regrade.json"], { handlers: { runTrainingRegrade: vi.fn(async () => 0) }, streams: { stdout() {}, stderr: (value) => stderr.push(value) } })).not.toBe(0);
+    expect(stderr.join("\n")).toContain("--regrade requires --out");
+    const { runTrainingRegrade } = await import("./trainingRegrade.js");
+    await expect(runTrainingRegrade({ manifest: "regrade.json", out: "graded", streams: { stdout() {}, stderr() {} } })).rejects.toThrow(/--auth-profile/u);
+  });
+});

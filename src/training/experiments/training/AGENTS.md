@@ -154,7 +154,7 @@ A questionnaire check enters feedback only as `questionnaireFeedback`: the open 
 open questions and failed open questions. Hidden questions, working steps and the full score never
 enter optimizer text; the trial scalar still includes them, which is how they reach selection.
 
-`critic.ts` runs the critic gate between a finished search and frozen selection: candidates from the
-search's provenance, best validation score first, the first whose review passes is selected, and
-the report keeps every review. It shows the critic train records only. A blocked search winner is
+`training.ts` runs the critic gate (`../../critic`) between a finished search and frozen selection:
+candidates from the search's provenance, best validation score first, the first whose review passes
+is selected, and the report keeps every review. It shows the critic train records only. A blocked search winner is
 replaced before any sealed test runs. Critic reviews are not checkpointed: a resumed run reviews again.

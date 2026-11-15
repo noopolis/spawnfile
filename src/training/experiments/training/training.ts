@@ -22,8 +22,7 @@ import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
 import { freezeCriteria } from './criteria.js';
 import { trainingFeedback } from './feedback.js';
-import { criticSelection, type TrainingCriticOptions } from './critic.js';
-import type { CriticGateReport } from '../../critic/index.js';
+import { criticSelection, type CriticGateReport, type TrainingCriticOptions } from '../../critic/index.js';
 import { evaluateHeldOut, type HeldOutScore } from './held-out.js';
 import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 

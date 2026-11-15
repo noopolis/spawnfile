@@ -387,16 +387,13 @@ it('passes only compact atomic failures to optimization, preserving protected re
 
 it('shows a questionnaire check through its open projection only', async () => {
   const { runQuestionnaire, testBank, testJudge, testMaterial, testReplies } = await import('../../questionnaire/index.js');
-  const graded = await runQuestionnaire({ bank: testBank(), material: testMaterial, judges: { strong: testJudge([
-    { ...testReplies[0]!, quotes: { answer: 'yes', reason: 'HIDDEN SECRET reason' } },
+  const graded = await runQuestionnaire({ bank: testBank(), material: testMaterial, judges: { strong: testJudge([{ ...testReplies[0]!, quotes: { answer: 'yes', reason: 'HIDDEN SECRET reason' } },
     { padding: { answer: 'paragraph', reason: 'P3 restates' }, unused: { answer: 9, reason: 'HIDDEN SECRET rows' } }]) } });
   const selected = record(), captured = report();
   const check = { id: 'house', status: 'pass' as const, finality: 'final' as const, reason: 'Questionnaire test-bank: gate pass', score: graded.score!, evidence: [], questionnaire: graded };
   captured.evaluation = { status: 'pass', checks: {}, scores: {}, stages: [{ id: 'record-checks', checks: [check], gate: { status: 'pass', finality: 'final', reason: '', evidence: [] } }] };
-  captured.live = [{ checkId: 'house', boundary: 'final', result: check }];
   const text = trainingFeedback(selected, captured).feedback;
-  const feedback = JSON.parse(text) as { evaluation: { stages: { checks: unknown[] }[] } };
-  expect(feedback.evaluation.stages[0]!.checks[0]).toEqual({ id: 'house', status: 'pass', score: graded.scoreOpen, finality: 'final', reason: 'Questionnaire: 1 failed',
-    failed: [{ id: 'padding', question: 'How much padding?', answer: 'paragraph', reason: 'P3 restates' }] });
+  expect((JSON.parse(text) as { evaluation: { stages: { checks: unknown[] }[] } }).evaluation.stages[0]!.checks[0]).toEqual({ id: 'house', status: 'pass', score: graded.scoreOpen, finality: 'final',
+    reason: 'Questionnaire: 1 failed', failed: [{ id: 'padding', question: 'How much padding?', answer: 'paragraph', reason: 'P3 restates' }] });
   for (const secret of ['SECRET', 'quotes', 'unused', 'numbers_list', 'P1: E1', 'scoreHidden', String(graded.score)]) expect(text).not.toContain(secret);
 });

@@ -8,10 +8,13 @@ the declared house documents, and the selection rule that removes a blocked cand
 - `review.ts`: the fixed review instructions, prompt rendering, strict reply parsing and the verdict.
 - `gate.ts`: `selectThroughCritic`, the walk from the best validation score down to the first
   candidate whose review passes.
+- `selection.ts`: `criticSelection`, the gate applied to a finished search: candidates from the
+  search's provenance, declared checks described without judged question text, train case texts.
 
 Rules:
 
-- Runtime-neutral: import contracts only. The judge is an injected route, the same named routes checks use.
+- Runtime-neutral: import contracts and the public indexes of candidates and optimization only.
+  The judge is an injected route, the same named routes checks use.
 - The verdict is computed here from findings and `blockOn`; a model-supplied verdict is never read.
 - A critic that fails or returns anything but a review is an `error`, which removes the candidate
   exactly like `block`. Nothing here turns a failed review into a pass.

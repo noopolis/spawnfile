@@ -2,3 +2,4 @@ export { caseOverlaps, changedLines, terms, type CaseOverlap } from './overlap.j
 export { CRITIC_PROMPT_VERSION, criticCategories, criticSchema, criticSeverities, criticSystem, renderCriticPrompt, reviewCandidate,
   type CriticFinding, type CriticInput, type CriticReview, type CriticSeverity } from './review.js';
 export { selectThroughCritic, type CriticGateEntry, type CriticGateReport } from './gate.js';
+export { criticSelection, describeChecks, trainCaseTexts, type TrainingCriticOptions } from './selection.js';

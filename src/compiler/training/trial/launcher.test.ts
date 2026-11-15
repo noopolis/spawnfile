@@ -122,3 +122,10 @@ it("passes the runtime's last failure at teardown through to the trial's caller"
   expect(await trial.teardown()).toBe("last failure of trial");
   await run.close();
 });
+
+it("boots no trial in a judges-only run", async () => {
+  const run = createBootedTrialRun({ authProfile: { name: "p", env: {}, imports: {} } as never, scratchRoot: path.join(os.tmpdir(), "spawnfile-launcher-test"), docker: async () => "",
+    prepare: (async () => { throw new Error("no trial may be prepared"); }) as never });
+  await expect(run.boot({ trialId: "t", instructions: "x" })).rejects.toThrow(/judges only/u);
+  await run.close();
+});

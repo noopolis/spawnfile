@@ -1,8 +1,9 @@
-import { candidateComponents, type CandidateManifest } from '../../candidates/index.js';
-import type { CheckNode, ResolvedDataset } from '../../contracts/dataset.js';
-import type { JudgeRoute } from '../../contracts/evaluation.js';
-import { reviewCandidate, selectThroughCritic, type CriticGateReport, type CriticSeverity } from '../../critic/index.js';
-import type { DspyResult } from '../../optimization/index.js';
+import { candidateComponents, type CandidateManifest } from '../candidates/index.js';
+import type { CheckNode, ResolvedDataset } from '../contracts/dataset.js';
+import type { JudgeRoute } from '../contracts/evaluation.js';
+import type { DspyResult } from '../optimization/index.js';
+import { selectThroughCritic, type CriticGateReport } from './gate.js';
+import { reviewCandidate, type CriticSeverity } from './review.js';
 
 /** The run's critic: a named judge route, the house documents and what else the critic is shown. */
 export interface TrainingCriticOptions {
