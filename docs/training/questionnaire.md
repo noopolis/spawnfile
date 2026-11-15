@@ -19,6 +19,7 @@ score: { linear: { house-rules: 0.7, length: 0.3 } }
 gate: { all: [{ passed: house-rules }] }
 ```
 
+- `feedback: full | status | none` sets what of the check the optimizer may read (see Feedback levels).
 - `score` is the whole bank's score, open and hidden questions together. Search and selection use it.
 - `status` is the bank's gate: `fail` when a gate question fails, `error` when a gate question has
   no usable answer, `pass` otherwise. A check that fails its gate still scores.
@@ -174,10 +175,92 @@ one questionnaire check on the run's booted judges and boots no subject.
   must score lower on than its clean base, and whether a gate must fail. The command exits nonzero
   when a defect is missed, a required gate does not fail or a clean base fails a gate.
 
+## Feedback levels
+
+Every evaluator check accepts `feedback: full | status | none`: what of it the optimizer may read.
+
+- `full` (the default): the check's declared parameters, status, score and reason.
+- `status`: its id, evaluator, status and score. No parameter and no reason, so a threshold such as a
+  word range cannot be copied into a prompt.
+- `none`: nothing. The check is absent from the criteria and from the results; a stage gate or weight
+  may still name its id.
+- A questionnaire check at `status` shows its open score and open gate only; at `full` it adds the failed
+  open questions. No level ever shows a hidden question.
+- The level changes optimizer text only. Scoring, gates, selection and the operator report are unchanged.
+
+## Repeated validation trials
+
+```yaml
+training:
+  budget: { validation_repeats: 2, test_repeats: 1 }   # each 1 to 8, default 1
+```
+
+- Trial noise is about ten times judge noise, so a case is run again, never judged again.
+- Each validation callback runs its case `validation_repeats` times as fresh subject trials, in turn, and
+  the search receives the mean score. Train cases stay at one trial.
+- The derived trial budget is `(1 + variants * rounds) * (train + validation * validation_repeats) +
+  2 * test * test_repeats`. With an explicit `--max-trials` and no population search, every optimizer
+  callback is budgeted as a repeated validation.
+- A nondefault count is part of the checkpoint identity; a resumed run restores every repeat it holds.
+
+## Open and hidden gap rule
+
+```yaml
+training:
+  selection: { max_gap: 0.10, max_gate_failure_rise: 0.25 }   # declare either or both
+```
+
+- Measured per candidate over its validation trials: the mean open score, the mean hidden score, their
+  gap, and the share of trials whose questionnaire check did not pass its gate (a missing output counts).
+- A candidate is removed from selection when its gap exceeds the baseline's by more than `max_gap`, or
+  its gate failure rate exceeds the baseline's by more than `max_gate_failure_rise`.
+- The rule runs after the search and before the critic: a rejected candidate is never reviewed.
+- The baseline is never rejected. A candidate the rule cannot measure is not rejected by it.
+- Every measurement and decision is in the report under `selection`.
+
+## Calibration before training
+
+```yaml
+training:
+  calibration: [training/calibration/set.v1.json]    # relative to the declaring file
+```
+
+```json
+{ "schema": "spawnfile.training.calibration.v1",
+  "check": "house-rules",
+  "outputs": [ { "id": "clean-a", "output": "outputs/clean-a.json", "context": { "evidence": "cases/a/evidence.json" } },
+               { "id": "figure-a", "output": "outputs/figure-a.json", "context": { "evidence": "cases/a/evidence.json" } } ],
+  "expect": [ { "id": "figure-a", "base": "clean-a", "defect": "figure_not_in_evidence",
+                "targets": ["figures_supported"], "gate_must_fail": true } ],
+  "clean": ["clean-a"] }
+```
+
+- A set names one questionnaire check of the train dataset and recorded outputs: known bad ones (one
+  injected defect each, with the questions that must score lower than on the clean base and whether a
+  gate must fail) and known good ones (every `base` and every `clean` id must pass the gate).
+- Paths are relative to the set file and stay inside its directory. Each output binds exactly the
+  check's contexts. `.json` files bind parsed values.
+- `spawnfile train` judges every set on the run's own judge routes before the first trial, through the
+  registered check, and refuses to start when a defect is missed, a required gate does not fail, a clean
+  output fails a gate or a judgment is missing. Nothing is retried into a pass.
+- Results are kept one file per output under `<out>/calibration/<set>-<digest>`. The digest binds the
+  bank, the set and every file it names, so a resumed run asks only for outputs whose judge has not
+  answered and a changed input is judged again.
+- The verdict is in the report under `calibration`.
+
+## Cost plan and resume
+
+- The cost plan counts questionnaire calls as one per group per repeat for every permitted trial, the
+  calibration sets' calls, and one critic review per candidate the search can produce.
+- Observed costs include calibration and critic calls beside the trials' judge calls.
+- Critic reviews are kept in `critic.json` beside the training checkpoint, bound to the judge, guide,
+  baseline, shown checks and train cases. A resumed run reuses them; an errored review is asked again.
+
+## A case without a grader
+
+A dataset example may declare `grader: false`: it lowers no `grade` check, and its declared checks
+grade it. `score` and `gate` then name declared checks only.
+
 ## Not implemented
 
-- Per-check `feedback: full | status | none`, so mechanical check parameters still reach the optimizer.
-- Rejecting a candidate on its open minus hidden gap or gate failure rate; the gap is reported only.
-- `budget.validation_repeats`.
-- Refusing a training run whose bank misses its calibration set; calibration runs through `--regrade`.
 - Critic review before a candidate's first trial, and critic findings as optimizer feedback.
