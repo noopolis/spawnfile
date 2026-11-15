@@ -51,6 +51,8 @@ export class TrainingCheckpoint {
       concurrency: options.concurrency, slots: options.slots, slotsFile: options.slotsFile,
       ...(options.trialRetries ? { trialRetries: options.trialRetries } : {}),
       ...(options.testRepeats === undefined || options.testRepeats === 1 ? {} : { testRepeats: options.testRepeats }),
+      ...(options.validationRepeats === undefined || options.validationRepeats === 1 ? {} : { validationRepeats: options.validationRepeats }),
+      ...(options.selection ? { selection: options.selection } : {}),
       ...(options.scoring?.deferred === 'stage-score' ? { scoring: options.scoring } : {}),
       seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, search: options.search, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
     });

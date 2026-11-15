@@ -60,14 +60,24 @@ export interface TrainingCritic {
   /** The lowest finding severity that blocks; `high` when omitted. */
   block_on?: 'low' | 'medium' | 'high';
 }
+/** Candidate rejection on what the optimizer could not see: declared thresholds over validation trials. */
+export interface TrainingSelection {
+  /** Reject a candidate whose open minus hidden questionnaire gap exceeds the baseline's by more than this. */
+  max_gap?: number;
+  /** Reject a candidate whose questionnaire gate failure rate exceeds the baseline's by more than this. */
+  max_gate_failure_rise?: number;
+}
 export interface TrainingConfiguration {
   critic?: TrainingCritic;
+  selection?: TrainingSelection;
+  /** Calibration sets (`spawnfile.training.calibration.v1`), relative to the dataset: judged before any trial; a miss refuses the run. */
+  calibration?: string[];
   scoring?: TrainingScoring;
   comparison?: TrainingComparison;
   models: Record<string, TrainingModel>;
   judges?: Record<string, TrainingJudge>;
   optimizer?: TrainingOptimizer;
-  budget?: { trial_retries?: number; test_repeats?: number; max_trials?: number; max_proposals?: number; timeout_ms?: number;
+  budget?: { trial_retries?: number; test_repeats?: number; validation_repeats?: number; max_trials?: number; max_proposals?: number; timeout_ms?: number;
     experiment_timeout_ms?: number; trial_timeout_ms?: number };
   cache?: { mode: 'off' | 'exact' | 'persistent'; max_entries?: number; namespace?: string; directory?: string };
   recovery?: { max_attempts?: number };
@@ -89,6 +99,14 @@ export function testRepeatCount(value: number = 1): number {
 export function trialRetryCount(value: number = 0): number {
   if (!Number.isSafeInteger(value) || value < 0 || value > 3) {
     throw new Error('training.budget.trial_retries must be an integer from 0 to 3');
+  }
+  return value;
+}
+
+/** Fresh subject trials per validation case and candidate, combined by their mean; omitted preserves one. */
+export function validationRepeatCount(value: number = 1): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 8) {
+    throw new Error('training.budget.validation_repeats must be an integer from 1 to 8');
   }
   return value;
 }

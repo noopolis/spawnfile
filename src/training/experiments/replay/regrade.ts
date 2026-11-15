@@ -5,7 +5,7 @@ import type { ArtifactSnapshot, EvaluationContext, EvaluationRegistry, Evaluatio
 import { reviewCandidate, type CriticReview } from '../../critic/index.js';
 import { evaluatePlan } from '../../evaluation/index.js';
 import { calibrationExpectationSchema, checkQuestionnaireCalibration, summarizeQuestionnaire,
-  type CalibrationReport, type QuestionnaireResult, type QuestionnaireSummary } from '../../questionnaire/index.js';
+  type CalibrationExpectation, type CalibrationReport, type QuestionnaireResult, type QuestionnaireSummary } from '../../questionnaire/index.js';
 
 export const REGRADE_SCHEMA = 'spawnfile.training.regrade.v1' as const;
 const name = z.string().regex(/^[A-Za-z0-9._-]+$/u);
@@ -77,12 +77,16 @@ export interface RegradeOptions {
   read: (path: string) => Promise<string>;
   evaluation: Pick<EvaluationContext, 'judges' | 'observeJudgeAttempt'>;
   registry: EvaluationRegistry;
+  /** Calibration expectations given directly instead of through the manifest's `calibration` file, with further clean outputs. */
+  expectations?: { expect: readonly CalibrationExpectation[]; clean?: readonly string[] };
   /** Results an earlier pass already holds; these outputs are not asked again. */
   completed?: Readonly<Record<string, RegradedOutput>>;
   /** Reviews an earlier pass already holds; these candidates are not reviewed again. */
   reviewed?: Readonly<Record<string, CriticReview>>;
   onReview?: (label: string, review: CriticReview) => void | Promise<void>;
   onResult?: (result: RegradedOutput) => void | Promise<void>;
+  /** Outputs judged at once; 1 when omitted. */
+  concurrency?: number;
   signal?: AbortSignal;
 }
 
@@ -133,12 +137,10 @@ export async function regradeRecordedOutputs(options: RegradeOptions): Promise<R
   options.registry.questionnaire!.definition.validate(parameters, 'check');
   const bank = await options.read(manifest.check.bank);
   const stages: Stage[] = [{ id: 'regrade', checks: [check], score: { linear: { [manifest.check.id]: 1 } }, gate: { all: [{ passed: manifest.check.id }] } }];
-  const results: RegradedOutput[] = [];
-  let bankId = '';
-  for (const entry of manifest.outputs) {
+  const grade = async (entry: RegradeManifest['outputs'][number]): Promise<RegradedOutput> => {
     options.signal?.throwIfAborted();
     const done = options.completed && Object.hasOwn(options.completed, entry.id) ? options.completed[entry.id] : undefined;
-    if (done) { results.push(done); bankId ||= done.questionnaire?.bank.id ?? ''; continue; }
+    if (done) return done;
     const context: Record<string, unknown> = {};
     for (const [key, path] of Object.entries(entry.context ?? {})) context[key] = data(path, await options.read(path));
     const artifacts: Record<string, ArtifactSnapshot> = {};
@@ -156,17 +158,24 @@ export async function regradeRecordedOutputs(options: RegradeOptions): Promise<R
     const evaluated = plan.checks[manifest.check.id]!;
     const result: RegradedOutput = { id: entry.id, candidate: entry.candidate, case: entry.case, calibration: entry.calibration === true, status: evaluated.status,
       score: evaluated.score ?? null, reason: evaluated.reason, ...(evaluated.questionnaire ? { questionnaire: evaluated.questionnaire } : {}) };
-    bankId ||= evaluated.questionnaire?.bank.id ?? '';
-    results.push(result);
     await options.onResult?.(result);
-  }
+    return result;
+  };
+  // Outputs are independent: up to `concurrency` are judged at once, and results keep the manifest's order.
+  const results = new Array<RegradedOutput>(manifest.outputs.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(options.concurrency ?? 1, manifest.outputs.length)) }, async () => {
+    while (next < manifest.outputs.length) { const index = next++; results[index] = await grade(manifest.outputs[index]!); }
+  }));
+  const bankId = results.find(result => result.questionnaire)?.questionnaire!.bank.id ?? '';
   const critic = manifest.critic ? await reviewRecorded(options, manifest.critic) : undefined;
   const candidates: Record<string, RegradeCandidate> = {};
   for (const label of [...new Set(results.filter(result => !result.calibration).map(result => result.candidate))]) {
     candidates[label] = summarize(results.filter(result => !result.calibration && result.candidate === label));
   }
   const graded = Object.fromEntries(results.flatMap(result => result.questionnaire ? [[result.id, result.questionnaire]] : []));
-  const calibration = manifest.calibration === undefined ? undefined
+  const calibration = options.expectations ? checkQuestionnaireCalibration(options.expectations.expect, graded, options.expectations.clean)
+    : manifest.calibration === undefined ? undefined
     : checkQuestionnaireCalibration(calibrationExpectationSchema.parse(JSON.parse(await options.read(manifest.calibration))), graded);
   return { schema: 'spawnfile.training.regrade-report.v1', check: manifest.check.id,
     bank: { id: bankId, digest: `sha256:${createHash('sha256').update(bank).digest('hex')}` },

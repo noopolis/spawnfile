@@ -218,3 +218,28 @@ describe('training critic', () => {
       .toThrow('comparison selects no candidate');
   });
 });
+
+describe('training verifier controls', () => {
+  const base = { models: { strong: { provider: 'claude-subscription', model: 'm' } }, judges: { strong: { model: 'strong' } } };
+  const comparison = { comparison: { candidate: { name: 'c', replacements: [{ resource: 'AGENTS.md', source: 'c.md' }] } } };
+  it('accepts validation repeats, a selection rule and calibration sets', () => {
+    const config = { ...base, budget: { validation_repeats: 2 }, selection: { max_gap: 0.1, max_gate_failure_rise: 0.25 }, calibration: ['grading/calibration/set.json'] };
+    expect(validateTrainingConfiguration(config)).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1, max_gate_failure_rise: 0.25 }, calibration: ['grading/calibration/set.json'] });
+    expect(validateTrainingConfiguration({ ...base, ...comparison, calibration: ['set.json'] }).calibration).toEqual(['set.json']);
+  });
+  it.each([
+    [{ budget: { validation_repeats: 9 } }, 'validation_repeats'],
+    [{ budget: { validation_repeats: 0 } }, 'validation_repeats'],
+    [{ selection: {} }, 'declare max_gap or max_gate_failure_rise'],
+    [{ selection: { max_gap: 1.5 } }, 'expected a number from 0 to 1'],
+    [{ selection: { max_gap: '0.1' } }, 'expected a number from 0 to 1'],
+    [{ selection: { max_gap: 0.1, min_gap: 0 } }, 'unknown field'],
+    [{ calibration: [] }, 'nonempty sequence'],
+    [{ calibration: ['../set.json'] }, 'contained relative path'],
+    [{ calibration: ['a.json', 'a.json'] }, 'duplicate identity'],
+    [{ ...comparison, selection: { max_gap: 0.1 } }, 'comparison selects no candidate'],
+    [{ ...comparison, budget: { validation_repeats: 2 } }, 'repeats are supported for optimizer training only'],
+  ])('refuses %j', (extra, message) => {
+    expect(() => validateTrainingConfiguration({ ...base, ...extra })).toThrow(message);
+  });
+});

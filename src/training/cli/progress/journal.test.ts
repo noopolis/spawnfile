@@ -163,3 +163,15 @@ it('keeps the protected wording when no adapter published a diagnostic', async (
   expect(failure.startupDiagnostics).toBeUndefined();
   expect(JSON.stringify(replay)).not.toContain('SEALED CASE');
 });
+
+it('accounts calibration and critic judge calls outside any trial, each call once', async () => {
+  const { journal, stdout } = await fixture();
+  const usage = { inputTokens: 1000, cachedInputTokens: 0, outputTokens: 100, reasoningTokens: null, source: 'native' };
+  const call = (id: string) => ({ id, judge: 'strong', providerId: 'p', requestedModel: 'gpt-5.5', responseModel: 'gpt-5.5', responseRoute: 'r', outcome: 'completed', usage });
+  await journal.observe({ type: 'calibration.judged', payload: { status: 'pass', set: 'set.json', judgeCalls: [call('a'), call('b')] } });
+  await journal.observe({ type: 'calibration.judged', payload: { status: 'pass', set: 'set.json', judgeCalls: [call('a'), call('b')] } });
+  await journal.observe({ type: 'critic.judged', payload: { status: 'selected', judgeCalls: [call('c')] } });
+  expect(journal.costs().groups.filter(group => group.role === 'judge').map(group => [group.name, group.entryCount])).toEqual([['calibration', 2], ['critic', 1]]);
+  expect(stdout.map(line => JSON.parse(line) as { type: string; judgeCalls?: number }).filter(line => line.type.endsWith('.judged')).map(line => [line.type, line.judgeCalls]))
+    .toEqual([['calibration.judged', 2], ['calibration.judged', 2], ['critic.judged', 1]]);
+});

@@ -6,7 +6,7 @@ import { candidateComponents, deriveCandidate, snapshotCandidate } from '../cand
 import { parseDatasetYaml, resolveDataset } from '../cases/index.js';
 import type { InferenceProvider } from '../contracts/execution.js';
 import type { DspyResult } from '../optimization/index.js';
-import { criticSelection, describeChecks, trainCaseTexts } from './selection.js';
+import { criticIdentity, criticSelection, describeChecks, rankedCandidates, trainCaseTexts } from './selection.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -60,5 +60,21 @@ describe('critic selection', () => {
     expect(describeChecks(train)).toBe(['- length: word-count min 200, max 400',
       '- quality: llm-rubric (a model answers fixed questions about the output; question text is withheld)', '- shape: json-schema', '- equals: equals value "x"', '- done: equals value "y"'].join('\n'));
     expect(trainCaseTexts(train)).toEqual([{ id: 'landtag', text: 'AfD nominated Tobias Rausch; who holds the gavel.' }, { id: 'turns', text: JSON.stringify(train.records[1]!.turns) }]);
+  });
+  it('ranks the search\'s choice first, reuses a kept review and binds a review to what the critic was shown', async () => {
+    const { baseline, optimizer, candidateFor, critic, prompts, quota, plain } = await fixture([]);
+    expect(rankedCandidates(optimizer, candidateFor).map(entry => [entry.candidate.id, entry.validationScore])).toEqual([[quota.id, 0.9], [quota.id, 0.9], [plain.id, 0.7], [baseline.id, 0.6]]);
+    expect(rankedCandidates({ components: optimizer.components, provenance: { candidates: [] } } as never, candidateFor)).toEqual([{ candidate: quota, validationScore: null }]);
+    const seen: [string, boolean][] = [];
+    const kept = { verdict: 'pass' as const, blockOn: 'high' as const, summary: 'kept', findings: [], overlaps: [] };
+    const gate = await criticSelection({ critic, baseline, train, optimizer, candidateFor, reviewed: { [quota.id]: kept }, onReview: (id, _review, restored) => { seen.push([id, restored]); } });
+    expect(gate.selected.id).toBe(quota.id);
+    expect(prompts).toHaveLength(0);
+    expect(seen).toEqual([[quota.id, true]]);
+    const shown = criticIdentity(critic, baseline, train);
+    expect(criticIdentity(critic, baseline, train)).toBe(shown);
+    for (const other of [{ ...critic, show: { checks: false, trainTasks: true } }, { ...critic, show: { checks: true, trainTasks: false } }, { ...critic, blockOn: 'low' as const }, { ...critic, guide: [] }]) {
+      expect(criticIdentity(other, baseline, train)).not.toBe(shown);
+    }
   });
 });

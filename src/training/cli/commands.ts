@@ -1,13 +1,14 @@
-import { testRepeatCount } from '../contracts/training-config.js';
+import { testRepeatCount, validationRepeatCount } from '../contracts/training-config.js';
 import { failureAccount } from '../inference/index.js';
 import { resolveSpawnfileContext } from './spawnfile/index.js';
-import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget, resolveTrainingBridgeCommand } from './training/index.js';
+import { resolveTrainingOptimizer, populationSearch, bridgeProposal, trainingTrialBudget, metricCallBudget, resolveTrainingBridgeCommand } from './training/index.js';
 import { runGraderCommand } from './grader/index.js';
 import { readMeasurementRepair, verifyRepairProjection, importMeasurementCaptures, readParentCheckpoints } from '../experiments/repair/index.js';
 import { resolveTrainingPartitions } from '../experiments/training/index.js';
 import { configuredCostRoutes, commandCheckpoint, prepareComparison } from './training/index.js';
 import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
 import { commandDeadlines, trainingCritic } from './training/index.js';
+import { loadCalibrationSets, calibrationCalls, runTrainingCalibration } from './calibration/index.js';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { compareCandidates, freezeCriteria, planTrainingCost, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
@@ -51,7 +52,9 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   if (args.command === 'evaluate' && dataset.records.length > inputs.maxTrials) throw new Error('Dataset exceeds --max-trials; no records are silently dropped');
   const comparison = prepareComparison(args, io, inputs.candidate);
   const testRepeats = testRepeatCount(args.training?.budget?.test_repeats);
-  const metricCalls = inputs.maxTrials - (test === undefined ? 0 : 2 * test.records.length * testRepeats);
+  const validationRepeats = validationRepeatCount(args.training?.budget?.validation_repeats);
+  const metricCalls = test === undefined ? inputs.maxTrials : metricCallBudget(args, inputs.maxTrials,
+    resolveTrainingPartitions(dataset, validation, args.flags['validation-group']).validation.records.length, test.records.length);
   if (metricCalls < 1) throw new Error('--max-trials cannot cover optimizer evaluation plus two reserved sealed-test passes');
   const bridgeCommand = args.command === 'train' && !comparison ? one(args, 'bridge-command') : undefined;
   const bridge = bridgeCommand === undefined ? undefined : Object.freeze({
@@ -61,10 +64,13 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
   const maxProposals = comparison ? 0 : count(args, 'max-proposals', 3, 1000);
   const seed = count(args, 'seed', 0, 2 ** 32 - 1, 0);
   const costConfig = readCostConfig(args, io);
+  const calibrationSets = args.command === 'train' && test !== undefined ? loadCalibrationSets(args, dataset) : [];
+  const search = populationSearch(args.training?.optimizer);
   const costPlan = test === undefined ? undefined : planTrainingCost({ train: dataset, validation, test,
     subjectModel: inputs.model, ...(comparison ? {mode:'comparison' as const} : {optimizerModel: optimizerModel!}), validationGroups: args.flags['validation-group'],
     ...configuredCostRoutes(args, inputs.judges, inputs.citationRepairs, dependencies.inferenceProviders),
-    maxTrials: inputs.maxTrials, maxProposals, testRepeats, ...costConfig });
+    maxTrials: inputs.maxTrials, maxProposals, testRepeats, validationRepeats, calibration: calibrationCalls(calibrationSets),
+    ...(args.training?.critic && !comparison ? { critic: { judge: args.training.critic.judge, reviews: search ? search.variants * search.rounds : maxProposals } } : {}), ...costConfig });
   const native = await prepareNative(args, io, dependencies, trialTimeoutMs, inputs, inferenceMs);
   // Completion, failure and SIGINT/SIGTERM (launch aborts `signal`) all release inference grants here.
   try { return await executePrepared(native); } finally { await native.closeInference(); }
@@ -126,7 +132,11 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         .every(trial => (report.rescores?.findLast(score => score.runId === trial.id)?.status ?? trial.status) === 'pass') ? 0 : 1;
     }
     if (test !== undefined) {
-      const report = await trainAgent({ testRepeats,
+      // The grader is judged on its declared calibration sets first; a miss refuses the run before any trial.
+      const calibration = await runTrainingCalibration({ sets: calibrationSets, out: native.out, evaluation: native.evaluation, registry: native.registry,
+        concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined, signal,
+        observe: async event => { await journal.observe(event); await live?.observe(event); } });
+      const report = await trainAgent({ testRepeats, validationRepeats,
         trialRetries: args.training?.budget?.trial_retries,
         concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined,
         slotsFile: args.flags['slots-file'] ? resolve(io.cwd, one(args, 'slots-file')) : undefined, id, baseline: native.candidate, train: dataset, validation, test,
@@ -136,7 +146,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
         proposal: bridgeProposal(args.training?.optimizer),
         search: populationSearch(args.training?.optimizer),
-        scoring: args.training?.scoring, critic: trainingCritic(args, native.evaluation.judges),
+        scoring: args.training?.scoring, critic: trainingCritic(args, native.evaluation.judges), selection: args.training?.selection,
         checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2, ...(fork ? {fork} : {})},
         onProgress: async (event) => {
           await journal.observe(event);
@@ -145,7 +155,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
       });
       signal.throwIfAborted();
       const index = await persistResult({ root: native.out, store, id: attemptId, command: 'train', datasetId: test.id,
-        planDigest: test.sharedPlanDigest, candidate: report.selected, report: { ...report, id: attemptId, experimentId: id, costs: journal.costs(), costPlan }, trialIds: report.trials.map((trial) => trial.id),
+        planDigest: test.sharedPlanDigest, candidate: report.selected, report: { ...report, ...(calibration.length ? { calibration } : {}), id: attemptId, experimentId: id, costs: journal.costs(), costPlan }, trialIds: report.trials.map((trial) => trial.id),
         replaceIndex:Boolean(args.flags.resume),
         optimizerBudget: { maxMetricCalls: metricCalls, maxProposals } });
       io.stdout(`${JSON.stringify({ status: 'completed', index: join(native.out, 'invocation.json'), ...index,

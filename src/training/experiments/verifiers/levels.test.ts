@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import type { TrialReport } from '../trials/index.js';
-import { trainingFeedback } from './feedback.js';
+import { trainingFeedback } from '../training/index.js';
 
 const record = (levels: string) => resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
 id: writing
@@ -53,4 +53,21 @@ it('leaves a none check out of criteria, results and live results', () => {
 
 it('refuses an undeclared feedback level', () => {
   expect(() => record(', feedback: hints')).toThrow(/feedback/u);
+});
+
+it('reads levels and criteria through nested logical checks', () => {
+  const nested = resolveDataset(parseDatasetYaml(`schema: spawnfile.training.dataset.v1
+id: writing
+checks:
+  - id: both
+    all:
+      - {id: length, eval: word-count, input: output.text, min: 200, feedback: none}
+      - any: [{id: shape, eval: equals, input: output.text, value: "x", feedback: status}, {not: {id: empty, eval: equals, input: output.text, value: ""}}]
+records: [{id: assigned-story, group: topic, input: {prompt: File the article.}}]
+`)).records[0]!;
+  const captured = report();
+  captured.evaluation.stages[0]!.checks = [{ ...result('both'), children: [result('length'), { ...result('shape'), reason: 'shape wanted x' }] }];
+  const value = JSON.parse(trainingFeedback(nested, captured).feedback) as { criteria: { checks: { all: unknown[] }[] }[]; evaluation: { stages: { checks: { children: unknown[] }[] }[] } };
+  expect(value.criteria[0]!.checks[0]!.all).toEqual([{ any: [{ id: 'shape', eval: 'equals', feedback: 'status' }, { not: { id: 'empty', eval: 'equals', input: 'output.text', value: '' } }] }]);
+  expect(value.evaluation.stages[0]!.checks[0]!.children).toEqual([{ id: 'shape', status: 'fail', score: 0, finality: 'final' }]);
 });

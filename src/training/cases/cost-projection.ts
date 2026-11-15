@@ -17,6 +17,7 @@ export interface CostDataset {
   sourceDigest: string;
   structureDigest: string;
   records: CostRecord[];
+  questionnaireCalls?: Record<string, Record<string, number>>;
   preparation: { status: 'unverified'; profiles: string[]; checks: readonly ['availability', 'locks', 'parameter-semantics'] };
 }
 
@@ -26,7 +27,8 @@ export function projectDatasetCost(dataset: ResolvedDataset): CostDataset {
   return { schema: 'spawnfile.training.cost-dataset.v1', id: dataset.id, subject: dataset.subject,
     sourceDigest: dataset.sourceDigest, structureDigest: dataset.sharedPlanDigest,
     preparation: { status: 'unverified', profiles: [...profiles].sort(), checks: ['availability', 'locks', 'parameter-semantics'] },
-    records: dataset.records.map(projectRecordCost) };
+    records: dataset.records.map(projectRecordCost),
+    ...(dataset.questionnaireCalls ? { questionnaireCalls: structuredClone(dataset.questionnaireCalls) } : {}) };
 }
 
 function projectRecordCost(record: ResolvedRecord): CostRecord {

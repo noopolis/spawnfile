@@ -17,6 +17,7 @@ export interface PlanResolution {
   artifacts?: ReadonlySet<string>;
   criterionFileDigests?: Record<string, string>;
   criterionFiles?: Map<string, Uint8Array>;
+  questionnaireCalls?: Record<string, Record<string, number>>;
   readCriterionFile?: (path: string) => string | Uint8Array;
 }
 interface Nature { mechanical: boolean; incremental: boolean; stopProof: boolean }

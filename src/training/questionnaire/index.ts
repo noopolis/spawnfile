@@ -4,6 +4,6 @@ export { combineAnswers, judgeAnswer, parseAnswer, scoreAnswer, scoreQuestionnai
 export { groupSchema, questionnaireSystem, renderGroupPrompt, renderQuestion, renderRead, type QuestionnaireMaterial } from './prompt.js';
 export { runQuestionnaire, type QuestionnaireJudge, type QuestionnaireResult, type RunQuestionnaireOptions } from './run.js';
 export { questionnaireFeedback, summarizeQuestionnaire, type QuestionnaireFeedback, type QuestionnaireSummary, type QuestionRate } from './report.js';
-export { calibrationExpectationSchema, checkQuestionnaireCalibration, type CalibrationExpectation, type CalibrationReport } from './calibration.js';
+export { CALIBRATION_SCHEMA, calibrationExpectationSchema, calibrationSetSchema, checkQuestionnaireCalibration, type CalibrationExpectation, type CalibrationReport, type CalibrationRun, type CalibrationSet } from './calibration.js';
 export { renderQuestionnaireMarkdown, type QuestionnaireCandidateRow } from './markdown.js';
 export { testBank, testBankYaml, testJudge, testMaterial, testReplies } from './testSupport.js';

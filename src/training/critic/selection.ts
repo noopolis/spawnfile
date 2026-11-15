@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto';
 import { candidateComponents, type CandidateManifest } from '../candidates/index.js';
 import type { CheckNode, ResolvedDataset } from '../contracts/dataset.js';
 import type { JudgeRoute } from '../contracts/evaluation.js';
 import type { DspyResult } from '../optimization/index.js';
 import { selectThroughCritic, type CriticGateReport } from './gate.js';
-import { reviewCandidate, type CriticSeverity } from './review.js';
+import { CRITIC_PROMPT_VERSION, reviewCandidate, type CriticReview, type CriticSeverity } from './review.js';
 
 /** The run's critic: a named judge route, the house documents and what else the critic is shown. */
 export interface TrainingCriticOptions {
@@ -41,23 +42,47 @@ export function trainCaseTexts(train: ResolvedDataset): { id: string; text: stri
   });
 }
 
+export interface RankedCandidate { candidate: CandidateManifest; validationScore: number | null }
+
+/** The search's candidates in selection order: its own choice first, then best validation score first. */
+export function rankedCandidates(optimizer: DspyResult, candidateFor: (components: Readonly<Record<string, string>>) => CandidateManifest): RankedCandidate[] {
+  const ranked = optimizer.provenance.candidates.map((entry, index) => ({ entry, index }))
+    .sort((a, b) => b.entry.validationScore - a.entry.validationScore || a.index - b.index)
+    .map(({ entry }) => ({ candidate: candidateFor(entry.components), validationScore: entry.validationScore }));
+  return [{ candidate: candidateFor(optimizer.components), validationScore: ranked[0]?.validationScore ?? null }, ...ranked];
+}
+
+/** What a review depends on besides the candidate: a kept review is reused only under the same identity. */
+export function criticIdentity(critic: TrainingCriticOptions, baseline: CandidateManifest, train: ResolvedDataset): string {
+  return createHash('sha256').update(JSON.stringify([CRITIC_PROMPT_VERSION, critic.judge.name, critic.judge.model, critic.blockOn, critic.show,
+    critic.guide.map(document => [document.name, document.text]), text(baseline),
+    critic.show.checks ? describeChecks(train) : null, critic.show.trainTasks ? trainCaseTexts(train) : null])).digest('hex');
+}
+
 /**
  * The critic gate between a finished search and frozen selection. Candidates are taken from the search's
  * own provenance, best validation score first (the search's rule), so the first candidate considered is
- * the one the search selected; reviews see train cases only.
+ * the one the search selected; reviews see train cases only. A review kept from an earlier pass of the same
+ * run is reused, never asked again.
  */
 export async function criticSelection(options: {
   critic: TrainingCriticOptions; baseline: CandidateManifest; train: ResolvedDataset; optimizer: DspyResult;
   candidateFor: (components: Readonly<Record<string, string>>) => CandidateManifest; signal?: AbortSignal;
+  /** Candidates in selection order, when the caller already removed some; the search's own order otherwise. */
+  ranked?: readonly RankedCandidate[];
+  /** Usable reviews of an earlier pass, by candidate id. */
+  reviewed?: Readonly<Record<string, CriticReview>>;
+  onReview?: (candidateId: string, review: CriticReview, restored: boolean) => void | Promise<void>;
 }): Promise<{ selected: CandidateManifest; report: CriticGateReport }> {
   const { critic } = options;
-  const ranked = options.optimizer.provenance.candidates.map((entry, index) => ({ entry, index }))
-    .sort((a, b) => b.entry.validationScore - a.entry.validationScore || a.index - b.index)
-    .map(({ entry }) => ({ candidate: options.candidateFor(entry.components), validationScore: entry.validationScore }));
   const baseline = text(options.baseline);
-  return selectThroughCritic({ baseline: options.baseline,
-    ranked: [{ candidate: options.candidateFor(options.optimizer.components), validationScore: ranked[0]?.validationScore ?? null }, ...ranked],
-    review: candidate => reviewCandidate({ baseline, candidate: text(candidate), guide: critic.guide, judge: critic.judge, blockOn: critic.blockOn, signal: options.signal,
-      ...(critic.show.checks ? { checks: describeChecks(options.train) } : {}),
-      ...(critic.show.trainTasks ? { trainCases: trainCaseTexts(options.train) } : {}) }) });
+  return selectThroughCritic({ baseline: options.baseline, ranked: options.ranked ?? rankedCandidates(options.optimizer, options.candidateFor),
+    review: async candidate => {
+      const kept = options.reviewed && Object.hasOwn(options.reviewed, candidate.id) ? options.reviewed[candidate.id] : undefined;
+      const review = kept ?? await reviewCandidate({ baseline, candidate: text(candidate), guide: critic.guide, judge: critic.judge, blockOn: critic.blockOn, signal: options.signal,
+        ...(critic.show.checks ? { checks: describeChecks(options.train) } : {}),
+        ...(critic.show.trainTasks ? { trainCases: trainCaseTexts(options.train) } : {}) });
+      await options.onReview?.(candidate.id, review, kept !== undefined);
+      return review;
+    } });
 }

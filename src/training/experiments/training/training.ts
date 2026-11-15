@@ -1,8 +1,8 @@
 import { retryTrial, type TrialRetry } from './retry.js';
-import { testRepeatCount, trialRetryCount } from '../../contracts/training-config.js';
+import { testRepeatCount, trialRetryCount, validationRepeatCount } from '../../contracts/training-config.js';
 import { MutationQueue } from '../../platform/mutations/index.js';
 import { loadTrialSlots } from '../concurrency/index.js';
-import type { TrainingScoring } from '../../contracts/training-config.js';
+import type { TrainingScoring, TrainingSelection } from '../../contracts/training-config.js';
 import type { TrialSlot } from '../../contracts/trial-slot.js';
 import { repairMeasurement } from '../repair/index.js';
 import { recoverMeasurement, recoverStoredReport } from './recovery.js';
@@ -22,13 +22,17 @@ import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
 import { freezeCriteria } from './criteria.js';
 import { trainingFeedback } from './feedback.js';
-import { criticSelection, type CriticGateReport, type TrainingCriticOptions } from '../../critic/index.js';
+import type { CriticGateReport, TrainingCriticOptions } from '../../critic/index.js';
+import { meanOverRepeats, selectCandidate, validationRepeatKey, type GapGateReport } from '../verifiers/index.js';
+import type { CalibrationRun } from '../../questionnaire/index.js';
 import { evaluateHeldOut, type HeldOutScore } from './held-out.js';
 import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
 export interface TrainingOptions {
   trialRetries?: number;
   testRepeats?: number;
+  /** Fresh trials per validation case and candidate; the search receives their mean. */
+  validationRepeats?: number;
   scoring?: TrainingScoring;
   concurrency?: number;
   slotsFile?: string;
@@ -50,6 +54,8 @@ export interface TrainingOptions {
   seed?: number;
   /** The prompt critic gate; without it the search's own choice is selected. */
   critic?: TrainingCriticOptions;
+  /** Declared thresholds on what the optimizer could not see; a candidate past them is removed from selection. */
+  selection?: TrainingSelection;
   signal?: AbortSignal;
   onProgress?: (event: { type: string; payload: unknown }) => Promise<void>;
 }
@@ -64,6 +70,10 @@ export interface TrainingReport {
   optimizer: DspyResult;
   /** Critic reviews behind the frozen selection; a blocked or unreviewable candidate was removed from it. */
   critic?: CriticGateReport;
+  /** The gap rule's measurement of every candidate considered, when one is declared. */
+  selection?: GapGateReport;
+  /** Calibration sets judged before the first trial; every one passed, or the run would not exist. */
+  calibration?: CalibrationRun[];
   partitions: { train: string[]; validation: string[]; test: string[] };
   trials: TrialReport[];
   heldOut: HeldOutScore[];
@@ -81,6 +91,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
   const started = performance.now();
   const trialRetries = trialRetryCount(options.trialRetries);
   const testRepeats = testRepeatCount(options.testRepeats);
+  const validationRepeats = validationRepeatCount(options.validationRepeats);
   if ('maxRunRequests' in options) throw new Error('Run-wide provider request admission is not implemented; maxRunRequests cannot be enforced');
   const { concurrency, pool, slots } = await loadTrialSlots({ ...options, selfIsolated: options.native.adapter.capabilities.trialIsolation === 'per-start' });
   const progress = options.onProgress;
@@ -216,14 +227,18 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     },
     evaluate: async (request, signal, callbackId) => {
       const dataset = request.split === 'train' ? partition.train : partition.validation;
-      const report = await trial(dataset, request.caseId, request.split, candidateFor(request.components), signal, callbackId, request.round);
+      const candidate = candidateFor(request.components);
+      const report = await trial(dataset, request.caseId, request.split, candidate, signal, callbackId, request.round);
       const record = dataset.records.find(record => record.id === request.caseId)!;
-      return { score: trialScore(measured(report), options.scoring), captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation) };
+      const score = await meanOverRepeats(request.split === 'validation' ? validationRepeats : 1, async repeat => trialScore(measured(repeat === 0 ? report
+        : await trial(dataset, request.caseId, 'validation', candidate, signal, validationRepeatKey(callbackId ?? `${candidate.id}:${request.caseId}`, repeat), request.round)), options.scoring));
+      return { score, captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation) };
     } });
   await checkpoint?.freeze(optimizer);
-  // A candidate must pass the critic before it can be selected; the baseline is always selectable.
-  const gate = options.critic ? await criticSelection({ critic: options.critic, baseline: options.baseline, train: partition.train, optimizer, candidateFor, signal: options.signal }) : undefined;
-  if (gate) await options.onProgress?.({ type: 'critic.reviewed', payload: gate.report });
+  // A candidate must pass the declared gap rule and the critic before it can be selected; the baseline is always selectable.
+  const gate = options.critic || options.selection ? await selectCandidate({ baseline: options.baseline, train: partition.train, validation: partition.validation, optimizer, candidateFor,
+    trials, evaluation: trial => measured(trial).evaluation, rule: options.selection, critic: options.critic,
+    checkpointDirectory: options.checkpoint?.directory, signal: options.signal, onProgress: options.onProgress }) : undefined;
   const selected = gate?.selected ?? candidateFor(optimizer.components);
   // Freeze selection BEFORE the sealed test can execute or become feedback.
   const frozen = [...new Map([options.baseline, selected].map(candidate => [candidate.id, candidate])).values()];
@@ -232,7 +247,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     trial: (candidate, caseId, repeat) => trial(options.test, caseId, 'test', candidate, undefined,
       repeat === 0 ? undefined : `test-repeat:${JSON.stringify([candidate.id, caseId, repeat])}`),
     measurement: report => ({ id: measured(report).id, score: trialScore(measured(report), options.scoring) }) });
-  const report: TrainingReport = { schema: 'spawnfile.training.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer, ...(gate ? { critic: gate.report } : {}),
+  const report: TrainingReport = { schema: 'spawnfile.training.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer, ...(gate?.critic ? { critic: gate.critic } : {}), ...(gate?.gap ? { selection: gate.gap } : {}),
     ...(options.scoring?.deferred === 'stage-score' ? { scoring: { ...options.scoring } } : {}),
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
       test: options.test.records.map(record => record.id) }, trials, heldOut, ...(retries.size ? { retries: [...retries.values()] } : {}), ...(rescores.length ? { rescores } : {}),

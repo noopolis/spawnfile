@@ -3,6 +3,7 @@ import { parseDatasetYaml, resolveDataset } from '../../cases/index.js';
 import type { CheckNode, ResolvedDataset } from '../../contracts/dataset.js';
 import { planTrainingCost, type TrainingCostOptions } from './planning.js';
 import { resolveCostAssumptions } from './assumptions.js';
+import { testBankYaml } from '../../questionnaire/index.js';
 
 const rubric: CheckNode = { eval: 'llm-rubric', input: 'output.text', judge: 'prose', minimum: 0.8, rubric: { prompt: 'Clear prose.' } };
 function dataset(name: string, groups: string[]): ResolvedDataset {
@@ -163,4 +164,26 @@ it('counts repeated held-out subject and judge calls, preserving the default pla
   expect(repeated.lines.filter(line => line.phase === 'held-out').map(line => [line.role, line.plannedCalls]))
     .toEqual([['subject', 12], ['judge', 6]]);
   expect(() => planTrainingCost({ ...input, testRepeats: 3, maxTrials: 12 })).toThrow('budget');
+});
+
+it('counts questionnaire groups per repeat, calibration and critic reviews, and discloses validation repeats', () => {
+    const bank = testBankYaml.replace('combine: any-fail', 'combine: any-fail\n    repeats: 3');
+    const graded = (name: string, groups: string[]) => resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: name,
+      records: groups.map(group => ({ id: `${name}-${group}`, group, input: { prompt: 'File.' }, outputs: { output: 'a.json' }, context: { evidence: [], assignment: 'a' },
+        checks: [{ id: 'house', eval: 'questionnaire', bank: 'bank.yaml', input: 'artifact:output', context: { evidence: 'context:evidence', assignment: 'context:assignment' } }] })) }), { sourceName: `/p/${name}.yaml` }),
+      { requireGroups: true, registry: { judges: { strong: { version: '1' } } }, readCriterionFile: () => bank });
+    const train = graded('development', ['a', 'b', 'c']);
+    expect(train.questionnaireCalls).toEqual({ 'bank.yaml': { strong: 4 } });
+    expect(dataset('plain', ['a'])).not.toHaveProperty('questionnaireCalls');
+    const plan = planTrainingCost({ ...options(), train, test: graded('sealed', ['x', 'y']), judges: { strong: { model: 'claude-fable-5-1', provider: 'claude-subscription' } },
+      validationRepeats: 2, calibration: { strong: 26 }, critic: { judge: 'strong', reviews: 2 } });
+    expect(plan.coverage).toBe('estimated');
+    expect(plan.budget).toMatchObject({ metricCalls: 6, reservedTestTrials: 4, validationRepeats: 2 });
+    expect(plan.lines.filter(line => line.role === 'judge').map(line => [line.name, line.phase, line.plannedCalls])).toEqual([
+      ['strong', 'development', 24], ['strong', 'held-out', 16], ['calibration', 'development', 26], ['critic', 'optimization', 2]]);
+    expect(plan.warnings.some(warning => warning.includes('Critic reserves one review per candidate'))).toBe(true);
+    expect(planTrainingCost(options()).budget).not.toHaveProperty('validationRepeats');
+    expect(() => planTrainingCost({ ...options(), critic: { judge: 'absent', reviews: 1 } })).toThrow('Missing judge route absent');
+    expect(() => planTrainingCost({ ...options(), validationRepeats: 9 })).toThrow('validation_repeats');
+    expect(planTrainingCost({ ...options(), calibration: { prose: 0 }, critic: { judge: 'prose', reviews: 0 } }).lines.some(line => line.name === 'critic' || line.name === 'calibration')).toBe(false);
 });

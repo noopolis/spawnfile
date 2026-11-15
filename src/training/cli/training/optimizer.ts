@@ -2,7 +2,7 @@ import type { InferenceProviderRegistry } from '../../contracts/inference-regist
 import { isDeepStrictEqual } from 'node:util';
 import { validateTrainingConfiguration } from '../../cases/index.js';
 import { type CandidateManifest } from '../../candidates/index.js';
-import { testRepeatCount, type TrainingOptimizer } from '../../contracts/training-config.js';
+import { testRepeatCount, validationRepeatCount, type TrainingOptimizer } from '../../contracts/training-config.js';
 import type { CliArguments } from '../arguments.js';
 import { count } from '../arguments.js';
 import type { SpawnfileCliIntegration } from '../types.js';
@@ -67,15 +67,29 @@ export function populationSearch(optimizer?: TrainingOptimizer) {
   };
 }
 
-/** One baseline plus every declared variant, each on train and validation; two sealed passes. */
+/** One baseline plus every declared variant, each on train and on every validation repeat; two sealed passes. */
 export function trainingTrialBudget(args: CliArguments, trainCases: number, validationCases = 0, testCases = 0): number {
   const search = args.command === 'train' && !args.training?.comparison ? populationSearch(args.training?.optimizer) : undefined;
   const repeats = testRepeatCount(args.training?.budget?.test_repeats);
-  const derived = search ? (1 + search.variants * search.rounds) * (trainCases + validationCases) + 2 * testCases * repeats : 20;
+  const validationRepeats = validationRepeatCount(args.training?.budget?.validation_repeats);
+  const derived = search ? (1 + search.variants * search.rounds) * (trainCases + validationCases * validationRepeats) + 2 * testCases * repeats : 20;
   if (args.flags['max-trials'] === undefined && (!Number.isSafeInteger(derived) || derived > 10000)) {
     throw new Error('Derived population trial budget exceeds the 10000 trial ceiling; declare a smaller --max-trials cap');
   }
   return count(args, 'max-trials', derived, 10000);
+}
+
+/**
+ * Optimizer evaluation callbacks the trial budget covers after the sealed-test reserve. A validation callback
+ * runs `validation_repeats` trials: a population search reserves the extra ones for every candidate it can
+ * evaluate, any other search assumes every callback is a repeated validation.
+ */
+export function metricCallBudget(args: CliArguments, maxTrials: number, validationCases: number, testCases: number): number {
+  const search = args.training?.comparison ? undefined : populationSearch(args.training?.optimizer);
+  const available = maxTrials - 2 * testCases * testRepeatCount(args.training?.budget?.test_repeats);
+  const repeats = validationRepeatCount(args.training?.budget?.validation_repeats);
+  if (repeats === 1) return available;
+  return search ? available - (1 + search.variants * search.rounds) * validationCases * (repeats - 1) : Math.floor(available / repeats);
 }
 
 /** Population-only policy fields live in search, leaving the GEPA wire shape unchanged. */

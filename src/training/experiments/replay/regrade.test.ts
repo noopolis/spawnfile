@@ -94,4 +94,22 @@ describe('regrade of recorded outputs', () => {
     expect(regradeManifestSchema.safeParse(empty).success).toBe(false);
     expect(regradeManifestSchema.safeParse({ ...empty, critic: { judge: 'other', guide: ['g.md'], baseline: {}, candidates: {} } }).success).toBe(false);
   });
+  it('judges outputs at once up to the declared concurrency, keeps manifest order and takes expectations directly', async () => {
+    let active = 0, peak = 0;
+    const strong = testJudge([]);
+    const generate = strong.provider.generate.bind(strong.provider);
+    strong.provider.generate = async request => {
+      active++; peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+      const second = request.prompt.includes('How much padding?');
+      return { ...await generate(request), text: JSON.stringify(second ? testReplies[1] : request.prompt.includes('Seven stations') ? failing : testReplies[0]) };
+    };
+    const report = await regradeRecordedOutputs({ manifest: { ...manifest, calibration: undefined }, read, registry: createEvaluationRegistry(), evaluation: { judges: { strong } }, concurrency: 3,
+      expectations: { expect: [{ id: 'variant', base: 'base-clean', defect: 'figure', targets: ['figures'], gate_must_fail: true }], clean: ['cand-clean'] } });
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(3);
+    expect(report.outputs.map(output => output.id)).toEqual(['base-clean', 'base-missing', 'cand-clean', 'variant']);
+    expect(report.calibration).toMatchObject({ ok: true, caught: 1, cleanBases: 2 });
+  });
 });

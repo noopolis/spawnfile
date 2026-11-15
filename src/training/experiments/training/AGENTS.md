@@ -154,7 +154,11 @@ A questionnaire check enters feedback only as `questionnaireFeedback`: the open 
 open questions and failed open questions. Hidden questions, working steps and the full score never
 enter optimizer text; the trial scalar still includes them, which is how they reach selection.
 
-`training.ts` runs the critic gate (`../../critic`) between a finished search and frozen selection:
+`training.ts` runs selection (`../verifiers/selection.ts`: the gap rule, then the critic gate of `../../critic`) between a finished search and frozen selection:
 candidates from the search's provenance, best validation score first, the first whose review passes
 is selected, and the report keeps every review. It shows the critic train records only. A blocked search winner is
-replaced before any sealed test runs. Critic reviews are not checkpointed: a resumed run reviews again.
+replaced before any sealed test runs.
+
+Feedback levels, validation repeats, the open and hidden gap rule and kept critic reviews live in
+`../verifiers`; `training.ts` only calls them. `validationRepeats` and a declared `selection` rule bind
+checkpoint identity when nondefault.

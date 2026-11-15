@@ -16,4 +16,8 @@ export function resolveQuestionnaire(node: CheckNode, context: PlanResolution, s
     if (!route) fail(location, `unresolved judge route ${name}`);
     context.versions[`judge:${name}`] = route.version;
   }
+  // One call per group per repeat: what one graded output costs, for the cost plan.
+  const calls: Record<string, number> = {};
+  for (const group of bank.groups) calls[group.judge] = (calls[group.judge] ?? 0) + group.repeats;
+  (context.questionnaireCalls ??= {})[node.bank as string] = calls;
 }

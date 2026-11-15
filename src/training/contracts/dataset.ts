@@ -107,6 +107,8 @@ export interface ResolvedDataset {
   sourceName: string;
   registryVersions: Record<string, string>;
   criterionFileDigests: Record<string, string>;
+  /** Judge calls one graded output costs on each questionnaire bank, by bank sidecar and judge route. Absent without a questionnaire. */
+  questionnaireCalls?: Record<string, Record<string, number>>;
 }
 export interface EvaluatorDefinition {
   version: string;

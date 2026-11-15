@@ -1,6 +1,6 @@
 import type { CriticGateReport } from '../../critic/index.js';
-import type { RescoreReport, TrainingReport, TrialReport } from '../../experiments/index.js';
-import { renderQuestionnaireMarkdown, summarizeQuestionnaire, type QuestionnaireResult, type QuestionnaireSummary } from '../../questionnaire/index.js';
+import type { GapDecision, GapGateReport, RescoreReport, TrainingReport, TrialReport } from '../../experiments/index.js';
+import { renderQuestionnaireMarkdown, summarizeQuestionnaire, type CalibrationRun, type QuestionnaireResult, type QuestionnaireSummary } from '../../questionnaire/index.js';
 
 type Split = 'train' | 'validation' | 'test';
 export interface VerifierSummary {
@@ -8,6 +8,10 @@ export interface VerifierSummary {
   questionnaires: Record<string, Partial<Record<Split, Record<string, QuestionnaireSummary>>>>;
   /** Critic reviews behind the frozen selection, with candidate labels. */
   critic: (Omit<CriticGateReport, 'reviews'> & { reviews: (CriticGateReport['reviews'][number] & { label: string })[] }) | null;
+  /** Calibration sets judged before the first trial. */
+  calibration: CalibrationRun[];
+  /** The gap rule's measurement of every candidate considered, with candidate labels. */
+  selection: (Omit<GapGateReport, 'candidates'> & { candidates: (GapDecision & { label: string })[] }) | null;
 }
 
 /** Operator-only: hidden questions appear here and nowhere an optimizer reads. Uses each trial's latest measurement. */
@@ -29,13 +33,34 @@ export function summarizeVerifiers(report: TrainingReport, labels: ReadonlyMap<s
     ((questionnaires[check] ??= {})[split] ??= {})[label] = summarizeQuestionnaire(results);
   }
   return { questionnaires, critic: report.critic ? { ...report.critic,
-    reviews: report.critic.reviews.map(entry => ({ ...entry, label: labels.get(entry.candidateId) ?? entry.candidateId })) } : null };
+    reviews: report.critic.reviews.map(entry => ({ ...entry, label: labels.get(entry.candidateId) ?? entry.candidateId })) } : null,
+    calibration: report.calibration ?? [],
+    selection: report.selection ? { ...report.selection,
+      candidates: report.selection.candidates.map(entry => ({ ...entry, label: labels.get(entry.candidateId) ?? entry.candidateId })) } : null };
 }
 
 const cell = (value: unknown) => String(value).replace(/\|/gu, '&#124;').replace(/[\r\n]+/gu, ' ');
 
+const shown = (value: number | null) => value === null ? 'n/a' : value.toFixed(3);
+
 export function renderVerifiersMarkdown(summary: VerifierSummary): string[] {
   const lines: string[] = [];
+  if (summary.calibration.length) {
+    lines.push('## Calibration', '', 'Judged on the run\'s own judge routes before the first trial. A set the bank misses refuses the run.', '');
+    for (const run of summary.calibration) {
+      const report = run.report;
+      lines.push(`- ${cell(run.set)} on ${cell(run.check)} (bank ${cell(run.bank.id)}): **${report.ok ? 'pass' : 'fail'}**. Defects caught ${report.caught} of ${report.defects}; required gates failed ${report.gateFailed} of ${report.gateRequired}; clean outputs failing a gate ${report.cleanBasesFailing.length} of ${report.cleanBases}. ${run.outputs} outputs, ${run.judgeCallsAsked} judge calls asked by this invocation.`);
+    }
+    lines.push('');
+  }
+  if (summary.selection) {
+    const rule = summary.selection.rule, baseline = summary.selection.baseline;
+    lines.push('## Open and hidden gap rule', '',
+      `Over validation trials. A candidate is removed from selection when its open minus hidden gap exceeds the baseline's by more than ${rule.max_gap ?? 'n/a (not declared)'}, or its gate failure rate exceeds the baseline's by more than ${rule.max_gate_failure_rise ?? 'n/a (not declared)'}.`, '',
+      '| Candidate | Trials | Open | Hidden | Open minus hidden | Gate failure rate | Decision |', '| --- | --- | --- | --- | --- | --- | --- |',
+      `| baseline | ${baseline.trials} | ${shown(baseline.scoreOpen)} | ${shown(baseline.scoreHidden)} | ${shown(baseline.gap)} | ${shown(baseline.gateFailureRate)} | reference |`,
+      ...summary.selection.candidates.map(entry => `| ${cell(entry.label)} | ${entry.trials} | ${shown(entry.scoreOpen)} | ${shown(entry.scoreHidden)} | ${shown(entry.gap)} | ${shown(entry.gateFailureRate)} | ${entry.rejected ? `rejected: ${cell(entry.reason)}` : 'kept'} |`), '');
+  }
   for (const [check, splits] of Object.entries(summary.questionnaires)) {
     lines.push(`## Questionnaire ${cell(check)}`, '', 'Operator-only. Hidden questions never reach the optimizer; the search and selection use the full score. A candidate whose open score rises while its hidden score does not has learned the visible questions.', '');
     for (const split of ['train', 'validation', 'test'] as const) {

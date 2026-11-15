@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calibrationExpectationSchema, checkQuestionnaireCalibration } from './calibration.js';
+import { calibrationExpectationSchema, calibrationSetSchema, checkQuestionnaireCalibration } from './calibration.js';
 import { runQuestionnaire } from './run.js';
 import { testBank, testJudge, testMaterial, testReplies } from './testSupport.js';
 
@@ -32,5 +32,21 @@ describe('questionnaire calibration', () => {
     const one = calibrationExpectationSchema.parse([{ id: 'v', base: 'b', defect: 'quote', targets: ['quotes'], gate_must_fail: false }]);
     expect(checkQuestionnaireCalibration(one, { b: na, v: changed })).toMatchObject({ ok: true, caught: 1 });
     expect(checkQuestionnaireCalibration(one, { b: changed, v: na })).toMatchObject({ ok: false, caught: 0 });
+  });
+  it('holds further clean outputs to a passing gate and counts a missing one', async () => {
+    const clean = await grade(testReplies[0]!), failing = await grade({ ...testReplies[0]!, figures: { answer: 'no', reason: 'x' } });
+    expect(checkQuestionnaireCalibration([], { good: clean }, ['good'])).toMatchObject({ ok: true, defects: 0, cleanBases: 1 });
+    expect(checkQuestionnaireCalibration([], { good: failing }, ['good'])).toMatchObject({ ok: false, cleanBasesFailing: ['good'] });
+    expect(checkQuestionnaireCalibration([], {}, ['good'])).toMatchObject({ ok: false, missing: ['good'] });
+  });
+  it('validates a declared calibration set', () => {
+    const set = { schema: 'spawnfile.training.calibration.v1', check: 'house', outputs: [{ id: 'clean', output: 'outputs/clean.json', context: { evidence: 'cases/a/evidence.json' } }, { id: 'figure', output: 'outputs/figure.json' }],
+      expect: [{ id: 'figure', base: 'clean', defect: 'figure', targets: ['figures'], gate_must_fail: true }] };
+    expect(calibrationSetSchema.parse(set).outputs).toHaveLength(2);
+    expect(calibrationSetSchema.parse({ ...set, expect: undefined, clean: ['clean'] }).clean).toEqual(['clean']);
+    for (const broken of [{ ...set, expect: undefined }, { ...set, clean: ['absent'] }, { ...set, outputs: [set.outputs[0], set.outputs[0]] }, { ...set, outputs: [set.outputs[0]] },
+      { ...set, outputs: [{ id: 'clean', output: '../clean.json' }, set.outputs[1]] }, { ...set, schema: 'other' }, { ...set, extra: true }]) {
+      expect(calibrationSetSchema.safeParse(broken).success).toBe(false);
+    }
   });
 });

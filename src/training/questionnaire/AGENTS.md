@@ -11,7 +11,8 @@ optimizer-visible projection and the calibration comparison. Public seam: `index
   reply property per step.
 - `run.ts`: one judge call per group per repeat on the group's named route, in declared order.
 - `report.ts`: `questionnaireFeedback` (open questions only) and per-candidate summaries.
-- `calibration.ts`: compares results with a bank's calibration set; never asks a judge.
+- `calibration.ts`: the calibration set contract (`spawnfile.training.calibration.v1`) and the comparison
+  of results with a set's expectations; never asks a judge.
 
 Rules:
 
