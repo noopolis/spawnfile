@@ -2,12 +2,12 @@ import { isTextSelector, textSelectors } from './text-checks.js';
 import { resolveGraderCheck } from './grader.js';
 import { resolveQuestionnaire } from './questionnaire.js';
 import { createHash } from 'node:crypto';
-import type { CheckNode, Dataset, DatasetRegistry, LiveCheck, Stage } from '../contracts/dataset.js';
+import { checkFeedbackLevels, type CheckNode, type Dataset, type DatasetRegistry, type LiveCheck, type Stage } from '../contracts/dataset.js';
 import { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
 import { compileJsonSchema } from './json-schema.js';
 import { validateBindingReferences } from './turn-bindings.js';
 import { checkShape } from './check-schema.js';
-import { fail, object, string } from './validation.js';
+import { fail, object, oneOf, string } from './validation.js';
 
 export interface PlanResolution {
   registry: DatasetRegistry;
@@ -61,7 +61,8 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
     const definition = context.registry.evaluators?.[node.eval] ?? builtinEvaluatorDefinitions[node.eval];
     if (!definition) fail(path, `unsupported evaluator ${node.eval}`);
     context.versions[`evaluator:${node.eval}`] = definition.version;
-    const { id: _id, eval: _eval, ...parameters } = node;
+    const { id: _id, eval: _eval, feedback, ...parameters } = node;
+    if (feedback !== undefined) oneOf(feedback, [...checkFeedbackLevels], `${path}.feedback`);
     for (const [key, value] of Object.entries(parameters)) validateBindingReferences(value, new Set(), `${path}.${key}`);
     definition.validate(parameters, path);
     artifacts(node, context, path);

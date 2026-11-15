@@ -56,7 +56,9 @@ const trainingMomentCheckSchema = z.object({
   /** A questionnaire's bank, relative to the dataset file. */
   bank: datasetRelativePath.optional(),
   /** The example context names a questionnaire's bank reads. */
-  context: z.array(z.string().regex(/^[A-Za-z0-9_-]+$/u)).optional()
+  context: z.array(z.string().regex(/^[A-Za-z0-9_-]+$/u)).optional(),
+  /** What of this check the optimizer may read; everything when omitted. */
+  feedback: z.enum(["full", "status", "none"]).optional()
 }).passthrough().superRefine((value, context) => {
   const questionnaire = value.eval === "questionnaire";
   if (questionnaire !== (value.bank !== undefined)) context.addIssue({ code: z.ZodIssueCode.custom, message: "bank belongs to a questionnaire check, which requires it" });
