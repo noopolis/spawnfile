@@ -1,4 +1,5 @@
 import type { TrainingSummary } from './summary.js';
+import { renderVerifiersMarkdown } from './verifiers.js';
 
 const cell = (value: unknown) => String(value).replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;')
   .replace(/\|/gu, '&#124;').replace(/`/gu, '&#96;').replace(/[\r\n]+/gu, ' ');
@@ -41,6 +42,7 @@ export function renderTrainingMarkdown(summary: TrainingSummary, bundle: string,
     '## Failing checks', '', summary.failureSummary.length ? table(['Check', 'Verdict', 'Affected trials'],
       summary.failureSummary.map(value => [value.check, value.status, value.trials])) : 'No non-passing checks recorded.', '',
     ...summary.failingChecks.map(value => `- ${cell(labels.get(value.candidateId))}/${cell(value.exampleId)} (${value.split}), ${cell(value.check)}: ${value.status}. ${cell(value.reason)}`), '',
+    ...renderVerifiersMarkdown(summary.verifiers),
     '## Held-out comparison and uncertainty', '',
     table(['Example', 'Baseline', 'Selected', 'Selected − baseline'], summary.heldOut.pairs.map(value =>
       [value.exampleId, number(value.baselineScore), number(value.selectedScore), number(value.delta)])), '',

@@ -22,6 +22,8 @@ import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
 import { freezeCriteria } from './criteria.js';
 import { trainingFeedback } from './feedback.js';
+import { criticSelection, type TrainingCriticOptions } from './critic.js';
+import type { CriticGateReport } from '../../critic/index.js';
 import { evaluateHeldOut, type HeldOutScore } from './held-out.js';
 import type { CostReport, TrainingCostPlan } from '../costs/index.js';
 
@@ -47,6 +49,8 @@ export interface TrainingOptions {
   checkpoint?: { directory: string; resume: boolean; identity: string; maxRecoveryAttempts?: number;
     fork?: NonNullable<DspyOptimizationOptions['checkpoint']>['fork'] & { trainingDigest: string; trainingIdentity: string; receiptDigest: string } };
   seed?: number;
+  /** The prompt critic gate; without it the search's own choice is selected. */
+  critic?: TrainingCriticOptions;
   signal?: AbortSignal;
   onProgress?: (event: { type: string; payload: unknown }) => Promise<void>;
 }
@@ -59,6 +63,8 @@ export interface TrainingReport {
   /** Elapsed host time for this invocation, including restoration and sealed testing. */
   durationMs?: number;
   optimizer: DspyResult;
+  /** Critic reviews behind the frozen selection; a blocked or unreviewable candidate was removed from it. */
+  critic?: CriticGateReport;
   partitions: { train: string[]; validation: string[]; test: string[] };
   trials: TrialReport[];
   heldOut: HeldOutScore[];
@@ -216,7 +222,10 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       return { score: trialScore(measured(report), options.scoring), captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation) };
     } });
   await checkpoint?.freeze(optimizer);
-  const selected = candidateFor(optimizer.components);
+  // A candidate must pass the critic before it can be selected; the baseline is always selectable.
+  const gate = options.critic ? await criticSelection({ critic: options.critic, baseline: options.baseline, train: partition.train, optimizer, candidateFor, signal: options.signal }) : undefined;
+  if (gate) await options.onProgress?.({ type: 'critic.reviewed', payload: gate.report });
+  const selected = gate?.selected ?? candidateFor(optimizer.components);
   // Freeze selection BEFORE the sealed test can execute or become feedback.
   const frozen = [...new Map([options.baseline, selected].map(candidate => [candidate.id, candidate])).values()];
   await options.onProgress?.({ type: 'selection.frozen', payload: { selectedId: selected.id, baselineId: options.baseline.id, optimizer } });
@@ -224,7 +233,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
     trial: (candidate, caseId, repeat) => trial(options.test, caseId, 'test', candidate, undefined,
       repeat === 0 ? undefined : `test-repeat:${JSON.stringify([candidate.id, caseId, repeat])}`),
     measurement: report => ({ id: measured(report).id, score: trialScore(measured(report), options.scoring) }) });
-  const report: TrainingReport = { schema: 'spawnfile.training.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer,
+  const report: TrainingReport = { schema: 'spawnfile.training.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer, ...(gate ? { critic: gate.report } : {}),
     ...(options.scoring?.deferred === 'stage-score' ? { scoring: { ...options.scoring } } : {}),
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
       test: options.test.records.map(record => record.id) }, trials, heldOut, ...(retries.size ? { retries: [...retries.values()] } : {}), ...(rescores.length ? { rescores } : {}),

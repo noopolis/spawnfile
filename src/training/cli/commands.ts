@@ -7,7 +7,7 @@ import { readMeasurementRepair, verifyRepairProjection, importMeasurementCapture
 import { resolveTrainingPartitions } from '../experiments/training/index.js';
 import { configuredCostRoutes, commandCheckpoint, prepareComparison } from './training/index.js';
 import { authoredArguments, judgeVersions, validateAuthoredTemplates } from './training/index.js';
-import { commandDeadlines } from './training/index.js';
+import { commandDeadlines, trainingCritic } from './training/index.js';
 import { randomUUID } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { compareCandidates, freezeCriteria, planTrainingCost, runStoredTrial, trainAgent, type StoredTrialOptions, type TrialReport } from '../experiments/index.js';
@@ -136,7 +136,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         budget: { maxMetricCalls: metricCalls, maxProposals }, seed, signal,
         proposal: bridgeProposal(args.training?.optimizer),
         search: populationSearch(args.training?.optimizer),
-        scoring: args.training?.scoring,
+        scoring: args.training?.scoring, critic: trainingCritic(args, native.evaluation.judges),
         checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2, ...(fork ? {fork} : {})},
         onProgress: async (event) => {
           await journal.observe(event);

@@ -10,7 +10,7 @@ function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_IN
 /** Validate controls without executing templates or contacting declared providers. */
 export function validateTrainingConfiguration(value: unknown, path = '$.training', registry: InferenceProviderRegistry = defaultInferenceProviders): TrainingConfiguration {
   const config = object(value, path);
-  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'scoring', 'test', 'validation', 'validation_groups', 'seed'], path);
+  fields(config, ['models', 'judges', 'critic', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'scoring', 'test', 'validation', 'validation_groups', 'seed'], path);
   const models = object(config.models, `${path}.models`);
   if (!Object.keys(models).length) fail(`${path}.models`, 'requires a named model');
   for (const [name, value] of Object.entries(models)) {
@@ -91,6 +91,16 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
       string(name, `${path}.judges`);
       route(value, `${path}.judges.${name}`, true);
     }
+  }
+  if (config.critic !== undefined) {
+    const critic = object(config.critic, `${path}.critic`);
+    fields(critic, ['judge', 'guide', 'show', 'block_on'], `${path}.critic`);
+    const judge = string(critic.judge, `${path}.critic.judge`);
+    if (!Object.hasOwn(object(config.judges ?? {}, `${path}.judges`), judge)) fail(`${path}.critic.judge`, `unknown judge ${judge}`);
+    uniqueStrings(critic.guide, `${path}.critic.guide`).forEach((file, index) => safePath(file, `${path}.critic.guide[${index}]`));
+    if (critic.show !== undefined) uniqueStrings(critic.show, `${path}.critic.show`, false).forEach(item => oneOf(item, ['checks', 'train-tasks'], `${path}.critic.show`));
+    if (critic.block_on !== undefined) oneOf(critic.block_on, ['low', 'medium', 'high'], `${path}.critic.block_on`);
+    if (config.comparison !== undefined) fail(`${path}.critic`, 'comparison selects no candidate; omit the critic');
   }
   if (config.comparison !== undefined) {
     const comparison = object(config.comparison, `${path}.comparison`);

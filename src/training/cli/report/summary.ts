@@ -1,3 +1,4 @@
+import { summarizeVerifiers } from './verifiers.js';
 import { assertOriginalPolicy, candidateComponents, deriveCandidate, validateCandidate, type CandidateManifest } from '../../candidates/index.js';
 import { includeDecisionCosts, trialScore, type TrainingReport, type TrialReport, type RescoreReport } from '../../experiments/index.js';
 import type { EvaluationResult } from '../../contracts/evaluation.js';
@@ -169,7 +170,7 @@ export function summarizeTraining(report: TrainingReport) {
       uncertainty: !complete ? 'Incomplete held-out pairs; no comparison claim.' : deltas.length < 2
         ? 'One paired example; sampling uncertainty is unknown. No generalization claim.'
         : 'Descriptive between-example variation, assuming independent examples; no confidence interval or stochastic-repeat claim.' },
-    failingChecks, failureSummary, durationMs: report.durationMs ?? null,
+    failingChecks, failureSummary, verifiers: summarizeVerifiers(report, new Map(entries.map(entry => [entry.candidate.id, entry.label])), latest), durationMs: report.durationMs ?? null,
     requests: { judge: count('judge'), optimizer: count('optimizer'), subject: null,
       basis: 'Recorded inference attempts only. Subject turns and usage buckets are not model requests; total HTTP requests are unknown.' },
     costs, costPlan: report.costPlan ?? null,

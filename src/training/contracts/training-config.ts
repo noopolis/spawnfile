@@ -49,7 +49,19 @@ export interface TrainingScoring {
   /** Closed deferred deliveries remain failures; optionally retain measured stage reward. */
   deferred?: 'zero' | 'stage-score';
 }
+/** The prompt critic gate: a strong-model review a candidate must pass before it can be selected. */
+export interface TrainingCritic {
+  /** A declared judge route. */
+  judge: string;
+  /** House documents, relative to the dataset: the only authority the critic reviews against. */
+  guide: string[];
+  /** What else the critic sees. Train tasks let it spot content lifted from the cases the optimizer saw. */
+  show?: ('checks' | 'train-tasks')[];
+  /** The lowest finding severity that blocks; `high` when omitted. */
+  block_on?: 'low' | 'medium' | 'high';
+}
 export interface TrainingConfiguration {
+  critic?: TrainingCritic;
   scoring?: TrainingScoring;
   comparison?: TrainingComparison;
   models: Record<string, TrainingModel>;
