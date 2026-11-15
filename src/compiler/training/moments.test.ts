@@ -159,3 +159,30 @@ it("refuses a critic naming an undeclared judge, a judge named optimizer and a J
   const broken = await verifierProject({ judges }, [{ ...questionnaireExample, context: { evidence: { file: "../grading/broken.json", json: true } } }]);
   await expect(lowerTrainingMoments({ project: broken.loaded, plan: broken.plan(), out: broken.out })).rejects.toThrow(/context evidence is not JSON/u);
 });
+
+it("lowers budget, the selection rule and a calibration set with its whole directory into the train training block", async () => {
+  const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({ training: { ...training, judges, budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: ["grading/calibration/set.json"] } }),
+    "training/train.yaml": { examples: [questionnaireExample] }, "grading/questions.yaml": "bank bytes\n", "grading/evidence.json": "[]\n",
+    "grading/calibration/set.json": "{}\n", "grading/calibration/outputs/clean.json": "{\"body\":[]}\n" });
+  const loaded = await loadTrainingProject(root);
+  const out = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moments-out-")); outs.push(out);
+  const plan = resolveTrainingPlan(loaded, undefined, "test");
+  expect(plan).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: [path.join(loaded.root, "grading/calibration/set.json")] });
+  const datasets = await lowerTrainingMoments({ project: loaded, plan, out });
+  const block = JSON.parse(await readFile(datasets.train, "utf8")).training;
+  expect(block).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: [expect.stringMatching(/^graders\/[0-9a-f]{16}\/set\.json$/u)] });
+  expect(await readFile(path.join(path.dirname(datasets.train), path.dirname(block.calibration[0]), "outputs/clean.json"), "utf8")).toBe("{\"body\":[]}\n");
+});
+
+it("refuses verifier controls without a route to run them and lowers a case without a grader to its declared checks alone", async () => {
+  const orphan = await verifierProject({ selection: { max_gap: 0.1 } }, [questionnaireExample]);
+  await expect(lowerTrainingMoments({ project: orphan.loaded, plan: orphan.plan(), out: orphan.out })).rejects.toThrow(/Training selection needs a declared optimizer provider or judges/u);
+  const bare = { ...questionnaireExample, grader: false, score: { "house-rules": 1 }, checks: [{ ...questionnaireExample.checks[0], feedback: "status" }] };
+  const graded = await verifierProject({ judges }, [bare]);
+  const [record] = JSON.parse(await readFile((await lowerTrainingMoments({ project: graded.loaded, plan: graded.plan(), out: graded.out })).train, "utf8")).records;
+  expect(record.stages[0].checks.map((check: { id: string }) => check.id)).toEqual(["house-rules"]);
+  expect(record.stages[0].checks[0]).toMatchObject({ eval: "questionnaire", feedback: "status" });
+  await expect(verifierProject({ judges }, [{ ...bare, score: { grade: 1 } }])).rejects.toThrow(/undeclared check: grade/u);
+  await expect(verifierProject({ judges }, [{ ...example, id: "case-a", grader: false }])).rejects.toThrow(/declares the checks that grade it/u);
+  await expect(verifierProject({ judges }, [{ ...bare, checks: [{ ...bare.checks[0], feedback: "hints" }] }])).rejects.toThrow();
+});

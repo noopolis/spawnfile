@@ -48,6 +48,11 @@ export const trainingPlanSchema = z.object({
   /** Named judge routes; absent when the agent declares none. */
   judges: z.record(text.regex(/^[A-Za-z0-9_-]+$/u), trainingPlanJudgeSchema).optional(),
   critic: trainingPlanCriticSchema.optional(),
+  /** Repeated subject trials per validation case and per sealed test case. */
+  budget: z.object({ validation_repeats: z.number().int().min(1).max(8).optional(), test_repeats: z.number().int().min(1).max(8).optional() }).strict().optional(),
+  selection: z.object({ max_gap: z.number().min(0).max(1).optional(), max_gate_failure_rise: z.number().min(0).max(1).optional() }).strict().optional(),
+  /** Calibration sets judged before any trial. */
+  calibration: z.array(absolutePath).min(1).optional(),
   graders: z.array(source.extend({
     name: text.regex(/^[A-Za-z0-9_-]+$/u), declaredBy: text
   }).strict()),

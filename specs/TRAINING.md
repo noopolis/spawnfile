@@ -1072,6 +1072,22 @@ regrade of recorded outputs is specified in `docs/training/questionnaire.md`. In
 - With a declared `critic`, a candidate MUST pass its review before it can be selected. A blocking
   verdict or a failed review MUST remove the candidate from selection. The baseline MUST stay
   selectable without review. The critic MUST NOT see validation cases, test cases or hidden questions.
+- A check MAY declare `feedback: full | status | none`. At `status` the optimizer MUST receive only its
+  id, evaluator, status and score; at `none` it MUST receive nothing of the check.
+- `budget` (OPTIONAL) is `{ validation_repeats?, test_repeats? }`, each an integer from 1 to 8. Each
+  validation case MUST run `validation_repeats` fresh subject trials per candidate, combined by their mean.
+- `selection` (OPTIONAL) is `{ max_gap?, max_gate_failure_rise? }`, each from 0 to 1, at least one
+  declared. A candidate past either threshold over the baseline on validation MUST be removed from
+  selection before any critic review. The baseline MUST stay selectable.
+- `calibration` (OPTIONAL) lists calibration sets (`spawnfile.training.calibration.v1`) relative to the
+  declaring manifest. Every set MUST be judged before the first trial, and training MUST refuse to start
+  when the bank misses a set. Kept judgments MUST NOT be asked again on resume.
+- `budget` fields merge through direct membership; a local `selection` or `calibration` replaces an
+  inherited one.
+- A dataset example MAY declare `grader: false`; it then MUST declare at least one check and lowers no
+  `grade` check.
+- The cost plan MUST count questionnaire, calibration and critic judge calls. A critic review kept from an
+  earlier pass of the same run MUST NOT be asked again.
 - `spawnfile train --regrade <manifest> --auth-profile <name> --out <dir>` grades recorded outputs
   through the registered check on the run's booted judges. It MUST NOT boot a subject. It takes no
   project path and no other training option.
@@ -1647,6 +1663,47 @@ regrade of recorded outputs is specified in `docs/training/questionnaire.md`. In
         "block_on"
       ],
       "additionalProperties": false
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "validation_repeats": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "test_repeats": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        }
+      },
+      "additionalProperties": false
+    },
+    "selection": {
+      "type": "object",
+      "properties": {
+        "max_gap": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_gate_failure_rise": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "calibration": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+      }
     },
     "graders": {
       "type": "array",

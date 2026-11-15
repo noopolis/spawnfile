@@ -49,7 +49,7 @@ it("reaps a timed-out runner and its worker before restoring the mutation copy",
 
 const mutations = [
   { name: "per-case grader", file: "src/compiler/training/moments.ts",
-    before: "const grader = example.grader ? await contained(project.root, base, example.grader, `Example ${example.id} grader`) : targetGrader;",
+    before: "const grader = example.grader === false ? undefined : example.grader ? await contained(project.root, base, example.grader, `Example ${example.id} grader`) : targetGrader;",
     after: "const grader = targetGrader;",
     test: "src/compiler/training/moments.test.ts", title: "lowers each moment into a record", assertion: "case grader guarantee" },
   { name: "moment state carried to the trial", file: "src/compiler/training/moments.ts",

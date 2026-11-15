@@ -184,3 +184,18 @@ describe("training verifier declarations", () => {
     expect(trainingDeclarationSchema.safeParse(value).success).toBe(false);
   });
 });
+
+describe("training verifier controls", () => {
+  it("accepts repeats, a selection rule and calibration sets", () => {
+    const value = { budget: { validation_repeats: 2, test_repeats: 3 }, selection: { max_gap: 0.1 }, calibration: ["training/calibration/set.json"] };
+    expect(trainingDeclarationSchema.parse(value)).toEqual(value);
+    expect(trainingDeclarationSchema.parse({ selection: { max_gate_failure_rise: 0.25 } }).selection).toEqual({ max_gate_failure_rise: 0.25 });
+  });
+  it.each([
+    [{ budget: { validation_repeats: 0 } }], [{ budget: { test_repeats: 9 } }], [{ budget: { max_trials: 10 } }],
+    [{ selection: {} }], [{ selection: { max_gap: 2 } }], [{ selection: { max_gap: 0.1, other: 1 } }],
+    [{ calibration: [] }], [{ calibration: ["a.json", "a.json"] }], [{ calibration: ["/abs.json"] }]
+  ])("rejects %j", (value) => {
+    expect(trainingDeclarationSchema.safeParse(value).success).toBe(false);
+  });
+});

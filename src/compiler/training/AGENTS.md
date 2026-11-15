@@ -24,3 +24,7 @@
 - Public exports include the offline SQLite inspector with ordered room/sender filtering.
 
 - Authored `judges` and `critic` resolve with the other training fields (local judge names and a local critic replace inherited ones; guide paths become absolute) and enter the plan as optional fields. `moments.ts` lowers them into the train dataset's `training` block, copies critic guide documents and questionnaire banks as sidecars, and binds a questionnaire's named example contexts.
+
+`moments.ts` also lowers `training.budget`, `training.selection` and `training.calibration` into the train
+dataset's `training` block; a calibration set travels with its whole directory. An example with
+`grader: false` lowers no `grade` check.

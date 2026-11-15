@@ -72,8 +72,8 @@ const trainingExampleSchema = z.object({
   memory: z.array(memoryBankSchema).optional(),
   resources: z.array(trainingMomentResourceSchema).superRefine(uniqueIds).optional(),
   networks: z.array(teamNetworkSchema).optional(),
-  /** This case's grader, relative to the dataset file; the target's grader otherwise. */
-  grader: datasetRelativePath.optional(),
+  /** This case's grader, relative to the dataset file; the target's grader otherwise. `false`: no grader, the declared checks grade the case. */
+  grader: z.union([datasetRelativePath, z.literal(false)]).optional(),
   /** Grader context bound from files relative to the dataset file. */
   context: z.record(z.string().regex(/^[A-Za-z0-9_-]+$/u), z.object({ file: datasetRelativePath,
     /** Bind the file's parsed JSON value instead of its text. */
@@ -87,7 +87,8 @@ const trainingExampleSchema = z.object({
   /** The checks that must pass for the record to count; every weighted check scores either way. */
   gate: z.array(checkId).min(1).optional()
 }).strict().superRefine((value, context) => {
-  const ids = new Set(["grade", ...(value.checks ?? []).map((check) => check.id)]);
+  const ids = new Set([...(value.grader === false ? [] : ["grade"]), ...(value.checks ?? []).map((check) => check.id)]);
+  if (value.grader === false && !value.checks?.length) context.addIssue({ code: z.ZodIssueCode.custom, message: "a case without a grader declares the checks that grade it" });
   if (value.checks?.some((check) => check.id === "grade")) context.addIssue({ code: z.ZodIssueCode.custom, message: "check id grade is the grader's" });
   for (const check of value.checks ?? []) {
     if (check.eval !== "questionnaire") continue;
