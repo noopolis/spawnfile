@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { questionnaireFeedback, summarizeQuestionnaire } from './report.js';
 import { runQuestionnaire } from './run.js';
-import { testBank, testJudge, testMaterial, testReplies } from './testSupport.js';
+import { parseBank } from './bank.js';
+import { testBank, testBankYaml, testJudge, testMaterial, testReplies } from './testSupport.js';
 
 const grade = (first: Record<string, unknown>, second: Record<string, unknown> = testReplies[1]!) =>
   runQuestionnaire({ bank: testBank(), material: testMaterial, judges: { strong: testJudge([first, second]) } });
@@ -16,6 +17,14 @@ describe('questionnaire feedback', () => {
       { id: 'padding', question: 'How much padding?', answer: 'paragraph', reason: 'P3' }] });
     const text = JSON.stringify(feedback);
     for (const secret of ['quotes', 'unused', 'HIDDEN', 'numbers_list', 'support', 'P1: E1', 'weight']) expect(text).not.toContain(secret);
+  });
+  it('withholds working step and hidden question names an open question or its reason mentions', async () => {
+    const bank = parseBank(testBankYaml.replace('ask: "Is every number in a row?"', 'ask: "Is every number in a row? Use support and numbers_list."'));
+    const result = await runQuestionnaire({ bank, material: testMaterial, judges: { strong: testJudge([{ ...testReplies[0]!,
+      figures: { answer: 'no', reason: 'support row 2 and quotes disagree; quotes-like and supported stay' } }, testReplies[1]!]) } });
+    expect(questionnaireFeedback(result).failed).toEqual([{ id: 'figures', question: 'Is every number in a row? Use a withheld step and a withheld step.',
+      answer: 'no', reason: 'a withheld step row 2 and a withheld step disagree; quotes-like and supported stay' }]);
+    expect(result.answers.find(answer => answer.id === 'figures')!.ask).toContain('Use support');
   });
   it('does not fail the open gate on a hidden question and reports open errors', async () => {
     expect(questionnaireFeedback(await grade(hiddenFailing))).toEqual({ status: 'pass', score: 0.6667, failed: [] });

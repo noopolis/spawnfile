@@ -112,6 +112,8 @@ Reads:
 - Excluded from everything the optimizer reads. `trainingFeedback` shows a questionnaire check only
   through its open projection: the open score, the gate over open questions and, per failed open
   question, its id, text, answer and reason. No hidden id, text or reason, no working step, no full score.
+  A working step or hidden question named inside an open question's text or reason is replaced by
+  `a withheld step` in that projection; the judge still reads the bank's own words.
 - Included in the check's score, so in search and candidate selection.
 - Reported separately: the training report gives, per candidate and split, the full, open and hidden
   scores and the open minus hidden gap, with every question's pass rate.

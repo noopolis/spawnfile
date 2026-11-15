@@ -15,11 +15,15 @@ export interface QuestionnaireFeedback {
 export function questionnaireFeedback(result: QuestionnaireResult): QuestionnaireFeedback {
   const open = result.answers.filter(answer => !answer.hidden);
   const gates = open.filter(answer => answer.gate);
+  // An open question or its reason may name a working step or a hidden question; the name leaves as a placeholder.
+  const secret = [...Object.values(result.scaffold).flatMap(steps => Object.keys(steps)), ...result.answers.filter(answer => answer.hidden).map(answer => answer.id)];
+  const pattern = secret.length ? new RegExp(`(?<![\\w-])(?:${secret.map(id => id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|')})(?![\\w-])`, 'gu') : undefined;
+  const redact = (text: string) => pattern ? text.replace(pattern, 'a withheld step') : text;
   return {
     status: gates.some(answer => answer.status === 'ok' && !answer.passed) ? 'fail' : gates.some(answer => answer.status === 'error') ? 'error' : 'pass',
     score: result.scoreOpen,
     failed: open.filter(answer => answer.status === 'ok' && !answer.passed)
-      .map(answer => ({ id: answer.id, question: answer.ask, answer: answer.answer, reason: answer.reason })),
+      .map(answer => ({ id: answer.id, question: redact(answer.ask), answer: answer.answer, reason: redact(answer.reason) })),
   };
 }
 
