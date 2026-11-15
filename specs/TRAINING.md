@@ -1081,7 +1081,8 @@ regrade of recorded outputs is specified in `docs/training/questionnaire.md`. In
   selection before any critic review. The baseline MUST stay selectable.
 - `calibration` (OPTIONAL) lists calibration sets (`spawnfile.training.calibration.v1`) relative to the
   declaring manifest. Every set MUST be judged before the first trial, and training MUST refuse to start
-  when the bank misses a set. Kept judgments MUST NOT be asked again on resume.
+  when the bank misses a set: a defect not caught, a required gate not failed, or a clean output failing a
+  gate or any question a defect of the set targets. Kept judgments MUST NOT be asked again on resume.
 - `budget` fields merge through direct membership; a local `selection` or `calibration` replaces an
   inherited one.
 - A dataset example MAY declare `grader: false`; it then MUST declare at least one check and lowers no

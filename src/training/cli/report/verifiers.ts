@@ -49,7 +49,7 @@ export function renderVerifiersMarkdown(summary: VerifierSummary): string[] {
     lines.push('## Calibration', '', 'Judged on the run\'s own judge routes before the first trial. A set the bank misses refuses the run.', '');
     for (const run of summary.calibration) {
       const report = run.report;
-      lines.push(`- ${cell(run.set)} on ${cell(run.check)} (bank ${cell(run.bank.id)}): **${report.ok ? 'pass' : 'fail'}**. Defects caught ${report.caught} of ${report.defects}; required gates failed ${report.gateFailed} of ${report.gateRequired}; clean outputs failing a gate ${report.cleanBasesFailing.length} of ${report.cleanBases}. ${run.outputs} outputs, ${run.judgeCallsAsked} judge calls asked by this invocation.`);
+      lines.push(`- ${cell(run.set)} on ${cell(run.check)} (bank ${cell(run.bank.id)}): **${report.ok ? 'pass' : 'fail'}**. Defects caught ${report.caught} of ${report.defects}; required gates failed ${report.gateFailed} of ${report.gateRequired}; clean outputs failing a gate ${report.cleanBasesFailing.length} of ${report.cleanBases}; clean false alarms ${report.cleanFalseAlarms?.length ?? 0}. ${run.outputs} outputs, ${run.judgeCallsAsked} judge calls asked by this invocation.`);
     }
     lines.push('');
   }

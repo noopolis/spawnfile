@@ -12,7 +12,8 @@ optimizer-visible projection and the calibration comparison. Public seam: `index
 - `run.ts`: one judge call per group per repeat on the group's named route, in declared order.
 - `report.ts`: `questionnaireFeedback` (open questions only) and per-candidate summaries.
 - `calibration.ts`: the calibration set contract (`spawnfile.training.calibration.v1`) and the comparison
-  of results with a set's expectations; never asks a judge.
+  of results with a set's expectations; never asks a judge. A clean output failing a question any
+  defect targets is a false alarm and fails the set.
 
 Rules:
 

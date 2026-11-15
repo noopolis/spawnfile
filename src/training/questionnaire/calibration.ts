@@ -41,9 +41,11 @@ export interface CalibrationReport {
   gateFailed: number;
   cleanBases: number;
   cleanBasesFailing: string[];
+  /** A question some defect targets, failed on a clean output: the bank raises the defect where there is none. */
+  cleanFalseAlarms: { output: string; question: string; answer: unknown }[];
   missing: string[];
   rows: { id: string; defect: string; caught: boolean; gate: string; baseGate: string; targets: { id: string; base: unknown; variant: unknown }[] }[];
-  /** Every defect caught, every required gate failed, no clean base failing, nothing missing. */
+  /** Every defect caught, every required gate failed, no clean base failing or raising a targeted defect, nothing missing. */
   ok: boolean;
 }
 
@@ -77,9 +79,12 @@ export function checkQuestionnaireCalibration(expectations: readonly Calibration
   for (const id of clean) if (!Object.hasOwn(results, id)) missing.push(id);
   const bases = [...new Set([...expectations.map(expectation => expectation.base), ...clean])].filter(id => Object.hasOwn(results, id));
   const cleanBasesFailing = bases.filter(id => results[id]!.gate !== 'pass');
+  const targeted = new Set(expectations.flatMap(expectation => expectation.targets));
+  const cleanFalseAlarms = bases.flatMap(id => results[id]!.answers.filter(entry => targeted.has(entry.id) && entry.status === 'ok' && entry.passed === false)
+    .map(entry => ({ output: id, question: entry.id, answer: entry.answer })));
   const required = expectations.filter(expectation => expectation.gate_must_fail);
   const gateFailed = required.filter(expectation => rows.find(row => row.id === expectation.id)?.gate === 'fail').length;
   const caught = rows.filter(row => row.caught).length;
-  return { defects: expectations.length, caught, gateRequired: required.length, gateFailed, cleanBases: bases.length, cleanBasesFailing, missing: [...new Set(missing)], rows,
-    ok: missing.length === 0 && caught === expectations.length && gateFailed === required.length && cleanBasesFailing.length === 0 };
+  return { defects: expectations.length, caught, gateRequired: required.length, gateFailed, cleanBases: bases.length, cleanBasesFailing, cleanFalseAlarms, missing: [...new Set(missing)], rows,
+    ok: missing.length === 0 && caught === expectations.length && gateFailed === required.length && cleanBasesFailing.length === 0 && cleanFalseAlarms.length === 0 };
 }

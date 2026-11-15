@@ -69,6 +69,9 @@ describe('calibration before training', () => {
     await expect(run(sets, out, testJudge([testReplies[0], testReplies[1], testReplies[0], testReplies[1]]), events))
       .rejects.toThrow(/Calibration refused the run: set calibration\/set\.json on check house caught 0 of 1 defects \(missed figure\), failed 0 of 1 required gates, 0 of 1 clean outputs fail a gate\. No trial was started/u);
     expect(events[0]!.payload.status).toBe('fail');
+    const alarmed = await fixture();
+    await expect(run(loadCalibrationSets(alarmed.args, alarmed.train), alarmed.out, testJudge([failing, testReplies[1], failing, testReplies[1]])))
+      .rejects.toThrow(/1 of 1 clean outputs fail a gate \(clean\), clean outputs raise targeted questions \(clean figures\)\. No trial/u);
     const other = await fixture();
     const down = testJudge([new Error('down'), testReplies[1], failing, testReplies[1]]);
     await expect(run(loadCalibrationSets(other.args, other.train), other.out, down)).rejects.toThrow(/The judge did not answer for clean; a resumed run asks only for those/u);

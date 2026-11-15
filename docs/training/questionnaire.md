@@ -175,7 +175,8 @@ one questionnaire check on the run's booted judges and boots no subject.
   reported; a manifest may hold a critic block and no outputs.
 - `calibration` names a set of expectations: outputs with one injected defect, the questions each
   must score lower on than its clean base, and whether a gate must fail. The command exits nonzero
-  when a defect is missed, a required gate does not fail or a clean base fails a gate.
+  when a defect is missed, a required gate does not fail, a clean base fails a gate or a clean base
+  fails a question some defect targets (a false alarm, listed in the report).
 
 ## Feedback levels
 
@@ -239,12 +240,13 @@ training:
 
 - A set names one questionnaire check of the train dataset and recorded outputs: known bad ones (one
   injected defect each, with the questions that must score lower than on the clean base and whether a
-  gate must fail) and known good ones (every `base` and every `clean` id must pass the gate).
+  gate must fail) and known good ones (every `base` and every `clean` id must pass the gate, and must
+  pass every question any defect targets: a targeted question failed on a clean output is a false alarm).
 - Paths are relative to the set file and stay inside its directory. Each output binds exactly the
   check's contexts. `.json` files bind parsed values.
 - `spawnfile train` judges every set on the run's own judge routes before the first trial, through the
   registered check, and refuses to start when a defect is missed, a required gate does not fail, a clean
-  output fails a gate or a judgment is missing. Nothing is retried into a pass.
+  output fails a gate or raises a false alarm, or a judgment is missing. Nothing is retried into a pass.
 - Results are kept one file per output under `<out>/calibration/<set>-<digest>`. The digest binds the
   bank, the set and every file it names, so a resumed run asks only for outputs whose judge has not
   answered and a changed input is judged again.

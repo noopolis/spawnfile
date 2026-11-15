@@ -26,6 +26,14 @@ describe('questionnaire calibration', () => {
     expect(checkQuestionnaireCalibration(expectations, { clean })).toMatchObject({ ok: false, missing: ['figure', 'padded'] });
     expect(checkQuestionnaireCalibration(expectations, { figure: failing })).toMatchObject({ ok: false, missing: ['clean', 'padded'], cleanBases: 0 });
   });
+  it('fails on a targeted question raised on a clean output that is no variant\'s base', async () => {
+    const clean = await grade(testReplies[0]!), alarm = await grade(testReplies[0]!, { padding: { answer: 'paragraph', reason: 'P2' }, unused: { answer: 2, reason: 'x' } });
+    const padded = await grade(testReplies[0]!, { padding: { answer: 'paragraph', reason: 'P3' }, unused: { answer: 2, reason: 'x' } });
+    const one = calibrationExpectationSchema.parse([{ id: 'padded', base: 'clean', defect: 'padding', targets: ['padding'], gate_must_fail: false }]);
+    expect(checkQuestionnaireCalibration(one, { clean, padded, other: clean }, ['other'])).toMatchObject({ ok: true, cleanFalseAlarms: [] });
+    expect(checkQuestionnaireCalibration(one, { clean, padded, other: alarm }, ['other'])).toMatchObject({ ok: false, caught: 1, cleanBasesFailing: [],
+      cleanFalseAlarms: [{ output: 'other', question: 'padding', answer: 'paragraph' }] });
+  });
   it('counts a base that never answered the target as caught only when the variant scored', async () => {
     const na = await grade({ ...testReplies[0]!, quotes: { answer: 'na', reason: '' } });
     const changed = await grade({ ...testReplies[0]!, quotes: { answer: 'yes', reason: 'changed' } });

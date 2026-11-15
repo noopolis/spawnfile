@@ -68,7 +68,7 @@ it('reports the calibration verdict and the gap rule with candidate labels', asy
   expect(summary.selection!.candidates.map(entry => entry.label)).toEqual(['baseline', 'unknown-id']);
   const markdown = renderVerifiersMarkdown(summary).join('\n');
   expect(markdown).toContain('## Calibration');
-  expect(markdown).toContain('- calibration/set.json on house-rules (bank bank): **pass**. Defects caught 8 of 8; required gates failed 5 of 5; clean outputs failing a gate 0 of 5. 13 outputs, 26 judge calls asked by this invocation.');
+  expect(markdown).toContain('- calibration/set.json on house-rules (bank bank): **pass**. Defects caught 8 of 8; required gates failed 5 of 5; clean outputs failing a gate 0 of 5; clean false alarms 0. 13 outputs, 26 judge calls asked by this invocation.');
   expect(markdown).toContain("by more than 0.1, or its gate failure rate exceeds the baseline's by more than n/a (not declared).");
   expect(markdown).toContain('| baseline | 2 | 0.800 | 0.750 | 0.050 | n/a | reference |');
   expect(markdown).toContain("| baseline | 2 | 0.900 | 0.500 | 0.400 | 0.500 | rejected: open minus hidden gap 0.4 exceeds the baseline's 0.05 by more than 0.1 |");

@@ -130,6 +130,7 @@ export async function runTrainingCalibration(options: {
       throw new Error(`Calibration refused the run: set ${loaded.file} on check ${loaded.set.check} caught ${calibration.caught} of ${calibration.defects} defects`
         + `${missed.length ? ` (missed ${missed.join(', ')})` : ''}, failed ${calibration.gateFailed} of ${calibration.gateRequired} required gates, `
         + `${calibration.cleanBasesFailing.length} of ${calibration.cleanBases} clean outputs fail a gate${calibration.cleanBasesFailing.length ? ` (${calibration.cleanBasesFailing.join(', ')})` : ''}`
+        + `${calibration.cleanFalseAlarms.length ? `, clean outputs raise targeted questions (${calibration.cleanFalseAlarms.map(alarm => `${alarm.output} ${alarm.question}`).join(', ')})` : ''}`
         + `${unanswered.length ? `. The judge did not answer for ${unanswered.join(', ')}; a resumed run asks only for those` : ''}. No trial was started; see ${directory}`);
     }
   }

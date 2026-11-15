@@ -58,7 +58,7 @@ describe("training regrade", () => {
     await writeFile(manifest, JSON.stringify({ ...raw, calibration: "expect.json" }));
     const judge = testJudge([testReplies[0], testReplies[1], testReplies[0], testReplies[1]]);
     expect(await regradeTraining({ manifest, out, streams: streams(), provider: () => judge.provider })).toBe(1);
-    expect(await readFile(path.join(out, "REGRADE.md"), "utf8")).toContain("Verdict: **fail**. Defects caught 0 of 1; required gates failed 0 of 1; clean bases failing 0 of 1.\n\n- figure: MISSED, gate pass to pass; figures \"yes\" to \"yes\"");
+    expect(await readFile(path.join(out, "REGRADE.md"), "utf8")).toContain("Verdict: **fail**. Defects caught 0 of 1; required gates failed 0 of 1; clean bases failing 0 of 1; clean false alarms 0.\n\n- figure: MISSED, gate pass to pass; figures \"yes\" to \"yes\"");
   });
   it("reviews recorded candidate prompts, keeps each review and asks again only for a failed one", async () => {
     const { root, manifest, out } = await project([]);
