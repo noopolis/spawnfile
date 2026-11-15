@@ -383,8 +383,7 @@ it('passes only compact atomic failures to optimization, preserving protected re
 });
 
 it('shows a questionnaire check through its open projection only', async () => {
-  const { runQuestionnaire } = await import('../../questionnaire/index.js');
-  const { testBank, testJudge, testMaterial, testReplies } = await import('../../questionnaire/testSupport.js');
+  const { runQuestionnaire, testBank, testJudge, testMaterial, testReplies } = await import('../../questionnaire/index.js');
   const graded = await runQuestionnaire({ bank: testBank(), material: testMaterial, judges: { strong: testJudge([
     { ...testReplies[0]!, quotes: { answer: 'yes', reason: 'HIDDEN SECRET reason' } },
     { padding: { answer: 'paragraph', reason: 'P3 restates' }, unused: { answer: 9, reason: 'HIDDEN SECRET rows' } }]) } });

@@ -26,13 +26,20 @@ export const registerTrainCommand = (
     .option("--materialize <example>", "Rewind an authored example into --out without running training")
     .option("--history <directory>", "Local recorded history for --materialize")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
-    .option("--resume", "Resume the exact persisted training experiment in --out");
+    .option("--resume", "Resume the exact persisted training experiment in --out")
+    .option("--regrade <manifest>", "Grade recorded outputs with a declared check on the run's judges; boots no subject");
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
     if (repeated.has(name)) command.option(flag, `Training ${name}; repeatable`, (value: string, previous: string[]) => [...previous, value], []);
     else command.option(flag, name === "out" ? "Output directory for training or moment materialization" : `Training ${name}`);
   }
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
+    if (typeof options.regrade === "string") {
+      if (typeof options.out !== "string") throw new SpawnfileError("validation_error", "--regrade requires --out");
+      setExitCode(await handlers.runTrainingRegrade({ manifest: options.regrade, out: options.out,
+        authProfile: options.authProfile as string | undefined, streams, signal }));
+      return;
+    }
     if (typeof options.materialize === "string") {
       if (options.plan === true) {
         throw new SpawnfileError("validation_error", "--materialize and --plan are mutually exclusive");

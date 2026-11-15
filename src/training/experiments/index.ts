@@ -13,3 +13,4 @@ export * from './costs/index.js';
 export { compareCandidates, type ComparisonOptions, type ComparisonReport } from "./comparison/index.js";
 
 export { loadTrialSlots, trialConcurrency, slotPort, SlotPool, type SlotLease, type TrialSlot } from './concurrency/index.js';
+export { regradeRecordedOutputs, regradeManifestSchema, REGRADE_SCHEMA, type RegradeManifest, type RegradeOptions, type RegradeReport, type RegradeCandidate, type RegradedOutput } from './replay/index.js';

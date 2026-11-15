@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testBankYaml } from '../questionnaire/testSupport.js';
+import { testBankYaml } from '../questionnaire/index.js';
 import { parseDatasetYaml, resolveDataset } from './index.js';
 
 const resolve = (check: Record<string, unknown>, bank = testBankYaml, judges: Record<string, { version: string }> = { strong: { version: '1' } }) =>

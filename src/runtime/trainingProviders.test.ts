@@ -22,3 +22,12 @@ it('backs every subscription engine id with a booted judge, AGY included', () =>
   expect(validateTrainingConfiguration({ models: { judge: { provider: 'agy-subscription', model: 'default' } } }, '$.training', registry).models.judge)
     .toEqual({ provider: 'agy-subscription', model: 'default' });
 });
+
+it('accepts an authored reasoning effort on a subscription judge model and refuses an unknown one', () => {
+  const registry = createTrainingProviderRegistry();
+  const validate = (effort: string) => validateTrainingConfiguration({ models: { strong: { provider: 'codex-subscription', model: 'm', reasoning_effort: effort } } }, '$.training', registry);
+  expect(validate('medium').models.strong).toEqual({ provider: 'codex-subscription', model: 'm', reasoning_effort: 'medium' });
+  expect(() => validate('extreme')).toThrow('$.training.models.strong.reasoning_effort');
+  const context = { timeoutMs: 1000, purpose: 'judge' as const, resources: new Map(), onClose: () => undefined };
+  expect(registry.providers['codex-subscription']!.create({ provider: 'codex-subscription', model: 'm', reasoning_effort: 'medium' }, context).id).toBe('codex-subscription');
+});

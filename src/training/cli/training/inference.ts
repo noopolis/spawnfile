@@ -69,7 +69,8 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     const policy = config?.judges?.[name];
     if (!policy) return [name, { provider: getLegacy(), model, identity: versions[name]!.version, citationRepairs: repairs[name]! }];
     const identity = versions[name]!.version;
-    return [name, { provider: route(policy, identity, 'judge'), model, identity, citationRepairs: repairs[name]!,
+    const effort = config!.models[policy.model]!.reasoning_effort;
+    return [name, { provider: route(policy, identity, 'judge'), model, identity, citationRepairs: repairs[name]!, ...(effort === undefined ? {} : { effort }),
       template: policy.template, protocol: policy.protocol,
       cache: config!.cache?.mode === 'exact' ? createJudgeCache({ maxEntries: config!.cache.max_entries ?? 1000 }) : undefined }];
   }));

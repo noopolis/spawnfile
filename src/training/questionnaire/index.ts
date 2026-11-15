@@ -5,3 +5,5 @@ export { groupSchema, questionnaireSystem, renderGroupPrompt, renderQuestion, re
 export { runQuestionnaire, type QuestionnaireJudge, type QuestionnaireResult, type RunQuestionnaireOptions } from './run.js';
 export { questionnaireFeedback, summarizeQuestionnaire, type QuestionnaireFeedback, type QuestionnaireSummary, type QuestionRate } from './report.js';
 export { calibrationExpectationSchema, checkQuestionnaireCalibration, type CalibrationExpectation, type CalibrationReport } from './calibration.js';
+export { renderQuestionnaireMarkdown, type QuestionnaireCandidateRow } from './markdown.js';
+export { testBank, testBankYaml, testJudge, testMaterial, testReplies } from './testSupport.js';

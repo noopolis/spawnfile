@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseDatasetYaml, resolveDataset } from '../cases/index.js';
-import { testBankYaml, testJudge, testMaterial, testReplies } from '../questionnaire/testSupport.js';
+import { testBankYaml, testJudge, testMaterial, testReplies } from '../questionnaire/index.js';
 import { artifact, evaluationContext, snapshot } from '../testing/index.js';
 import { createEvaluationRegistry, evaluatePlan } from './index.js';
 import { evaluateQuestionnaire, questionnaireResources } from './questionnaire.js';
