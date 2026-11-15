@@ -132,10 +132,10 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         .every(trial => (report.rescores?.findLast(score => score.runId === trial.id)?.status ?? trial.status) === 'pass') ? 0 : 1;
     }
     if (test !== undefined) {
+      const progress = async (event: { type: string; payload: unknown }) => { await journal.observe(event); await live?.observe(event); };
       // The grader is judged on its declared calibration sets first; a miss refuses the run before any trial.
       const calibration = await runTrainingCalibration({ sets: calibrationSets, out: native.out, evaluation: native.evaluation, registry: native.registry,
-        concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined, signal,
-        observe: async event => { await journal.observe(event); await live?.observe(event); } });
+        concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined, signal, observe: progress });
       const report = await trainAgent({ testRepeats, validationRepeats,
         trialRetries: args.training?.budget?.trial_retries,
         concurrency: args.flags.concurrency ? count(args, 'concurrency', 4, 8) : undefined,
@@ -148,10 +148,7 @@ async function execute(args: CliArguments, io: CliIO, dependencies: CliDependenc
         search: populationSearch(args.training?.optimizer),
         scoring: args.training?.scoring, critic: trainingCritic(args, native.evaluation.judges), selection: args.training?.selection,
         checkpoint: {...checkpoint!,maxRecoveryAttempts:args.training?.recovery?.max_attempts ?? 2, ...(fork ? {fork} : {})},
-        onProgress: async (event) => {
-          await journal.observe(event);
-          await live?.observe(event);
-        },
+        onProgress: progress,
       });
       signal.throwIfAborted();
       const index = await persistResult({ root: native.out, store, id: attemptId, command: 'train', datasetId: test.id,

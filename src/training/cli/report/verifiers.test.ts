@@ -61,7 +61,7 @@ it('reports the calibration verdict and the gap rule with candidate labels', asy
   const { report, root } = await reportFixture(); roots.push(root);
   const measured = { trials: 2, scoreOpen: 0.9, scoreHidden: 0.5, gap: 0.4, gateFailureRate: 0.5 };
   report.calibration = [{ set: 'calibration/set.json', check: 'house-rules', bank: { id: 'bank', digest: 'sha256:x' }, outputs: 13, judgeCallsAsked: 26,
-    report: { defects: 8, caught: 8, gateRequired: 5, gateFailed: 5, cleanBases: 5, cleanBasesFailing: [], missing: [], rows: [], ok: true } }];
+    report: { defects: 8, caught: 8, gateRequired: 5, gateFailed: 5, cleanBases: 5, cleanBasesFailing: [], cleanFalseAlarms: [], missing: [], rows: [], ok: true } }];
   report.selection = { rule: { max_gap: 0.1 }, baseline: { trials: 2, scoreOpen: 0.8, scoreHidden: 0.75, gap: 0.05, gateFailureRate: null },
     candidates: [{ candidateId: report.baseline.id, ...measured, rejected: true, reason: 'open minus hidden gap 0.4 exceeds the baseline\'s 0.05 by more than 0.1' }, { candidateId: 'unknown-id', ...measured, gap: 0.1, rejected: false }] };
   const summary = summarizeTraining(report).verifiers;
