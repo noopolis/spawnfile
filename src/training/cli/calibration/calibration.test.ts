@@ -87,7 +87,7 @@ describe('calibration before training', () => {
   });
 
   it('judges a set of clean outputs alone on a bank that reads no context, nested in a logical check', async () => {
-    const plain = testBankYaml.replace(/^  - \{ from: context\.evidence.*\n  - context\.assignment\n/mu, '');
+    const plain = testBankYaml.replace(/^ {2}- \{ from: context\.evidence.*\n {2}- context\.assignment\n/mu, '');
     const { root, args, out } = await fixture({ schema: declared.schema, check: 'house', outputs: [{ id: 'clean', output: 'outputs/clean.json' }], clean: ['clean'] }, plain, plain, false);
     const check = { id: 'house', eval: 'questionnaire', bank: 'bank.yaml', input: 'artifact:output' };
     const nested = resolveDataset(parseDatasetYaml(JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'train',
