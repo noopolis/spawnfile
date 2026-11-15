@@ -84,3 +84,24 @@ describe("training datasets", () => {
     });
   });
 });
+
+describe("questionnaire checks in training datasets", () => {
+  const withCheck = (check: Record<string, unknown>, extra: Record<string, unknown> = { output: "filing.json", context: { evidence: { file: "evidence.json", json: true } } }) =>
+    trainingDatasetSchema.safeParse({ examples: [{ ...example, ...extra, checks: [check], score: { grade: 0.5, [String(check.id)]: 0.5 }, gate: [check.id] }] });
+  it("accepts a questionnaire check with its bank and named contexts", () => {
+    expect(withCheck({ id: "house-rules", eval: "questionnaire", bank: "../grading/questions.yaml", context: ["evidence"] }).success).toBe(true);
+    expect(withCheck({ id: "house-rules", eval: "questionnaire", bank: "questions.yaml" }).success).toBe(true);
+  });
+  it.each([
+    ["no bank", { id: "q", eval: "questionnaire" }, undefined, /requires it/u],
+    ["a bank on another check", { id: "q", eval: "word-count", bank: "b.yaml" }, undefined, /bank belongs to a questionnaire/u],
+    ["context names on another check", { id: "q", eval: "word-count", context: ["evidence"] }, undefined, /context belongs to a questionnaire/u],
+    ["an undeclared context", { id: "q", eval: "questionnaire", bank: "b.yaml", context: ["assignment"] }, undefined, /undeclared context assignment/u],
+    ["no declared output", { id: "q", eval: "questionnaire", bank: "b.yaml" }, {}, /declared output/u],
+    ["an absolute bank", { id: "q", eval: "questionnaire", bank: "/b.yaml" }, undefined, /relative path/u]
+  ])("refuses %s", (_name, check, extra, message) => {
+    const parsed = withCheck(check, extra);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toMatch(message);
+  });
+});

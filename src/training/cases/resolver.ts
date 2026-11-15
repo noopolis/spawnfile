@@ -2,7 +2,7 @@ import { projectDatasetCost, type CostDataset } from './cost-projection.js';
 import { createHash } from 'node:crypto';
 import type { DatasetDocument, ResolutionOptions, ResolvedDataset, ResolvedRecord } from '../contracts/dataset.js';
 import { expandRecord } from './fixtures.js';
-import { normalizeStages, resolveLive, resolveStages } from './plans.js';
+import { normalizeStages, resolveLive, resolveStages, type PlanResolution } from './plans.js';
 import { validateBindingReferences } from './turn-bindings.js';
 import { validateReferenceIsolation } from './splits.js';
 import { validateDataset, validateRecord } from './schema.js';
@@ -30,7 +30,8 @@ function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly
   }
   const versions: Record<string, string> = {};
   const criterionFileDigests: Record<string, string> = {};
-  const context = { registry, versions, sourceName: document.sourceName, criterionFileDigests, criterionFiles: new Map<string, Uint8Array>(),
+  const questionnaireCalls: Record<string, Record<string, number>> = {};
+  const context: PlanResolution = { registry, versions, questionnaireCalls, sourceName: document.sourceName, criterionFileDigests, criterionFiles: new Map<string, Uint8Array>(),
     readCriterionFile: options.readCriterionFile ? (path: string) => options.readCriterionFile!(path, document.sourceName) : undefined };
   const sharedStages = resolveStages(normalizeStages(dataset), context);
   const live = { checks: resolveLive(dataset.live?.checks ?? [], context) };
@@ -80,5 +81,6 @@ function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly
     ...(dataset.training ? { training: structuredClone(dataset.training) } : {}),
     sharedStages, live, sharedPlanDigest: `sha256:${createHash('sha256').update(canonical({ stages: sharedStages, live, versions: sharedVersions, ...(costOnly ? { preparationProfile: dataset.setup?.profile ?? null } : {}) })).digest('hex')}`,
     sourceDigest: document.sourceDigest, sourceName: document.sourceName, registryVersions: versions, criterionFileDigests,
+    ...(Object.keys(questionnaireCalls).length ? { questionnaireCalls } : {}),
   };
 }

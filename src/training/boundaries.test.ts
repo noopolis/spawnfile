@@ -89,7 +89,7 @@ function boundaryViolations(filename: string, source: string, resolve = importTa
   const relative = path.relative(root, filename).split(path.sep).join('/');
   // Only the composition entry points and their adjacent tests may reach across owners.
   const integration = /^src\/runtime\/[^/]+\/training\//u.test(relative) ||
-    /^src\/runtime\/training(?:Subjects|Cli|Providers|GraderProviders)(?:\.test)?\.ts$/u.test(relative);
+    /^src\/runtime\/training(?:Subjects|Cli|Providers|GraderProviders|Regrade)(?:\.test)?\.ts$/u.test(relative);
   const runtimeTraining = /^src\/runtime\/[^/]+\/training\//u.test(relative);
   const forbidden = fromTraining ? [owners.runtime, owners.compiler] : integration ? [] : [owners.training];
   const violations: string[] = [];

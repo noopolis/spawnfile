@@ -4,6 +4,7 @@ export { runStoredTrial, type StoredTrialOptions, type NativePreparationContext 
 export { subjectStartupCapture, subjectStartupDiagnostic, writeOperatorCapture } from './trials/index.js';
 export { trainAgent, type TrainingOptions, type TrainingReport } from './training/index.js';
 export { partitionTraining } from './training/index.js';
+export { gapDecision, measureGap, selectCandidate, type GapDecision, type GapGateReport, type GapMeasurement } from './verifiers/index.js';
 export { trialScore } from './training/index.js';
 export { freezeCriteria } from './training/index.js';
 export { trainingFeedback } from './training/index.js';
@@ -13,3 +14,4 @@ export * from './costs/index.js';
 export { compareCandidates, type ComparisonOptions, type ComparisonReport } from "./comparison/index.js";
 
 export { loadTrialSlots, trialConcurrency, slotPort, SlotPool, type SlotLease, type TrialSlot } from './concurrency/index.js';
+export { regradeRecordedOutputs, regradeManifestSchema, REGRADE_SCHEMA, type RegradeManifest, type RegradeOptions, type RegradeReport, type RegradeCandidate, type RegradedOutput } from './replay/index.js';

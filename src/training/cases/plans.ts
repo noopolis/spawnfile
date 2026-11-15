@@ -1,12 +1,13 @@
 import { isTextSelector, textSelectors } from './text-checks.js';
 import { resolveGraderCheck } from './grader.js';
+import { resolveQuestionnaire } from './questionnaire.js';
 import { createHash } from 'node:crypto';
-import type { CheckNode, Dataset, DatasetRegistry, LiveCheck, Stage } from '../contracts/dataset.js';
+import { checkFeedbackLevels, type CheckNode, type Dataset, type DatasetRegistry, type LiveCheck, type Stage } from '../contracts/dataset.js';
 import { builtinEvaluatorDefinitions } from './builtin-evaluators.js';
 import { compileJsonSchema } from './json-schema.js';
 import { validateBindingReferences } from './turn-bindings.js';
 import { checkShape } from './check-schema.js';
-import { fail, object, string } from './validation.js';
+import { fail, object, oneOf, string } from './validation.js';
 
 export interface PlanResolution {
   registry: DatasetRegistry;
@@ -16,6 +17,7 @@ export interface PlanResolution {
   artifacts?: ReadonlySet<string>;
   criterionFileDigests?: Record<string, string>;
   criterionFiles?: Map<string, Uint8Array>;
+  questionnaireCalls?: Record<string, Record<string, number>>;
   readCriterionFile?: (path: string) => string | Uint8Array;
 }
 interface Nature { mechanical: boolean; incremental: boolean; stopProof: boolean }
@@ -60,13 +62,14 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
     const definition = context.registry.evaluators?.[node.eval] ?? builtinEvaluatorDefinitions[node.eval];
     if (!definition) fail(path, `unsupported evaluator ${node.eval}`);
     context.versions[`evaluator:${node.eval}`] = definition.version;
-    const { id: _id, eval: _eval, ...parameters } = node;
+    const { id: _id, eval: _eval, feedback, ...parameters } = node;
+    if (feedback !== undefined) oneOf(feedback, [...checkFeedbackLevels], `${path}.feedback`);
     for (const [key, value] of Object.entries(parameters)) validateBindingReferences(value, new Set(), `${path}.${key}`);
     definition.validate(parameters, path);
     artifacts(node, context, path);
     const sidecar = node.eval === 'json-schema' && typeof node.schema === 'string' ? node.schema :
       node.eval === 'llm-rubric' && node.rubric && typeof node.rubric === 'object' ?
-        (node.rubric as { file?: string }).file : undefined;
+        (node.rubric as { file?: string }).file : node.eval === 'questionnaire' ? node.bank as string : undefined;
     const sidecars = node.eval === 'values-in-source' ? textSelectors(node.source).filter(source => !isTextSelector(source)) : sidecar ? [sidecar] : [];
     for (const sidecar of sidecars) {
       if (!context.readCriterionFile || !context.criterionFileDigests) fail(path, `criterion sidecar requires protected bytes: ${sidecar}`);
@@ -76,6 +79,7 @@ function expand(node: CheckNode, context: PlanResolution, known: ReadonlyMap<str
         bytes = Buffer.from(context.readCriterionFile(sidecar));
         files.set(sidecar, bytes);
       }
+      if (node.eval === 'questionnaire') resolveQuestionnaire(node, context, new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes), path);
       if (node.eval === 'json-schema') compileJsonSchema(JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)));
       context.criterionFileDigests[sidecar] = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
       context.versions[`criterion-file:${sidecar}`] = context.criterionFileDigests[sidecar];

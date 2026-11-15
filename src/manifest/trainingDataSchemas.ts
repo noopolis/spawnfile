@@ -51,9 +51,19 @@ const checkId = z.string().regex(/^[A-Za-z0-9_-]+$/u);
 const checkSidecar = z.object({ file: datasetRelativePath }).strict();
 const trainingMomentCheckSchema = z.object({
   id: checkId,
-  eval: z.enum(["word-count", "values-in-source", "json-schema"]),
-  source: z.array(z.union([z.string().min(1), checkSidecar])).optional()
-}).passthrough();
+  eval: z.enum(["word-count", "values-in-source", "json-schema", "questionnaire"]),
+  source: z.array(z.union([z.string().min(1), checkSidecar])).optional(),
+  /** A questionnaire's bank, relative to the dataset file. */
+  bank: datasetRelativePath.optional(),
+  /** The example context names a questionnaire's bank reads. */
+  context: z.array(z.string().regex(/^[A-Za-z0-9_-]+$/u)).optional(),
+  /** What of this check the optimizer may read; everything when omitted. */
+  feedback: z.enum(["full", "status", "none"]).optional()
+}).passthrough().superRefine((value, context) => {
+  const questionnaire = value.eval === "questionnaire";
+  if (questionnaire !== (value.bank !== undefined)) context.addIssue({ code: z.ZodIssueCode.custom, message: "bank belongs to a questionnaire check, which requires it" });
+  if (!questionnaire && value.context !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, message: "context belongs to a questionnaire check" });
+});
 
 const trainingExampleSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9._-]+$/u),
@@ -62,10 +72,12 @@ const trainingExampleSchema = z.object({
   memory: z.array(memoryBankSchema).optional(),
   resources: z.array(trainingMomentResourceSchema).superRefine(uniqueIds).optional(),
   networks: z.array(teamNetworkSchema).optional(),
-  /** This case's grader, relative to the dataset file; the target's grader otherwise. */
-  grader: datasetRelativePath.optional(),
+  /** This case's grader, relative to the dataset file; the target's grader otherwise. `false`: no grader, the declared checks grade the case. */
+  grader: z.union([datasetRelativePath, z.literal(false)]).optional(),
   /** Grader context bound from files relative to the dataset file. */
-  context: z.record(z.string().regex(/^[A-Za-z0-9_-]+$/u), z.object({ file: datasetRelativePath }).strict()).optional(),
+  context: z.record(z.string().regex(/^[A-Za-z0-9_-]+$/u), z.object({ file: datasetRelativePath,
+    /** Bind the file's parsed JSON value instead of its text. */
+    json: z.boolean().optional() }).strict()).optional(),
   /** Workspace-relative file the trial leaves as its output; the final reply otherwise. */
   output: containedPath.optional(),
   /** Mechanical checks beside the `grade` grader check; the training core validates their parameters. */
@@ -75,8 +87,16 @@ const trainingExampleSchema = z.object({
   /** The checks that must pass for the record to count; every weighted check scores either way. */
   gate: z.array(checkId).min(1).optional()
 }).strict().superRefine((value, context) => {
-  const ids = new Set(["grade", ...(value.checks ?? []).map((check) => check.id)]);
+  const ids = new Set([...(value.grader === false ? [] : ["grade"]), ...(value.checks ?? []).map((check) => check.id)]);
+  if (value.grader === false && !value.checks?.length) context.addIssue({ code: z.ZodIssueCode.custom, message: "a case without a grader declares the checks that grade it" });
   if (value.checks?.some((check) => check.id === "grade")) context.addIssue({ code: z.ZodIssueCode.custom, message: "check id grade is the grader's" });
+  for (const check of value.checks ?? []) {
+    if (check.eval !== "questionnaire") continue;
+    if (value.output === undefined) context.addIssue({ code: z.ZodIssueCode.custom, message: `questionnaire check ${check.id} grades the example's declared output` });
+    for (const name of check.context ?? []) {
+      if (!Object.hasOwn(value.context ?? {}, name)) context.addIssue({ code: z.ZodIssueCode.custom, message: `questionnaire check ${check.id} reads undeclared context ${name}` });
+    }
+  }
   for (const id of [...Object.keys(value.score ?? {}), ...(value.gate ?? [])]) {
     if (!ids.has(id)) context.addIssue({ code: z.ZodIssueCode.custom, message: `score or gate names an undeclared check: ${id}` });
   }

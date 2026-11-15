@@ -14,8 +14,8 @@ import { HOME_LOGIN_FILES } from "./homeLogin.js";
 import { createRealmTurns, type RealmTurns } from "./realmTurns.js";
 
 export interface BootedTrialLauncherOptions {
-  /** The subject agent's own Spawnfile. */
-  agentManifestPath: string;
+  /** The subject agent's own Spawnfile; absent for a judges-only run (a regrade), which can boot no trial. */
+  agentManifestPath?: string;
   /** The subject's project root manifest; its team context compiles with the subject. */
   projectManifestPath?: string;
   authProfile: ResolvedAuthProfile;
@@ -167,7 +167,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
 
   return {
     boot: async ({ trialId, instructions, moment, signal, evidenceDirectory }) => start(await prepare({
-      agentManifestPath: options.agentManifestPath, docker, instructions, trialId, directory: await directory("trial-"),
+      agentManifestPath: options.agentManifestPath ?? (() => { throw new SpawnfileError("runtime_error", "this run boots judges only; it has no subject to boot"); })(), docker, instructions, trialId, directory: await directory("trial-"),
       ...(options.projectManifestPath ? { projectManifestPath: options.projectManifestPath } : {})
     }), "trial", signal, moment, evidenceDirectory),
     judge: (spec) => {

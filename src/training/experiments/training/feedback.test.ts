@@ -213,7 +213,10 @@ it('feeds an actual stored trial’s file output and trusted collected article d
     validation: dataset('validation'), test: dataset('sealed'), native,
     inference: { model: 'unused', provider: { id: 'unused', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
       generate: async () => { throw new Error('No cognition in this fixture'); } } },
+    critic: { judge: { name: 'strong', model: 'unused', provider: { id: 'critic', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
+      generate: async () => { throw new Error('The unchanged baseline is never reviewed'); } } }, guide: [], show: { checks: true, trainTasks: true }, blockOn: 'high' },
     bridge: { command: 'unused', cwd: root, timeoutMs: 2_000 }, budget: { maxMetricCalls: 4, maxProposals: 1 } });
+  expect(trained.critic).toEqual({ reviews: [], selectedId: candidate.id });
   expect(trained.trials.map(trial => trial.phase)).toEqual(['train', 'validation', 'test']);
   expect(trained.trials.every(trial => trial.snapshot.output === '' && trial.snapshot.artifacts['accepted-article'] !== undefined)).toBe(true);
 });
@@ -380,4 +383,17 @@ it('passes only compact atomic failures to optimization, preserving protected re
   expect(Buffer.byteLength(result.feedback)).toBeLessThan(2000);
   expect(result.feedback).not.toContain('PROTECTED RECEIPT');
   expect(captured.evaluation.stages[0]!.checks[0]!.atomicGrading!.extraction.receipts).toEqual(atomicGrading.extraction.receipts);
+});
+
+it('shows a questionnaire check through its open projection only', async () => {
+  const { runQuestionnaire, testBank, testJudge, testMaterial, testReplies } = await import('../../questionnaire/index.js');
+  const graded = await runQuestionnaire({ bank: testBank(), material: testMaterial, judges: { strong: testJudge([{ ...testReplies[0]!, quotes: { answer: 'yes', reason: 'HIDDEN SECRET reason' } },
+    { padding: { answer: 'paragraph', reason: 'P3 restates' }, unused: { answer: 9, reason: 'HIDDEN SECRET rows' } }]) } });
+  const selected = record(), captured = report();
+  const check = { id: 'house', status: 'pass' as const, finality: 'final' as const, reason: 'Questionnaire test-bank: gate pass', score: graded.score!, evidence: [], questionnaire: graded };
+  captured.evaluation = { status: 'pass', checks: {}, scores: {}, stages: [{ id: 'record-checks', checks: [check], gate: { status: 'pass', finality: 'final', reason: '', evidence: [] } }] };
+  const text = trainingFeedback(selected, captured).feedback;
+  expect((JSON.parse(text) as { evaluation: { stages: { checks: unknown[] }[] } }).evaluation.stages[0]!.checks[0]).toEqual({ id: 'house', status: 'pass', score: graded.scoreOpen, finality: 'final',
+    reason: 'Questionnaire: 1 failed', failed: [{ id: 'padding', question: 'How much padding?', answer: 'paragraph', reason: 'P3 restates' }] });
+  for (const secret of ['SECRET', 'quotes', 'unused', 'numbers_list', 'P1: E1', 'scoreHidden', String(graded.score)]) expect(text).not.toContain(secret);
 });

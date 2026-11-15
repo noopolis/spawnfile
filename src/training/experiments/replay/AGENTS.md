@@ -48,3 +48,9 @@ Validate and retain optional failureKind (native-infrastructure, behavioral,
 measurement). Legacy reports omit it and cannot acquire retry eligibility by replay.
 Preserve collectionFailed and per-turn neutral admission counters. Validate every
 counter as a nonnegative integer or explicit null; missing fields are not zeros.
+
+`regrade.ts` grades recorded outputs through the registered questionnaire check without a subject:
+each output becomes a closed snapshot holding that artifact and its bound context, evaluated by the
+engine on a one-check stage. A listed absent output is an observed absence and scores 0. Completed
+outputs are never asked again; calibration is a pure comparison of the results. Provider and file
+access are injected.

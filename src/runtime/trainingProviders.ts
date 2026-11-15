@@ -35,8 +35,10 @@ export function createTrainingProviderRegistry(): InferenceProviderRegistry {
   const codex: InferenceProviderDescriptor = {
     policyVersion: INFERENCE_POLICY_VERSIONS['codex-subscription']!,
     capabilities: { evaluatorPurposes: ['proposals', 'extraction'], evaluatorBudget: 'requests' },
-    validate: (model, path) => validate(model, path, 'none'),
-    create: (_model, context) => createBootedJudgeInference({ engine: 'codex', timeoutMs: context.timeoutMs }),
+    // An authored effort pins the judge organization's reasoning effort; without one the engine default judges.
+    validate: (model, path) => validate(model, path, 'optional'),
+    create: (model, context) => createBootedJudgeInference({ engine: 'codex', timeoutMs: context.timeoutMs,
+      ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }),
   };
   const grok: InferenceProviderDescriptor = {
     policyVersion: INFERENCE_POLICY_VERSIONS['grok-subscription']!, capabilities: {},

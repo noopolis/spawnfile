@@ -10,6 +10,8 @@ export interface TaskInput {
   files?: FileSelector[];
   message?: DataMap;
 }
+export const checkFeedbackLevels = ['full', 'status', 'none'] as const;
+export type CheckFeedbackLevel = (typeof checkFeedbackLevels)[number];
 export interface CheckNode {
   id?: string;
   eval?: string;
@@ -21,6 +23,8 @@ export interface CheckNode {
   at_least?: number;
   use?: string;
   with?: DataMap;
+  /** What of this check the optimizer may read: everything, status and score only, or nothing. `full` when omitted. */
+  feedback?: CheckFeedbackLevel;
   [parameter: string]: unknown;
 }
 export interface Stage {
@@ -103,6 +107,8 @@ export interface ResolvedDataset {
   sourceName: string;
   registryVersions: Record<string, string>;
   criterionFileDigests: Record<string, string>;
+  /** Judge calls one graded output costs on each questionnaire bank, by bank sidecar and judge route. Absent without a questionnaire. */
+  questionnaireCalls?: Record<string, Record<string, number>>;
 }
 export interface EvaluatorDefinition {
   version: string;

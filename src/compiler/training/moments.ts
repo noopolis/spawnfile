@@ -97,7 +97,7 @@ const fillFor = (resource: TrainingMomentResource, datasetDirectory: string): Tr
   return { kind: "git", repo: spec.repo, commit: provenance.commit, paths: provenance.paths, revision: resolved.revision, source: provenance };
 };
 
-/** Copies a grader's directory beside the lowered datasets, so the grader stays a contained relative path. */
+/** Copies a file's whole directory (a grader, a calibration set) beside the lowered datasets, so the file stays a contained relative path. */
 const copyGrader = async (graderFile: string, moments: string, copied: Map<string, string>): Promise<string> => {
   const directory = path.dirname(graderFile);
   let target = copied.get(directory);
@@ -160,10 +160,11 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
       if (seen.has(identity)) continue;
       seen.add(identity);
       if (records[role].some((record) => record.id === example.id)) invalid(`Duplicate ${role} example ID ${example.id} across datasets; use unique IDs`);
-      const grader = example.grader ? await contained(project.root, base, example.grader, `Example ${example.id} grader`) : targetGrader;
-      const context: Record<string, string> = {};
+      const grader = example.grader === false ? undefined : example.grader ? await contained(project.root, base, example.grader, `Example ${example.id} grader`) : targetGrader;
+      const context: Record<string, unknown> = {};
       for (const [name, source] of Object.entries(example.context ?? {})) {
-        context[name] = await readFile(await contained(project.root, base, source.file, `Example ${example.id} context ${name}`), "utf8");
+        const text = await readFile(await contained(project.root, base, source.file, `Example ${example.id} context ${name}`), "utf8");
+        context[name] = source.json ? parseJson(text, `Example ${example.id} context ${name}`) : text;
       }
       const moment: TrainingMoment = {
         version: TRAINING_MOMENT_VERSION, at: wakeInstant(example.at), wake: { ...example.wake },
@@ -178,7 +179,8 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
         setup: { moment },
         ...(Object.keys(context).length ? { context } : {}),
         ...(example.output ? { outputs: { output: example.output } } : {}),
-        ...await recordChecks(example, {
+        // A case that declares `grader: false` is graded by its declared checks alone.
+        ...await recordChecks(example, grader === undefined ? undefined : {
           id: "grade", eval: "grader", grader: await copyGrader(grader, moments, copied),
           input: example.output ? "artifact:output" : "artifact:reply",
           ...(Object.keys(context).length ? { context: Object.fromEntries(Object.keys(context).map((name) => [name, `context:${name}`])) } : {})
@@ -190,11 +192,7 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
   for (const role of roles) if (declared.has(role)) {
     const file = path.join(moments, `${role}.spawnfile-training.json`);
     // The train dataset carries the optimizer's declared provider; without one the core's default serves it.
-    const optimizer = plan.optimizer;
-    const training = role === "train" && optimizer?.provider ? { training: {
-      models: { optimizer: { provider: optimizer.provider, model: optimizer.model } },
-      optimizer: { model: "optimizer", method: optimizer.method, variants: optimizer.variants, keep: optimizer.keep, budget: { rounds: optimizer.budget.rounds } }
-    } } : {};
+    const training = role === "train" ? await trainingBlock(plan, project.root, (file) => copySidecar(file, moments, copied), (file) => copyGrader(file, moments, copied)) : {};
     await writeFile(file, `${JSON.stringify({ schema: "spawnfile.training.dataset.v1", id: `${plan.agent.id}:${role}`,
       setup: { profile: TRAINING_MOMENT_PROFILE }, ...training, records: records[role] }, null, 2)}\n`,
       { flag: "wx", mode: 0o600 });
@@ -203,16 +201,59 @@ export const lowerTrainingMoments = async (options: LowerTrainingMomentsOptions)
   return datasets as LoweredTrainingDatasets;
 };
 
-type AuthoredExample = { checks?: Array<Record<string, unknown> & { source?: Array<string | { file: string }> }>; score?: Record<string, number>; gate?: string[] };
+const parseJson = (text: string, label: string): unknown => {
+  try { return JSON.parse(text) as unknown; } catch { return invalid(`${label} is not JSON`); }
+};
+
+/**
+ * The train dataset's `training` block: the optimizer's declared provider, the declared judge routes (each a
+ * model of its own name) and the critic with its guide documents copied beside the datasets. Without a
+ * declared optimizer provider or judges there is no block and the core's defaults serve the run.
+ */
+const trainingBlock = async (plan: TrainingPlan, root: string, sidecar: (file: string) => Promise<string>, directory: (file: string) => Promise<string>): Promise<{ training?: Record<string, unknown> }> => {
+  const optimizer = plan.optimizer?.provider ? plan.optimizer : undefined;
+  const judges = Object.entries(plan.judges ?? {});
+  for (const [name, declared] of [["critic", plan.critic], ["budget", plan.budget], ["selection", plan.selection], ["calibration", plan.calibration]] as const) {
+    if (declared && !optimizer && judges.length === 0) invalid(`Training ${name} needs a declared optimizer provider or judges`);
+  }
+  if (!optimizer && judges.length === 0) return {};
+  if (judges.some(([name]) => name === "optimizer")) invalid("Training judge name optimizer is reserved for the optimizer's model");
+  const guide: string[] = [];
+  for (const file of plan.critic?.guide ?? []) guide.push(await sidecar(await contained(root, root, file, "Critic guide document")));
+  // A calibration set travels with its whole directory: the set names its outputs and contexts relative to itself.
+  const calibration: string[] = [];
+  for (const file of plan.calibration ?? []) calibration.push(await directory(await contained(root, root, file, "Calibration set")));
+  return { training: {
+    models: { ...(optimizer ? { optimizer: { provider: optimizer.provider, model: optimizer.model } } : {}),
+      ...Object.fromEntries(judges.map(([name, judge]) => [name, { provider: judge.provider, model: judge.model,
+        ...(judge.effort === undefined ? {} : { reasoning_effort: judge.effort }) }])) },
+    ...(judges.length ? { judges: Object.fromEntries(judges.map(([name]) => [name, { model: name }])) } : {}),
+    ...(plan.critic ? { critic: { judge: plan.critic.judge, guide, show: plan.critic.show, block_on: plan.critic.block_on } } : {}),
+    ...(plan.budget ? { budget: { ...plan.budget } } : {}),
+    ...(plan.selection ? { selection: { ...plan.selection } } : {}),
+    ...(calibration.length ? { calibration } : {}),
+    ...(optimizer ? { optimizer: { model: "optimizer", method: optimizer.method, variants: optimizer.variants, keep: optimizer.keep, budget: { rounds: optimizer.budget.rounds } } } : {})
+  } };
+};
+
+type AuthoredExample = { checks?: Array<Record<string, unknown> & { source?: Array<string | { file: string }>; bank?: string; context?: string[] }>; score?: Record<string, number>; gate?: string[] };
 
 /**
  * The record's checks: the grader's `grade`, then the example's declared mechanical checks with their
  * sidecar sources copied. Declared weights or gates make one stage; otherwise every check must pass.
  */
-const recordChecks = async (example: AuthoredExample, grade: Record<string, unknown>, sidecar: (file: string) => Promise<string>) => {
-  const declared = await Promise.all((example.checks ?? []).map(async (check) => check.source === undefined ? check
-    : { ...check, source: await Promise.all(check.source.map((entry) => typeof entry === "string" ? entry : sidecar(entry.file))) }));
-  const checks = [grade, ...declared];
+const recordChecks = async (example: AuthoredExample, grade: Record<string, unknown> | undefined, sidecar: (file: string) => Promise<string>) => {
+  const declared = await Promise.all((example.checks ?? []).map(async (check) => {
+    // A questionnaire grades the example's output with its bank copied beside the datasets and its named contexts bound.
+    if (check.eval === "questionnaire") {
+      const { context: names, ...rest } = check;
+      return { ...rest, bank: await sidecar(check.bank!), input: "artifact:output",
+        ...(names?.length ? { context: Object.fromEntries(names.map((name) => [name, `context:${name}`])) } : {}) };
+    }
+    return check.source === undefined ? check
+      : { ...check, source: await Promise.all(check.source.map((entry) => typeof entry === "string" ? entry : sidecar(entry.file))) };
+  }));
+  const checks = [...(grade ? [grade] : []), ...declared];
   if (!example.score && !example.gate) return { checks };
   return { stages: [{ id: "record-checks", checks,
     ...(example.score ? { score: { linear: { ...example.score } } } : {}),

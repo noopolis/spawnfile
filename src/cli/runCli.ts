@@ -72,6 +72,7 @@ import { registerViewCommand } from "./viewCommand.js";
 import { registerVolumeCommands } from "./volumeCommands.js";
 import { registerTrainCommand } from "./trainCommand.js";
 import { runTraining } from "./trainingExecution.js";
+import { runTrainingRegrade } from "./trainingRegrade.js";
 
 const packageJsonPath = new URL("../../package.json", import.meta.url);
 
@@ -105,6 +106,7 @@ export interface CliHandlers {
   loadTrainingProject: typeof loadTrainingProject; resolveTrainingPlan: typeof resolveTrainingPlan;
   materializeTrainingMoment: typeof materializeTrainingMoment;
   runTraining: typeof runTraining;
+  runTrainingRegrade: typeof runTrainingRegrade;
   buildCompilePlan: typeof buildCompilePlan; buildOrganizationView: typeof buildOrganizationView;
   buildProject: typeof buildProject; compileProject: typeof compileProject;
   publishProject: typeof publishProject;
@@ -134,7 +136,7 @@ export interface CliHandlers {
   syncProjectAuth: typeof syncProjectAuth;
 }
 const createDefaultHandlers = (): CliHandlers => ({
-  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, lowerTrainingMoments, allocateTrainingOutputParent, runTraining,
+  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, lowerTrainingMoments, allocateTrainingOutputParent, runTraining, runTrainingRegrade,
   buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
   addAgentProject, addProjectModelFallback, addProjectSurface,
   addSubagentProject, addTeamProject, clearProjectModelFallbacks,

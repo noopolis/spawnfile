@@ -1,5 +1,5 @@
 import { canonicalWireId } from '../../contracts/index.js';
-import { testRepeatCount } from '../../contracts/training-config.js';
+import { testRepeatCount, validationRepeatCount } from '../../contracts/training-config.js';
 import type { CheckNode, ResolvedDataset } from '../../contracts/dataset.js';
 import { builtinEvaluatorDefinitions, validateCostDatasetSplit, projectDatasetCost, type CostDataset, type CostRecord } from '../../cases/index.js';
 import { resolveTrainingPartitions } from '../training/index.js';
@@ -25,6 +25,12 @@ export interface TrainingCostOptions<Dataset = ResolvedDataset> {
   judges: Readonly<Record<string, PlannedInferenceRoute & { citationRepairs?: 0 | 1 }>>;
   optimizerRoute?: PlannedInferenceRoute;
   testRepeats?: number;
+  /** Disclosure only: `maxTrials` already counts every repeated validation trial. */
+  validationRepeats?: number;
+  /** The prompt critic: its judge route and the most reviews selection can ask for. */
+  critic?: { judge: string; reviews: number };
+  /** Judge calls the declared calibration sets ask before any trial, by judge route. */
+  calibration?: Readonly<Record<string, number>>;
   maxTrials: number;
   maxProposals: number;
   assumptions?: Partial<CostAssumptions>;
@@ -46,7 +52,7 @@ export interface TrainingCostPlan {
   modelCallsMade: 0;
   billing: 'API-equivalent valuation; subscription fees are not apportioned';
   coverage: 'estimated' | 'partial';
-  budget: { maxTrials: number; maxProposals: number; metricCalls: number; reservedTestTrials: number };
+  budget: { maxTrials: number; maxProposals: number; metricCalls: number; reservedTestTrials: number; validationRepeats?: number };
   datasetDigests: { train: string; test: string; validation?: string };
   /** Always emitted by current planning; absent only in older stored v1 plans. */
   judgeRoutes?: Record<string, PlannedInferenceRoute & { citationRepairs: 0 | 1 }>;
@@ -62,6 +68,7 @@ export interface TrainingCostPlan {
 /** Pure planning over resolved cases. Does not construct an adapter or touch credentials. */
 export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | CostDataset>): TrainingCostPlan {
   const testRepeats = testRepeatCount(options.testRepeats);
+  const validationRepeats = validationRepeatCount(options.validationRepeats);
   if (options.mode === 'comparison' && testRepeats !== 1) throw new Error('Comparison does not support test repeats');
   const project = (dataset: ResolvedDataset | CostDataset) => {
     const normalized = { ...dataset, schema: canonicalWireId(dataset.schema) } as ResolvedDataset | CostDataset;
@@ -130,8 +137,9 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
   };
   add('subject', options.train.subject ?? 'subject', 'development', options.subjectModel, metricCalls, assumptions.subject);
   add('subject', options.train.subject ?? 'subject', 'held-out', options.subjectModel, reservedTestTrials, assumptions.subject);
-  const developmentCounts = development.map(record => countChecks(record, omitCost));
-  const testCounts = test.records.map(record => countChecks(record, omitCost));
+  const bankCalls = { ...train.questionnaireCalls, ...validation?.questionnaireCalls, ...test.questionnaireCalls };
+  const developmentCounts = development.map(record => countChecks(record, omitCost, bankCalls));
+  const testCounts = test.records.map(record => countChecks(record, omitCost, bankCalls));
   const names = new Set([...developmentCounts, ...testCounts].flatMap(counts => Object.keys(counts)));
   for (const name of names) {
     const route = judgeRoutes[name];
@@ -145,23 +153,34 @@ export function planTrainingCost(options: TrainingCostOptions<ResolvedDataset | 
     if (developmentCalls) addRoute('judge', name, 'development', route, developmentCalls * attempts, perCall);
     if (testCalls) addRoute('judge', name, 'held-out', route, testCalls * attempts, perCall);
   }
+  const verifierRoute = (name: string) => judgeRoutes[name] ?? (() => { throw new Error(`Missing judge route ${name}`); })();
+  for (const [name, calls] of Object.entries(options.calibration ?? {})) {
+    if (calls) addRoute('judge', 'calibration', 'development', verifierRoute(name), calls, assumptions.judges?.[name] ?? assumptions.judge);
+  }
+  if (options.critic?.reviews) {
+    addRoute('judge', 'critic', 'optimization', verifierRoute(options.critic.judge), options.critic.reviews, assumptions.judges?.[options.critic.judge] ?? assumptions.judge);
+    warnings.add('Critic reserves one review per candidate the search can produce; selection stops at the first candidate that passes.');
+  }
   if (options.mode !== 'comparison') addRoute('optimizer', 'reflection', 'optimization', options.optimizerRoute ?? {model: options.optimizerModel!, provider: 'claude-subscription'}, options.maxProposals, assumptions.optimizer);
   const pricedSubtotalUsd = lines.reduce((sum, line) => ({ low: sum.low + (line.apiEquivalentUsd?.low ?? 0),
     high: sum.high + (line.apiEquivalentUsd?.high ?? 0) }), { low: 0, high: 0 });
   return { schema: 'spawnfile.training.training-cost-plan.v1', modelCallsMade: 0,
     billing: 'API-equivalent valuation; subscription fees are not apportioned', coverage: incomplete ? 'partial' : 'estimated',
-    budget: { maxTrials: options.maxTrials, maxProposals: options.maxProposals, metricCalls, reservedTestTrials },
+    budget: { maxTrials: options.maxTrials, maxProposals: options.maxProposals, metricCalls, reservedTestTrials, ...(validationRepeats === 1 ? {} : { validationRepeats }) },
     datasetDigests: { train: options.train.sourceDigest, test: options.test.sourceDigest,
       ...(options.validation ? { validation: options.validation.sourceDigest } : {}) },
     judgeRoutes, preparationValidation, lines, apiEquivalentUsd: incomplete ? null : pricedSubtotalUsd, pricedSubtotalUsd, assumptions, warnings: [...warnings] };
 }
 
-function countChecks(record: CostRecord, omitCost: (warning: string) => void): Record<string, number> {
+function countChecks(record: CostRecord, omitCost: (warning: string) => void, bankCalls: Readonly<Record<string, Record<string, number>>>): Record<string, number> {
   const counts: Record<string, number> = {};
   const visit = (node: CheckNode, live = false) => {
     if (node.eval === 'llm-rubric') {
       if (live) omitCost(`Unbounded live judge ${String(node.judge)}: event frequency is unknown; omitted from finite subtotal.`);
       else counts[node.judge as string] = (counts[node.judge as string] ?? 0) + 1;
+    } else if (node.eval === 'questionnaire' && !live && Object.hasOwn(bankCalls, node.bank as string)) {
+      // One call per group per repeat, on each group's named route.
+      for (const [judge, calls] of Object.entries(bankCalls[node.bank as string]!)) counts[judge] = (counts[judge] ?? 0) + calls;
     } else if (node.eval && builtinEvaluatorDefinitions[node.eval]?.kind !== 'mechanical') {
       omitCost(`Unsupported cost source ${node.eval}: no declared inference cost model; omitted from subtotal.`);
     }

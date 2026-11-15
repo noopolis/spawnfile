@@ -77,7 +77,7 @@ async function evaluate(check: CheckNode, context: EvaluationContext, registry: 
     } else if (check.eval) {
       const evaluator = registry[check.eval];
       if (!evaluator) throw new Error(`Unknown evaluator ${check.eval}`);
-      const parameters = Object.fromEntries(Object.entries(structuredClone(check)).filter(([key]) => !['id', 'eval', 'on', 'on_fail'].includes(key)));
+      const parameters = Object.fromEntries(Object.entries(structuredClone(check)).filter(([key]) => !['id', 'eval', 'on', 'on_fail', 'feedback'].includes(key)));
       evaluator.definition.validate(parameters, check.id ?? check.eval);
       const isolated = isolatedContext(context);
       isolated.evaluateCheck = (gate, artifact) => evaluateNode(gate,

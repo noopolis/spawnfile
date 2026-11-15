@@ -4,6 +4,7 @@ import { subjectStartupDiagnostic, summarizeCosts, type ModelPrice, type Optimiz
 import { blobContentPath, type ExperimentStore } from '../../storage/index.js';
 import type { RescoreReport } from '../../experiments/replay/index.js';
 import type { CliIO } from '../types.js';
+import type { JudgeCall } from '../../contracts/evaluation.js';
 import { createGenerationTracker } from './generations.js';
 
 export interface ProgressOptions {
@@ -29,8 +30,9 @@ export async function createProgressJournal(options: ProgressOptions) {
   const trials = new Map<string, TrialReport>();
   const rescores = new Map<string, RescoreReport>();
   const generations = createGenerationTracker();
+  const verifierCalls: { purpose: 'calibration' | 'critic'; call: JudgeCall }[] = [];
   const costs = () => summarizeCosts([...trials.values()], { subjectModel: options.model,
-    prices: options.prices, rescores: [...rescores.values()], optimizerGenerations: generations.snapshot() });
+    prices: options.prices, rescores: [...rescores.values()], optimizerGenerations: generations.snapshot(), verifierCalls });
   const summary = () => {
     const cost = costs();
     return { apiEquivalentUsd: cost.apiEquivalentUsd, knownSubtotalUsd: cost.knownSubtotalUsd,
@@ -77,6 +79,11 @@ export async function createProgressJournal(options: ProgressOptions) {
         await write(event.type, { attempts: generations.attempts() });
       } else if (event.type === 'training.started' || event.type === 'comparison.started') {
         await write(event.type, { budget: payload.budget });
+      } else if (event.type === 'calibration.judged' || event.type === 'critic.judged') {
+        // Verifier calls outside any trial still count: one entry per judge call, a restored one included once.
+        const purpose = event.type === 'critic.judged' ? 'critic' as const : 'calibration' as const;
+        for (const call of (payload.judgeCalls ?? []) as JudgeCall[]) if (!verifierCalls.some(entry => entry.call.id === call.id)) verifierCalls.push({ purpose, call });
+        await write(event.type, { status: payload.status, judgeCalls: ((payload.judgeCalls ?? []) as JudgeCall[]).length });
       } else if (event.type === 'selection.frozen' || event.type === 'comparison.frozen') {
         await write(event.type, { candidateId: payload.selectedId ?? payload.candidateId });
       } else if (event.type === 'training.completed' || event.type === 'comparison.completed' || event.type === 'evaluation.completed') {

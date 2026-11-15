@@ -15,6 +15,13 @@ export interface ResolvedTraining {
   preparation?: { hook: string; history?: string };
   record?: TrainingDeclaration["record"];
   optimizer?: TrainingDeclaration["optimizer"];
+  judges?: NonNullable<TrainingDeclaration["judges"]>;
+  /** Guide documents as absolute paths. */
+  critic?: NonNullable<TrainingDeclaration["critic"]>;
+  budget?: NonNullable<TrainingDeclaration["budget"]>;
+  selection?: NonNullable<TrainingDeclaration["selection"]>;
+  /** Calibration set files as absolute paths. */
+  calibration?: string[];
   graders: Record<string, ResolvedTrainingGrader>;
   /** Only this node's targets, with absolute file and dataset paths. */
   targets: TrainingTarget[];
@@ -36,6 +43,12 @@ export const resolveTrainingDeclaration = (
       ...(declaration.record.volumes === undefined ? {} : { volumes: [...declaration.record.volumes] }) } }),
     ...(declaration.optimizer === undefined ? {} : { optimizer: { ...declaration.optimizer,
       ...(declaration.optimizer.budget === undefined ? {} : { budget: { ...declaration.optimizer.budget } }) } }),
+    ...(declaration.judges === undefined ? {} : { judges: structuredClone(declaration.judges) }),
+    ...(declaration.critic === undefined ? {} : { critic: { ...declaration.critic, guide: declaration.critic.guide.map(resolve),
+      ...(declaration.critic.show === undefined ? {} : { show: [...declaration.critic.show] }) } }),
+    ...(declaration.budget === undefined ? {} : { budget: { ...declaration.budget } }),
+    ...(declaration.selection === undefined ? {} : { selection: { ...declaration.selection } }),
+    ...(declaration.calibration === undefined ? {} : { calibration: declaration.calibration.map(resolve) }),
     graders: Object.fromEntries(Object.entries(declaration.graders ?? {})
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([name, value]) => [name, { sourcePath: resolve(value), declaredBy }])),
@@ -65,9 +78,14 @@ export const mergeTrainingDeclarations = (
   const optimizer = inherited?.optimizer === undefined && local?.optimizer === undefined
     ? undefined : { ...inherited?.optimizer, ...local?.optimizer, ...(budget === undefined ? {} : { budget }) };
   const graders = { ...inherited?.graders, ...local?.graders };
+  const judges = { ...inherited?.judges, ...local?.judges };
+  const critic = local?.critic ?? inherited?.critic;
+  const runBudget = inherited?.budget === undefined && local?.budget === undefined ? undefined : { ...inherited?.budget, ...local?.budget };
+  const selection = local?.selection ?? inherited?.selection;
+  const calibration = local?.calibration ?? inherited?.calibration;
   const targets = local?.targets ?? [];
   const preparation = local?.preparation ?? inherited?.preparation;
-  if (deadlines === undefined && preparation === undefined && record === undefined && optimizer === undefined && Object.keys(graders).length === 0 && targets.length === 0) {
+  if (deadlines === undefined && preparation === undefined && record === undefined && optimizer === undefined && critic === undefined && runBudget === undefined && selection === undefined && calibration === undefined && Object.keys(judges).length === 0 && Object.keys(graders).length === 0 && targets.length === 0) {
     return undefined;
   }
   return {
@@ -75,6 +93,11 @@ export const mergeTrainingDeclarations = (
     ...(preparation === undefined ? {} : { preparation }),
     ...(record === undefined ? {} : { record }),
     ...(optimizer === undefined ? {} : { optimizer }),
+    ...(Object.keys(judges).length === 0 ? {} : { judges: Object.fromEntries(Object.entries(judges).sort(([left], [right]) => left.localeCompare(right))) }),
+    ...(critic === undefined ? {} : { critic }),
+    ...(runBudget === undefined ? {} : { budget: runBudget }),
+    ...(selection === undefined ? {} : { selection }),
+    ...(calibration === undefined ? {} : { calibration }),
     graders: Object.fromEntries(Object.entries(graders).sort(([left], [right]) => left.localeCompare(right))),
     targets
   };

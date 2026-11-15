@@ -102,8 +102,14 @@ are provider-specific strings, not a claim that a particular model is installed.
 Grok models accept `reasoning_effort: low | medium | high | xhigh`. Omission means
 explicit `medium`; the process never inherits effort from local Grok configuration.
 Use separate named model entries to give focused judges and prompt optimization
-different efforts. Effort changes invalidate exact judge reuse. Other providers
-reject this field until their adapters support it.
+different efforts. Effort changes invalidate exact judge reuse. A `codex-subscription`
+model accepts the same field and boots its judge with that effort; omission leaves the
+engine default. A questionnaire bank that declares a group `effort` is refused on a judge
+route whose model declares another one. Other providers reject this field until their
+adapters support it.
+
+`critic` declares the prompt critic gate (`judge`, `guide`, `show`, `block_on`); see
+[Questionnaire check and prompt critic](questionnaire.md).
 
 `grok-broker` still validates (`model` one of `grok-4.6`, `grok-4.5` or `grok-build`,
 required `reasoning_effort` `low`, `medium` or `high`) so historical datasets and

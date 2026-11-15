@@ -207,6 +207,8 @@ describe('concurrent independent judges', () => {
       definitionDigest: digest, calibrationDigest: digest, calibration: { schema: 'spawnfile.training.grader-calibration.v1', identity,
         questions: { q: { status: 'calibrated', failures: [],
       teacherAccuracy: { groups: 20, instances: 40, good: 20, bad: 20, agreement: 1, source: 'human', failures: [], warnings: [] }, metrics: { groups: 20, instances: 40, good: 20, bad: 20, baseRate: 0.5 } } } } };
+    const bankYaml = JSON.stringify({ schema: 'spawnfile.training.questionnaire.v1', id: 'b', instructions: 'Check.', reads: ['output.body'], defaults: { judge: 'desk' },
+      groups: [{ id: 'g', questions: [{ id: 'ok', type: 'yes-no', ask: 'Fine?', yes_when: 'fine', no_when: 'not', pass: 'yes', rule: 'r' }] }] });
     const cases: Record<string, CheckNode> = {
       grader: { eval: 'grader', grader: 'g', input: 'artifact:article', grader_binding: { definitionDigest: digest, calibrationDigest: digest, gates: [] } },
       'word-count': { eval: 'word-count', input: 'output.text', min: 1 },
@@ -219,16 +221,18 @@ describe('concurrent independent judges', () => {
       'tool-sequence': { eval: 'tool-sequence', order: 'happens-before', steps: [{ tool: 'validate' }] },
       'token-efficiency': { eval: 'token-efficiency', metric: 'total', target_tokens: 1000 },
       'llm-rubric': rubric('grade', 'editor'),
+      questionnaire: { eval: 'questionnaire', bank: 'bank.yaml', input: 'artifact:article' },
       'embedding-similarity': { eval: 'embedding-similarity', input: 'output.text', reference: 'reference.txt',
         provider: 'local', model: 'test-vector', metric: 'cosine', calibration: 'calibration.json', minimum: 0.8 },
     };
     const opted = Object.entries(registry).filter(([, entry]) => entry.concurrency).map(([id]) => id).sort();
     expect(opted).toEqual(Object.keys(cases).sort());
     for (const [id, check] of Object.entries(cases)) {
-      const context = evaluationContext({ graders: { g: grader }, judges: { editor: { ...judge, model: 'm' } }, embeddings: { local: embedding },
+      const context = evaluationContext({ graders: { g: grader }, judges: { editor: { ...judge, model: 'm' }, desk: { ...judge, model: 'm',
+        provider: { ...judge.provider, generate: async () => ({ text: '{"ok":{"answer":"yes","reason":"fine"}}', model: 'm', route: 'r', usage: null }) } } }, embeddings: { local: embedding },
         snapshot: snapshot({ events: [observation()], subjectUsage: { status: 'complete', usage: { inputTokens: 800, cachedInputTokens: 0,
           outputTokens: 200, reasoningTokens: 0, source: 'native-total' } } }),
-        readText: async path => path === 'calibration.json' ? JSON.stringify({ model: 'test-vector', metric: 'cosine', version: '1' }) : 'reference' });
+        readText: async path => path === 'bank.yaml' ? bankYaml : path === 'calibration.json' ? JSON.stringify({ model: 'test-vector', metric: 'cosine', version: '1' }) : 'reference' });
       for (const field of ['results', 'scores'] as const) {
         Object.defineProperty(context, field, { get: () => { throw new Error(`${id} read sibling ${field}`); } });
       }

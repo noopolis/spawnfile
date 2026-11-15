@@ -36,3 +36,7 @@ Cost planning shares explicit validation selection and evidence-lineage isolatio
 
 Reserve two arms times test cases times testRepeats for held-out subject trials
 and multiply held-out judge counts likewise; default one preserves existing plans.
+
+A questionnaire check plans one judge call per group per repeat on each group's route, from the
+dataset's `questionnaireCalls`. Calibration sets and critic reviews are planned as their own judge lines
+(`calibration`, `critic`) and observed through `verifierCalls`, since neither belongs to a trial.

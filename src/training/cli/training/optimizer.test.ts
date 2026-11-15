@@ -4,7 +4,7 @@ import type { TrainingConfiguration } from '../../contracts/training-config.js';
 import { type CliArguments } from '../arguments.js';
 import type { SpawnfileCliIntegration } from '../types.js';
 import type { SpawnfileTrainingContext } from '../spawnfile/index.js';
-import { bridgeProposal, populationSearch, trainingTrialBudget } from './optimizer.js';
+import { bridgeProposal, populationSearch, trainingTrialBudget, metricCallBudget } from './optimizer.js';
 import { resolveTrainingOptimizer } from '../../../../fixtures/support/training/providers.js';
 
 const roots: string[] = [];
@@ -106,4 +106,16 @@ it('reserves repeated sealed passes in derived budgets while preserving explicit
   expect(trainingTrialBudget({ ...repeated, flags: { 'max-trials': ['20'] } }, 2, 1, 2)).toBe(20);
   expect(trainingTrialBudget(args({ models, budget: { test_repeats: 3 } }), 2, 1, 2)).toBe(20);
   expect(() => trainingTrialBudget(args({ models, optimizer: population, budget: { test_repeats: 8 } }), 1, 1, 625)).toThrow('10000');
+});
+
+it('counts every repeated validation trial in the derived budget and reserves them out of the callback budget', () => {
+  const repeated = args({ models, optimizer: population, budget: { validation_repeats: 2 } });
+  const plain = args({ models, optimizer: population });
+  const candidates = (trainingTrialBudget(plain, 2, 1, 2) - 4) / 3;
+  expect(trainingTrialBudget(repeated, 2, 1, 2)).toBe(trainingTrialBudget(plain, 2, 1, 2) + candidates);
+  expect(metricCallBudget(plain, trainingTrialBudget(plain, 2, 1, 2), 1, 2)).toBe(candidates * 3);
+  expect(metricCallBudget(repeated, trainingTrialBudget(repeated, 2, 1, 2), 1, 2)).toBe(candidates * 3);
+  // Without a population the search's shape is unknown: every callback is assumed a repeated validation.
+  expect(metricCallBudget(args({ models, budget: { validation_repeats: 2, test_repeats: 2 } }), 20, 1, 2)).toBe(6);
+  expect(() => trainingTrialBudget(args({ models, optimizer: population, budget: { validation_repeats: 9 } }), 2, 1, 2)).toThrow('validation_repeats');
 });

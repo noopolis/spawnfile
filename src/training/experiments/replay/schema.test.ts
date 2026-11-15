@@ -265,3 +265,18 @@ test('replay retains valid evaluated manifests and rounds, rejecting altered ide
   expect(() => trialReportSchema.parse({ ...report, round: -1 })).toThrow();
   expect(() => trialReportSchema.parse({ ...report, round: 0.5 })).toThrow();
 });
+
+test('replay keeps a questionnaire result on a check and refuses one without answers', async () => {
+  const { report } = await fixture();
+  const questionnaire = { bank: { id: 'bank' }, gate: 'pass', gateFailures: [], errors: [], score: 1, scoreOpen: 1, scoreHidden: null,
+    answers: [{ id: 'figures', type: 'yes-no', status: 'ok', answer: 'yes', score: 1, passed: true, reason: 'P1', group: 'g', ask: 'Q?', hidden: false, gate: true, weight: 1 }],
+    scaffold: { g: { support: 'P1: E1' } }, failedCalls: [], judgeCalls: [] };
+  const withCheck = (value: unknown) => {
+    const modified = structuredClone(report);
+    modified.evaluation.stages[0]!.checks = [{ ...modified.evaluation.stages[0]!.gate, id: 'house', questionnaire: value as never }];
+    return modified;
+  };
+  expect(trialReportSchema.parse(withCheck(questionnaire)).evaluation.stages[0]!.checks[0]!.questionnaire).toEqual(questionnaire);
+  expect(trialReportSchema.parse(withCheck(undefined)).evaluation.stages[0]!.checks[0]!.questionnaire).toBeUndefined();
+  for (const broken of [null, 'pass', {}, { answers: 'none' }]) expect(() => trialReportSchema.parse(withCheck(broken))).toThrow();
+});

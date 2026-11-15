@@ -44,13 +44,17 @@ describe('dataset-authored training configuration', () => {
   it.each<[string, unknown, RegExp]>([
     ['api_key', 'forbidden-test-value', /unknown field/],
     ['endpoint', 'http://localhost:11434', /only supported for ollama/],
-    ['reasoning_effort', 'low', /only supported for grok-subscription or grok-broker/],
+    ['reasoning_effort', 'extreme', /reasoning_effort: expected one of low, medium, high, xhigh/],
     ...['think', 'keep_alive_seconds', 'max_output_tokens', 'context_window'].map<[string, unknown, RegExp]>(field =>
       [field, 1, /only supported for ollama/]),
   ])('rejects unsupported Codex training control %s', (field, value, reason) => {
     expect(() => validateTrainingConfiguration({ models: { codex: {
       provider: 'codex-subscription', model: 'chosen', [field]: value,
     } } })).toThrow(reason);
+  });
+  it('accepts an authored reasoning effort on a Codex judge model', () => {
+    expect(validateTrainingConfiguration({ models: { codex: { provider: 'codex-subscription', model: 'chosen', reasoning_effort: 'medium' } } }).models.codex)
+      .toEqual({ provider: 'codex-subscription', model: 'chosen', reasoning_effort: 'medium' });
   });
   it('preserves a standalone YAML configuration without sharing mutable objects', () => {
     const parsed = parseDatasetYaml(stringify(dataset(config)));
@@ -190,4 +194,52 @@ it.each([-1, 4, 1.5, '1', null, true])('refuses authored trial_retries=%s', tria
 });
 it.each([0, 1, 3])('accepts authored trial_retries=%s', trial_retries => {
   expect(validateTrainingConfiguration({ ...config, budget: { trial_retries } }).budget).toEqual({ trial_retries });
+});
+
+describe('training critic', () => {
+  const config = (critic: unknown, extra: Record<string, unknown> = {}) => ({ models: { strong: { provider: 'claude-subscription', model: 'm' } }, judges: { strong: { model: 'strong' } }, critic, ...extra });
+  it('accepts a declared critic', () => {
+    expect(validateTrainingConfiguration(config({ judge: 'strong', guide: ['docs/WRITING.md'], show: ['checks', 'train-tasks'], block_on: 'medium' })).critic)
+      .toEqual({ judge: 'strong', guide: ['docs/WRITING.md'], show: ['checks', 'train-tasks'], block_on: 'medium' });
+    expect(validateTrainingConfiguration(config({ judge: 'strong', guide: ['WRITING.md'], show: [] })).critic).toMatchObject({ show: [] });
+  });
+  it.each([
+    [{ judge: 'other', guide: ['a.md'] }, 'unknown judge other'],
+    [{ judge: 'strong', guide: [] }, 'nonempty sequence'],
+    [{ judge: 'strong', guide: ['../a.md'] }, 'contained relative path'],
+    [{ judge: 'strong', guide: ['a.md'], show: ['tests'] }, 'expected one of checks, train-tasks'],
+    [{ judge: 'strong', guide: ['a.md'], block_on: 'never' }, 'expected one of low, medium, high'],
+    [{ judge: 'strong', guide: ['a.md'], verdict: 'pass' }, 'unknown field'],
+  ])('refuses %j', (critic, message) => {
+    expect(() => validateTrainingConfiguration(config(critic))).toThrow(message);
+  });
+  it('refuses a critic on a comparison, which selects no candidate', () => {
+    expect(() => validateTrainingConfiguration(config({ judge: 'strong', guide: ['a.md'] }, { comparison: { candidate: { name: 'c', replacements: [{ resource: 'AGENTS.md', source: 'c.md' }] } } })))
+      .toThrow('comparison selects no candidate');
+  });
+});
+
+describe('training verifier controls', () => {
+  const base = { models: { strong: { provider: 'claude-subscription', model: 'm' } }, judges: { strong: { model: 'strong' } } };
+  const comparison = { comparison: { candidate: { name: 'c', replacements: [{ resource: 'AGENTS.md', source: 'c.md' }] } } };
+  it('accepts validation repeats, a selection rule and calibration sets', () => {
+    const config = { ...base, budget: { validation_repeats: 2 }, selection: { max_gap: 0.1, max_gate_failure_rise: 0.25 }, calibration: ['grading/calibration/set.json'] };
+    expect(validateTrainingConfiguration(config)).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1, max_gate_failure_rise: 0.25 }, calibration: ['grading/calibration/set.json'] });
+    expect(validateTrainingConfiguration({ ...base, ...comparison, calibration: ['set.json'] }).calibration).toEqual(['set.json']);
+  });
+  it.each([
+    [{ budget: { validation_repeats: 9 } }, 'validation_repeats'],
+    [{ budget: { validation_repeats: 0 } }, 'validation_repeats'],
+    [{ selection: {} }, 'declare max_gap or max_gate_failure_rise'],
+    [{ selection: { max_gap: 1.5 } }, 'expected a number from 0 to 1'],
+    [{ selection: { max_gap: '0.1' } }, 'expected a number from 0 to 1'],
+    [{ selection: { max_gap: 0.1, min_gap: 0 } }, 'unknown field'],
+    [{ calibration: [] }, 'nonempty sequence'],
+    [{ calibration: ['../set.json'] }, 'contained relative path'],
+    [{ calibration: ['a.json', 'a.json'] }, 'duplicate identity'],
+    [{ ...comparison, selection: { max_gap: 0.1 } }, 'comparison selects no candidate'],
+    [{ ...comparison, budget: { validation_repeats: 2 } }, 'repeats are supported for optimizer training only'],
+  ])('refuses %j', (extra, message) => {
+    expect(() => validateTrainingConfiguration({ ...base, ...extra })).toThrow(message);
+  });
 });

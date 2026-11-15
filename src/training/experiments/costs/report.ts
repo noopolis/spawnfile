@@ -22,6 +22,8 @@ export interface CostReportOptions {
   optimizerGenerations?: readonly OptimizerGeneration[];
   prices?: readonly ModelPrice[];
   rescores?: readonly RescoreReport[];
+  /** Judge calls outside any trial: calibration before the first trial and critic reviews at selection. */
+  verifierCalls?: readonly { purpose: 'calibration' | 'critic'; call: JudgeCall }[];
 }
 export interface CostEntry {
   id: string;
@@ -134,7 +136,7 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
   const warnings = new Set(['API-equivalent text-token valuation is separate from subscription charges and quota usage.',
     'Only recorded calls are valued; tool fees and unobserved inference are outside this total.']);
   const subjects = new Set<string>();
-  const judges = new Map<string, { trialId: string; versions: JudgeCall[] }>();
+  const judges = new Map<string, { trialId?: string; name?: string; versions: JudgeCall[] }>();
   let usageCoverage: CostReport['usageCoverage'] = 'observed-only';
   const append = (entry: Omit<CostEntry, 'valuation'>, valuation = price(entry, options)) => {
     entries.push({ ...entry, valuation });
@@ -227,9 +229,10 @@ export function summarizeCosts(trials: readonly TrialReport[], options: CostRepo
       usageCoverage = 'incomplete';
     }
   }
-  for (const [id, { trialId, versions }] of judges) {
+  for (const { purpose, call } of options.verifierCalls ?? []) if (!judges.has(call.id)) judges.set(call.id, { name: purpose, versions: [call] });
+  for (const [id, { trialId, name, versions }] of judges) {
     const call = versions[0]!;
-    const entry: Omit<CostEntry, 'valuation'> = { id, role: 'judge', name: call.judge, trialId,
+    const entry: Omit<CostEntry, 'valuation'> = { id, role: 'judge', name: name ?? call.judge, ...(trialId === undefined ? {} : { trialId }),
       model: call.responseModel, modelBasis: call.responseModel === null ? 'unknown' : 'provider-reported',
       requestedModel: call.requestedModel, providerId: call.providerId, responseRoute: call.responseRoute,
       outcome: call.outcome, usage: call.usage };

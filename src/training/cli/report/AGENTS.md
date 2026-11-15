@@ -42,3 +42,5 @@ exported summaries and viewer replay across a report exceeding 64 MiB inline.
 Boundary tests keep masked atomic errors unscorable, retain nonempty receipts and
 reject missing/same-length-corrupt detail before replay or hydrated stored export.
 Mutation-check viewer hydration removal and compact data passed to report export.
+
+`verifiers.ts` adds questionnaire summaries (per check, split and candidate: pass rates, gates, full, open and hidden scores and their gap) and the critic's reviews. Both are operator-only: hidden question ids appear here and must never be copied into optimizer feedback.

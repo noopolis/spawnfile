@@ -10,7 +10,7 @@ function integer(value: unknown, path: string, min = 1, max = Number.MAX_SAFE_IN
 /** Validate controls without executing templates or contacting declared providers. */
 export function validateTrainingConfiguration(value: unknown, path = '$.training', registry: InferenceProviderRegistry = defaultInferenceProviders): TrainingConfiguration {
   const config = object(value, path);
-  fields(config, ['models', 'judges', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'scoring', 'test', 'validation', 'validation_groups', 'seed'], path);
+  fields(config, ['models', 'judges', 'critic', 'selection', 'calibration', 'optimizer', 'comparison', 'budget', 'cache', 'recovery', 'scoring', 'test', 'validation', 'validation_groups', 'seed'], path);
   const models = object(config.models, `${path}.models`);
   if (!Object.keys(models).length) fail(`${path}.models`, 'requires a named model');
   for (const [name, value] of Object.entries(models)) {
@@ -92,6 +92,29 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
       route(value, `${path}.judges.${name}`, true);
     }
   }
+  if (config.selection !== undefined) {
+    const selection = object(config.selection, `${path}.selection`);
+    fields(selection, ['max_gap', 'max_gate_failure_rise'], `${path}.selection`);
+    for (const key of ['max_gap', 'max_gate_failure_rise'] as const) {
+      const value = selection[key];
+      if (value !== undefined && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)) fail(`${path}.selection.${key}`, 'expected a number from 0 to 1');
+    }
+    if (selection.max_gap === undefined && selection.max_gate_failure_rise === undefined) fail(`${path}.selection`, 'declare max_gap or max_gate_failure_rise');
+    if (config.comparison !== undefined) fail(`${path}.selection`, 'comparison selects no candidate; omit selection');
+  }
+  if (config.calibration !== undefined) {
+    uniqueStrings(config.calibration, `${path}.calibration`).forEach((file, index) => safePath(file, `${path}.calibration[${index}]`));
+  }
+  if (config.critic !== undefined) {
+    const critic = object(config.critic, `${path}.critic`);
+    fields(critic, ['judge', 'guide', 'show', 'block_on'], `${path}.critic`);
+    const judge = string(critic.judge, `${path}.critic.judge`);
+    if (!Object.hasOwn(object(config.judges ?? {}, `${path}.judges`), judge)) fail(`${path}.critic.judge`, `unknown judge ${judge}`);
+    uniqueStrings(critic.guide, `${path}.critic.guide`).forEach((file, index) => safePath(file, `${path}.critic.guide[${index}]`));
+    if (critic.show !== undefined) uniqueStrings(critic.show, `${path}.critic.show`, false).forEach(item => oneOf(item, ['checks', 'train-tasks'], `${path}.critic.show`));
+    if (critic.block_on !== undefined) oneOf(critic.block_on, ['low', 'medium', 'high'], `${path}.critic.block_on`);
+    if (config.comparison !== undefined) fail(`${path}.critic`, 'comparison selects no candidate; omit the critic');
+  }
   if (config.comparison !== undefined) {
     const comparison = object(config.comparison, `${path}.comparison`);
     fields(comparison, ['candidate'], `${path}.comparison`);
@@ -120,16 +143,19 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
   if (config.optimizer !== undefined) route(config.optimizer, `${path}.optimizer`);
   if (config.budget !== undefined) {
     const budget = object(config.budget, `${path}.budget`);
-    fields(budget, ['trial_retries', 'test_repeats', 'max_trials', 'max_proposals', 'timeout_ms', 'experiment_timeout_ms', 'trial_timeout_ms'], `${path}.budget`);
+    fields(budget, ['trial_retries', 'test_repeats', 'validation_repeats', 'max_trials', 'max_proposals', 'timeout_ms', 'experiment_timeout_ms', 'trial_timeout_ms'], `${path}.budget`);
     for (const [key, value] of Object.entries(budget)) {
       const maximum = key === 'timeout_ms' || key === 'experiment_timeout_ms' ? 604_800_000
-        : key === 'trial_retries' ? 3 : key === 'test_repeats' ? 8 : key === 'trial_timeout_ms' ? 86_400_000 : key === 'max_trials' ? 10_000 : 1000;
+        : key === 'trial_retries' ? 3 : key === 'test_repeats' || key === 'validation_repeats' ? 8 : key === 'trial_timeout_ms' ? 86_400_000 : key === 'max_trials' ? 10_000 : 1000;
       integer(value, `${path}.budget.${key}`, key === 'trial_retries' ? 0 : 1, maximum);
     }
   }
   if (config.comparison !== undefined && (config.budget as { test_repeats?: number } | undefined)?.test_repeats !== undefined
       && (config.budget as { test_repeats: number }).test_repeats !== 1) {
     fail(`${path}.budget.test_repeats`, 'repeats are supported for optimizer training only');
+  }
+  if (config.comparison !== undefined && ((config.budget as { validation_repeats?: number } | undefined)?.validation_repeats ?? 1) !== 1) {
+    fail(`${path}.budget.validation_repeats`, 'repeats are supported for optimizer training only');
   }
   if (config.comparison !== undefined && ((config.budget as { trial_retries?: number } | undefined)?.trial_retries ?? 0) !== 0) {
     fail(`${path}.budget.trial_retries`, 'retries are supported for optimizer training only');

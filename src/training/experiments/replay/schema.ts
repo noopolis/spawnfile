@@ -64,6 +64,7 @@ const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   grading: createGradeResultSchema(judgeCall).optional(),
   atomicGrading: createAtomicGradeResultSchema(judgeCall).optional(),
+  questionnaire: z.custom<NonNullable<EvaluationResult['questionnaire']>>(value => value !== null && typeof value === 'object' && Array.isArray((value as { answers?: unknown }).answers)).optional(),
   atomicFailure: z.object({ cause: z.literal('acceptance-gate'), gateId: identity }).optional(),
   decisionAccounting: decisionAccountingSchema.optional(),
   children: z.array(result).optional(), usage: z.array(usage).optional(), judgeCalls: z.array(judgeCall).optional() }));

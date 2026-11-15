@@ -1,8 +1,10 @@
 import type { EvaluationResult, PlanEvaluation } from '../../contracts/evaluation.js';
 import type { DataMap, ResolvedRecord } from '../../contracts/dataset.js';
+import { criteriaFeedback, feedbackLevels, type Levels } from '../verifiers/index.js';
 import type { TrialReport } from '../trials/index.js';
 import type { AtomicFeedback } from '../../graders/atomic/index.js';
 import { createHash } from 'node:crypto';
+import { questionnaireFeedback } from '../../questionnaire/index.js';
 
 export const trainingFeedbackLimits = { outputBytes: 16384, feedbackBytes: 32768, atomicBytes: 8192, atomicChecks: 40, unitChars: 1000 } as const;
 
@@ -77,18 +79,33 @@ function taskOutput(record: ResolvedRecord, report: TrialReport): string {
   return JSON.stringify(compact);
 }
 
-function checkFeedback(check: EvaluationResult, measurementsOnly = false): unknown {
-  return { id: check.id, status: check.status, score: check.score, finality: check.finality,
+function checkFeedback(check: EvaluationResult, levels: Levels, measurementsOnly = false): unknown[] {
+  const level = check.id ? levels.get(check.id) ?? 'full' : 'full';
+  if (level === 'none') return [];
+  const bare = measurementsOnly || level === 'status';
+  if (check.questionnaire) {
+    // Only the open projection leaves the evaluator: no hidden question, working step or full score.
+    const open = questionnaireFeedback(check.questionnaire);
+    return [{ id: check.id, status: open.status, score: open.score ?? undefined, finality: check.finality,
+      ...(!bare ? { reason: `Questionnaire: ${open.failed.length} failed`, failed: open.failed } : {}) }];
+  }
+  if (level === 'status') return [{ id: check.id, status: check.status, score: check.score, finality: check.finality }];
+  return [{ id: check.id, status: check.status, score: check.score, finality: check.finality,
     ...(!measurementsOnly ? { reason: check.reason,
       ...(check.atomicGrading ? { atomic: compactAtomic(check.atomicGrading.feedback) } : {}) } : {}),
-    ...(check.children?.length ? { children: check.children.map(child => checkFeedback(child, measurementsOnly)) } : {}) };
+    ...(check.children?.length ? { children: check.children.flatMap(child => checkFeedback(child, levels, measurementsOnly)) } : {}) }];
 }
 
-function evaluationFeedback(evaluation: PlanEvaluation, measurementsOnly = false) {
+function evaluationFeedback(evaluation: PlanEvaluation, levels: Levels, measurementsOnly = false) {
   return { status: evaluation.status, stages: evaluation.stages.map(stage => ({
-    id: stage.id, checks: stage.checks.map(check => checkFeedback(check, measurementsOnly)),
+    id: stage.id, checks: stage.checks.flatMap(check => checkFeedback(check, levels, measurementsOnly)),
     gate: { status: stage.gate.status }, score: stage.score, weights: stage.weights,
   })) };
+}
+
+function liveFeedback(report: TrialReport, levels: Levels, measurementsOnly = false) {
+  return report.live.flatMap(item => checkFeedback(item.result, levels, measurementsOnly)
+    .map(result => ({ checkId: item.checkId, boundary: item.boundary, result })));
 }
 
 /** Present only when the subject ran out of a budget it declared; other reports keep their bytes. */
@@ -97,11 +114,12 @@ function executionFeedback(report: TrialReport) {
     note: `The candidate exhausted its declared ${report.limit ?? 'unknown'} budget before finishing the task; work left unfinished was graded as missing.` } } : {};
 }
 
-function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialReport): string {
+function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialReport, levels: Levels): string {
   const text = JSON.stringify(value);
   if (Buffer.byteLength(text) <= trainingFeedbackLimits.feedbackBytes) return text;
   const atomic: AtomicFeedback = { failed_check_count: 0, omitted_failed_checks: 0, failed_checks: [] };
   const collect = (check: EvaluationResult) => {
+    if (check.id && (levels.get(check.id) ?? 'full') !== 'full') return;
     if (check.atomicGrading) {
       const item = compactAtomic(check.atomicGrading.feedback);
       atomic.failed_check_count += item.failed_check_count;
@@ -113,8 +131,8 @@ function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialR
   report.live.forEach(item => collect(item.result));
   const compact = { truncated: true, originalBytes: Buffer.byteLength(text),
     sha256: createHash('sha256').update(text).digest('hex'), excerpt: '', ...executionFeedback(report),
-    evaluation: evaluationFeedback(evaluation, true), subjectUsage: report.snapshot.subjectUsage ?? null,
-    live: report.live.map(item => ({ checkId: item.checkId, boundary: item.boundary, result: checkFeedback(item.result, true) })),
+    evaluation: evaluationFeedback(evaluation, levels, true), subjectUsage: report.snapshot.subjectUsage ?? null,
+    live: liveFeedback(report, levels, true),
     atomic: { failed_check_count: atomic.failed_check_count, omitted_failed_checks: atomic.failed_check_count, failed_checks: [] } as AtomicFeedback };
   const remaining = trainingFeedbackLimits.feedbackBytes - Buffer.byteLength(JSON.stringify(compact));
   compact.atomic = compactAtomic(atomic, Math.min(trainingFeedbackLimits.atomicBytes, remaining));
@@ -124,9 +142,10 @@ function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialR
 /** Validation and test captures never supply optimizer text, even when outputs are declared. */
 export function trainingFeedback(record: ResolvedRecord, report: TrialReport, evaluation: PlanEvaluation = report.evaluation): { output: string; feedback: string } {
   if (report.phase !== 'train') return { output: '', feedback: '' };
+  const levels = feedbackLevels(record);
   return { output: taskOutput(record, report), feedback: feedbackText({ task: record.input ?? record.turns,
-    criteria: record.effectiveStages, ...executionFeedback(report),
-    evaluation: evaluationFeedback(evaluation),
+    criteria: criteriaFeedback(record.effectiveStages), ...executionFeedback(report),
+    evaluation: evaluationFeedback(evaluation, levels),
     subjectUsage: report.snapshot.subjectUsage ?? null,
-    live: report.live.map(item => ({ checkId: item.checkId, boundary: item.boundary, result: checkFeedback(item.result) })) }, evaluation, report) };
+    live: liveFeedback(report, levels) }, evaluation, report, levels) };
 }

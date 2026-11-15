@@ -57,3 +57,9 @@ requestId even when the enclosing check or measurement identity changes.
 The grader builtin catches DecisionAccountingError at its owning boundary and
 returns an error with allowlisted decisionAccounting, gate children and their calls.
 Never turn paid failure into a grade or discard receipts in the generic error path.
+
+The questionnaire builtin (`questionnaire.ts`) reads its frozen bank sidecar, binds the declared
+context selectors and runs the bank on `context.judges`. Its score is the whole bank's, open and
+hidden; its status is the bank's gate. A gate question without a usable answer is an `error` with a
+named judge failure, never a pass. Its reason carries the gate only: per-question detail leaves the
+evaluator through the open projection alone. It serializes with every check using a judge provider.

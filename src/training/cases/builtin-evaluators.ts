@@ -61,6 +61,13 @@ export const builtinEvaluatorDefinitions: Readonly<Record<string, EvaluatorDefin
   'word-count': descriptor('mechanical', ['input', 'ignore', 'min', 'max'], ['input'], validateTextCheck),
   'values-in-source': descriptor('mechanical', ['input', 'source', 'ignore', 'max_missing'], ['input', 'source'], validateTextCheck),
   grader: descriptor('semantic', ['grader', 'input', 'context', 'grader_binding'], ['grader', 'input'], validateGraderParameters),
+  questionnaire: descriptor('semantic', ['bank', 'input', 'context'], ['bank', 'input'], (parameters, path) => {
+    safePath(parameters.bank, `${path}.bank`);
+    if (!/^artifact:[^#]+(?:#.*)?$/.test(string(parameters.input, `${path}.input`))) fail(`${path}.input`, 'questionnaire requires an artifact selector');
+    for (const [name, selector] of Object.entries(object(parameters.context ?? {}, `${path}.context`))) {
+      if (!/^(context:[A-Za-z_][\w-]*|artifact:[^#]+(?:#.*)?)$/.test(string(selector, `${path}.context.${name}`))) fail(`${path}.context.${name}`, 'unsupported questionnaire context selector');
+    }
+  }),
   equals: descriptor('mechanical', ['input', 'value'], ['input', 'value'], textParameters),
   'contains-any': descriptor('mechanical', ['input', 'values'], ['input', 'values'], (parameters, path) => {
     textParameters(parameters, path);

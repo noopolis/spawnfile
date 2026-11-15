@@ -100,3 +100,5 @@ Host consumers pass canonical context directly; integrations may pass the contex
 `trainingSubjects.test.ts` owns default factory composition coverage.
 
 Training provider composition lives in trainingProviders.ts; trainingGraderProviders.ts installs immutable grader policy. Engine inference providers live under their runtime's training/providers, while neutral built-ins remain in the core. Training implementations import contracts or the public core barrel, never private helpers. Registry training declarations include adapterId and engine vocabulary; repair admission checks the selected registration.
+
+trainingRegrade.ts composes the regrade of recorded outputs: the manifest, the registered judge providers, one result file per output and the REGRADE report. It is a training composition entry point (allowed by the training boundary test) and never creates the booted run; the CLI binds the run's judges around it.

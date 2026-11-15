@@ -16,3 +16,6 @@ export * from './providers/index.js';
 export { parseCheckTemplates, parseDecomposition, trapKinds } from './graders/decomposition/index.js';
 export type { CheckTemplates, Decomposition, DecompositionInputs } from './graders/decomposition/index.js';
 export type { CliDependencies } from './cli/index.js';
+export { renderQuestionnaireMarkdown, parseBank, summarizeQuestionnaire } from './questionnaire/index.js';
+export type { QuestionBank, QuestionnaireResult, QuestionnaireSummary } from './questionnaire/index.js';
+export type { CriticReview, CriticGateReport } from './critic/index.js';

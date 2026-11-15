@@ -36,6 +36,13 @@ const recordFor = (project: LoadedTrainingProject, agent: TrainingAgentNode): Tr
   };
 };
 
+const verifiersFor = (agent: TrainingAgentNode): Pick<TrainingPlan, "judges" | "critic" | "budget" | "selection" | "calibration"> => {
+  const { judges, critic, budget, selection, calibration } = agent.value.training ?? {};
+  if (critic && !Object.hasOwn(judges ?? {}, critic.judge)) invalidTraining(`Training critic for ${agent.id} names undeclared judge ${critic.judge}`);
+  return { ...(judges ? { judges } : {}), ...(budget ? { budget } : {}), ...(selection ? { selection } : {}), ...(calibration ? { calibration } : {}),
+    ...(critic ? { critic: { judge: critic.judge, guide: critic.guide, show: critic.show ?? [], block_on: critic.block_on ?? "high" } } : {}) };
+};
+
 /** JSON key ordering is part of the deterministic public representation. */
 const sortKeys = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(sortKeys);
@@ -71,7 +78,7 @@ export const resolveTrainingPlan = (
     agent: { id: selected.id, name: selected.value.name },
     deadlines: { experiment_ms: 43_200_000, ...selected.value.training?.deadlines },
     ...(selected.value.training?.preparation ? { preparation: selected.value.training.preparation } : {}),
-    record: recordFor(project, selected), optimizer: optimizerFor(selected, targets.length > 0),
+    record: recordFor(project, selected), optimizer: optimizerFor(selected, targets.length > 0), ...verifiersFor(selected),
     graders: uniqueGraders, targets
   });
   return sortKeys(plan) as TrainingPlan;
