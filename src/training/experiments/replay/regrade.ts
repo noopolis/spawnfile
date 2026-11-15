@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { CheckNode, Stage } from '../../contracts/dataset.js';
 import type { ArtifactSnapshot, EvaluationContext, EvaluationRegistry, EvaluationSnapshot } from '../../contracts/evaluation.js';
+import { reviewCandidate, type CriticReview } from '../../critic/index.js';
 import { evaluatePlan } from '../../evaluation/index.js';
 import { calibrationExpectationSchema, checkQuestionnaireCalibration, summarizeQuestionnaire,
   type CalibrationReport, type QuestionnaireResult, type QuestionnaireSummary } from '../../questionnaire/index.js';
@@ -17,6 +18,17 @@ export const regradeManifestSchema = z.strictObject({
     context: z.record(z.string(), z.string()).optional() }).strict(),
   judges: z.record(name, z.strictObject({ provider: z.string().min(1), model: z.string().min(1), reasoning_effort: z.enum(['low', 'medium', 'high', 'xhigh']).optional() })),
   calibration: relative.optional(),
+  /** Recorded candidate prompts to put through the prompt critic, each against the recorded baseline. */
+  critic: z.strictObject({
+    judge: name, guide: z.array(relative).min(1), block_on: z.enum(['low', 'medium', 'high']).optional(),
+    /** A text file describing the declared checks, shown to the critic as written. */
+    checks: relative.optional(),
+    /** Train case texts only. */
+    train_cases: z.array(z.strictObject({ id: z.string().min(1), file: relative })).optional(),
+    /** Editable documents by their path in the prompt. */
+    baseline: z.record(z.string().min(1), relative),
+    candidates: z.record(name, z.record(z.string().min(1), relative)),
+  }).optional(),
   outputs: z.array(z.strictObject({
     id: name, candidate: z.string().min(1), case: z.string().min(1),
     /** The recorded output, or null when the subject left none: a measured zero, like a failed filing in a trial. */
@@ -24,8 +36,10 @@ export const regradeManifestSchema = z.strictObject({
     /** Calibration material, kept out of candidate comparisons. */
     calibration: z.boolean().optional(),
     context: z.record(z.string().regex(/^[A-Za-z_][\w-]*$/u), relative).optional(),
-  })).min(1),
+  })),
 }).superRefine((manifest, context) => {
+  if (manifest.outputs.length === 0 && !manifest.critic) context.addIssue({ code: 'custom', path: ['outputs'], message: 'a regrade needs outputs or a critic review' });
+  if (manifest.critic && !Object.hasOwn(manifest.judges, manifest.critic.judge)) context.addIssue({ code: 'custom', path: ['critic', 'judge'], message: 'critic names an undeclared judge' });
   const ids = manifest.outputs.map(output => output.id);
   if (new Set(ids).size !== ids.length) context.addIssue({ code: 'custom', path: ['outputs'], message: 'output ids must be unique' });
 });
@@ -53,6 +67,8 @@ export interface RegradeReport {
   judgeCalls: number;
   candidates: Record<string, RegradeCandidate>;
   calibration?: CalibrationReport;
+  /** Critic reviews of recorded candidate prompts, by candidate label. */
+  critic?: Record<string, CriticReview>;
   outputs: Omit<RegradedOutput, 'questionnaire'>[];
 }
 export interface RegradeOptions {
@@ -63,6 +79,9 @@ export interface RegradeOptions {
   registry: EvaluationRegistry;
   /** Results an earlier pass already holds; these outputs are not asked again. */
   completed?: Readonly<Record<string, RegradedOutput>>;
+  /** Reviews an earlier pass already holds; these candidates are not reviewed again. */
+  reviewed?: Readonly<Record<string, CriticReview>>;
+  onReview?: (label: string, review: CriticReview) => void | Promise<void>;
   onResult?: (result: RegradedOutput) => void | Promise<void>;
   signal?: AbortSignal;
 }
@@ -81,6 +100,25 @@ function summarize(results: readonly RegradedOutput[]): RegradeCandidate {
     score: mean([...known(result => result.score), ...zeros]), scoreOpen, scoreHidden,
     gap: scoreOpen === null || scoreHidden === null ? null : round(scoreOpen - scoreHidden),
     gatePassed: graded.filter(result => result.gate === 'pass').length, graded: summarizeQuestionnaire(graded) };
+}
+
+async function reviewRecorded(options: RegradeOptions, critic: NonNullable<RegradeManifest['critic']>): Promise<Record<string, CriticReview>> {
+  const route = Object.hasOwn(options.evaluation.judges, critic.judge) ? options.evaluation.judges[critic.judge] : undefined;
+  if (!route) throw new Error(`Critic judge ${critic.judge} has no configured route`);
+  const documents = async (files: Readonly<Record<string, string>>) => Object.fromEntries(await Promise.all(Object.entries(files).map(async ([path, file]) => [path, await options.read(file)] as const)));
+  const baseline = await documents(critic.baseline);
+  const guide = await Promise.all(critic.guide.map(async file => ({ name: file.split('/').at(-1)!, text: await options.read(file) })));
+  const checks = critic.checks === undefined ? undefined : await options.read(critic.checks);
+  const trainCases = critic.train_cases === undefined ? undefined : await Promise.all(critic.train_cases.map(async entry => ({ id: entry.id, text: await options.read(entry.file) })));
+  const reviews: Record<string, CriticReview> = {};
+  for (const [label, files] of Object.entries(critic.candidates)) {
+    options.signal?.throwIfAborted();
+    const done = options.reviewed && Object.hasOwn(options.reviewed, label) ? options.reviewed[label] : undefined;
+    reviews[label] = done ?? await reviewCandidate({ baseline, candidate: await documents(files), guide, judge: { name: critic.judge, provider: route.provider, model: route.model },
+      ...(critic.block_on ? { blockOn: critic.block_on } : {}), ...(checks === undefined ? {} : { checks }), ...(trainCases ? { trainCases } : {}), signal: options.signal });
+    if (!done) await options.onReview?.(label, reviews[label]!);
+  }
+  return reviews;
 }
 
 /**
@@ -122,6 +160,7 @@ export async function regradeRecordedOutputs(options: RegradeOptions): Promise<R
     results.push(result);
     await options.onResult?.(result);
   }
+  const critic = manifest.critic ? await reviewRecorded(options, manifest.critic) : undefined;
   const candidates: Record<string, RegradeCandidate> = {};
   for (const label of [...new Set(results.filter(result => !result.calibration).map(result => result.candidate))]) {
     candidates[label] = summarize(results.filter(result => !result.calibration && result.candidate === label));
@@ -132,5 +171,5 @@ export async function regradeRecordedOutputs(options: RegradeOptions): Promise<R
   return { schema: 'spawnfile.training.regrade-report.v1', check: manifest.check.id,
     bank: { id: bankId, digest: `sha256:${createHash('sha256').update(bank).digest('hex')}` },
     judgeCalls: results.reduce((sum, result) => sum + (result.questionnaire?.judgeCalls.length ?? 0), 0), candidates,
-    ...(calibration ? { calibration } : {}), outputs: results.map(({ questionnaire: _questionnaire, ...rest }) => rest) };
+    ...(calibration ? { calibration } : {}), ...(critic ? { critic } : {}), outputs: results.map(({ questionnaire: _questionnaire, ...rest }) => rest) };
 }

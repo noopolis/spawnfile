@@ -4,7 +4,7 @@ import path from "node:path";
 import { createTrainingProviderRegistry } from "./trainingProviders.js";
 import { SpawnfileError } from "../shared/index.js";
 import { createEvaluationRegistry, inferenceProviderDescriptor, regradeManifestSchema, regradeRecordedOutputs,
-  renderQuestionnaireMarkdown, type InferenceProvider, type JudgeRoute, type RegradeReport, type RegradedOutput } from "../training/index.js";
+  renderQuestionnaireMarkdown, type InferenceProvider, type JudgeRoute, type CriticReview, type RegradeReport, type RegradedOutput } from "../training/index.js";
 
 export interface RegradeTrainingOptions {
   manifest: string;
@@ -28,6 +28,10 @@ export const renderRegradeMarkdown = (report: RegradeReport): string => {
     ...(calibration ? ["## Calibration", "",
       `Verdict: **${calibration.ok ? "pass" : "fail"}**. Defects caught ${calibration.caught} of ${calibration.defects}; required gates failed ${calibration.gateFailed} of ${calibration.gateRequired}; clean bases failing ${calibration.cleanBasesFailing.length} of ${calibration.cleanBases}${calibration.missing.length ? `; missing ${calibration.missing.join(", ")}` : ""}.`, "",
       ...calibration.rows.map((row) => `- ${row.defect}: ${row.caught ? "caught" : "MISSED"}, gate ${row.baseGate} to ${row.gate}; ${row.targets.map((target) => `${target.id} ${JSON.stringify(target.base)} to ${JSON.stringify(target.variant)}`).join("; ")}`), ""] : []),
+    ...Object.entries(report.critic ?? {}).flatMap(([label, review]) => [`## Prompt critic: ${label}`, "",
+      `Verdict: **${review.verdict}** (blocks on ${review.blockOn}). ${review.error ?? review.summary}`, "",
+      ...review.findings.map((finding) => `- ${finding.category}, ${finding.severity}${finding.case ? `, case ${finding.case}` : ""}${finding.unverifiedQuote ? ", quote not found in the prompt" : ""}: "${finding.quoted_line.replace(/\s+/gu, " ")}". ${finding.why}`),
+      ...(review.overlaps.length ? ["", "Added lines sharing uncommon terms with train cases:", ...review.overlaps.map((hit) => `- "${hit.line}": ${hit.cases.map((entry) => `${entry.id} (${entry.terms.join(", ")})`).join("; ")}`)] : []), ""]),
     "## Outputs", "", ...report.outputs.map((output) => `- ${output.id}: ${output.status}, score ${output.score ?? "n/a"} (${output.reason})`), ""].join("\n");
 };
 
@@ -52,6 +56,14 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
     // An output whose judge did not answer is asked again; a settled one never is.
     if (result.status === "pass" || result.status === "fail") completed[result.id] = result;
   }
+  const reviewsDirectory = path.join(out, "critic");
+  await mkdir(reviewsDirectory, { recursive: true });
+  const reviewed: Record<string, CriticReview> = {};
+  for (const file of await readdir(reviewsDirectory)) {
+    if (!file.endsWith(".json")) continue;
+    const review = JSON.parse(await readFile(path.join(reviewsDirectory, file), "utf8")) as CriticReview;
+    if (review.verdict !== "error") reviewed[file.slice(0, -5)] = review;
+  }
   const registry = createTrainingProviderRegistry();
   const resources = new Map<string, unknown>();
   const closers: (() => Promise<void>)[] = [];
@@ -63,11 +75,15 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
     return [name, { provider, model: model.model, ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }];
   }));
   try {
-    const report = await regradeRecordedOutputs({ manifest, completed, registry: createEvaluationRegistry(), evaluation: { judges }, signal: options.signal,
+    const report = await regradeRecordedOutputs({ manifest, completed, reviewed, registry: createEvaluationRegistry(), evaluation: { judges }, signal: options.signal,
       read: async (file) => {
         const real = await realpath(path.resolve(base, file)).catch(() => invalid(`Regrade input does not exist: ${file}`));
         if (!real.startsWith(`${base}${path.sep}`)) invalid(`Regrade input leaves the manifest directory: ${file}`);
         return readFile(real, "utf8");
+      },
+      onReview: async (label, review) => {
+        await writeFile(path.join(reviewsDirectory, `${label}.json`), `${JSON.stringify(review, null, 1)}\n`, { mode: 0o600 });
+        options.streams.stderr(`reviewed ${label}: ${review.verdict}, ${review.findings.length} findings`);
       },
       onResult: async (result) => {
         await writeFile(path.join(resultsDirectory, `${result.id}.json`), `${JSON.stringify(result, null, 1)}\n`, { mode: 0o600 });
@@ -78,7 +94,8 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
     options.streams.stdout(JSON.stringify({ schema: report.schema, out, judgeCalls: report.judgeCalls,
       candidates: Object.fromEntries(Object.entries(report.candidates).map(([label, candidate]) => [label, { score: candidate.score, scoreHidden: candidate.scoreHidden, gap: candidate.gap }])),
       ...(report.calibration ? { calibration: report.calibration.ok } : {}) }));
-    const unsettled = report.outputs.some((output) => output.status !== "pass" && output.status !== "fail");
+    const unsettled = report.outputs.some((output) => output.status !== "pass" && output.status !== "fail") ||
+      Object.values(report.critic ?? {}).some((review) => review.verdict === "error");
     return unsettled || report.calibration?.ok === false ? 1 : 0;
   } finally {
     await Promise.all(closers.map((close) => close()));

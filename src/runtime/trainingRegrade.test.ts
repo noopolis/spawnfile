@@ -60,6 +60,29 @@ describe("training regrade", () => {
     expect(await regradeTraining({ manifest, out, streams: streams(), provider: () => judge.provider })).toBe(1);
     expect(await readFile(path.join(out, "REGRADE.md"), "utf8")).toContain("Verdict: **fail**. Defects caught 0 of 1; required gates failed 0 of 1; clean bases failing 0 of 1.\n\n- figure: MISSED, gate pass to pass; figures \"yes\" to \"yes\"");
   });
+  it("reviews recorded candidate prompts, keeps each review and asks again only for a failed one", async () => {
+    const { root, manifest, out } = await project([]);
+    for (const [name, text] of Object.entries({ "base.md": "Report the rows.\n", "one.md": "Report the rows.\nWrite 200 to 400 words.\n", "WRITING.md": "Length follows the facts.", "case.txt": "AfD nominated Tobias Rausch." })) {
+      await writeFile(path.join(root, "in", name), text);
+    }
+    const raw = JSON.parse(await readFile(manifest, "utf8")) as Record<string, unknown>;
+    await writeFile(manifest, JSON.stringify({ ...raw, critic: { judge: "strong", guide: ["WRITING.md"], train_cases: [{ id: "landtag", file: "case.txt" }], baseline: { "AGENTS.md": "base.md" }, candidates: { "candidate-1": { "AGENTS.md": "one.md" } } } }));
+    expect(await regradeTraining({ manifest, out, streams: streams(), provider: () => testJudge(["not json"]).provider })).toBe(1);
+    const block = { summary: "quota", findings: [{ category: "check_only_rule", quoted_line: "Write 200 to 400 words.", guide_ref: "", why: "No guide basis.", severity: "high", case: "landtag" },
+      { category: "case_specific", quoted_line: "Invented line.", guide_ref: "", why: "x", severity: "low" }] };
+    const judge = testJudge([block]);
+    expect(await regradeTraining({ manifest, out, streams: streams(), provider: () => judge.provider })).toBe(0);
+    expect(judge.prompts).toHaveLength(1);
+    expect(JSON.parse(await readFile(path.join(out, "critic", "candidate-1.json"), "utf8"))).toMatchObject({ verdict: "block" });
+    const markdown = await readFile(path.join(out, "REGRADE.md"), "utf8");
+    expect(markdown).toContain("## Prompt critic: candidate-1\n\nVerdict: **block** (blocks on high). quota");
+    expect(markdown).toContain('- check_only_rule, high, case landtag: "Write 200 to 400 words.". No guide basis.');
+    expect(markdown).toContain('- case_specific, low, quote not found in the prompt: "Invented line.". x');
+    const again = testJudge([]);
+    await writeFile(path.join(out, "critic", "notes.txt"), "ignored");
+    expect(await regradeTraining({ manifest, out, streams: streams(), provider: () => again.provider })).toBe(0);
+    expect(again.prompts).toHaveLength(0);
+  });
   it("refuses a missing or invalid manifest, an unknown provider and an input outside the manifest directory", async () => {
     const { root, manifest, out } = await project();
     await expect(regradeTraining({ manifest: path.join(root, "none.json"), out, streams: streams() })).rejects.toThrow(/does not exist/u);

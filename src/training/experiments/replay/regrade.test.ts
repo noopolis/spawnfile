@@ -58,11 +58,40 @@ describe('regrade of recorded outputs', () => {
     expect(report.candidates.baseline).toMatchObject({ missing: 1, score: 0, gap: 0 });
     expect(report).not.toHaveProperty('calibration');
   });
+  it('reviews recorded candidate prompts against the recorded baseline with the train case texts', async () => {
+    const prompts: string[] = [];
+    const replies: unknown[] = [{ summary: 'quota', findings: [{ category: 'check_only_rule', quoted_line: 'Write 200 to 400 words.', guide_ref: '', why: 'No guide basis.', severity: 'high' }] }, { summary: 'fine', findings: [] }];
+    const strong = { ...testJudge([]), provider: { id: 'p', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const, temperature: false, seed: false },
+      generate: async (request: { prompt: string }) => { prompts.push(request.prompt); return { text: JSON.stringify(replies.shift()), model: 'm', usage: null, route: 'r' }; } } };
+    const sources: Record<string, string> = { ...files, 'base.md': 'Report the rows.\n', 'one.md': 'Report the rows.\nWrite 200 to 400 words.\n', 'two.md': 'Report the rows.\nName the country.\n',
+      'WRITING.md': 'Length follows the facts.', 'checks.txt': 'length: word-count 200 to 400', 'case.txt': 'AfD nominated Tobias Rausch.' };
+    const reviewing = regradeManifestSchema.parse({ ...JSON.parse(JSON.stringify(manifest)), outputs: [], calibration: undefined, critic: { judge: 'strong', guide: ['docs/../WRITING.md'.replace('docs/../', '')], checks: 'checks.txt',
+      train_cases: [{ id: 'landtag', file: 'case.txt' }], block_on: 'high', baseline: { 'AGENTS.md': 'base.md' }, candidates: { 'candidate-1': { 'AGENTS.md': 'one.md' }, 'candidate-2': { 'AGENTS.md': 'two.md' } } } });
+    const seen: string[] = [];
+    const options = { manifest: reviewing, read: async (path: string) => sources[path]!, registry: createEvaluationRegistry(), evaluation: { judges: { strong } } };
+    const report = await regradeRecordedOutputs({ ...options, onReview: label => { seen.push(label); } });
+    expect(report.critic).toMatchObject({ 'candidate-1': { verdict: 'block' }, 'candidate-2': { verdict: 'pass' } });
+    expect(prompts[0]).toContain('--- case landtag ---\nAfD nominated Tobias Rausch.');
+    expect(prompts[0]).toContain('length: word-count 200 to 400');
+    expect(seen).toEqual(['candidate-1', 'candidate-2']);
+    const again = await regradeRecordedOutputs({ ...options, reviewed: report.critic });
+    expect(prompts).toHaveLength(2);
+    expect(again.critic).toEqual(report.critic);
+    const bare = regradeManifestSchema.parse({ ...JSON.parse(JSON.stringify(reviewing)), critic: { judge: 'strong', guide: ['WRITING.md'], baseline: { 'AGENTS.md': 'base.md' }, candidates: {} } });
+    expect((await regradeRecordedOutputs({ ...options, manifest: bare })).critic).toEqual({});
+    await expect(regradeRecordedOutputs({ ...options, evaluation: { judges: {} } })).rejects.toThrow('Critic judge strong has no configured route');
+    const controller = new AbortController();
+    const stopping = { ...options, signal: controller.signal, read: async (path: string) => { if (path === 'one.md') controller.abort(); return sources[path]!; } };
+    await expect(regradeRecordedOutputs({ ...stopping, evaluation: { judges: { strong: testJudge([]) } } })).rejects.toThrow();
+  });
   it('validates the manifest', () => {
     const raw = JSON.parse(JSON.stringify(manifest)) as { outputs: { id: string; output: string | null }[] };
     raw.outputs[1]!.id = 'base-clean';
     expect(regradeManifestSchema.safeParse(raw).success).toBe(false);
     raw.outputs[1]!.id = 'other'; raw.outputs[0]!.output = '../escape.json';
     expect(regradeManifestSchema.safeParse(raw).success).toBe(false);
+    const empty = { ...JSON.parse(JSON.stringify(manifest)), outputs: [] };
+    expect(regradeManifestSchema.safeParse(empty).success).toBe(false);
+    expect(regradeManifestSchema.safeParse({ ...empty, critic: { judge: 'other', guide: ['g.md'], baseline: {}, candidates: {} } }).success).toBe(false);
   });
 });

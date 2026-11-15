@@ -166,6 +166,10 @@ one questionnaire check on the run's booted judges and boots no subject.
 - Results are written one file per output under `<out>/results`; a rerun asks only for outputs whose
   judge did not answer. `REGRADE.json` and `REGRADE.md` hold per-candidate scores (missing outputs as 0),
   per-question pass rates and the calibration verdict.
+- An optional `critic` block reviews recorded candidate prompts against a recorded baseline:
+  `{ judge, guide, checks?, train_cases?: [{ id, file }], block_on?, baseline: { <prompt path>: <file> },
+  candidates: { <label>: { <prompt path>: <file> } } }`. Each review is kept under `<out>/critic` and
+  reported; a manifest may hold a critic block and no outputs.
 - `calibration` names a set of expectations: outputs with one injected defect, the questions each
   must score lower on than its clean base, and whether a gate must fail. The command exits nonzero
   when a defect is missed, a required gate does not fail or a clean base fails a gate.
