@@ -152,6 +152,14 @@ training:
       datasets: { train: training/train.yaml, validation: training/validation.yaml, test: training/test.yaml }
 ```
 
+- `judges` (OPTIONAL) maps a judge name to `{ provider, model, effort? }`: a named judge route
+  for questionnaire groups and the critic. `provider` names a training inference provider;
+  `effort` is one of `low`, `medium`, `high`, `xhigh`. Judges inherit through direct membership,
+  a local name replacing an inherited one. The name `optimizer` is reserved.
+- `critic` (OPTIONAL) is `{ judge, guide, show?, block_on? }`: the prompt critic gate. `judge`
+  MUST name a declared judge; `guide` lists one or more house documents relative to the declaring
+  manifest, each inside the project; `show` MAY list `checks` and `train-tasks`; `block_on` is
+  `low`, `medium` or `high` (default `high`). A local `critic` replaces an inherited one.
 - `record` MAY contain `keep` and `volumes`. `keep` MUST match `^[1-9][0-9]*[mhd]$`;
   volumes MUST be unique nonempty resource IDs. Recording is off without an effective
   `record`; `record: {}` enables recording with a default retention of **30d**.
@@ -1051,6 +1059,23 @@ to one hour when no trial deadline is supplied. Experiment duration never change
 broker turn limits (1800000 for a declared production-length 30-minute turn),
 judge/optimizer route deadlines or atomic extraction deadlines.
 
+## Verifiers
+
+Normative behavior of the `questionnaire` check, hidden questions, the prompt critic gate and the
+regrade of recorded outputs is specified in `docs/training/questionnaire.md`. In summary:
+
+- A `questionnaire` check MUST score the whole bank and MUST take its status from the bank's gate.
+  An answer the declared type does not allow, or a missing answer, MUST be recorded as an error,
+  MUST score 0 and MUST NOT pass a gate.
+- Hidden questions and working steps MUST NOT appear in optimizer feedback. They MUST count in the
+  check's score and MUST be reported per candidate beside the open score, with their gap.
+- With a declared `critic`, a candidate MUST pass its review before it can be selected. A blocking
+  verdict or a failed review MUST remove the candidate from selection. The baseline MUST stay
+  selectable without review. The critic MUST NOT see validation cases, test cases or hidden questions.
+- `spawnfile train --regrade <manifest> --auth-profile <name> --out <dir>` grades recorded outputs
+  through the registered check on the run's booted judges. It MUST NOT boot a subject. It takes no
+  project path and no other training option.
+
 ## JSON Schema
 
 <!-- training-context-schema:start -->
@@ -1543,6 +1568,85 @@ judge/optimizer route deadlines or atomic extraction deadlines.
           "type": "null"
         }
       ]
+    },
+    "judges": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
+        },
+        "required": [
+          "provider",
+          "model"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "critic": {
+      "type": "object",
+      "properties": {
+        "judge": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "guide": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?:\\/|[A-Za-z]:[\\\\/])"
+          }
+        },
+        "show": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "checks",
+              "train-tasks"
+            ]
+          }
+        },
+        "block_on": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      "required": [
+        "judge",
+        "guide",
+        "show",
+        "block_on"
+      ],
+      "additionalProperties": false
     },
     "graders": {
       "type": "array",
@@ -2587,6 +2691,11 @@ examples:
   `gate` (OPTIONAL) lists the checks that must pass for the record to count. Every
   `score` and `gate` id MUST be `grade` or a declared check, and no declared check may
   be named `grade`. These are data the core grader reads; no code is involved.
+- A `questionnaire` check is `{ id, eval: questionnaire, bank, context? }`: `bank` is the question
+  bank relative to the dataset file, `context` lists the example context names the bank reads. It
+  grades the example's declared `output`, which is REQUIRED, and takes `score` weights and `gate`
+  like any other check. A context entry MAY set `json: true` to bind the file's parsed JSON value
+  instead of its text. The bank contract is in `docs/training/questionnaire.md`.
 
 ### Lowering
 
@@ -2611,6 +2720,12 @@ training core instead of the authored locators; explicit `--train`, `--validatio
   `record-checks` with `grade` and the declared checks, `score.linear` and
   `gate.all: [{ passed: <id> }]`. Each `{ file }` source is copied under
   `<out>/moments/sidecars/` and named by that contained relative path.
+- A `questionnaire` check lowers to `{ id, eval: questionnaire, bank: <sidecar>, input:
+  artifact:output, context: { <name>: context:<name> } }`, its bank copied under
+  `<out>/moments/sidecars/`.
+- The train dataset carries a `training` block when the plan declares an optimizer provider or
+  judges: each judge becomes a model of its own name (`effort` as `reasoning_effort`) and a judge
+  route over it; the critic is copied with its guide documents under `<out>/moments/sidecars/`.
 
 ### Trial boot
 

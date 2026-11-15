@@ -64,3 +64,5 @@ Optional record.lineage is a unique nonempty ancestor list preserved in executio
 Fixed legacy graders may explicitly select calibration: identity, with no calibration
 sidecar. Freeze its mode digest and definition bytes. context:name binds protected
 record context; values-in-source file sources use the same frozen criterion loader.
+
+`eval: questionnaire` freezes its bank as a criterion sidecar and validates it at resolution: an invalid bank, an unbound or unknown context, or a judge the registry does not declare is refused before native work.

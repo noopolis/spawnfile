@@ -161,3 +161,26 @@ describe("training manifest placement", () => {
     }).success).toBe(false);
   });
 });
+
+describe("training verifier declarations", () => {
+  const judges = { strong: { provider: "codex-subscription", model: "gpt-strong", effort: "medium" } };
+  it("accepts named judges and a critic", () => {
+    const value = { ...declaration, judges, critic: { judge: "strong", guide: ["docs/WRITING.md"], show: ["checks", "train-tasks"], block_on: "high" } };
+    expect(trainingDeclarationSchema.parse(value)).toEqual(value);
+    expect(trainingDeclarationSchema.parse({ judges: { strong: { provider: "p", model: "m" } }, critic: { judge: "strong", guide: ["a.md"] } }).critic).toEqual({ judge: "strong", guide: ["a.md"] });
+  });
+  it.each([
+    [{ judges: { strong: { provider: "p", model: "m", effort: "extreme" } } }],
+    [{ judges: { strong: { provider: "p" } } }],
+    [{ judges: { "bad name": { provider: "p", model: "m" } } }],
+    [{ critic: { judge: "strong", guide: [] } }],
+    [{ critic: { judge: "strong", guide: ["a.md", "a.md"] } }],
+    [{ critic: { judge: "strong", guide: ["/abs.md"] } }],
+    [{ critic: { judge: "strong", guide: ["a.md"], show: ["tests"] } }],
+    [{ critic: { judge: "strong", guide: ["a.md"], show: ["checks", "checks"] } }],
+    [{ critic: { judge: "strong", guide: ["a.md"], block_on: "never" } }],
+    [{ critic: { judge: "strong", guide: ["a.md"], verdict: "pass" } }]
+  ])("rejects %j", (value) => {
+    expect(trainingDeclarationSchema.safeParse(value).success).toBe(false);
+  });
+});

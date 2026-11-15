@@ -213,7 +213,10 @@ it('feeds an actual stored trial’s file output and trusted collected article d
     validation: dataset('validation'), test: dataset('sealed'), native,
     inference: { model: 'unused', provider: { id: 'unused', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
       generate: async () => { throw new Error('No cognition in this fixture'); } } },
+    critic: { judge: { name: 'strong', model: 'unused', provider: { id: 'critic', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },
+      generate: async () => { throw new Error('The unchanged baseline is never reviewed'); } } }, guide: [], show: { checks: true, trainTasks: true }, blockOn: 'high' },
     bridge: { command: 'unused', cwd: root, timeoutMs: 2_000 }, budget: { maxMetricCalls: 4, maxProposals: 1 } });
+  expect(trained.critic).toEqual({ reviews: [], selectedId: candidate.id });
   expect(trained.trials.map(trial => trial.phase)).toEqual(['train', 'validation', 'test']);
   expect(trained.trials.every(trial => trial.snapshot.output === '' && trial.snapshot.artifacts['accepted-article'] !== undefined)).toBe(true);
 });

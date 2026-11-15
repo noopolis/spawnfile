@@ -51,9 +51,17 @@ const checkId = z.string().regex(/^[A-Za-z0-9_-]+$/u);
 const checkSidecar = z.object({ file: datasetRelativePath }).strict();
 const trainingMomentCheckSchema = z.object({
   id: checkId,
-  eval: z.enum(["word-count", "values-in-source", "json-schema"]),
-  source: z.array(z.union([z.string().min(1), checkSidecar])).optional()
-}).passthrough();
+  eval: z.enum(["word-count", "values-in-source", "json-schema", "questionnaire"]),
+  source: z.array(z.union([z.string().min(1), checkSidecar])).optional(),
+  /** A questionnaire's bank, relative to the dataset file. */
+  bank: datasetRelativePath.optional(),
+  /** The example context names a questionnaire's bank reads. */
+  context: z.array(z.string().regex(/^[A-Za-z0-9_-]+$/u)).optional()
+}).passthrough().superRefine((value, context) => {
+  const questionnaire = value.eval === "questionnaire";
+  if (questionnaire !== (value.bank !== undefined)) context.addIssue({ code: z.ZodIssueCode.custom, message: "bank belongs to a questionnaire check, which requires it" });
+  if (!questionnaire && value.context !== undefined) context.addIssue({ code: z.ZodIssueCode.custom, message: "context belongs to a questionnaire check" });
+});
 
 const trainingExampleSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9._-]+$/u),
@@ -65,7 +73,9 @@ const trainingExampleSchema = z.object({
   /** This case's grader, relative to the dataset file; the target's grader otherwise. */
   grader: datasetRelativePath.optional(),
   /** Grader context bound from files relative to the dataset file. */
-  context: z.record(z.string().regex(/^[A-Za-z0-9_-]+$/u), z.object({ file: datasetRelativePath }).strict()).optional(),
+  context: z.record(z.string().regex(/^[A-Za-z0-9_-]+$/u), z.object({ file: datasetRelativePath,
+    /** Bind the file's parsed JSON value instead of its text. */
+    json: z.boolean().optional() }).strict()).optional(),
   /** Workspace-relative file the trial leaves as its output; the final reply otherwise. */
   output: containedPath.optional(),
   /** Mechanical checks beside the `grade` grader check; the training core validates their parameters. */
@@ -77,6 +87,13 @@ const trainingExampleSchema = z.object({
 }).strict().superRefine((value, context) => {
   const ids = new Set(["grade", ...(value.checks ?? []).map((check) => check.id)]);
   if (value.checks?.some((check) => check.id === "grade")) context.addIssue({ code: z.ZodIssueCode.custom, message: "check id grade is the grader's" });
+  for (const check of value.checks ?? []) {
+    if (check.eval !== "questionnaire") continue;
+    if (value.output === undefined) context.addIssue({ code: z.ZodIssueCode.custom, message: `questionnaire check ${check.id} grades the example's declared output` });
+    for (const name of check.context ?? []) {
+      if (!Object.hasOwn(value.context ?? {}, name)) context.addIssue({ code: z.ZodIssueCode.custom, message: `questionnaire check ${check.id} reads undeclared context ${name}` });
+    }
+  }
   for (const id of [...Object.keys(value.score ?? {}), ...(value.gate ?? [])]) {
     if (!ids.has(id)) context.addIssue({ code: z.ZodIssueCode.custom, message: `score or gate names an undeclared check: ${id}` });
   }

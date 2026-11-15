@@ -8,7 +8,7 @@ import { afterEach, expect, it } from "vitest";
 
 import { lowerTrainingMoments, resumedMomentDatasets, trainingMomentSchema, withLoweredDatasets } from "./moments.js";
 import { loadTrainingProject, resolveTrainingPlan } from "./plan/index.js";
-import { agentManifest, cleanTrainingProjects, dataFiles, example, trainingProject, writeTrainingFile } from "./plan/fixtures.test-helper.js";
+import { agentManifest, cleanTrainingProjects, dataFiles, example, training, trainingProject, writeTrainingFile } from "./plan/fixtures.test-helper.js";
 
 const run = promisify(execFile);
 const outs: string[] = [];
@@ -110,4 +110,52 @@ it("lowers an example's declared checks, weights and gate into one scored stage 
 it("refuses weights or gates over undeclared checks", async () => {
   await expect(project([{ ...example, id: "case-a", score: { grade: 1, length: 1 } }])).rejects.toThrow(/undeclared check: length/u);
   await expect(project([{ ...example, id: "case-a", checks: [{ id: "grade", eval: "word-count", input: "artifact:reply", min: 1 }] }])).rejects.toThrow(/grader's/u);
+});
+
+const verifierProject = async (trainingExtra: Record<string, unknown>, examples: Record<string, unknown>[]) => {
+  const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({ training: { ...training, ...trainingExtra } }),
+    "training/train.yaml": { examples }, "grading/questions.yaml": "bank bytes\n", "grading/evidence.json": "[{\"source\":\"a\"}]\n",
+    "grading/broken.json": "not json", "docs/WRITING.md": "Length follows the facts.\n" });
+  const loaded = await loadTrainingProject(root);
+  const out = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moments-out-")); outs.push(out);
+  return { loaded, out, plan: () => resolveTrainingPlan(loaded, undefined, "test") };
+};
+const questionnaireExample = { ...example, id: "case-a", output: "filing.json", context: { evidence: { file: "../grading/evidence.json", json: true } },
+  checks: [{ id: "house-rules", eval: "questionnaire", bank: "../grading/questions.yaml", context: ["evidence"] }], score: { grade: 0.3, "house-rules": 0.7 }, gate: ["house-rules"] };
+const judges = { strong: { provider: "codex-subscription", model: "gpt-strong", effort: "medium" } };
+
+it("lowers a questionnaire check with its bank sidecar and bound JSON context, and judges and the critic into the train training block", async () => {
+  const { loaded, out, plan } = await verifierProject({ judges, critic: { judge: "strong", guide: ["docs/WRITING.md"], show: ["train-tasks"] } }, [questionnaireExample]);
+  expect(plan()).toMatchObject({ judges, critic: { judge: "strong", guide: [path.join(loaded.root, "docs/WRITING.md")], show: ["train-tasks"], block_on: "high" } });
+  const datasets = await lowerTrainingMoments({ project: loaded, plan: plan(), out });
+  const train = JSON.parse(await readFile(datasets.train, "utf8"));
+  const [record] = train.records;
+  expect(record.context).toEqual({ evidence: [{ source: "a" }] });
+  const check = record.stages[0].checks[1];
+  expect(check).toEqual({ id: "house-rules", eval: "questionnaire", bank: expect.stringMatching(/^sidecars\/[0-9a-f]{16}\/questions\.yaml$/u), input: "artifact:output", context: { evidence: "context:evidence" } });
+  expect(await readFile(path.join(path.dirname(datasets.train), check.bank), "utf8")).toBe("bank bytes\n");
+  expect(record.stages[0]).toMatchObject({ score: { linear: { grade: 0.3, "house-rules": 0.7 } }, gate: { all: [{ passed: "house-rules" }] } });
+  expect(train.training).toEqual({ models: { strong: { provider: "codex-subscription", model: "gpt-strong", reasoning_effort: "medium" } },
+    judges: { strong: { model: "strong" } }, critic: { judge: "strong", guide: [expect.stringMatching(/^sidecars\/[0-9a-f]{16}\/WRITING\.md$/u)], show: ["train-tasks"], block_on: "high" } });
+  expect(await readFile(path.join(path.dirname(datasets.train), train.training.critic.guide[0]), "utf8")).toBe("Length follows the facts.\n");
+  expect(JSON.parse(await readFile(datasets.test, "utf8")).training).toBeUndefined();
+});
+
+it("keeps the optimizer beside declared judges, binds no context a questionnaire does not name and adds no block without either", async () => {
+  const bare = { ...questionnaireExample, checks: [{ id: "house-rules", eval: "questionnaire", bank: "../grading/questions.yaml" }] };
+  const both = await verifierProject({ optimizer: { ...training.optimizer, provider: "codex-subscription" }, judges: { strong: { provider: "p", model: "m" } } }, [bare]);
+  const train = JSON.parse(await readFile((await lowerTrainingMoments({ project: both.loaded, plan: both.plan(), out: both.out })).train, "utf8"));
+  expect(train.training).toMatchObject({ models: { optimizer: { provider: "codex-subscription" }, strong: { provider: "p", model: "m" } }, judges: { strong: { model: "strong" } }, optimizer: { model: "optimizer" } });
+  expect(train.training).not.toHaveProperty("critic");
+  expect(train.records[0].stages[0].checks[1]).not.toHaveProperty("context");
+  const none = await verifierProject({}, [bare]);
+  expect(JSON.parse(await readFile((await lowerTrainingMoments({ project: none.loaded, plan: none.plan(), out: none.out })).train, "utf8")).training).toBeUndefined();
+});
+
+it("refuses a critic naming an undeclared judge, a judge named optimizer and a JSON context that does not parse", async () => {
+  expect((await verifierProject({ critic: { judge: "strong", guide: ["docs/WRITING.md"] } }, [questionnaireExample])).plan).toThrow(/undeclared judge strong/u);
+  const reserved = await verifierProject({ judges: { optimizer: { provider: "p", model: "m" } } }, [questionnaireExample]);
+  await expect(lowerTrainingMoments({ project: reserved.loaded, plan: reserved.plan(), out: reserved.out })).rejects.toThrow(/reserved/u);
+  const broken = await verifierProject({ judges }, [{ ...questionnaireExample, context: { evidence: { file: "../grading/broken.json", json: true } } }]);
+  await expect(lowerTrainingMoments({ project: broken.loaded, plan: broken.plan(), out: broken.out })).rejects.toThrow(/context evidence is not JSON/u);
 });

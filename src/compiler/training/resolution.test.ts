@@ -226,3 +226,19 @@ describe("training graph resolution", () => {
     expect({ ...after, training: undefined }).toEqual(before);
   });
 });
+
+describe("training verifier inheritance", () => {
+  const strong = { provider: "p", model: "strong" };
+  it("resolves critic guide paths at the declaring manifest and merges judges by name with the local critic winning", () => {
+    const inherited = resolveTrainingDeclaration({ judges: { strong, cheap: { provider: "p", model: "cheap" } },
+      critic: { judge: "strong", guide: ["docs/WRITING.md"], show: ["checks"] } }, "/project/Spawnfile", "team")!;
+    expect(inherited.critic).toEqual({ judge: "strong", guide: ["/project/docs/WRITING.md"], show: ["checks"] });
+    const local = resolveTrainingDeclaration({ judges: { strong: { provider: "p", model: "stronger", effort: "high" } },
+      critic: { judge: "strong", guide: ["HOUSE.md"] } }, "/project/agent/Spawnfile", "agent")!;
+    const merged = mergeTrainingDeclarations(inherited, local)!;
+    expect(merged.judges).toEqual({ cheap: { provider: "p", model: "cheap" }, strong: { provider: "p", model: "stronger", effort: "high" } });
+    expect(merged.critic).toEqual({ judge: "strong", guide: ["/project/agent/HOUSE.md"] });
+    expect(mergeTrainingDeclarations(inherited, undefined)).toMatchObject({ judges: inherited.judges, critic: inherited.critic });
+    expect(mergeTrainingDeclarations(undefined, resolveTrainingDeclaration({ judges: { strong } }, "/p/Spawnfile", "a"))).toEqual({ judges: { strong }, graders: {}, targets: [] });
+  });
+});

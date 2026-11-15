@@ -39,6 +39,23 @@ const trainingOptimizerSchema = z.object({
   budget: z.object({ rounds: z.number().int().min(1).optional() }).strict().optional()
 }).strict();
 
+/** A named judge route: the strong model that answers questionnaire groups and reviews candidate prompts. */
+const trainingJudgeSchema = z.object({
+  /** A training inference provider id (a subscription). */
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  effort: z.enum(["low", "medium", "high", "xhigh"]).optional()
+}).strict();
+
+/** The prompt critic gate: a candidate prompt must pass this review before it can be selected. */
+const trainingCriticSchema = z.object({
+  judge: trainingNameSchema,
+  /** House documents the candidate is reviewed against, relative to the declaring file. */
+  guide: uniqueStrings(trainingRelativePathSchema, "critic guide documents must be unique").min(1),
+  show: z.array(z.enum(["checks", "train-tasks"])).refine((values) => new Set(values).size === values.length, { message: "critic show entries must be unique" }).optional(),
+  block_on: z.enum(["low", "medium", "high"]).optional()
+}).strict();
+
 export const trainingTargetSchema = z.object({
   files: uniqueStrings(
     trainingRelativePathSchema.endsWith(".md", "training target files must end in .md"),
@@ -60,6 +77,8 @@ export const trainingDeclarationSchema = z.object({
   preparation: z.object({ hook: z.string().min(1), history: trainingRelativePathSchema.optional() }).strict().optional(),
   record: trainingRecordSchema.optional(),
   optimizer: trainingOptimizerSchema.optional(),
+  judges: trainingNamedMapSchema(trainingJudgeSchema).optional(),
+  critic: trainingCriticSchema.optional(),
   graders: trainingNamedMapSchema(trainingRelativePathSchema).optional(),
   targets: z.array(trainingTargetSchema).optional()
 }).strict();

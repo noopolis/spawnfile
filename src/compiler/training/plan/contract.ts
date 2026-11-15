@@ -24,6 +24,12 @@ export const trainingPlanOptimizerSchema = z.object({
   budget: z.object({ rounds: z.number().int().min(1) }).strict()
 }).strict();
 
+export const trainingPlanJudgeSchema = z.object({ provider: text, model: text, effort: z.enum(["low", "medium", "high", "xhigh"]).optional() }).strict();
+export const trainingPlanCriticSchema = z.object({
+  judge: text.regex(/^[A-Za-z0-9_-]+$/u), guide: z.array(absolutePath).min(1),
+  show: z.array(z.enum(["checks", "train-tasks"])), block_on: z.enum(["low", "medium", "high"])
+}).strict();
+
 export const trainingPlanSchema = z.object({
   version: z.literal(TRAINING_PLAN_VERSION),
   producer: z.object({ package: z.literal("spawnfile"), version: text }).strict(),
@@ -39,6 +45,9 @@ export const trainingPlanSchema = z.object({
     volumes: z.array(reference)
   }).strict().nullable(),
   optimizer: trainingPlanOptimizerSchema.nullable(),
+  /** Named judge routes; absent when the agent declares none. */
+  judges: z.record(text.regex(/^[A-Za-z0-9_-]+$/u), trainingPlanJudgeSchema).optional(),
+  critic: trainingPlanCriticSchema.optional(),
   graders: z.array(source.extend({
     name: text.regex(/^[A-Za-z0-9_-]+$/u), declaredBy: text
   }).strict()),
