@@ -355,3 +355,16 @@ it('prices distinct rescore calls once, including nested evidence, without inven
   expect(legacy.entries.find(entry => entry.role === 'unattributed')).toMatchObject({ trialId: native.id, usage: null });
   expect(legacy.apiEquivalentUsd).toBeNull();
 });
+
+it('values calibration and critic calls outside any trial once, under their purpose, never twice with a trial call', () => {
+  const input = trial(), shared = judge('call-shared');
+  input.evaluation.checks = { quality: check([shared]) };
+  const verifierCalls = [{ purpose: 'calibration' as const, call: judge('cal-1') }, { purpose: 'calibration' as const, call: judge('cal-1') },
+    { purpose: 'critic' as const, call: judge('critic-1') }, { purpose: 'critic' as const, call: shared }];
+  const report = summarizeCosts([input], { ...options, verifierCalls });
+  const judges = report.entries.filter(entry => entry.role === 'judge');
+  expect(judges.map(entry => [entry.id, entry.name, entry.trialId ?? null])).toEqual([
+    ['call-shared', 'prose', input.id], ['cal-1', 'calibration', null], ['critic-1', 'critic', null]]);
+  expect(judges.find(entry => entry.name === 'critic')).not.toHaveProperty('trialId');
+  expect(report.groups.filter(group => group.role === 'judge').map(group => [group.name, group.entryCount])).toEqual([['prose', 1], ['calibration', 1], ['critic', 1]]);
+});
