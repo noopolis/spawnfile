@@ -1,5 +1,5 @@
 import type { CheckNode } from '../contracts/dataset.js';
-import { BankError, bankContexts, bankJudges, parseBank } from '../questionnaire/index.js';
+import { bankContexts, bankJudges, parseBank } from '../questionnaire/index.js';
 import type { PlanResolution } from './plans.js';
 import { fail, object } from './validation.js';
 
@@ -7,7 +7,7 @@ import { fail, object } from './validation.js';
 export function resolveQuestionnaire(node: CheckNode, context: PlanResolution, source: string, location: string): void {
   let bank;
   try { bank = parseBank(source); }
-  catch (error) { return fail(`${location}.bank`, error instanceof BankError ? error.message : 'unreadable questionnaire bank'); }
+  catch (error) { return fail(`${location}.bank`, (error as Error).message); }
   const bound = object(node.context ?? {}, `${location}.context`);
   for (const name of bankContexts(bank)) if (!Object.hasOwn(bound, name)) fail(location, `unbound questionnaire context ${name}`);
   for (const name of Object.keys(bound)) if (!bankContexts(bank).includes(name)) fail(location, `unknown questionnaire context ${name}`);
