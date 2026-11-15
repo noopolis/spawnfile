@@ -79,6 +79,26 @@ describe('training dry-run command', () => {
         ['judge', 'grounding', 18], ['judge', 'grounding', 2], ['optimizer', 'reflection', 3]]);
     expect(inference).not.toHaveBeenCalled();
   });
+  it('plans one critic review per proposal a non-population search may make', async () => {
+    const f = await fixture();
+    const check = { id: 'prose', eval: 'llm-rubric', judge: 'strong', input: 'output.text', minimum: 0.8, rubric: { prompt: 'Check the declared output.' } };
+    const training = { models: { strong: { provider: 'claude-subscription', model: 'claude-fable-5-1' } }, judges: { strong: { model: 'strong' } }, critic: { judge: 'strong', guide: ['WRITING.md'] } };
+    for (const [name, groups] of [['train', ['a', 'b']], ['test', ['x']]] as const) {
+      await writeFile(join(f.root, `${name}.yaml`), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: name, ...(name === 'train' ? { training } : {}), checks: [check],
+        records: groups.map(group => ({ id: group, group, input: { prompt: 'Reply OK.' } })) }));
+    }
+    expect(await main([...f.args, '--max-proposals', '5'], f.io, f.dependencies)).toBe(0);
+    const plan = JSON.parse(f.stdout.join(''));
+    expect(plan.lines.filter((line: { name: string }) => line.name === 'critic').map((line: { role: string; phase: string; plannedCalls: number }) => [line.role, line.phase, line.plannedCalls]))
+      .toEqual([['judge', 'optimization', 5]]);
+    // A population search reviews at most every variant of every round.
+    const population = { ...training, optimizer: { model: 'strong', variants: 2, keep: 1, budget: { rounds: 2 } } };
+    await writeFile(join(f.root, 'train.yaml'), JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'train', training: population, checks: [check],
+      records: ['a', 'b'].map(group => ({ id: group, group, input: { prompt: 'Reply OK.' } })) }));
+    f.stdout.length = 0;
+    expect(await main(f.args, f.io, f.dependencies)).toBe(0);
+    expect(JSON.parse(f.stdout.join('')).lines.find((line: { name: string }) => line.name === 'critic').plannedCalls).toBe(4);
+  });
   it('rejects unknown, duplicate and invalid repair selections before native or inference factories', async () => {
     const f = await fixture();
     const adapter = vi.fn(() => { throw new Error('No native construction'); });

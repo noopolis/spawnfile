@@ -23,12 +23,16 @@ export async function dryRunTraining(args: CliArguments, io: CliIO, dependencies
   const test = native.datasets.loadForCost(one(args, 'test'), true);
   if (!candidateComponents(native.candidate).length) throw new Error('No declared editable components');
   const comparison = prepareComparison(args, io, native.candidate);
+  const search = populationSearch(args.training?.optimizer);
+  const maxProposals = comparison ? 0 : count(args, 'max-proposals', 3, 1000);
+  // Calibration sets are read and counted when the run executes; a dry run reads no sidecar.
   const plan = planTrainingCost({ train, validation, test, validationGroups: args.flags['validation-group'],
     subjectModel: native.model, ...(comparison ? { mode: 'comparison' as const } : { optimizerModel: one(args, 'optimizer-model') }),
     ...configuredCostRoutes(args, native.judges, native.citationRepairs),
     maxTrials: trainingTrialBudget(args, train.records.length, validation?.records.length, test.records.length),
     testRepeats: args.training?.budget?.test_repeats, validationRepeats: args.training?.budget?.validation_repeats,
-    maxProposals: comparison ? 0 : count(args, 'max-proposals', 3, 1000), ...readCostConfig(args, io) });
+    ...(args.training?.critic && !comparison ? { critic: { judge: args.training.critic.judge, reviews: search ? search.variants * search.rounds : maxProposals } } : {}),
+    maxProposals, ...readCostConfig(args, io) });
   io.stdout(`${JSON.stringify({ ...plan, candidateId: native.candidate.id, editableResources: editableResources(native.candidate),
     ...(populationSearch(args.training?.optimizer) ? { search: populationSearch(args.training?.optimizer) } : {}), ...(comparison ? { comparison: { name: comparison.name, candidateId: comparison.candidate.id, optimizerCalls: 0 } } : {}),
     ...(native.context !== undefined ? { spawnfile: native.context, readiness: native.readiness } : {}) })}\n`);
