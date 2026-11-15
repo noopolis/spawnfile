@@ -59,6 +59,38 @@ export function transcriptToolActivity(transcript: string): string[] {
   return [...found].sort();
 }
 
+/**
+ * Daimon's wake receipt carries at most this many bytes of reply text (its organization runtime contract), cut
+ * silently. A judgment is not bound by it: an optimizer proposal holds a whole prompt file.
+ */
+export const RECEIPT_TEXT_BYTES = 16_384;
+
+/**
+ * The judge's whole reply. Below the receipt cap the receipt text is the reply. At the cap it may be cut, so the
+ * reply is the transcript's last assistant message that the receipt text begins: the same answer, whole. Without one,
+ * the receipt text stands and is validated as it is. Engine-neutral: it reads role, content and message fields only.
+ */
+export function wholeReply(text: string, transcript: string | null): string {
+  if (Buffer.byteLength(text, 'utf8') < RECEIPT_TEXT_BYTES || transcript === null) return text;
+  const prefix = text.trim();
+  let found: string | undefined;
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 3 || value === null || typeof value !== 'object' || Array.isArray(value)) return;
+    const entry = value as Record<string, unknown>;
+    const content = entry['content'];
+    const candidate = entry['role'] === 'assistant' && Array.isArray(content)
+      ? content.map(part => (part !== null && typeof part === 'object' && typeof (part as Record<string, unknown>)['text'] === 'string' ? (part as Record<string, string>)['text'] : '')).join('')
+      : entry['type'] === 'agent_message' && typeof entry['message'] === 'string' ? entry['message'] : undefined;
+    if (candidate !== undefined && candidate.trim().length > prefix.length && candidate.trim().startsWith(prefix)) found = candidate;
+    for (const key of ['payload', 'item', 'msg']) visit(entry[key], depth + 1);
+  };
+  for (const line of transcript.split('\n')) {
+    if (!line.trim()) continue;
+    try { visit(JSON.parse(line), 0); } catch { /* an unreadable record holds no reply */ }
+  }
+  return found ?? text;
+}
+
 /** The runtime's own failure for a judge wake that did not complete, as one bounded line. */
 function wakeReason(wake: BootedWake): string {
   const line = (wake.failure ?? '').replace(/\s+/gu, ' ').trim();
@@ -131,7 +163,7 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
       if (wake.transcript === null && (requests.length === 0 || requests.some(calls => calls === null))) {
         throw new InferenceFailure('protocol', `${route} judge left no evidence to prove a tool-free judgment`, withUsage);
       }
-      const reply = wake.text.trim();
+      const reply = wholeReply(wake.text, wake.transcript).trim();
       if (!reply) throw new InferenceFailure('protocol', `${route} judge replied with nothing`, withUsage);
       try {
         validateInferenceResponse(reply, request.responseSchema, request.responseJsonFence);
