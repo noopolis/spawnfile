@@ -1570,6 +1570,14 @@ regrade of recorded outputs is specified in `docs/training/questionnaire.md`. In
                 "rounds"
               ],
               "additionalProperties": false
+            },
+            "boundaries": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           },
           "required": [

@@ -36,7 +36,9 @@ const trainingOptimizerSchema = z.object({
   provider: z.string().min(1).optional(),
   variants: z.number().int().min(1).optional(),
   keep: z.number().int().min(1).optional(),
-  budget: z.object({ rounds: z.number().int().min(1).optional() }).strict().optional()
+  budget: z.object({ rounds: z.number().int().min(1).optional() }).strict().optional(),
+  /** Hard proposal constraints (preserve, require-text, forbid-text, max-bytes), each naming an editable target file. */
+  boundaries: z.array(z.string().min(1).max(500)).max(50).optional()
 }).strict();
 
 /** A named judge route: the strong model that answers questionnaire groups and reviews candidate prompts. */

@@ -21,7 +21,8 @@ export const trainingPlanDatasetSchema = source.extend({
 
 export const trainingPlanOptimizerSchema = z.object({
   method: text, model: text, provider: text.optional(), variants: z.number().int().min(1), keep: z.number().int().min(1),
-  budget: z.object({ rounds: z.number().int().min(1) }).strict()
+  budget: z.object({ rounds: z.number().int().min(1) }).strict(),
+  boundaries: z.array(text).max(50).optional()
 }).strict();
 
 export const trainingPlanJudgeSchema = z.object({ provider: text, model: text, effort: z.enum(["low", "medium", "high", "xhigh"]).optional() }).strict();

@@ -85,7 +85,7 @@ missing/duplicate/wrong-case train evidence. Reserve both split passes before
 realization so a cap cannot admit half-measured candidates. Unchanged parents reuse
 their development measurements; resume replays settled callbacks without new work.
 
-`boundaries.ts` validates preserve/require-text/forbid-text declarations and seed
+`boundaries.ts` validates preserve/require-text/forbid-text/max-bytes declarations and seed
 admission before bridge launch/checkpoint restoration. The host independently checks
 all candidate evaluations and returned candidates against the original seed. Unsupported
 prose constraints fail closed; exact text gates do not certify semantic compliance.

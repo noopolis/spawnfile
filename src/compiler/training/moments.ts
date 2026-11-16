@@ -8,6 +8,7 @@ import { SpawnfileError } from "../../shared/index.js";
 import { fetchFeedSource, resolveFeedSource, type FeedProvenance, type FeedSourceSpec } from "../../volume/index.js";
 import type { LoadedTrainingProject, TrainingPlan } from "./plan/index.js";
 import { instantNanos } from "./rewind/instant.js";
+import { lowerBoundaries } from "./boundaries.js";
 
 export type TrainingDatasetRole = "train" | "validation" | "test";
 export const TRAINING_MOMENT_VERSION = "spawnfile.training-moment.v1" as const;
@@ -232,7 +233,8 @@ const trainingBlock = async (plan: TrainingPlan, root: string, sidecar: (file: s
     ...(plan.budget ? { budget: { ...plan.budget } } : {}),
     ...(plan.selection ? { selection: { ...plan.selection } } : {}),
     ...(calibration.length ? { calibration } : {}),
-    ...(optimizer ? { optimizer: { model: "optimizer", method: optimizer.method, variants: optimizer.variants, keep: optimizer.keep, budget: { rounds: optimizer.budget.rounds } } } : {})
+    ...(optimizer ? { optimizer: { model: "optimizer", method: optimizer.method, variants: optimizer.variants, keep: optimizer.keep, budget: { rounds: optimizer.budget.rounds },
+      ...(optimizer.boundaries ? { boundaries: lowerBoundaries(plan, optimizer.boundaries) } : {}) } } : {})
   } };
 };
 

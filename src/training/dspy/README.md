@@ -198,7 +198,8 @@ Integration `trainingOptimizer` may supply `boundaries` under the same 50-string
 1..500-character limits; dual declarations must match verbatim and in order.
 Declared text constraints are enforced by Python admission and independently by the
 TypeScript host: `preserve ["component"]`, `require-text ["component", "literal"]`,
-`forbid-text ["component", "literal"]`. Arguments are JSON strings. Unknown components,
+`forbid-text ["component", "literal"]` or
+`max-bytes ["component", "<bytes>"]` (UTF-8 size cap, for a runtime instruction limit). Arguments are JSON strings. Unknown components,
 unsupported prose and invalid seeds fail before callbacks; violations never reach trials.
 These are exact text guarantees, not runtime semantic guarantees. See
 [population search](../../docs/population-search.md) for examples and limits.
