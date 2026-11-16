@@ -39,3 +39,7 @@ posts one wake and waits on its receipt, `stop` tears the organization down.
   prompt and schema become the wake text; the reply is validated after the wake;
   `transcriptToolActivity` refuses any record or item kind that is tool activity
   (engine-neutral: kinds only), and a missing transcript is refused too.
+  Daimon's receipt cuts reply text at 16 KiB (`RECEIPT_TEXT_BYTES`), and an
+  optimizer proposal holds a whole prompt file: at the cap, `wholeReply` takes the
+  transcript's last assistant message that the receipt text begins, else the
+  receipt text stands and is validated as it is.

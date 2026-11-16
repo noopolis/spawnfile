@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { InferenceFailure } from '../../../../training/index.js';
-import { bindBootedJudges, createBootedJudgeInference, transcriptToolActivity, type BootedJudgeSpec } from './judge.js';
+import { bindBootedJudges, createBootedJudgeInference, RECEIPT_TEXT_BYTES, transcriptToolActivity, wholeReply, type BootedJudgeSpec } from './judge.js';
 import type { BootedWake } from './adapter.js';
 
 const row = { input: 120, cache_read: 40, output: 6, notional_usd: 0, complete: true };
@@ -99,4 +99,28 @@ test('tells the operator why a judge never booted, where the optimizer bridge ke
   bindBootedJudges({ judge: async () => { throw new Error('training auth gateway exited before readiness: Codex subscription credential realm is unavailable or stale'); } }, (line) => { lines.push(line); });
   expect(await failure(judge('codex').generate({ prompt: 'p', model: 'm' }))).toMatchObject({ kind: 'unavailable' });
   expect(lines).toEqual(['codex-subscription judge did not boot: training auth gateway exited before readiness: Codex subscription credential realm is unavailable or stale']);
+});
+
+const longSchema = { type: 'object', properties: { file: { type: 'string' } }, required: ['file'], additionalProperties: false };
+const longReply = JSON.stringify({ file: 'x'.repeat(RECEIPT_TEXT_BYTES + 600) });
+const assistant = (text: string) => JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] } });
+
+test('takes a reply cut at the receipt cap whole from the transcript, as the same answer', async () => {
+  const cut = longReply.slice(0, RECEIPT_TEXT_BYTES);
+  bind({ text: cut, transcript: `${clean}\n${assistant(longReply)}` });
+  const result = await judge('codex').generate({ prompt: 'Propose.', model: 'm', responseSchema: longSchema });
+  expect(result.text).toBe(longReply);
+});
+
+test('keeps the receipt text below the cap, and at the cap when no transcript message begins with it', () => {
+  expect(wholeReply('{"score":9}', assistant('{"score":10}'))).toBe('{"score":9}');
+  const cut = longReply.slice(0, RECEIPT_TEXT_BYTES);
+  expect(wholeReply(cut, assistant(`{"file":"other${'y'.repeat(RECEIPT_TEXT_BYTES)}"}`))).toBe(cut);
+  expect(wholeReply(cut, null)).toBe(cut);
+  expect(wholeReply(cut, `not json\n${JSON.stringify({ type: 'event_msg', payload: { type: 'agent_message', message: longReply } })}`)).toBe(longReply);
+});
+
+test('a reply cut at the cap with no whole copy is still an invalid response', async () => {
+  bind({ text: longReply.slice(0, RECEIPT_TEXT_BYTES), transcript: clean });
+  expect(await failure(judge('codex').generate({ prompt: 'Propose.', model: 'm', responseSchema: longSchema }))).toMatchObject({ kind: 'invalid-response' });
 });
