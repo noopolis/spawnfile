@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { JudgeCall, JudgeRoute } from '../contracts/evaluation.js';
 import { combineAnswers, judgeAnswer, scoreQuestionnaire } from './answers.js';
 import { groupSchema, questionnaireSystem, renderGroupPrompt, type QuestionnaireMaterial } from './prompt.js';
@@ -24,12 +25,58 @@ export interface RunQuestionnaireOptions {
   signal?: AbortSignal;
   /** Awaited after every attempt, before its answers are accepted. */
   observe?: (attempt: { call: JudgeCall; response: string }) => void | Promise<void>;
+  /** Wait before asking a group again after a transient failure; defaults to {@link GROUP_RETRY_DELAY_MS}. */
+  retryDelayMs?: number;
+}
+
+/** Attempts per group and repeat: a transient judge failure is asked again, never answered for the judge. */
+export const GROUP_ATTEMPTS = 3;
+export const GROUP_RETRY_DELAY_MS = 5_000;
+const transientKinds: ReadonlySet<string> = new Set(['transport', 'unavailable', 'timeout', 'quota', 'invalid-response']);
+
+interface Attempt { call: JudgeCall; reply?: Record<string, unknown>; reason?: string; transient: boolean }
+
+async function askGroup(route: QuestionnaireJudge, judge: string, prompt: string, schema: ReturnType<typeof groupSchema>,
+  options: RunQuestionnaireOptions): Promise<Attempt> {
+  options.signal?.throwIfAborted();
+  const call: JudgeCall = { id: randomUUID(), judge, providerId: route.provider.id, requestedModel: route.model,
+    responseModel: null, responseRoute: null, outcome: 'generation-error', usage: null };
+  const started = performance.now();
+  let text = '';
+  let attempt: Attempt;
+  try {
+    const response = await route.provider.generate({ model: route.model, system: questionnaireSystem, prompt, responseSchema: schema, signal: options.signal });
+    text = response.text;
+    Object.assign(call, { responseModel: response.modelBasis === 'requested-assumption' ? null : response.model,
+      responseRoute: response.route, usage: response.usage, outcome: 'invalid-response' });
+    const parsed: unknown = JSON.parse(text);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('reply is not a JSON object');
+    call.outcome = 'completed';
+    attempt = { call, reply: parsed as Record<string, unknown>, transient: false };
+  } catch (error) {
+    options.signal?.throwIfAborted();
+    const failure = error as { kind?: unknown; usage?: JudgeCall['usage']; responseRoute?: string | null };
+    if (call.outcome === 'generation-error') {
+      if (typeof failure?.kind === 'string') call.failureKind = failure.kind as JudgeCall['failureKind'];
+      call.usage = failure?.usage ?? null;
+      call.responseRoute = failure?.responseRoute ?? null;
+    }
+    const generation = call.outcome === 'generation-error';
+    attempt = { call, reason: generation ? `judge call failed${call.failureKind ? ` (${call.failureKind})` : ''}` : 'judge reply was not a JSON object',
+      transient: !generation || transientKinds.has(call.failureKind ?? 'unknown') };
+  }
+  call.wallMs = performance.now() - started;
+  call.billing = route.provider.capabilities.billing;
+  await options.observe?.({ call: structuredClone(call), response: text });
+  return attempt;
 }
 
 /**
  * Asks every group in declared order: one judge call per group per repeat, each on the group's named
- * route, with the earlier groups' requested working handed on. A call that fails leaves every answer of
- * its group an error; nothing is retried here and nothing is ever defaulted to a pass.
+ * route, with the earlier groups' requested working handed on. A transient failure (provider down, timed
+ * out, rate-limited, or a reply that is not a JSON object) asks the whole group again, up to
+ * {@link GROUP_ATTEMPTS} calls; every call is recorded. A group that still has no reply leaves every answer
+ * an error; nothing is ever defaulted to a pass.
  */
 export async function runQuestionnaire(options: RunQuestionnaireOptions): Promise<QuestionnaireResult> {
   const { bank, material } = options;
@@ -55,34 +102,13 @@ export async function runQuestionnaire(options: RunQuestionnaireOptions): Promis
       let reply: Record<string, unknown> = {};
       if (refusal) failedCalls.push({ group: group.id, repeat, reason: refusal });
       else {
-        options.signal?.throwIfAborted();
-        const call: JudgeCall = { id: randomUUID(), judge: group.judge, providerId: route!.provider.id, requestedModel: route!.model,
-          responseModel: null, responseRoute: null, outcome: 'generation-error', usage: null };
-        judgeCalls.push(call);
-        const started = performance.now();
-        let text = '';
-        try {
-          const response = await route!.provider.generate({ model: route!.model, system: questionnaireSystem, prompt, responseSchema: schema, signal: options.signal });
-          text = response.text;
-          Object.assign(call, { responseModel: response.modelBasis === 'requested-assumption' ? null : response.model,
-            responseRoute: response.route, usage: response.usage, outcome: 'invalid-response' });
-          const parsed: unknown = JSON.parse(text);
-          if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('reply is not a JSON object');
-          reply = parsed as Record<string, unknown>;
-          call.outcome = 'completed';
-        } catch (error) {
-          options.signal?.throwIfAborted();
-          const failure = error as { kind?: unknown; usage?: JudgeCall['usage']; responseRoute?: string | null };
-          if (call.outcome === 'generation-error') {
-            if (typeof failure?.kind === 'string') call.failureKind = failure.kind as JudgeCall['failureKind'];
-            call.usage = failure?.usage ?? null;
-            call.responseRoute = failure?.responseRoute ?? null;
-          }
-          failedCalls.push({ group: group.id, repeat, reason: call.outcome === 'generation-error' ? `judge call failed${call.failureKind ? ` (${call.failureKind})` : ''}` : 'judge reply was not a JSON object' });
+        for (let tries = 1; ; tries++) {
+          const attempt = await askGroup(route!, group.judge, prompt, schema, options);
+          judgeCalls.push(attempt.call);
+          if (attempt.reply) { reply = attempt.reply; break; }
+          if (!attempt.transient || tries >= GROUP_ATTEMPTS) { failedCalls.push({ group: group.id, repeat, reason: attempt.reason! }); break; }
+          await delay(options.retryDelayMs ?? GROUP_RETRY_DELAY_MS, options.signal);
         }
-        call.wallMs = performance.now() - started;
-        call.billing = route!.provider.capabilities.billing;
-        await options.observe?.({ call: structuredClone(call), response: text });
       }
       repeats.push(Object.fromEntries(group.questions.map(question => {
         const entry = Object.hasOwn(reply, question.id) ? reply[question.id] : undefined;

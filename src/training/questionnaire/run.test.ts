@@ -25,18 +25,34 @@ describe('questionnaire run', () => {
     expect(result.scaffold.fidelity).toEqual({ numbers_list: { error: 'extraction-list answer must be a list of strings' }, support: { error: 'missing answer' } });
     expect(strong.prompts[1]).not.toContain('EARLIER WORKING');
   });
-  it('turns a failed call into errors for its group and still asks the next', async () => {
+  it('asks a group again after a transient failure and records every call', async () => {
     const failure = Object.assign(new Error('down'), { kind: 'unavailable', responseRoute: 'r' });
-    const strong = testJudge([failure, testReplies[1]]);
-    const result = await runQuestionnaire({ bank, material: testMaterial, judges: { strong } });
-    expect(result).toMatchObject({ gate: 'error', errors: ['figures', 'quotes'], failedCalls: [{ group: 'fidelity', repeat: 1, reason: 'judge call failed (unavailable)' }] });
-    expect(result.judgeCalls[0]).toMatchObject({ outcome: 'generation-error', failureKind: 'unavailable', responseRoute: 'r' });
+    const strong = testJudge([failure, 'not json', ...testReplies]);
+    const result = await runQuestionnaire({ bank, material: testMaterial, judges: { strong }, retryDelayMs: 0 });
+    expect(result).toMatchObject({ gate: 'pass', errors: [], failedCalls: [] });
+    expect(result.judgeCalls.map(call => call.outcome)).toEqual(['generation-error', 'invalid-response', 'completed', 'completed']);
+    expect(result.judgeCalls[0]).toMatchObject({ failureKind: 'unavailable', responseRoute: 'r' });
+    expect(strong.prompts[0]).toBe(strong.prompts[2]);
+  });
+  it('turns a group that keeps failing into errors for its group and still asks the next', async () => {
+    const failure = Object.assign(new Error('down'), { kind: 'timeout' });
+    const strong = testJudge([failure, failure, failure, testReplies[1]]);
+    const result = await runQuestionnaire({ bank, material: testMaterial, judges: { strong }, retryDelayMs: 0 });
+    expect(result).toMatchObject({ gate: 'error', errors: ['figures', 'quotes'], failedCalls: [{ group: 'fidelity', repeat: 1, reason: 'judge call failed (timeout)' }] });
+    expect(result.judgeCalls).toHaveLength(4);
     expect(result.answers.find(answer => answer.id === 'padding')).toMatchObject({ status: 'ok' });
   });
-  it.each([['not json', 'judge reply was not a JSON object'], ['[1]', 'judge reply was not a JSON object']])('refuses the reply %s', async (reply, reason) => {
-    const result = await runQuestionnaire({ bank, material: testMaterial, judges: { strong: testJudge([reply, new Error('plain')]) } });
+  it.each([['not json', 'judge reply was not a JSON object'], ['[1]', 'judge reply was not a JSON object']])('refuses the reply %s after its retries', async (reply, reason) => {
+    const result = await runQuestionnaire({ bank, material: testMaterial, judges: { strong: testJudge([reply, reply, reply, new Error('plain')]) }, retryDelayMs: 0 });
     expect(result.failedCalls).toEqual([{ group: 'fidelity', repeat: 1, reason }, { group: 'house', repeat: 1, reason: 'judge call failed' }]);
-    expect(result.judgeCalls.map(call => call.outcome)).toEqual(['invalid-response', 'generation-error']);
+    expect(result.judgeCalls.map(call => call.outcome)).toEqual(['invalid-response', 'invalid-response', 'invalid-response', 'generation-error']);
+  });
+  it('does not ask again after a failure that is not transient', async () => {
+    const denied = Object.assign(new Error('denied'), { kind: 'authentication' });
+    const strong = testJudge([denied, testReplies[1]]);
+    const result = await runQuestionnaire({ bank, material: testMaterial, judges: { strong }, retryDelayMs: 0 });
+    expect(result.failedCalls).toEqual([{ group: 'fidelity', repeat: 1, reason: 'judge call failed (authentication)' }]);
+    expect(result.judgeCalls).toHaveLength(2);
   });
   it('refuses a missing route and a route on another effort without calling it', async () => {
     const missing = await runQuestionnaire({ bank, material: testMaterial, judges: {} });
