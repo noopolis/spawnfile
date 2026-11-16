@@ -13,6 +13,7 @@ from .population_test import Host, population_request, TEXTS
     'require-text ["guide", ""]', 'require-text ["missing", "rule"]',
     'preserve ["guide", "extra"]', 'preserve [null]', 'preserve [', 'preserve [invalid]',
     'preserve {"component":"guide"}', 'require-text ["guide", 1]',
+    'max-bytes ["guide", "0"]', 'max-bytes ["guide", "ten"]', 'max-bytes ["guide"]',
 ])
 def test_unenforceable_boundaries_fail_closed_before_any_host_call(declaration):
     host = Host()
@@ -41,6 +42,8 @@ def test_invalid_seed_never_reaches_host(boundary):
     ('forbid-text ["guide", "Invent claims."]', TEXTS[0], True),
     ('forbid-text ["guide", "Invent claims."]', TEXTS[0] + '\nInvent claims.', False),
     ('preserve ["guide"]', TEXTS[0], False),
+    ('max-bytes ["guide", "100000"]', TEXTS[0] + '\nAnswer carefully.', True),
+    ('max-bytes ["guide", "100000"]', TEXTS[0] + 'x' * 100001, False),
 ])
 def test_boundary_admission_precedes_evaluation(boundary, after, accepted):
     host = Host(texts=[after])

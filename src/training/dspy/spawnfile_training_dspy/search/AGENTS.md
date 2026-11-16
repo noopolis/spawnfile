@@ -26,7 +26,7 @@ Repairs may reuse their slot's content and hypotheses; attempted content is
 reserved against later slots/rounds. Report
 change heuristics as bridge-reported-v2 and retain exact generation response text
 for host binding; heuristic values are not independently host-verified.
-`boundaries.py` compiles declared preserve/require-text/forbid-text rules; validate
+`boundaries.py` compiles declared preserve/require-text/forbid-text/max-bytes rules; validate
 seeds before callbacks and reject violations before evaluation. Free-form prose is
 unsupported. Never replace exact enforcement with proposer attestations or imply
 semantic compliance. `instruction_text.py` excludes Markdown metadata before unit

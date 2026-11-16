@@ -19,12 +19,19 @@ it('admits real changes while enforcing all exact component text constraints', (
 
 it.each(['preserve ["guide"]\n', 'Never publish unverified claims.', 'preserve [', 'preserve [invalid]', 'preserve ["missing"]',
   'preserve ["guide", "extra"]', 'preserve [null]', 'require-text ["guide"]',
-  'require-text ["guide", ""]', 'require-text ["guide", 1]', 'preserve {"component":"guide"}'])(
+  'require-text ["guide", ""]', 'require-text ["guide", 1]', 'preserve {"component":"guide"}',
+  'max-bytes ["guide", "0"]', 'max-bytes ["guide", "1.5"]', 'max-bytes ["guide"]'])(
 'fails closed on invalid or unenforceable declaration %s', declaration => {
   expect(() => compileBoundaries([declaration], seed)).toThrow('Unsupported hard boundary');
 });
 
-it.each(['require-text ["guide", "Absent rule."]', 'forbid-text ["guide", "Required rule."]'])(
+it('bounds a component by its UTF-8 size', () => {
+  const rules = compileBoundaries(['max-bytes ["guide", "20"]'], seed);
+  expect(() => assertBoundaries(rules, { ...seed, guide: 'Required rule. é' })).not.toThrow();
+  expect(() => assertBoundaries(rules, { ...seed, guide: 'Required rule. éééé' })).toThrow('violates hard boundary: max-bytes on guide');
+});
+
+it.each(['require-text ["guide", "Absent rule."]', 'forbid-text ["guide", "Required rule."]', 'max-bytes ["guide", "5"]'])(
 'refuses an invalid seed: %s', declaration => {
   expect(() => compileBoundaries([declaration], seed)).toThrow('violates hard boundary');
 });

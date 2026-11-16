@@ -40,9 +40,12 @@ boundaries:
   - 'preserve ["contract.md"]'
   - 'require-text ["AGENTS.md", "Use schema v1."]'
   - 'forbid-text ["AGENTS.md", "Use schema v2."]'
+  - 'max-bytes ["AGENTS.md", "14000"]'
 ```
 
 `preserve` locks the named component to its original seed text across all rounds.
+`max-bytes` caps a component's UTF-8 size, so a proposal the subject's runtime could not load (Daimon
+refuses instructions over 16 KiB) is rejected and repaired before any trial.
 `require-text` and `forbid-text` check case-sensitive literal substrings in the
 named component. All constraints must pass. Component names are the exact editable
 component keys reported by the optimizer (including section keys when applicable).

@@ -216,7 +216,7 @@ positive safe integer, with
 `keep <= variants`. Defaults for the remaining fields are `pareto`, `0.5`, `0.08`,
 `0.6`, `rounds` (no early patience stop), and `[]`. Boundaries contain at most 50
 strings of 1..500 characters. Each string is `preserve ["component"]`,
-`require-text ["component", "literal"]`, or `forbid-text ["component", "literal"]`.
+`require-text ["component", "literal"]`, `forbid-text ["component", "literal"]`, or `max-bytes ["component", "<bytes>"]`.
 Arguments are JSON strings; names must identify editable components. Preserve means
 exact equality with the seed; required/forbidden text means case-sensitive substring
 presence/absence. All constraints must pass. Invalid declarations/prose fail with
