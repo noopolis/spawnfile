@@ -5,6 +5,8 @@ import type { TrialReport } from '../trials/index.js';
 import type { AtomicFeedback } from '../../graders/atomic/index.js';
 import { createHash } from 'node:crypto';
 import { questionnaireFeedback } from '../../questionnaire/index.js';
+import type { TrainingScoring } from '../../contracts/training-config.js';
+import { trialLadder } from './ladder.js';
 
 export const trainingFeedbackLimits = { outputBytes: 16384, feedbackBytes: 32768, atomicBytes: 8192, atomicChecks: 40, unitChars: 1000 } as const;
 
@@ -139,12 +141,32 @@ function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialR
   return excerptText(compact, text, trainingFeedbackLimits.feedbackBytes);
 }
 
+/**
+ * Where the trial stands on the ladder: accepted or not, the lowest failed rung and what the next rung needs.
+ * A questionnaire rung names only its open gate questions; a rung of hidden questions alone is withheld.
+ */
+function ladderFeedback(evaluation: PlanEvaluation, status: string, scoring: TrainingScoring | undefined, levels: Levels) {
+  if (scoring?.search !== 'ladder') return {};
+  const ladder = trialLadder(evaluation, status, scoring);
+  const checks = new Map(evaluation.stages.flatMap(stage => stage.checks).flatMap(check => check.id ? [[check.id, check] as const] : []));
+  const rungs = ladder.rungs.map(rung => {
+    const check = checks.get(rung.check);
+    if (rung.absent) return { rung: 'nothing filed', next: `File the graded output; ${rung.check} found none.` };
+    const level = levels.get(rung.check) ?? 'full';
+    const open = check?.questionnaire && level === 'full' ? questionnaireFeedback(check.questionnaire).ladder : undefined;
+    if (check?.questionnaire) return open?.failed.length ? { rung: `${rung.check} gates failed: ${open.failed.map(entry => entry.count ? `${entry.id} (${entry.count})` : entry.id).join(', ')}`, next: open.next }
+      : { rung: `${rung.check} failed a withheld gate`, next: 'Recheck the work against the declared criteria.' };
+    return { rung: `${rung.check} failed`, next: `Pass ${rung.check}.` };
+  });
+  return { ladder: { accepted: ladder.accepted, ...(rungs[0] ? { lowest: rungs[0].rung, next: rungs[0].next, rungs: rungs.length } : { next: 'Every gate passes; raise the graded scores.' }) } };
+}
+
 /** Validation and test captures never supply optimizer text, even when outputs are declared. */
-export function trainingFeedback(record: ResolvedRecord, report: TrialReport, evaluation: PlanEvaluation = report.evaluation): { output: string; feedback: string } {
+export function trainingFeedback(record: ResolvedRecord, report: TrialReport, evaluation: PlanEvaluation = report.evaluation, scoring?: TrainingScoring): { output: string; feedback: string } {
   if (report.phase !== 'train') return { output: '', feedback: '' };
   const levels = feedbackLevels(record);
   return { output: taskOutput(record, report), feedback: feedbackText({ task: record.input ?? record.turns,
-    criteria: criteriaFeedback(record.effectiveStages), ...executionFeedback(report),
+    criteria: criteriaFeedback(record.effectiveStages), ...executionFeedback(report), ...ladderFeedback(evaluation, report.status, scoring, levels),
     evaluation: evaluationFeedback(evaluation, levels),
     subjectUsage: report.snapshot.subjectUsage ?? null,
     live: liveFeedback(report, levels) }, evaluation, report, levels) };

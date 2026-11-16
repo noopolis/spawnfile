@@ -11,6 +11,7 @@ export interface RunTrainingRegradeOptions {
   manifest: string;
   out: string;
   authProfile?: string;
+  concurrency?: number;
   streams: CliStreams;
   signal?: AbortSignal;
 }
@@ -24,7 +25,7 @@ export const runTrainingRegrade = async (options: RunTrainingRegradeOptions): Pr
   const run = createBootedTrialRun({ authProfile: await requireAuthProfile(options.authProfile), scratchRoot: path.join(path.resolve(options.out), "booted-judges") });
   bindBootedJudges(run, (line) => options.streams.stderr(line));
   try {
-    return await regradeTraining({ manifest: options.manifest, out: options.out, streams: options.streams, signal: options.signal });
+    return await regradeTraining({ manifest: options.manifest, out: options.out, concurrency: options.concurrency, streams: options.streams, signal: options.signal });
   } finally {
     bindBootedJudges(undefined);
     await run.close();

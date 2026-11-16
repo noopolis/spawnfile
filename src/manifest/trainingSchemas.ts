@@ -75,6 +75,17 @@ const trainingSelectionSchema = z.object({
 }).strict().refine((value) => value.max_gap !== undefined || value.max_gate_failure_rise !== undefined,
   { message: "selection declares max_gap or max_gate_failure_rise" });
 
+/** How a trial that fails a gate scores in the search. Acceptance (every gate passes) stays strict. */
+const trainingScoringSchema = z.object({
+  /** `gate` (default): a failed gate scores 0. `ladder`: each failed gate multiplies the score by its factor. */
+  search: z.enum(["gate", "ladder"]),
+  /** Factor of a failed gate check that declares no ladder of its own (default 0.5). */
+  gate_penalty: z.number().min(0).lt(1).optional(),
+  /** Search score of a trial that filed nothing (default 0.05). */
+  missing_output: z.number().min(0).lt(1).optional()
+}).strict().refine((value) => value.search === "ladder" || (value.gate_penalty === undefined && value.missing_output === undefined),
+  { message: "gate_penalty and missing_output require search: ladder" });
+
 export const trainingTargetSchema = z.object({
   files: uniqueStrings(
     trainingRelativePathSchema.endsWith(".md", "training target files must end in .md"),
@@ -100,6 +111,7 @@ export const trainingDeclarationSchema = z.object({
   critic: trainingCriticSchema.optional(),
   budget: trainingBudgetSchema.optional(),
   selection: trainingSelectionSchema.optional(),
+  scoring: trainingScoringSchema.optional(),
   /** Calibration sets, relative to the declaring file: judged before any trial; a miss refuses the run. */
   calibration: uniqueStrings(trainingRelativePathSchema, "calibration sets must be unique").min(1).optional(),
   graders: trainingNamedMapSchema(trainingRelativePathSchema).optional(),

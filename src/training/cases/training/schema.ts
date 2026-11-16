@@ -179,8 +179,14 @@ export function validateTrainingConfiguration(value: unknown, path = '$.training
   }
   if (config.scoring !== undefined) {
     const scoring = object(config.scoring, `${path}.scoring`);
-    fields(scoring, ['deferred'], `${path}.scoring`);
+    fields(scoring, ['deferred', 'search', 'gate_penalty', 'missing_output'], `${path}.scoring`);
     if (scoring.deferred !== undefined) oneOf(scoring.deferred, ['zero', 'stage-score'], `${path}.scoring.deferred`);
+    if (scoring.search !== undefined) oneOf(scoring.search, ['gate', 'ladder'], `${path}.scoring.search`);
+    for (const key of ['gate_penalty', 'missing_output'] as const) {
+      if (scoring[key] === undefined) continue;
+      if (scoring.search !== 'ladder') fail(`${path}.scoring.${key}`, 'requires search: ladder');
+      if (typeof scoring[key] !== 'number' || !Number.isFinite(scoring[key]) || scoring[key] < 0 || scoring[key] >= 1) fail(`${path}.scoring.${key}`, 'expected a number from 0 to below 1');
+    }
   }
   if (config.recovery !== undefined) {
     const recovery = object(config.recovery, `${path}.recovery`);

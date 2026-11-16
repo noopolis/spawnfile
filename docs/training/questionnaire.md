@@ -86,8 +86,8 @@ Answer types:
 | `number` | `pass_when: { min, max }` or rising `bands` | 1 or 0, or the band's score |
 | `free-text`, `extraction-list` | none | never; working steps only |
 
-Per scored question: `weight` (default 1), `pass_min` (default 0.5), `gate`, `hidden`, `na_when`
-and `rule` (required). A working step takes only `id`, `type`, `role` and `ask`.
+Per scored question: `weight` (default 1), `pass_min` (default 0.5), `gate`, `hidden`, `na_when`,
+`rule` (required) and, on gate questions, `penalty` (see Ladder). A working step takes only `id`, `type`, `role` and `ask`.
 
 The judge sees questions, criteria and option ids. It never sees scores, weights, gates or hidden flags.
 
@@ -98,6 +98,67 @@ Reads:
 - `list` labels array items (`P1`, `P2`). `template` renders each item from `{field.path}`
   placeholders; a template line whose placeholders are all absent is dropped.
 - `distinct_from` with `by` drops items already present in another read.
+
+## Ladder: graded search, strict acceptance
+
+A failed gate zeroing the trial gives the optimizer a cliff: every article scores 0 or about 0.9, and
+nothing in between tells it which candidate is closer. On the ladder each example gets two numbers:
+
+- **Search score**, graded, for optimizer feedback and candidate ranking. A failed gate multiplies it by
+  that gate's factor instead of zeroing it, so one defect scores strictly between 0 and a clean output,
+  and two defects strictly below one.
+- **Acceptance**, strict: every gate passes. It decides whether a candidate may ship and is reported as
+  a pass rate beside the search score.
+
+Bank fields (both optional; a bank declaring neither keeps the strict rule):
+
+```yaml
+penalty: 0.5                 # bank default factor of every gate question; declaring it opts in
+groups:
+  - id: fidelity
+    questions:
+      - id: names_unsupported
+        type: number
+        ask: How many people does the article name or title that no row names or titles?
+        pass_when: { max: 0 }
+        gate: true
+        penalty: 0.6         # this gate's factor; a number gate pays it once per unit out of range
+```
+
+- `penalty` (0 to below 1) belongs to gate questions. Once any is declared, every gate question of the
+  bank carries one: its own, else the bank's `penalty`, else 0.5.
+- A failed `yes-no` or `multiple-choice` gate multiplies by its factor once. A failed `number` gate
+  multiplies once per unit outside its passing range (rounded up), so three invented names cost
+  `penalty^3` and one costs `penalty`. Ask for a count where the bank already extracts a list.
+- The questionnaire result carries `search` (the full score times every failed gate's factor),
+  `factor` and `rungs` (the failed gates, with factors and counts). An errored gate has no search score.
+
+Training opts in per agent:
+
+```yaml
+training:
+  scoring:
+    search: ladder           # default gate: a trial failing any gate scores 0
+    gate_penalty: 0.5        # factor of a failed gate check without its own ladder (default 0.5)
+    missing_output: 0.05     # search score of a trial that filed nothing (default 0.05)
+```
+
+- The trial search score is the stage score times every failed gate's factor: a laddered
+  questionnaire's own factor, `gate_penalty` for any other failed gate check (a filing schema, a bank
+  without penalties), and one `gate_penalty` for a failed outcome without a failed check. A filed
+  output never scores below `missing_output`.
+- Filing ladder: a trial whose graded artifact is missing scores `missing_output`. The trial records
+  cannot yet tell reading the assignment, gathering evidence and drafting apart without runtime-specific
+  transcript parsing, so every trial that filed nothing gets the same small floor.
+- Optimizer feedback carries `ladder`: whether the trial was accepted, the lowest failed rung (nothing
+  filed, a failed check, or the open gate questions that failed with their counts) and what the next
+  rung needs. A rung of hidden gates alone reads `failed a withheld gate`; hidden ids never appear.
+- Selection keeps the winner rule and adds acceptance: a candidate whose validation acceptance rate is
+  below the baseline's is rejected before the critic.
+- The training report shows the mean search score and the acceptance rate per candidate and split.
+  `train --regrade` reports both per candidate, and calibration on a laddered bank also requires every
+  output whose gate must fail to score strictly below its clean base.
+- `scoring` binds checkpoint identity when it is not the default.
 
 ## Strict answers
 
@@ -169,8 +230,9 @@ one questionnaire check on the run's booted judges and boots no subject.
 - Each output runs through the registered check, the engine and a one-check stage, so score and gate
   mean what they mean in training.
 - Results are written one file per output under `<out>/results`; a rerun asks only for outputs whose
-  judge did not answer. `REGRADE.json` and `REGRADE.md` hold per-candidate scores (missing outputs as 0),
-  per-question pass rates and the calibration verdict.
+  judge did not answer. `REGRADE.json` and `REGRADE.md` hold per-candidate scores, search scores and
+  acceptance rates (missing outputs as 0), per-question pass rates and the calibration verdict.
+- `--concurrency <n>` (1 to 16, default 1) judges up to n outputs at once on the same routes.
 - An optional `critic` block reviews recorded candidate prompts against a recorded baseline:
   `{ judge, guide, checks?, train_cases?: [{ id, file }], block_on?, baseline: { <prompt path>: <file> },
   candidates: { <label>: { <prompt path>: <file> } } }`. Each review is kept under `<out>/critic` and
@@ -216,7 +278,8 @@ training:
 ```
 
 - Measured per candidate over its validation trials: the mean open score, the mean hidden score, their
-  gap, and the share of trials whose questionnaire check did not pass its gate (a missing output counts).
+  gap, the share of trials whose questionnaire check did not pass its gate (a missing output counts), and
+  the acceptance rate (trials passing every gate).
 - A candidate is removed from selection when its gap exceeds the baseline's by more than `max_gap`, or
   its gate failure rate exceeds the baseline's by more than `max_gate_failure_rise`.
 - The rule runs after the search and before the critic: a rejected candidate is never reviewed.

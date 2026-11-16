@@ -1,4 +1,4 @@
-import type { AnswerRecord, BankQuestion, CombineMode, QuestionBank, QuestionnaireScore } from './types.js';
+import type { AnswerRecord, BankQuestion, CombineMode, LadderRung, QuestionBank, QuestionnaireScore } from './types.js';
 import { bankQuestions } from './bank.js';
 
 type Parsed = { status: 'ok'; value: unknown } | { status: 'na' };
@@ -80,6 +80,27 @@ export function combineAnswers(question: BankQuestion, records: readonly AnswerR
 }
 
 /**
+ * How far a failed gate is from passing, in units: the distance of a counted answer outside its passing range
+ * (rounded up), and 1 for every other failure.
+ */
+export function gateDistance(question: BankQuestion, record: AnswerRecord): number {
+  if (question.type !== 'number' || !question.pass_when || typeof record.answer !== 'number') return 1;
+  const { min = -Infinity, max = Infinity } = question.pass_when;
+  return Math.max(1, Math.ceil(record.answer > max ? record.answer - max : min - record.answer));
+}
+
+/** The failed gates of a laddered bank, each with its factor; a count multiplies the factor once per unit. */
+export function ladderRungs(questions: readonly BankQuestion[], records: Readonly<Record<string, AnswerRecord>>): LadderRung[] {
+  return questions.filter(question => question.gate && question.penalty !== undefined && records[question.id]!.status === 'ok' && !records[question.id]!.passed)
+    .map(question => {
+      const count = gateDistance(question, records[question.id]!);
+      return { id: question.id, factor: round(question.penalty! ** count), ...(question.type === 'number' ? { count } : {}) };
+    });
+}
+
+const round = (value: number) => Math.round(value * 10_000) / 10_000;
+
+/**
  * The score of one graded output: a weighted mean over scored questions that are not `na`, the same over
  * hidden and open questions alone, and the gate. A gate question that errored makes the gate `error`, never `pass`.
  */
@@ -94,9 +115,15 @@ export function scoreQuestionnaire(bank: QuestionBank, records: Readonly<Record<
   };
   const gates = questions.filter(question => question.gate).map(question => records[question.id]!);
   const gateFailures = gates.filter(record => record.status === 'ok' && !record.passed).map(record => record.id);
+  const gate = gateFailures.length ? 'fail' : gates.some(record => record.status === 'error') ? 'error' : 'pass';
+  const score = mean(() => true);
+  const laddered = questions.some(question => question.penalty !== undefined);
+  const rungs = laddered ? ladderRungs(questions, records) : [];
+  const factor = laddered ? round(rungs.reduce((product, rung) => product * rung.factor, 1)) : null;
+  // Without a ladder the strict rule stands: a failed gate scores 0. An errored gate has no search score.
+  const search = score === null || gate === 'error' ? null : factor !== null ? round(score * factor) : gate === 'pass' ? score : 0;
   return {
-    gate: gateFailures.length ? 'fail' : gates.some(record => record.status === 'error') ? 'error' : 'pass',
-    gateFailures, errors: questions.filter(question => records[question.id]!.status === 'error').map(question => question.id),
-    score: mean(() => true), scoreHidden: mean(question => question.hidden), scoreOpen: mean(question => !question.hidden),
+    gate, gateFailures, errors: questions.filter(question => records[question.id]!.status === 'error').map(question => question.id),
+    score, scoreHidden: mean(question => question.hidden), scoreOpen: mean(question => !question.hidden), search, factor, rungs,
   };
 }

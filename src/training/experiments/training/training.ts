@@ -20,6 +20,7 @@ import type { TrialReport } from '../trials/index.js';
 import { resolveTrainingPartitions } from './partition.js';
 import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
+import { declaredScoring } from './ladder.js';
 import { freezeCriteria } from './criteria.js';
 import { trainingFeedback } from './feedback.js';
 import type { CriticGateReport, TrainingCriticOptions } from '../../critic/index.js';
@@ -232,12 +233,13 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       const record = dataset.records.find(record => record.id === request.caseId)!;
       const score = await meanOverRepeats(request.split === 'validation' ? validationRepeats : 1, async repeat => trialScore(measured(repeat === 0 ? report
         : await trial(dataset, request.caseId, 'validation', candidate, signal, validationRepeatKey(callbackId ?? `${candidate.id}:${request.caseId}`, repeat), request.round)), options.scoring));
-      return { score, captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation) };
+      return { score, captureId: report.id, ...trainingFeedback(record, report, measured(report).evaluation, options.scoring) };
     } });
   await checkpoint?.freeze(optimizer);
   // A candidate must pass the declared gap rule and the critic before it can be selected; the baseline is always selectable.
-  const gate = options.critic || options.selection ? await selectCandidate({ baseline: options.baseline, train: partition.train, validation: partition.validation, optimizer, candidateFor,
-    trials, evaluation: trial => measured(trial).evaluation, rule: options.selection, critic: options.critic,
+  const acceptance = options.scoring?.search === 'ladder';
+  const gate = options.critic || options.selection || acceptance ? await selectCandidate({ baseline: options.baseline, train: partition.train, validation: partition.validation, optimizer, candidateFor,
+    trials, evaluation: trial => measured(trial).evaluation, rule: options.selection, acceptance, critic: options.critic,
     checkpointDirectory: options.checkpoint?.directory, signal: options.signal, onProgress: options.onProgress }) : undefined;
   const selected = gate?.selected ?? candidateFor(optimizer.components);
   // Freeze selection BEFORE the sealed test can execute or become feedback.
@@ -248,7 +250,7 @@ export async function trainAgent(options: TrainingOptions): Promise<TrainingRepo
       repeat === 0 ? undefined : `test-repeat:${JSON.stringify([candidate.id, caseId, repeat])}`),
     measurement: report => ({ id: measured(report).id, score: trialScore(measured(report), options.scoring) }) });
   const report: TrainingReport = { schema: 'spawnfile.training.training.v1', id: options.id, durationMs: performance.now() - started, baseline: options.baseline, selected, optimizer, ...(gate?.critic ? { critic: gate.critic } : {}), ...(gate?.gap ? { selection: gate.gap } : {}),
-    ...(options.scoring?.deferred === 'stage-score' ? { scoring: { ...options.scoring } } : {}),
+    ...(declaredScoring(options.scoring) ? { scoring: declaredScoring(options.scoring) } : {}),
     partitions: { train: partition.train.records.map(record => record.id), validation: partition.validation.records.map(record => record.id),
       test: options.test.records.map(record => record.id) }, trials, heldOut, ...(retries.size ? { retries: [...retries.values()] } : {}), ...(rescores.length ? { rescores } : {}),
     ...(options.checkpoint?.fork ? { lineage: { kind: 'measurement-repair' as const,

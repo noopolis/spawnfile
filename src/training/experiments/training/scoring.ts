@@ -1,6 +1,7 @@
 import type { TrainingScoring } from '../../contracts/training-config.js';
 import type { EvaluationResult } from '../../contracts/evaluation.js';
 import type { TrialReport } from '../trials/index.js';
+import { ladderScore } from './ladder.js';
 
 function atomicMeasurementFailed(check: EvaluationResult): boolean {
   return Boolean(check.atomicFailure) || check.atomicGrading?.status === 'error' || Boolean(check.atomicGrading?.failure) ||
@@ -34,8 +35,11 @@ export function trialScore(
   // Legacy captures have no such provenance and conservatively retain zero reward.
   const deferredReward = scoring?.deferred === 'stage-score' && deferred &&
     report.preDeferralStatus === 'pass' && !decisive;
-  if (report.status === 'fail' && !deferredReward) return 0;
+  const ladder = scoring?.search === 'ladder';
+  if (report.status === 'fail' && !deferredReward && !ladder) return 0;
   const score = report.evaluation.stages.at(-1)?.score;
   if (score && score.missingWeight > 1e-9) throw new Error('Trial scoring coverage is incomplete');
-  return score?.lower ?? (deferredReward ? 0 : 1);
+  const stageScore = score?.lower ?? (deferredReward ? 0 : 1);
+  // On the ladder a failed gate is a rung, not a cliff: the stage score times every failed rung's factor.
+  return ladder && report.status === 'fail' ? ladderScore(report.evaluation, report.status, score?.lower ?? 0, scoring) : stageScore;
 }

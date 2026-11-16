@@ -17,15 +17,19 @@ const question = z.strictObject({
   bands: z.array(z.strictObject({ max: z.number().finite(), score: unit })).min(1).optional(),
   pass_min: z.number().gt(0).max(1).optional(), weight: z.number().positive().finite().optional(),
   gate: z.boolean().optional(), hidden: z.boolean().optional(), na_when: text.optional(), rule: text.optional(),
+  penalty: z.number().min(0).lt(1).optional(),
 });
 const controls = { judge: name.optional(), effort: name.optional(), repeats: z.number().int().min(1).max(8).optional(), combine: z.enum(combineModes).optional() };
 const bank = z.strictObject({
   schema: z.literal(QUESTIONNAIRE_SCHEMA), id: text, version: z.union([z.number(), text]).optional(), instructions: text,
-  reads: z.array(read).min(1), defaults: z.strictObject(controls).optional(),
+  penalty: z.number().min(0).lt(1).optional(), reads: z.array(read).min(1), defaults: z.strictObject(controls).optional(),
   groups: z.array(z.strictObject({ id: name, ...controls, order: z.literal('declared').optional(),
     after: z.array(name).optional(), receives: z.array(z.string().regex(/^[A-Za-z][\w-]*\.[A-Za-z][\w-]*$/u)).optional(),
     reads: z.array(read).min(1).optional(), questions: z.array(question).min(1) })).min(1),
 });
+
+/** The rung factor of a gate question in a laddered bank that declares none: one failed gate halves the search score. */
+export const DEFAULT_PENALTY = 0.5;
 
 export class BankError extends Error {
   constructor(message: string) { super(message); this.name = 'BankError'; }
@@ -65,6 +69,7 @@ function normalizeQuestion(raw: z.infer<typeof question>): BankQuestion {
     need(!raw.pass_when || Object.keys(raw.pass_when).length > 0, `${id}: pass_when takes min and max`);
     need(!raw.bands || raw.bands.every((band, index) => index === 0 || band.max > raw.bands![index - 1]!.max), `${id}: bands must be in rising order of max`);
   } else need(raw.pass_when === undefined && raw.bands === undefined, `${id}: pass_when and bands belong to number questions`);
+  need(raw.penalty === undefined || raw.gate === true, `${id}: penalty belongs to gate questions`);
   const { options: _options, ...rest } = raw;
   return { ...rest, ...(options ? { options } : {}), role, pass_min: raw.pass_min ?? 0.5, weight: raw.weight ?? 1,
     gate: raw.gate ?? false, hidden: raw.hidden ?? false };
@@ -102,8 +107,11 @@ export function validateBank(value: unknown): QuestionBank {
       ...(group.reads ? { reads: group.reads.map(normalizeRead) } : {}), questions });
   }
   need(groups.some(group => group.questions.some(entry => entry.role === 'scored')), 'bank has no scored question');
+  // A bank declaring any factor is on the ladder: every gate question then carries one, the bank's default or 0.5.
+  const laddered = raw.penalty !== undefined || groups.some(group => group.questions.some(entry => entry.penalty !== undefined));
+  if (laddered) for (const group of groups) for (const entry of group.questions) if (entry.gate) entry.penalty ??= raw.penalty ?? DEFAULT_PENALTY;
   return { schema: raw.schema, id: raw.id, ...(raw.version === undefined ? {} : { version: raw.version }),
-    instructions: raw.instructions, reads: raw.reads.map(normalizeRead), groups };
+    instructions: raw.instructions, ...(raw.penalty === undefined ? {} : { penalty: raw.penalty }), reads: raw.reads.map(normalizeRead), groups };
 }
 
 /** Strict YAML: duplicate keys, aliases and merges are refused. */

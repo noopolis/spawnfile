@@ -52,6 +52,8 @@ export const trainingPlanSchema = z.object({
   /** Repeated subject trials per validation case and per sealed test case. */
   budget: z.object({ validation_repeats: z.number().int().min(1).max(8).optional(), test_repeats: z.number().int().min(1).max(8).optional() }).strict().optional(),
   selection: z.object({ max_gap: z.number().min(0).max(1).optional(), max_gate_failure_rise: z.number().min(0).max(1).optional() }).strict().optional(),
+  /** Search scoring of a trial that fails a gate; absent keeps the strict zero. */
+  scoring: z.object({ search: z.enum(["gate", "ladder"]), gate_penalty: z.number().min(0).lt(1).optional(), missing_output: z.number().min(0).lt(1).optional() }).strict().optional(),
   /** Calibration sets judged before any trial. */
   calibration: z.array(absolutePath).min(1).optional(),
   graders: z.array(source.extend({

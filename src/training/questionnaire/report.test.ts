@@ -42,3 +42,27 @@ describe('questionnaire summary', () => {
     expect(summarizeQuestionnaire([])).toMatchObject({ outputs: 0, score: null, gap: null, questions: [] });
   });
 });
+
+describe('questionnaire ladder feedback', () => {
+  const laddered = () => parseBank(testBankYaml.replace('        gate: true\n        rule: evidence fidelity', '        gate: true\n        penalty: 0.5\n        rule: evidence fidelity')
+    .replace('        bands: [{ max: 1, score: 1 }, { max: 3, score: 0.75 }]\n        hidden: true', '        pass_when: { max: 1 }\n        gate: true\n        hidden: true'));
+  const ladderGrade = (first: Record<string, unknown>, second: Record<string, unknown>) =>
+    runQuestionnaire({ bank: laddered(), material: testMaterial, judges: { strong: testJudge([first, second]) } });
+  it('names the lowest open rung and what the next one needs, never a hidden gate', async () => {
+    const result = await ladderGrade({ ...testReplies[0]!, figures: { answer: 'no', reason: 'P1' } }, { padding: { answer: 'none', reason: '' }, unused: { answer: 5, reason: 'HIDDEN' } });
+    expect(result.rungs).toEqual([{ id: 'figures', factor: 0.5 }, { id: 'unused', factor: 0.0625, count: 4 }]);
+    const feedback = questionnaireFeedback(result);
+    expect(feedback.ladder).toEqual({ search: 0.3334, failed: [{ id: 'figures' }], next: 'Clear gate figures: Is every number in a row?' });
+    expect(JSON.stringify(feedback)).not.toContain('unused');
+    const hiddenOnly = questionnaireFeedback(await ladderGrade(testReplies[0]!, { padding: { answer: 'none', reason: '' }, unused: { answer: 3, reason: 'HIDDEN' } }));
+    expect(hiddenOnly).toMatchObject({ status: 'pass', ladder: { failed: [], next: expect.stringContaining('Every open gate passes') as string } });
+    expect(JSON.stringify(hiddenOnly)).not.toContain('unused');
+  });
+  it('summarizes the search score and the strict acceptance rate', async () => {
+    const results = [await ladderGrade(testReplies[0]!, { padding: { answer: 'none', reason: '' }, unused: { answer: 0, reason: '' } }),
+      await ladderGrade({ ...testReplies[0]!, figures: { answer: 'no', reason: 'P1' } }, { padding: { answer: 'none', reason: '' }, unused: { answer: 0, reason: '' } })];
+    expect(summarizeQuestionnaire(results)).toMatchObject({ acceptance: 0.5, search: 0.6875 });
+    expect(questionnaireFeedback(results[0]!).ladder).toBeDefined();
+    expect(questionnaireFeedback(await grade(testReplies[0]!)).ladder).toBeUndefined();
+  });
+});

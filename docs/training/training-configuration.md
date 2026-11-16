@@ -64,6 +64,11 @@ records:
       prompt: Explain the supplied evidence plainly.
 ```
 
+`training.scoring.search` accepts `gate` (the default: a trial failing any gate scores 0) or `ladder`
+(a failed gate multiplies the search score by its factor; `gate_penalty` and `missing_output` tune it).
+Acceptance stays strict and is reported beside the search score; see
+[questionnaire.md](questionnaire.md#ladder-graded-search-strict-acceptance).
+
 `training.scoring.deferred` accepts `zero` (the default) or `stage-score`:
 
 ```yaml

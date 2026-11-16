@@ -137,6 +137,8 @@ export interface EvaluationResult {
   /** Set on every `error` a judge produces; absent on any other verdict. */
   judgeFailure?: JudgeFailure;
   score?: number;
+  /** The graded artifact is observably missing from a closed, fully accounted execution: nothing was filed. */
+  absent?: true;
   evidence: EvidenceReference[];
   /** Deterministic measurements over the referenced text bytes. */
   mechanicalEvidence?: { count?: number; found?: number; total?: number; missing?: string[] };

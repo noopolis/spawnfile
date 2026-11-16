@@ -10,6 +10,11 @@ export interface QuestionnaireFeedback {
   status: 'pass' | 'fail' | 'error';
   score: number | null;
   failed: { id: string; question: string; answer: unknown; reason: string }[];
+  /**
+   * The ladder over open gate questions, present when the bank declares one: the open search score, the
+   * failed rungs (lowest first, in declared order) and what the next rung needs. Hidden gates never appear.
+   */
+  ladder?: { search: number | null; failed: { id: string; count?: number }[]; next: string };
 }
 
 export function questionnaireFeedback(result: QuestionnaireResult): QuestionnaireFeedback {
@@ -19,11 +24,21 @@ export function questionnaireFeedback(result: QuestionnaireResult): Questionnair
   const secret = [...Object.values(result.scaffold).flatMap(steps => Object.keys(steps)), ...result.answers.filter(answer => answer.hidden).map(answer => answer.id)];
   const pattern = secret.length ? new RegExp(`(?<![\\w-])(?:${secret.map(id => id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('|')})(?![\\w-])`, 'gu') : undefined;
   const redact = (text: string) => pattern ? text.replace(pattern, 'a withheld step') : text;
+  const failedGates = gates.filter(answer => answer.status === 'ok' && !answer.passed);
+  const rungs = new Map((result.rungs ?? []).map(rung => [rung.id, rung]));
+  const openFactor = failedGates.reduce((product, answer) => product * (rungs.get(answer.id)?.factor ?? 1), 1);
+  const lowest = failedGates[0];
   return {
-    status: gates.some(answer => answer.status === 'ok' && !answer.passed) ? 'fail' : gates.some(answer => answer.status === 'error') ? 'error' : 'pass',
+    status: failedGates.length ? 'fail' : gates.some(answer => answer.status === 'error') ? 'error' : 'pass',
     score: result.scoreOpen,
     failed: open.filter(answer => answer.status === 'ok' && !answer.passed)
       .map(answer => ({ id: answer.id, question: redact(answer.ask), answer: answer.answer, reason: redact(answer.reason) })),
+    ...(result.factor === null || result.factor === undefined ? {} : { ladder: {
+      search: result.scoreOpen === null ? null : Math.round(result.scoreOpen * openFactor * 10_000) / 10_000,
+      failed: failedGates.map(answer => ({ id: answer.id, ...(rungs.get(answer.id)?.count === undefined ? {} : { count: rungs.get(answer.id)!.count }) })),
+      next: lowest ? `Clear gate ${lowest.id}${rungs.get(lowest.id)?.count ? ` (${rungs.get(lowest.id)!.count} found; each one costs)` : ''}: ${redact(lowest.ask)}`
+        : 'Every open gate passes; raise the open questions that did not.',
+    } }),
   };
 }
 
@@ -34,6 +49,10 @@ export interface QuestionnaireSummary {
   gatePassed: number;
   gateFailed: number;
   gateErrors: number;
+  /** Share of outputs whose gate passed: the strict acceptance verdict. */
+  acceptance: number | null;
+  /** Mean graded search score over outputs. */
+  search: number | null;
   /** Means over outputs; an output with no applicable question of a kind is left out of that mean. */
   score: number | null;
   scoreOpen: number | null;
@@ -59,6 +78,8 @@ export function summarizeQuestionnaire(results: readonly QuestionnaireResult[]):
     gatePassed: results.filter(result => result.gate === 'pass').length,
     gateFailed: results.filter(result => result.gate === 'fail').length,
     gateErrors: results.filter(result => result.gate === 'error').length,
+    acceptance: results.length ? Math.round(results.filter(result => result.gate === 'pass').length / results.length * 10_000) / 10_000 : null,
+    search: mean(results.map(result => result.search ?? null)),
     score: mean(results.map(result => result.score)), scoreOpen, scoreHidden,
     gap: scoreOpen === null || scoreHidden === null ? null : Math.round((scoreOpen - scoreHidden) * 10_000) / 10_000,
     questions: [...byId].map(([id, answers]) => {

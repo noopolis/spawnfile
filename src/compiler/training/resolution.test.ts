@@ -245,10 +245,10 @@ describe("training verifier inheritance", () => {
 
 describe("training verifier control inheritance", () => {
   it("merges budget fields, lets a local selection rule and calibration list replace inherited ones and resolves set paths", () => {
-    const inherited = resolveTrainingDeclaration({ budget: { validation_repeats: 2, test_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: ["sets/a.json"] }, "/project/Spawnfile", "team")!;
-    expect(inherited).toMatchObject({ budget: { validation_repeats: 2, test_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: ["/project/sets/a.json"] });
+    const inherited = resolveTrainingDeclaration({ budget: { validation_repeats: 2, test_repeats: 2 }, selection: { max_gap: 0.1 }, scoring: { search: "ladder" }, calibration: ["sets/a.json"] }, "/project/Spawnfile", "team")!;
+    expect(inherited).toMatchObject({ budget: { validation_repeats: 2, test_repeats: 2 }, selection: { max_gap: 0.1 }, scoring: { search: "ladder" }, calibration: ["/project/sets/a.json"] });
     const local = resolveTrainingDeclaration({ budget: { validation_repeats: 3 }, selection: { max_gate_failure_rise: 0.2 }, calibration: ["b.json"] }, "/project/agent/Spawnfile", "agent")!;
     expect(mergeTrainingDeclarations(inherited, local)).toMatchObject({ budget: { validation_repeats: 3, test_repeats: 2 }, selection: { max_gate_failure_rise: 0.2 }, calibration: ["/project/agent/b.json"] });
-    expect(mergeTrainingDeclarations(inherited, undefined)).toEqual({ budget: inherited.budget, selection: inherited.selection, calibration: inherited.calibration, graders: {}, targets: [] });
+    expect(mergeTrainingDeclarations(inherited, undefined)).toEqual({ budget: inherited.budget, selection: inherited.selection, scoring: inherited.scoring, calibration: inherited.calibration, graders: {}, targets: [] });
   });
 });

@@ -17,6 +17,8 @@ export interface Measurement {
 }
 export interface SplitScores {
   meanScore: number | null; observedMean: number | null; complete: boolean;
+  /** Share of measured trials whose every gate passed: the strict verdict, beside the (possibly graded) search mean. */
+  acceptance: number | null;
   examples: { id: string; meanScore: number | null; measurements: Measurement[] }[];
 }
 export interface ExportCandidate {
@@ -111,7 +113,8 @@ function splitScores(report: TrainingReport, candidateId: string, split: Split, 
     return { id, meanScore: complete ? mean(effective.map(value => value.score!)) : null, measurements };
   });
   const complete = examples.length > 0 && examples.every(value => value.meanScore !== null);
-  return { complete, meanScore: complete ? mean(examples.map(value => value.meanScore!)) : null,
+  const verdicts = examples.flatMap(example => example.measurements.filter(value => value.score !== null && !report.retries?.some(retry => retry.failedTrialId === value.trialId)));
+  return { complete, acceptance: verdicts.length ? verdicts.filter(value => value.status === 'pass').length / verdicts.length : null, meanScore: complete ? mean(examples.map(value => value.meanScore!)) : null,
     observedMean: mean(examples.flatMap(value => value.meanScore === null ? [] : [value.meanScore])), examples };
 }
 
@@ -162,7 +165,7 @@ export function summarizeTraining(report: TrainingReport) {
       }),
   }));
   return { schema: 'spawnfile.training.training-export.v1' as const, id: report.id, selectedCandidateId: report.selected.id,
-    ...(report.retries?.length ? { retries: report.retries } : {}),
+    ...(report.retries?.length ? { retries: report.retries } : {}), ...(report.scoring ? { scoring: report.scoring } : {}),
     baselineCandidateId: report.baseline.id, candidates: entries, rounds: report.optimizer.provenance.rounds ?? [], roundScores,
     unattributedSearchTrialIds: report.trials.filter(trial => trial.phase !== 'test' && trial.round === undefined).map(trial => trial.id),
     heldOut: { ...(report.heldOut.some(arm => arm.trialScores !== undefined) ? { arms: report.heldOut } : {}), complete, pairs, pairedExamples: deltas.length, meanDelta, standardDeviation,

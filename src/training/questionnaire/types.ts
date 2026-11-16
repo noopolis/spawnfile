@@ -43,6 +43,12 @@ export interface BankQuestion {
   hidden: boolean;
   na_when?: string;
   rule?: string;
+  /**
+   * The rung factor of a gate question: a failed gate multiplies the search score by it. A failed `number`
+   * gate multiplies once per unit outside its passing range, so one invented name costs less than three.
+   * Present on every gate question of a bank that declares a ladder, absent otherwise.
+   */
+  penalty?: number;
 }
 
 export interface BankGroup {
@@ -66,9 +72,14 @@ export interface QuestionBank {
   version?: number | string;
   /** The judge's role and the terms the questions use; the bank's own words. */
   instructions: string;
+  /** The default rung factor of gate questions; declaring it, or any question's `penalty`, opts the bank into the ladder. */
+  penalty?: number;
   reads: BankRead[];
   groups: BankGroup[];
 }
+
+/** One failed gate question on the ladder: its factor and, for a count, how many units it was out. */
+export interface LadderRung { id: string; factor: number; count?: number }
 
 export interface AnswerRecord {
   id: string;
@@ -90,6 +101,15 @@ export interface QuestionnaireScore {
   score: number | null;
   scoreHidden: number | null;
   scoreOpen: number | null;
+  /**
+   * The graded search score: `score` times every failed gate's factor. It never collapses to zero for one
+   * defect. Without a declared ladder it keeps the strict rule: `score` on a passing gate, 0 on a failing one.
+   */
+  search: number | null;
+  /** The product of the failed gates' factors; null when the bank declares no ladder. */
+  factor: number | null;
+  /** Failed gate questions in declared order, with their factors. */
+  rungs: LadderRung[];
 }
 
 export interface ScoredAnswer extends AnswerRecord { group: string; ask: string; hidden: boolean; gate: boolean; weight: number }

@@ -20,6 +20,7 @@ export interface ResolvedTraining {
   critic?: NonNullable<TrainingDeclaration["critic"]>;
   budget?: NonNullable<TrainingDeclaration["budget"]>;
   selection?: NonNullable<TrainingDeclaration["selection"]>;
+  scoring?: NonNullable<TrainingDeclaration["scoring"]>;
   /** Calibration set files as absolute paths. */
   calibration?: string[];
   graders: Record<string, ResolvedTrainingGrader>;
@@ -48,6 +49,7 @@ export const resolveTrainingDeclaration = (
       ...(declaration.critic.show === undefined ? {} : { show: [...declaration.critic.show] }) } }),
     ...(declaration.budget === undefined ? {} : { budget: { ...declaration.budget } }),
     ...(declaration.selection === undefined ? {} : { selection: { ...declaration.selection } }),
+    ...(declaration.scoring === undefined ? {} : { scoring: { ...declaration.scoring } }),
     ...(declaration.calibration === undefined ? {} : { calibration: declaration.calibration.map(resolve) }),
     graders: Object.fromEntries(Object.entries(declaration.graders ?? {})
       .sort(([left], [right]) => left.localeCompare(right))
@@ -82,10 +84,11 @@ export const mergeTrainingDeclarations = (
   const critic = local?.critic ?? inherited?.critic;
   const runBudget = inherited?.budget === undefined && local?.budget === undefined ? undefined : { ...inherited?.budget, ...local?.budget };
   const selection = local?.selection ?? inherited?.selection;
+  const scoring = local?.scoring ?? inherited?.scoring;
   const calibration = local?.calibration ?? inherited?.calibration;
   const targets = local?.targets ?? [];
   const preparation = local?.preparation ?? inherited?.preparation;
-  if (deadlines === undefined && preparation === undefined && record === undefined && optimizer === undefined && critic === undefined && runBudget === undefined && selection === undefined && calibration === undefined && Object.keys(judges).length === 0 && Object.keys(graders).length === 0 && targets.length === 0) {
+  if (deadlines === undefined && preparation === undefined && record === undefined && optimizer === undefined && critic === undefined && runBudget === undefined && selection === undefined && scoring === undefined && calibration === undefined && Object.keys(judges).length === 0 && Object.keys(graders).length === 0 && targets.length === 0) {
     return undefined;
   }
   return {
@@ -97,6 +100,7 @@ export const mergeTrainingDeclarations = (
     ...(critic === undefined ? {} : { critic }),
     ...(runBudget === undefined ? {} : { budget: runBudget }),
     ...(selection === undefined ? {} : { selection }),
+    ...(scoring === undefined ? {} : { scoring }),
     ...(calibration === undefined ? {} : { calibration }),
     graders: Object.fromEntries(Object.entries(graders).sort(([left], [right]) => left.localeCompare(right))),
     targets

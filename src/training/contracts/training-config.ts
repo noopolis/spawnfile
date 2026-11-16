@@ -48,6 +48,16 @@ export interface TrainingComparison {
 export interface TrainingScoring {
   /** Closed deferred deliveries remain failures; optionally retain measured stage reward. */
   deferred?: 'zero' | 'stage-score';
+  /**
+   * The search score of a trial that fails a gate. `gate` (default): 0. `ladder`: the stage score times each
+   * failed gate's factor, so one defect costs less than two and the optimizer sees a slope, not a cliff.
+   * Acceptance (every gate passes) stays strict either way and is reported beside the search score.
+   */
+  search?: 'gate' | 'ladder';
+  /** Factor of a failed gate check that carries no ladder of its own (default 0.5). */
+  gate_penalty?: number;
+  /** Search score of a trial whose graded output is missing: the agent filed nothing (default 0.05). */
+  missing_output?: number;
 }
 /** The prompt critic gate: a strong-model review a candidate must pass before it can be selected. */
 export interface TrainingCritic {

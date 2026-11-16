@@ -56,10 +56,10 @@ export function renderVerifiersMarkdown(summary: VerifierSummary): string[] {
   if (summary.selection) {
     const rule = summary.selection.rule, baseline = summary.selection.baseline;
     lines.push('## Open and hidden gap rule', '',
-      `Over validation trials. A candidate is removed from selection when its open minus hidden gap exceeds the baseline's by more than ${rule.max_gap ?? 'n/a (not declared)'}, or its gate failure rate exceeds the baseline's by more than ${rule.max_gate_failure_rise ?? 'n/a (not declared)'}.`, '',
-      '| Candidate | Trials | Open | Hidden | Open minus hidden | Gate failure rate | Decision |', '| --- | --- | --- | --- | --- | --- | --- |',
-      `| baseline | ${baseline.trials} | ${shown(baseline.scoreOpen)} | ${shown(baseline.scoreHidden)} | ${shown(baseline.gap)} | ${shown(baseline.gateFailureRate)} | reference |`,
-      ...summary.selection.candidates.map(entry => `| ${cell(entry.label)} | ${entry.trials} | ${shown(entry.scoreOpen)} | ${shown(entry.scoreHidden)} | ${shown(entry.gap)} | ${shown(entry.gateFailureRate)} | ${entry.rejected ? `rejected: ${cell(entry.reason)}` : 'kept'} |`), '');
+      `Over validation trials. A candidate is removed from selection when its open minus hidden gap exceeds the baseline's by more than ${rule.max_gap ?? 'n/a (not declared)'}, or its gate failure rate exceeds the baseline's by more than ${rule.max_gate_failure_rise ?? 'n/a (not declared)'}${summary.selection.acceptance ? ", or it accepts (passes every gate) less often than the baseline" : ''}.`, '',
+      '| Candidate | Trials | Open | Hidden | Open minus hidden | Gate failure rate | Acceptance | Decision |', '| --- | --- | --- | --- | --- | --- | --- | --- |',
+      `| baseline | ${baseline.trials} | ${shown(baseline.scoreOpen)} | ${shown(baseline.scoreHidden)} | ${shown(baseline.gap)} | ${shown(baseline.gateFailureRate)} | ${shown(baseline.acceptance ?? null)} | reference |`,
+      ...summary.selection.candidates.map(entry => `| ${cell(entry.label)} | ${entry.trials} | ${shown(entry.scoreOpen)} | ${shown(entry.scoreHidden)} | ${shown(entry.gap)} | ${shown(entry.gateFailureRate)} | ${shown(entry.acceptance ?? null)} | ${entry.rejected ? `rejected: ${cell(entry.reason)}` : 'kept'} |`), '');
   }
   for (const [check, splits] of Object.entries(summary.questionnaires)) {
     lines.push(`## Questionnaire ${cell(check)}`, '', 'Operator-only. Hidden questions never reach the optimizer; the search and selection use the full score. A candidate whose open score rises while its hidden score does not has learned the visible questions.', '');

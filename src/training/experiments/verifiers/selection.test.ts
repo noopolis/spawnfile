@@ -31,8 +31,8 @@ it('measures open, hidden and gate failures over a candidate\'s validation trial
   expect([...ids]).toEqual(['house']);
   const trials = [trial('c', graded(0.9, 0.5)), trial('c', graded(0.7, 0.5, 'fail')), trial('c', 'missing'), trial('c', graded(0, 0), 'train'), trial('other', graded(0, 1)),
     { ...trial('c', graded(0, 0)), execution: 'failed' } as TrialReport];
-  expect(measureGap(trials, 'c', ids, evaluation)).toEqual({ trials: 3, scoreOpen: 0.8, scoreHidden: 0.5, gap: 0.3, gateFailureRate: 0.6667 });
-  expect(measureGap(trials, 'nobody', ids, evaluation)).toEqual({ trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null });
+  expect(measureGap(trials, 'c', ids, evaluation)).toEqual({ trials: 3, scoreOpen: 0.8, scoreHidden: 0.5, gap: 0.3, gateFailureRate: 0.6667, acceptance: 0 });
+  expect(measureGap(trials, 'nobody', ids, evaluation)).toEqual({ trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null, acceptance: null });
 });
 
 it('rejects a candidate past either declared threshold and never one it cannot measure', () => {
@@ -41,6 +41,10 @@ it('rejects a candidate past either declared threshold and never one it cannot m
   expect(gapDecision({ max_gap: 0.1 }, baseline, 'c', { ...baseline, gap: 0.16 })).toMatchObject({ rejected: true, reason: expect.stringContaining('open minus hidden gap 0.16') as string });
   expect(gapDecision({ max_gate_failure_rise: 0.25 }, baseline, 'c', { ...baseline, gap: 0.9, gateFailureRate: 0.5 })).toMatchObject({ rejected: true, reason: expect.stringContaining('gate failure rate 0.5') as string });
   expect(gapDecision({ max_gap: 0.1, max_gate_failure_rise: 0.25 }, baseline, 'c', { ...baseline, gap: null, gateFailureRate: null }).rejected).toBe(false);
+  // On the ladder, shipping stays strict: a candidate accepting less often than the baseline is rejected.
+  expect(gapDecision({}, { ...baseline, acceptance: 0.75 }, 'c', { ...baseline, acceptance: 0.5 }, true)).toMatchObject({ rejected: true, reason: expect.stringContaining('acceptance rate 0.5') as string });
+  expect(gapDecision({}, { ...baseline, acceptance: 0.75 }, 'c', { ...baseline, acceptance: 0.75 }, true).rejected).toBe(false);
+  expect(gapDecision({}, { ...baseline, acceptance: 0.75 }, 'c', { ...baseline, acceptance: 0.5 }).rejected).toBe(false);
   expect(gapDecision({ max_gap: 0.1 }, { ...baseline, gap: null }, 'c', { ...baseline, gap: 0.9 }).rejected).toBe(false);
 });
 
