@@ -28,3 +28,5 @@
 `moments.ts` also lowers `training.budget`, `training.selection` and `training.calibration` into the train
 dataset's `training` block; a calibration set travels with its whole directory. An example with
 `grader: false` lowers no `grade` check.
+- `boundaries.ts` lowers authored optimizer boundaries (`training.optimizer.boundaries`), which name an editable
+  target file as the agent declares it, to the training CLI's component keys; a name that is no editable file is refused.

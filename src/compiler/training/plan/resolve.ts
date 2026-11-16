@@ -19,7 +19,8 @@ const optimizerFor = (agent: TrainingAgentNode, hasTargets: boolean): TrainingPl
   return {
     method: optimizer!.method!, model: optimizer!.model!, ...(optimizer!.provider === undefined ? {} : { provider: optimizer!.provider }),
     variants: optimizer!.variants!, keep: optimizer!.keep!,
-    budget: { rounds: optimizer!.budget!.rounds! }
+    budget: { rounds: optimizer!.budget!.rounds! },
+    ...(optimizer!.boundaries === undefined ? {} : { boundaries: [...optimizer!.boundaries] })
   };
 };
 
