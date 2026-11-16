@@ -104,8 +104,10 @@ Reads:
 - The reply is constrained to one typed property per step and then parsed again by the evaluator.
 - An answer outside the declared type, `na` without `na_when`, or a missing answer is an `error`:
   it scores 0, is listed, and can never pass a gate. A gate question in error makes the check `error`.
-- A judge call that fails leaves every answer of its group an error. Nothing is retried by the check;
-  the route's own attempts apply.
+- A transient judge failure (the provider is unavailable, times out, is rate-limited or drops the
+  connection, or the reply is not a JSON object) asks the whole group again, up to three calls, five
+  seconds apart. Every call is recorded and billed. A group still without a reply leaves every answer an
+  error. Answers are never retried for a better score: a reply that parses is final.
 
 ## Hidden questions
 

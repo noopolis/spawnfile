@@ -5,6 +5,8 @@ import { artifact, evaluationContext, snapshot } from '../testing/index.js';
 import { createEvaluationRegistry, evaluatePlan } from './index.js';
 import { evaluateQuestionnaire, questionnaireResources } from './questionnaire.js';
 
+vi.mock('node:timers/promises', () => ({ setTimeout: async () => undefined }));
+
 const check = { id: 'house-rules', eval: 'questionnaire', bank: 'bank.yaml', input: 'artifact:article',
   context: { evidence: 'context:evidence', assignment: 'context:assignment' } };
 const context = (replies: readonly unknown[], overrides: Parameters<typeof snapshot>[0] = {}) => {
@@ -31,8 +33,8 @@ describe('questionnaire check', () => {
   });
   it.each([
     [[{ ...testReplies[0]!, figures: { answer: 'true', reason: '' } }, testReplies[1]], 'response-schema', 'answers outside the declared type: figures'],
-    [['not json', testReplies[1]], 'response-unparseable', 'judge reply was not a JSON object'],
-    [[Object.assign(new Error('down'), { kind: 'unavailable' }), testReplies[1]], 'provider-error', 'judge call failed (unavailable)'],
+    [['not json', 'not json', 'not json', testReplies[1]], 'response-unparseable', 'judge reply was not a JSON object'],
+    [Array(3).fill(Object.assign(new Error('down'), { kind: 'unavailable' })).concat([testReplies[1]]), 'provider-error', 'judge call failed (unavailable)'],
   ])('is an error with a named cause, never a pass: %#', async (replies, cause, reason) => {
     const result = await evaluateQuestionnaire(check, context(replies).context);
     expect(result).toMatchObject({ status: 'error', judgeFailure: { cause, judge: 'strong' } });

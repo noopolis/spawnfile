@@ -9,7 +9,9 @@ optimizer-visible projection and the calibration comparison. Public seam: `index
 - `answers.ts`: `parseAnswer`, `scoreAnswer`, `judgeAnswer`, repeat `combineAnswers`, `scoreQuestionnaire`.
 - `prompt.ts`: material rendering from declared `reads`, the fixed answering rules, one typed
   reply property per step.
-- `run.ts`: one judge call per group per repeat on the group's named route, in declared order.
+- `run.ts`: one judge call per group per repeat on the group's named route, in declared order; a
+  transient failure (provider down, timeout, rate limit, transport, non-JSON reply) asks the group again,
+  up to `GROUP_ATTEMPTS` calls.
 - `report.ts`: `questionnaireFeedback` (open questions only) and per-candidate summaries.
 - `calibration.ts`: the calibration set contract (`spawnfile.training.calibration.v1`) and the comparison
   of results with a set's expectations; never asks a judge. A clean output failing a question any
@@ -19,7 +21,7 @@ Rules:
 
 - Runtime-neutral: import contracts only. No evaluation, experiments, inference, CLI or engine names.
 - An answer the declared type does not allow, or a missing one, is an `error`: it scores 0 and can
-  never pass a gate. Never coerce, default or retry an answer into a pass.
+  never pass a gate. Never coerce, default or retry an answer into a pass; only a group with no parsed reply is asked again.
 - The judge sees questions, criteria and option ids. Scores, weights, gates and hidden flags never
   enter a prompt.
 - Hidden questions and working steps never enter `questionnaireFeedback`; optimizer code reads only
