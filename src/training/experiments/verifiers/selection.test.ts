@@ -77,6 +77,19 @@ it('removes a candidate that only improved on what the optimizer could see, with
   expect(events.map(event => event.type)).toEqual(['selection.gap']);
 });
 
+it('on the ladder, rejects a candidate that accepts less often than the baseline, with no gap rule declared', async () => {
+  const { baseline, learned, plain, common } = await fixture([]);
+  const accepted = (report: TrialReport, status: 'pass' | 'fail') => ({ ...report, status }) as TrialReport;
+  const trials = [accepted(trial(baseline.id, graded(0.8, 0.75)), 'pass'), accepted(trial(learned.id, graded(0.95, 0.6)), 'fail'), accepted(trial(plain.id, graded(0.85, 0.8)), 'pass')];
+  const result = await selectCandidate({ ...common, trials, acceptance: true });
+  expect(result.selected.id).toBe(plain.id);
+  expect(result.gap).toMatchObject({ rule: {}, acceptance: true, baseline: { acceptance: 1 },
+    candidates: [{ candidateId: learned.id, acceptance: 0, rejected: true, reason: expect.stringContaining('acceptance rate 0') as string }, { candidateId: plain.id, acceptance: 1, rejected: false }] });
+  // A candidate without validation trials is not rejected by the rule.
+  expect(gapDecision({}, { trials: 1, scoreOpen: 1, scoreHidden: 1, gap: 0, gateFailureRate: 0, acceptance: 1 }, 'c', { trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null, acceptance: null }, true).rejected).toBe(false);
+  expect(gapDecision({}, { trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null }, 'c', { trials: 1, scoreOpen: 1, scoreHidden: 1, gap: 0, gateFailureRate: 0, acceptance: 0 }, true).rejected).toBe(false);
+});
+
 it('keeps the baseline when every candidate is rejected, and the search\'s choice without a rule', async () => {
   const { baseline, learned, common } = await fixture([]);
   expect((await selectCandidate({ ...common, rule: { max_gap: 0 }, trials: [...common.trials, trial(common.candidateFor(common.optimizer.provenance.candidates[1]!.components).id, graded(1, 0))] })).selected.id).toBe(baseline.id);
