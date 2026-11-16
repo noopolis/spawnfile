@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { calibrationExpectationSchema, calibrationSetSchema, checkQuestionnaireCalibration } from './calibration.js';
 import { runQuestionnaire } from './run.js';
-import { testBank, testJudge, testMaterial, testReplies } from './testSupport.js';
+import { parseBank } from './bank.js';
+import { testBank, testBankYaml, testJudge, testMaterial, testReplies } from './testSupport.js';
 
 const grade = (first: Record<string, unknown>, second: Record<string, unknown> = testReplies[1]!) =>
   runQuestionnaire({ bank: testBank(), material: testMaterial, judges: { strong: testJudge([first, second]) } });
@@ -56,5 +57,20 @@ describe('questionnaire calibration', () => {
       { ...set, outputs: [{ id: 'clean', output: '../clean.json' }, set.outputs[1]] }, { ...set, schema: 'other' }, { ...set, extra: true }]) {
       expect(calibrationSetSchema.safeParse(broken).success).toBe(false);
     }
+  });
+});
+
+describe('questionnaire calibration on the ladder', () => {
+  const laddered = parseBank(testBankYaml.replace('instructions: "You are a strict checker."', 'instructions: "You are a strict checker."\npenalty: 0.5'));
+  const gradeLadder = (first: Record<string, unknown>) => runQuestionnaire({ bank: laddered, material: testMaterial, judges: { strong: testJudge([first, testReplies[1]!]) } });
+  it('requires a known-bad output to score strictly below its clean base', async () => {
+    const only = expectations.slice(0, 1);
+    const clean = await gradeLadder(testReplies[0]!), figure = await gradeLadder({ ...testReplies[0]!, figures: { answer: 'no', reason: 'x' } });
+    const report = checkQuestionnaireCalibration(only, { clean, figure });
+    expect(report).toMatchObject({ ok: true, search: { clean: clean.search, defects: figure.search, notBelowBase: [] } });
+    expect(figure.search!).toBeLessThan(clean.search!);
+    const flat = { ...figure, search: clean.search };
+    expect(checkQuestionnaireCalibration(only, { clean, figure: flat })).toMatchObject({ ok: false, search: { notBelowBase: ['figure'] } });
+    expect(checkQuestionnaireCalibration(only, { clean: await grade(testReplies[0]!), figure: await grade({ ...testReplies[0]!, figures: { answer: 'no', reason: 'x' } }) }).search).toBeUndefined();
   });
 });

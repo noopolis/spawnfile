@@ -19,10 +19,14 @@ export interface GapMeasurement {
   gap: number | null;
   /** Share of those trials whose questionnaire check did not pass its gate; a missing output counts as a failure. */
   gateFailureRate: number | null;
+  /** Share of validation trials whose every gate passed: the strict acceptance verdict. */
+  acceptance?: number | null;
 }
 export interface GapDecision extends GapMeasurement { candidateId: string; rejected: boolean; reason?: string }
 export interface GapGateReport {
   rule: TrainingSelection;
+  /** Candidates must accept at least as often as the baseline (the ladder's shipping rule). */
+  acceptance?: boolean;
   baseline: GapMeasurement;
   /** Every candidate considered, in selection order. */
   candidates: GapDecision[];
@@ -44,7 +48,7 @@ export function questionnaireCheckIds(dataset: ResolvedDataset): Set<string> {
 /** A candidate's open and hidden questionnaire scores and gate failure rate over its validation trials. */
 export function measureGap(trials: readonly TrialReport[], candidateId: string, checkIds: ReadonlySet<string>, evaluation: (trial: TrialReport) => PlanEvaluation): GapMeasurement {
   const graded: QuestionnaireResult[] = [];
-  let checks = 0, failed = 0;
+  let checks = 0, failed = 0, trialsRun = 0, accepted = 0;
   const visit = (check: EvaluationResult) => {
     // A settled questionnaire check counts once: graded, or failed outright because the output is missing.
     if (check.id && checkIds.has(check.id) && (check.status === 'pass' || check.status === 'fail')) {
@@ -56,15 +60,21 @@ export function measureGap(trials: readonly TrialReport[], candidateId: string, 
   };
   for (const trial of trials) {
     if (trial.phase !== 'validation' || trial.candidateId !== candidateId || trial.execution === 'failed') continue;
+    trialsRun++;
+    if (trial.status === 'pass') accepted++;
     for (const stage of evaluation(trial).stages) stage.checks.forEach(visit);
   }
   const summary = summarizeQuestionnaire(graded);
-  return { trials: checks, scoreOpen: summary.scoreOpen, scoreHidden: summary.scoreHidden, gap: summary.gap, gateFailureRate: checks ? round(failed / checks) : null };
+  return { trials: checks, scoreOpen: summary.scoreOpen, scoreHidden: summary.scoreHidden, gap: summary.gap, gateFailureRate: checks ? round(failed / checks) : null,
+    acceptance: trialsRun ? round(accepted / trialsRun) : null };
 }
 
 /** The declared rule: a candidate may not widen the baseline's open minus hidden gap, or its gate failure rate, past the threshold. */
-export function gapDecision(rule: TrainingSelection, baseline: GapMeasurement, candidateId: string, measured: GapMeasurement): GapDecision {
+export function gapDecision(rule: TrainingSelection, baseline: GapMeasurement, candidateId: string, measured: GapMeasurement, acceptance = false): GapDecision {
   const reasons: string[] = [];
+  if (acceptance && (measured.acceptance ?? null) !== null && (baseline.acceptance ?? null) !== null && measured.acceptance! < baseline.acceptance!) {
+    reasons.push(`acceptance rate ${measured.acceptance} is below the baseline's ${baseline.acceptance}`);
+  }
   if (rule.max_gap !== undefined && measured.gap !== null && baseline.gap !== null && round(measured.gap - baseline.gap) > rule.max_gap) {
     reasons.push(`open minus hidden gap ${measured.gap} exceeds the baseline's ${baseline.gap} by more than ${rule.max_gap}`);
   }
@@ -104,6 +114,8 @@ export interface SelectionOptions {
   trials: readonly TrialReport[];
   evaluation: (trial: TrialReport) => PlanEvaluation;
   rule?: TrainingSelection;
+  /** Reject a candidate that accepts less often than the baseline: the search was graded, shipping stays strict. */
+  acceptance?: boolean;
   critic?: TrainingCriticOptions;
   /** Where critic reviews are kept across a resume. */
   checkpointDirectory?: string;
@@ -119,15 +131,16 @@ export interface SelectionOptions {
 export async function selectCandidate(options: SelectionOptions): Promise<{ selected: CandidateManifest; critic?: CriticGateReport; gap?: GapGateReport }> {
   let ranked = rankedCandidates(options.optimizer, options.candidateFor);
   let gap: GapGateReport | undefined;
-  if (options.rule) {
+  if (options.rule || options.acceptance) {
+    const rule = options.rule ?? {};
     const ids = questionnaireCheckIds(options.validation);
     const baseline = measureGap(options.trials, options.baseline.id, ids, options.evaluation);
     const decisions = new Map<string, GapDecision>();
     for (const { candidate } of ranked) {
       if (candidate.id === options.baseline.id || decisions.has(candidate.id)) continue;
-      decisions.set(candidate.id, gapDecision(options.rule, baseline, candidate.id, measureGap(options.trials, candidate.id, ids, options.evaluation)));
+      decisions.set(candidate.id, gapDecision(rule, baseline, candidate.id, measureGap(options.trials, candidate.id, ids, options.evaluation), options.acceptance));
     }
-    gap = { rule: options.rule, baseline, candidates: [...decisions.values()] };
+    gap = { rule, ...(options.acceptance ? { acceptance: true } : {}), baseline, candidates: [...decisions.values()] };
     ranked = ranked.filter(entry => !decisions.get(entry.candidate.id)?.rejected);
     await options.onProgress?.({ type: 'selection.gap', payload: gap });
   }

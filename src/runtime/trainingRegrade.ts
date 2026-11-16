@@ -9,6 +9,8 @@ import { createEvaluationRegistry, inferenceProviderDescriptor, regradeManifestS
 export interface RegradeTrainingOptions {
   manifest: string;
   out: string;
+  /** Outputs judged at once (default 1). */
+  concurrency?: number;
   /** Bound on one judge call (default 15 minutes). */
   judgeTimeoutMs?: number;
   streams: { stdout: (line: string) => void; stderr: (line: string) => void };
@@ -23,10 +25,12 @@ export const renderRegradeMarkdown = (report: RegradeReport): string => {
   const calibration = report.calibration;
   return [`# Regrade: ${report.check}`, "", `Bank ${report.bank.id} (${report.bank.digest}). Recorded outputs only; no subject trial ran. Judge calls: ${report.judgeCalls}.`, "",
     "Scores in the first table count a missing output as 0. Operator-only: hidden questions are named below.", "",
+    "| Candidate | Outputs | Score | Search score | Acceptance |", "| --- | --- | --- | --- | --- |",
+    ...Object.entries(report.candidates).map(([label, candidate]) => `| ${label} | ${candidate.outputs} | ${candidate.score ?? "n/a"} | ${candidate.search ?? "n/a"} | ${candidate.acceptance ?? "n/a"} |`), "",
     renderQuestionnaireMarkdown(Object.fromEntries(Object.entries(report.candidates).map(([label, candidate]) => [label,
       { summary: candidate.graded, score: candidate.score, scoreOpen: candidate.scoreOpen, scoreHidden: candidate.scoreHidden, gap: candidate.gap, missing: candidate.missing }]))), "",
     ...(calibration ? ["## Calibration", "",
-      `Verdict: **${calibration.ok ? "pass" : "fail"}**. Defects caught ${calibration.caught} of ${calibration.defects}; required gates failed ${calibration.gateFailed} of ${calibration.gateRequired}; clean bases failing ${calibration.cleanBasesFailing.length} of ${calibration.cleanBases}; clean false alarms ${calibration.cleanFalseAlarms.length}${calibration.missing.length ? `; missing ${calibration.missing.join(", ")}` : ""}.`, "",
+      `Verdict: **${calibration.ok ? "pass" : "fail"}**. Defects caught ${calibration.caught} of ${calibration.defects}; required gates failed ${calibration.gateFailed} of ${calibration.gateRequired}; clean bases failing ${calibration.cleanBasesFailing.length} of ${calibration.cleanBases}; clean false alarms ${calibration.cleanFalseAlarms.length}${calibration.search ? `; search score clean ${calibration.search.clean ?? "n/a"} against defects ${calibration.search.defects ?? "n/a"}, defects not below their clean base: ${calibration.search.notBelowBase.length}` : ""}${calibration.missing.length ? `; missing ${calibration.missing.join(", ")}` : ""}.`, "",
       ...calibration.rows.map((row) => `- ${row.defect}: ${row.caught ? "caught" : "MISSED"}, gate ${row.baseGate} to ${row.gate}; ${row.targets.map((target) => `${target.id} ${JSON.stringify(target.base)} to ${JSON.stringify(target.variant)}`).join("; ")}`),
       ...calibration.cleanFalseAlarms.map((alarm) => `- FALSE ALARM on clean ${alarm.output}: ${alarm.question} ${JSON.stringify(alarm.answer)}`), ""] : []),
     ...Object.entries(report.critic ?? {}).flatMap(([label, review]) => [`## Prompt critic: ${label}`, "",
@@ -76,7 +80,7 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
     return [name, { provider, model: model.model, ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }];
   }));
   try {
-    const report = await regradeRecordedOutputs({ manifest, completed, reviewed, registry: createEvaluationRegistry(), evaluation: { judges }, signal: options.signal,
+    const report = await regradeRecordedOutputs({ manifest, completed, concurrency: options.concurrency, reviewed, registry: createEvaluationRegistry(), evaluation: { judges }, signal: options.signal,
       read: async (file) => {
         const real = await realpath(path.resolve(base, file)).catch(() => invalid(`Regrade input does not exist: ${file}`));
         if (!real.startsWith(`${base}${path.sep}`)) invalid(`Regrade input leaves the manifest directory: ${file}`);
@@ -93,7 +97,7 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
     await writeFile(path.join(out, "REGRADE.json"), `${JSON.stringify(report, null, 1)}\n`, { mode: 0o600 });
     await writeFile(path.join(out, "REGRADE.md"), renderRegradeMarkdown(report), { mode: 0o600 });
     options.streams.stdout(JSON.stringify({ schema: report.schema, out, judgeCalls: report.judgeCalls,
-      candidates: Object.fromEntries(Object.entries(report.candidates).map(([label, candidate]) => [label, { score: candidate.score, scoreHidden: candidate.scoreHidden, gap: candidate.gap }])),
+      candidates: Object.fromEntries(Object.entries(report.candidates).map(([label, candidate]) => [label, { score: candidate.score, search: candidate.search, acceptance: candidate.acceptance, scoreHidden: candidate.scoreHidden, gap: candidate.gap }])),
       ...(report.calibration ? { calibration: report.calibration.ok } : {}) }));
     const unsettled = report.outputs.some((output) => output.status !== "pass" && output.status !== "fail") ||
       Object.values(report.critic ?? {}).some((review) => review.verdict === "error");

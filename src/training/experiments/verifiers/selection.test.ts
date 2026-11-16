@@ -31,8 +31,8 @@ it('measures open, hidden and gate failures over a candidate\'s validation trial
   expect([...ids]).toEqual(['house']);
   const trials = [trial('c', graded(0.9, 0.5)), trial('c', graded(0.7, 0.5, 'fail')), trial('c', 'missing'), trial('c', graded(0, 0), 'train'), trial('other', graded(0, 1)),
     { ...trial('c', graded(0, 0)), execution: 'failed' } as TrialReport];
-  expect(measureGap(trials, 'c', ids, evaluation)).toEqual({ trials: 3, scoreOpen: 0.8, scoreHidden: 0.5, gap: 0.3, gateFailureRate: 0.6667 });
-  expect(measureGap(trials, 'nobody', ids, evaluation)).toEqual({ trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null });
+  expect(measureGap(trials, 'c', ids, evaluation)).toEqual({ trials: 3, scoreOpen: 0.8, scoreHidden: 0.5, gap: 0.3, gateFailureRate: 0.6667, acceptance: 0 });
+  expect(measureGap(trials, 'nobody', ids, evaluation)).toEqual({ trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null, acceptance: null });
 });
 
 it('rejects a candidate past either declared threshold and never one it cannot measure', () => {
@@ -41,6 +41,10 @@ it('rejects a candidate past either declared threshold and never one it cannot m
   expect(gapDecision({ max_gap: 0.1 }, baseline, 'c', { ...baseline, gap: 0.16 })).toMatchObject({ rejected: true, reason: expect.stringContaining('open minus hidden gap 0.16') as string });
   expect(gapDecision({ max_gate_failure_rise: 0.25 }, baseline, 'c', { ...baseline, gap: 0.9, gateFailureRate: 0.5 })).toMatchObject({ rejected: true, reason: expect.stringContaining('gate failure rate 0.5') as string });
   expect(gapDecision({ max_gap: 0.1, max_gate_failure_rise: 0.25 }, baseline, 'c', { ...baseline, gap: null, gateFailureRate: null }).rejected).toBe(false);
+  // On the ladder, shipping stays strict: a candidate accepting less often than the baseline is rejected.
+  expect(gapDecision({}, { ...baseline, acceptance: 0.75 }, 'c', { ...baseline, acceptance: 0.5 }, true)).toMatchObject({ rejected: true, reason: expect.stringContaining('acceptance rate 0.5') as string });
+  expect(gapDecision({}, { ...baseline, acceptance: 0.75 }, 'c', { ...baseline, acceptance: 0.75 }, true).rejected).toBe(false);
+  expect(gapDecision({}, { ...baseline, acceptance: 0.75 }, 'c', { ...baseline, acceptance: 0.5 }).rejected).toBe(false);
   expect(gapDecision({ max_gap: 0.1 }, { ...baseline, gap: null }, 'c', { ...baseline, gap: 0.9 }).rejected).toBe(false);
 });
 
@@ -71,6 +75,19 @@ it('removes a candidate that only improved on what the optimizer could see, with
   expect(result.critic).toBeUndefined();
   expect(result.gap).toMatchObject({ rule: { max_gap: 0.1 }, baseline: { gap: 0.05 }, candidates: [{ candidateId: learned.id, gap: 0.35, rejected: true }, { candidateId: plain.id, gap: 0.05, rejected: false }] });
   expect(events.map(event => event.type)).toEqual(['selection.gap']);
+});
+
+it('on the ladder, rejects a candidate that accepts less often than the baseline, with no gap rule declared', async () => {
+  const { baseline, learned, plain, common } = await fixture([]);
+  const accepted = (report: TrialReport, status: 'pass' | 'fail') => ({ ...report, status }) as TrialReport;
+  const trials = [accepted(trial(baseline.id, graded(0.8, 0.75)), 'pass'), accepted(trial(learned.id, graded(0.95, 0.6)), 'fail'), accepted(trial(plain.id, graded(0.85, 0.8)), 'pass')];
+  const result = await selectCandidate({ ...common, trials, acceptance: true });
+  expect(result.selected.id).toBe(plain.id);
+  expect(result.gap).toMatchObject({ rule: {}, acceptance: true, baseline: { acceptance: 1 },
+    candidates: [{ candidateId: learned.id, acceptance: 0, rejected: true, reason: expect.stringContaining('acceptance rate 0') as string }, { candidateId: plain.id, acceptance: 1, rejected: false }] });
+  // A candidate without validation trials is not rejected by the rule.
+  expect(gapDecision({}, { trials: 1, scoreOpen: 1, scoreHidden: 1, gap: 0, gateFailureRate: 0, acceptance: 1 }, 'c', { trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null, acceptance: null }, true).rejected).toBe(false);
+  expect(gapDecision({}, { trials: 0, scoreOpen: null, scoreHidden: null, gap: null, gateFailureRate: null }, 'c', { trials: 1, scoreOpen: 1, scoreHidden: 1, gap: 0, gateFailureRate: 0, acceptance: 0 }, true).rejected).toBe(false);
 });
 
 it('keeps the baseline when every candidate is rejected, and the search\'s choice without a rule', async () => {

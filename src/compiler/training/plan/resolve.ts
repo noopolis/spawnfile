@@ -37,10 +37,10 @@ const recordFor = (project: LoadedTrainingProject, agent: TrainingAgentNode): Tr
   };
 };
 
-const verifiersFor = (agent: TrainingAgentNode): Pick<TrainingPlan, "judges" | "critic" | "budget" | "selection" | "calibration"> => {
-  const { judges, critic, budget, selection, calibration } = agent.value.training ?? {};
+const verifiersFor = (agent: TrainingAgentNode): Pick<TrainingPlan, "judges" | "critic" | "budget" | "selection" | "scoring" | "calibration"> => {
+  const { judges, critic, budget, selection, scoring, calibration } = agent.value.training ?? {};
   if (critic && !Object.hasOwn(judges ?? {}, critic.judge)) invalidTraining(`Training critic for ${agent.id} names undeclared judge ${critic.judge}`);
-  return { ...(judges ? { judges } : {}), ...(budget ? { budget } : {}), ...(selection ? { selection } : {}), ...(calibration ? { calibration } : {}),
+  return { ...(judges ? { judges } : {}), ...(budget ? { budget } : {}), ...(selection ? { selection } : {}), ...(scoring ? { scoring } : {}), ...(calibration ? { calibration } : {}),
     ...(critic ? { critic: { judge: critic.judge, guide: critic.guide, show: critic.show ?? [], block_on: critic.block_on ?? "high" } } : {}) };
 };
 

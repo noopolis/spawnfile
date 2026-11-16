@@ -36,8 +36,10 @@ export const registerTrainCommand = (
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
     if (typeof options.regrade === "string") {
       if (typeof options.out !== "string") throw new SpawnfileError("validation_error", "--regrade requires --out");
+      const concurrency = typeof options.concurrency === "string" ? Number(options.concurrency) : undefined;
+      if (concurrency !== undefined && (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 16)) throw new SpawnfileError("validation_error", "--concurrency for --regrade must be an integer from 1 to 16");
       setExitCode(await handlers.runTrainingRegrade({ manifest: options.regrade, out: options.out,
-        authProfile: options.authProfile as string | undefined, streams, signal }));
+        authProfile: options.authProfile as string | undefined, ...(concurrency === undefined ? {} : { concurrency }), streams, signal }));
       return;
     }
     if (typeof options.materialize === "string") {

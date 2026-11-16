@@ -56,7 +56,11 @@ export interface RegradedOutput {
 export interface RegradeCandidate {
   outputs: number; missing: number; errors: number;
   /** Means over every case, a missing output counted as 0 on each score. */
-  score: number | null; scoreOpen: number | null; scoreHidden: number | null; gap: number | null;
+  score: number | null;
+  /** Mean graded search score (the bank's ladder; the strict zero without one). */
+  search: number | null;
+  /** Share of cases whose output exists and passes every gate. */
+  acceptance: number | null; scoreOpen: number | null; scoreHidden: number | null; gap: number | null;
   gatePassed: number;
   /** Over the outputs that exist. */
   graded: QuestionnaireSummary;
@@ -101,7 +105,8 @@ function summarize(results: readonly RegradedOutput[]): RegradeCandidate {
   const known = (pick: (result: QuestionnaireResult) => number | null) => graded.map(pick).filter((value): value is number => value !== null);
   const scoreOpen = mean([...known(result => result.scoreOpen), ...zeros]), scoreHidden = mean([...known(result => result.scoreHidden), ...zeros]);
   return { outputs: results.length, missing, errors: results.filter(result => result.status === 'error' || result.status === 'unknown').length,
-    score: mean([...known(result => result.score), ...zeros]), scoreOpen, scoreHidden,
+    score: mean([...known(result => result.score), ...zeros]), search: mean([...known(result => result.search ?? null), ...zeros]),
+    acceptance: results.length ? round(graded.filter(result => result.gate === 'pass').length / results.length) : null, scoreOpen, scoreHidden,
     gap: scoreOpen === null || scoreHidden === null ? null : round(scoreOpen - scoreHidden),
     gatePassed: graded.filter(result => result.gate === 'pass').length, graded: summarizeQuestionnaire(graded) };
 }

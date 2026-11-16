@@ -2,6 +2,7 @@ import { COMPARISON_CHECKPOINT_DOMAIN, CANDIDATE_DIGEST_SCHEMA, DATASET_DIGEST_S
 import { MutationQueue } from '../../platform/mutations/index.js';
 import type { TrialRetry } from './retry.js';
 import { recoverStoredReport } from './recovery.js';
+import { declaredScoring } from '../verifiers/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, readdir, rename, link, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -53,7 +54,7 @@ export class TrainingCheckpoint {
       ...(options.testRepeats === undefined || options.testRepeats === 1 ? {} : { testRepeats: options.testRepeats }),
       ...(options.validationRepeats === undefined || options.validationRepeats === 1 ? {} : { validationRepeats: options.validationRepeats }),
       ...(options.selection ? { selection: options.selection } : {}),
-      ...(options.scoring?.deferred === 'stage-score' ? { scoring: options.scoring } : {}),
+      ...(declaredScoring(options.scoring) ? { scoring: declaredScoring(options.scoring) } : {}),
       seed: options.seed ?? 0, budget: options.budget, proposal: options.proposal, search: options.search, maxRecoveryAttempts: options.checkpoint.maxRecoveryAttempts ?? 2, versions: ['dspy3.3.1', 'gepa0.1.4', 'training-checkpoint1'],
     });
     return this.load(options, identity);

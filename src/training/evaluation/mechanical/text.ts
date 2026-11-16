@@ -14,7 +14,7 @@ export async function evaluateText(check: CheckNode, context: EvaluationContext)
     // keeps its weight, so nothing is scored better by omission. An absence the run could
     // not observe stays unknown and keeps the trial unscorable, exactly as before.
     if (observedAbsence(check.input as string, context.snapshot)) {
-      return { ...result('fail', `Missing ${String(check.input)} in a completed, fully accounted subject execution`), score: 0 };
+      return { ...result('fail', `Missing ${String(check.input)} in a completed, fully accounted subject execution`), score: 0, absent: true };
     }
     return result('unknown', `Missing ${String(check.input)}`, context.snapshot.closed);
   }

@@ -214,7 +214,7 @@ const parseJson = (text: string, label: string): unknown => {
 const trainingBlock = async (plan: TrainingPlan, root: string, sidecar: (file: string) => Promise<string>, directory: (file: string) => Promise<string>): Promise<{ training?: Record<string, unknown> }> => {
   const optimizer = plan.optimizer?.provider ? plan.optimizer : undefined;
   const judges = Object.entries(plan.judges ?? {});
-  for (const [name, declared] of [["critic", plan.critic], ["budget", plan.budget], ["selection", plan.selection], ["calibration", plan.calibration]] as const) {
+  for (const [name, declared] of [["critic", plan.critic], ["budget", plan.budget], ["selection", plan.selection], ["scoring", plan.scoring], ["calibration", plan.calibration]] as const) {
     if (declared && !optimizer && judges.length === 0) invalid(`Training ${name} needs a declared optimizer provider or judges`);
   }
   if (!optimizer && judges.length === 0) return {};
@@ -232,6 +232,7 @@ const trainingBlock = async (plan: TrainingPlan, root: string, sidecar: (file: s
     ...(plan.critic ? { critic: { judge: plan.critic.judge, guide, show: plan.critic.show, block_on: plan.critic.block_on } } : {}),
     ...(plan.budget ? { budget: { ...plan.budget } } : {}),
     ...(plan.selection ? { selection: { ...plan.selection } } : {}),
+    ...(plan.scoring ? { scoring: { ...plan.scoring } } : {}),
     ...(calibration.length ? { calibration } : {}),
     ...(optimizer ? { optimizer: { model: "optimizer", method: optimizer.method, variants: optimizer.variants, keep: optimizer.keep, budget: { rounds: optimizer.budget.rounds },
       ...(optimizer.boundaries ? { boundaries: lowerBoundaries(plan, optimizer.boundaries) } : {}) } } : {})

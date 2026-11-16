@@ -20,7 +20,7 @@ export async function evaluateQuestionnaire(check: CheckNode, context: Evaluatio
   const selected = selectEvidence(input, context.snapshot);
   if (!selected.found) {
     if (observedAbsence(input, context.snapshot)) {
-      return { ...result('fail', `Graded artifact ${input} is missing from a completed, fully accounted subject execution`), score: 0, evidence: selected.evidence };
+      return { ...result('fail', `Graded artifact ${input} is missing from a completed, fully accounted subject execution`), score: 0, absent: true, evidence: selected.evidence };
     }
     return { ...result('unknown', 'Graded artifact was not observed', context.snapshot.closed), evidence: selected.evidence };
   }

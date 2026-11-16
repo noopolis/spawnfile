@@ -21,7 +21,7 @@ export async function evaluateGrader(check: CheckNode, context: EvaluationContex
     // As for every artifact check: a subject that closed its own execution without producing the graded
     // artifact failed the task (a measured zero), while an absence the run could not observe stays unknown.
     if (observedAbsence(check.input as string, context.snapshot)) {
-      return { ...result('fail', `Graded artifact ${String(check.input)} is missing from a completed, fully accounted subject execution`), score: 0, evidence: selected.evidence };
+      return { ...result('fail', `Graded artifact ${String(check.input)} is missing from a completed, fully accounted subject execution`), score: 0, absent: true, evidence: selected.evidence };
     }
     return { ...result('unknown', 'Graded artifact was not observed', context.snapshot.closed), evidence: selected.evidence };
   }

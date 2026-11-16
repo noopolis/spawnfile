@@ -1,10 +1,11 @@
 import type { EvaluationResult, PlanEvaluation } from '../../contracts/evaluation.js';
 import type { DataMap, ResolvedRecord } from '../../contracts/dataset.js';
-import { criteriaFeedback, feedbackLevels, type Levels } from '../verifiers/index.js';
+import { criteriaFeedback, feedbackLevels, ladderFeedback, type Levels } from '../verifiers/index.js';
 import type { TrialReport } from '../trials/index.js';
 import type { AtomicFeedback } from '../../graders/atomic/index.js';
 import { createHash } from 'node:crypto';
 import { questionnaireFeedback } from '../../questionnaire/index.js';
+import type { TrainingScoring } from '../../contracts/training-config.js';
 
 export const trainingFeedbackLimits = { outputBytes: 16384, feedbackBytes: 32768, atomicBytes: 8192, atomicChecks: 40, unitChars: 1000 } as const;
 
@@ -140,11 +141,11 @@ function feedbackText(value: unknown, evaluation: PlanEvaluation, report: TrialR
 }
 
 /** Validation and test captures never supply optimizer text, even when outputs are declared. */
-export function trainingFeedback(record: ResolvedRecord, report: TrialReport, evaluation: PlanEvaluation = report.evaluation): { output: string; feedback: string } {
+export function trainingFeedback(record: ResolvedRecord, report: TrialReport, evaluation: PlanEvaluation = report.evaluation, scoring?: TrainingScoring): { output: string; feedback: string } {
   if (report.phase !== 'train') return { output: '', feedback: '' };
   const levels = feedbackLevels(record);
   return { output: taskOutput(record, report), feedback: feedbackText({ task: record.input ?? record.turns,
-    criteria: criteriaFeedback(record.effectiveStages), ...executionFeedback(report),
+    criteria: criteriaFeedback(record.effectiveStages), ...executionFeedback(report), ...ladderFeedback(evaluation, report.status, scoring, levels),
     evaluation: evaluationFeedback(evaluation, levels),
     subjectUsage: report.snapshot.subjectUsage ?? null,
     live: liveFeedback(report, levels) }, evaluation, report, levels) };

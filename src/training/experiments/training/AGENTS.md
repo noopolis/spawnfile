@@ -162,3 +162,6 @@ replaced before any sealed test runs.
 Feedback levels, validation repeats, the open and hidden gap rule and kept critic reviews live in
 `../verifiers`; `training.ts` only calls them. `validationRepeats` and a declared `selection` rule bind
 checkpoint identity when nondefault.
+
+The search ladder (`scoring.search: ladder`) lives in `../verifiers/ladder.ts`; `scoring.ts`, `feedback.ts`
+and `checkpoint.ts` only call it.

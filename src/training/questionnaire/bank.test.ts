@@ -49,6 +49,10 @@ describe('questionnaire bank', () => {
     ['repeats above 8', (raw: Raw) => { (raw.groups[0] as unknown as { repeats: number }).repeats = 9; }],
     ['a template without list', (raw: Raw) => { raw.reads = [{ from: 'output.body', template: '{a}' }]; }],
     ['distinct_from without by', (raw: Raw) => { raw.reads = [{ from: 'output.body', list: 'P', distinct_from: 'output.rows' }]; }],
+    ['a penalty on a question that is no gate', (raw: Raw) => { question(raw, 1, 0).penalty = 0.5; }],
+    ['a penalty on a scaffold step', (raw: Raw) => { question(raw, 0, 0).penalty = 0.5; }],
+    ['a penalty of 1', (raw: Raw) => { question(raw, 0, 2).penalty = 1; }],
+    ['a bank penalty below 0', (raw: Raw) => { raw.penalty = -0.1; }],
     ['no scored question', (raw: Raw) => { raw.groups = [{ id: 'only', questions: [{ id: 'notes', type: 'free-text', ask: 'Notes.' }] }] as never; }],
   ])('refuses %s', (_name, change) => {
     expect(edit(change)).toThrow(BankError);

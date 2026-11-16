@@ -161,16 +161,16 @@ it("refuses a critic naming an undeclared judge, a judge named optimizer and a J
 });
 
 it("lowers budget, the selection rule and a calibration set with its whole directory into the train training block", async () => {
-  const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({ training: { ...training, judges, budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: ["grading/calibration/set.json"] } }),
+  const root = await trainingProject({ ...dataFiles, Spawnfile: agentManifest({ training: { ...training, judges, budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, scoring: { search: "ladder", missing_output: 0.05 }, calibration: ["grading/calibration/set.json"] } }),
     "training/train.yaml": { examples: [questionnaireExample] }, "grading/questions.yaml": "bank bytes\n", "grading/evidence.json": "[]\n",
     "grading/calibration/set.json": "{}\n", "grading/calibration/outputs/clean.json": "{\"body\":[]}\n" });
   const loaded = await loadTrainingProject(root);
   const out = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moments-out-")); outs.push(out);
   const plan = resolveTrainingPlan(loaded, undefined, "test");
-  expect(plan).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: [path.join(loaded.root, "grading/calibration/set.json")] });
+  expect(plan).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, scoring: { search: "ladder", missing_output: 0.05 }, calibration: [path.join(loaded.root, "grading/calibration/set.json")] });
   const datasets = await lowerTrainingMoments({ project: loaded, plan, out });
   const block = JSON.parse(await readFile(datasets.train, "utf8")).training;
-  expect(block).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, calibration: [expect.stringMatching(/^graders\/[0-9a-f]{16}\/set\.json$/u)] });
+  expect(block).toMatchObject({ budget: { validation_repeats: 2 }, selection: { max_gap: 0.1 }, scoring: { search: "ladder", missing_output: 0.05 }, calibration: [expect.stringMatching(/^graders\/[0-9a-f]{16}\/set\.json$/u)] });
   expect(await readFile(path.join(path.dirname(datasets.train), path.dirname(block.calibration[0]), "outputs/clean.json"), "utf8")).toBe("{\"body\":[]}\n");
 });
 

@@ -1705,6 +1705,32 @@ regrade of recorded outputs is specified in `docs/training/questionnaire.md`. In
       },
       "additionalProperties": false
     },
+    "scoring": {
+      "type": "object",
+      "properties": {
+        "search": {
+          "type": "string",
+          "enum": [
+            "gate",
+            "ladder"
+          ]
+        },
+        "gate_penalty": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "missing_output": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1
+        }
+      },
+      "required": [
+        "search"
+      ],
+      "additionalProperties": false
+    },
     "calibration": {
       "minItems": 1,
       "type": "array",

@@ -44,7 +44,12 @@ export interface CalibrationReport {
   /** A question some defect targets, failed on a clean output: the bank raises the defect where there is none. */
   cleanFalseAlarms: { output: string; question: string; answer: unknown }[];
   missing: string[];
-  rows: { id: string; defect: string; caught: boolean; gate: string; baseGate: string; targets: { id: string; base: unknown; variant: unknown }[] }[];
+  /**
+   * On a laddered bank: mean search score of the clean bases and of the defect variants, and the variants whose
+   * gate must fail yet do not score strictly below their clean base. A known-bad output must rank below a clean one.
+   */
+  search?: { clean: number | null; defects: number | null; notBelowBase: string[] };
+  rows: { id: string; defect: string; caught: boolean; gate: string; baseGate: string; baseSearch?: number | null; search?: number | null; targets: { id: string; base: unknown; variant: unknown }[] }[];
   /** Every defect caught, every required gate failed, no clean base failing or raising a targeted defect, nothing missing. */
   ok: boolean;
 }
@@ -72,6 +77,7 @@ export function checkQuestionnaireCalibration(expectations: readonly Calibration
     if (!variant || !base) { missing.push(!variant ? expectation.id : expectation.base); continue; }
     const targets = expectation.targets.map(id => ({ id, base: answer(base, id), variant: answer(variant, id) }));
     rows.push({ id: expectation.id, defect: expectation.defect, gate: variant.gate, baseGate: base.gate,
+      ...(variant.factor === null || variant.factor === undefined ? {} : { baseSearch: base.search, search: variant.search }),
       caught: targets.some(target => target.variant !== undefined && target.variant.score !== null &&
         (target.base === undefined || target.base.score === null || target.variant.score < target.base.score)),
       targets: targets.map(target => ({ id: target.id, base: target.base?.answer ?? null, variant: target.variant?.answer ?? null })) });
@@ -85,6 +91,15 @@ export function checkQuestionnaireCalibration(expectations: readonly Calibration
   const required = expectations.filter(expectation => expectation.gate_must_fail);
   const gateFailed = required.filter(expectation => rows.find(row => row.id === expectation.id)?.gate === 'fail').length;
   const caught = rows.filter(row => row.caught).length;
-  return { defects: expectations.length, caught, gateRequired: required.length, gateFailed, cleanBases: bases.length, cleanBasesFailing, cleanFalseAlarms, missing: [...new Set(missing)], rows,
-    ok: missing.length === 0 && caught === expectations.length && gateFailed === required.length && cleanBasesFailing.length === 0 && cleanFalseAlarms.length === 0 };
+  const laddered = rows.some(row => row.search !== undefined);
+  const average = (values: (number | null | undefined)[]) => {
+    const known = values.filter((value): value is number => typeof value === 'number');
+    return known.length ? Math.round(known.reduce((sum, value) => sum + value, 0) / known.length * 10_000) / 10_000 : null;
+  };
+  const notBelowBase = rows.filter(row => row.search !== undefined && required.some(expectation => expectation.id === row.id)
+    && !(typeof row.search === 'number' && typeof row.baseSearch === 'number' && row.search < row.baseSearch)).map(row => row.id);
+  const search = laddered ? { clean: average(bases.map(id => results[id]!.search)), defects: average(rows.map(row => row.search)), notBelowBase } : undefined;
+  return { defects: expectations.length, caught, gateRequired: required.length, gateFailed, cleanBases: bases.length, cleanBasesFailing, cleanFalseAlarms, missing: [...new Set(missing)],
+    ...(search ? { search } : {}), rows,
+    ok: missing.length === 0 && caught === expectations.length && gateFailed === required.length && cleanBasesFailing.length === 0 && cleanFalseAlarms.length === 0 && notBelowBase.length === 0 };
 }

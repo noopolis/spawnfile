@@ -179,12 +179,13 @@ it.each([1, 3, 8])('accepts authored test_repeats=%s', test_repeats => {
 
 it('validates deferred scoring without adding defaults to existing configuration', () => {
   expect(validateTrainingConfiguration(config)).toEqual(config);
-  for (const scoring of [{}, { deferred: 'zero' }, { deferred: 'stage-score' }]) {
+  for (const scoring of [{}, { deferred: 'zero' }, { deferred: 'stage-score' }, { search: 'gate' }, { search: 'ladder', gate_penalty: 0, missing_output: 0.05 }]) {
     const authored = { ...config, scoring };
     expect(parseDatasetYaml(stringify(dataset(authored))).dataset.training).toEqual(authored);
   }
   for (const scoring of [null, 'stage-score', [], { deferred: null }, { deferred: true },
-    { deferred: 1 }, { deferred: 'pass' }, { deferred: 'stage-score', unknown: true }]) {
+    { deferred: 1 }, { deferred: 'pass' }, { deferred: 'stage-score', unknown: true }, { search: 'steps' }, { gate_penalty: 0.5 },
+    { search: 'gate', missing_output: 0.1 }, { search: 'ladder', gate_penalty: 1 }, { search: 'ladder', missing_output: -0.1 }, { search: 'ladder', gate_penalty: '0.5' }]) {
     expect(() => validateTrainingConfiguration({ ...config, scoring })).toThrow('scoring');
   }
 });

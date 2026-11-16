@@ -6,7 +6,9 @@ optimizer-visible projection and the calibration comparison. Public seam: `index
 
 - `types.ts`: bank, answer and score shapes; the prompt version.
 - `bank.ts`: strict YAML and schema validation, defaults, cross-references (`after`, `receives`).
-- `answers.ts`: `parseAnswer`, `scoreAnswer`, `judgeAnswer`, repeat `combineAnswers`, `scoreQuestionnaire`.
+- `answers.ts`: `parseAnswer`, `scoreAnswer`, `judgeAnswer`, repeat `combineAnswers`, `scoreQuestionnaire`, and the
+  ladder (`gateDistance`, `ladderRungs`): a laddered bank's failed gate multiplies the search score by its
+  `penalty`, once per unit out of range for a `number` gate. Without a declared penalty the search score keeps the strict zero.
 - `prompt.ts`: material rendering from declared `reads`, the fixed answering rules, one typed
   reply property per step.
 - `run.ts`: one judge call per group per repeat on the group's named route, in declared order; a
