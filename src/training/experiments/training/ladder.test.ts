@@ -24,7 +24,7 @@ it('scores one defect strictly between nothing and a clean article, and two defe
   const clean = article(check('house', 'pass', { questionnaire: questionnaire(1) }), 0.92);
   const one = article(check('house', 'fail', { questionnaire: questionnaire(0.5, [{ id: 'names', factor: 0.5 }]) }), 0.9);
   const two = article(check('house', 'fail', { questionnaire: questionnaire(0.25, [{ id: 'names', factor: 0.5 }, { id: 'figures', factor: 0.5 }]) }), 0.9);
-  const [cleanScore, oneScore, twoScore] = [clean, one, two].map(report => trialScore(report, ladder));
+  const cleanScore = trialScore(clean, ladder), oneScore = trialScore(one, ladder), twoScore = trialScore(two, ladder);
   expect(cleanScore).toBe(0.92);
   expect(oneScore).toBe(0.45);
   expect(twoScore).toBe(0.225);
