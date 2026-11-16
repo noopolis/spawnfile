@@ -17,7 +17,7 @@ Rules:
 
 - The baseline is never rejected and always remains selectable.
 - A candidate the rule cannot measure is not rejected by it.
-- Hidden questions reach selection only as scores; nothing here writes optimizer text.
+- Hidden questions reach selection only as scores. The only optimizer text written here is `ladderFeedback`, built from open projections.
 - Tests live beside source; keep every file above the 90% coverage floor and under 400 lines.
 
 `ladder.ts` owns opt-in `scoring.search: ladder`: a failed trial's search score is its stage score times
