@@ -2,7 +2,7 @@ import { COMPARISON_CHECKPOINT_DOMAIN, CANDIDATE_DIGEST_SCHEMA, DATASET_DIGEST_S
 import { MutationQueue } from '../../platform/mutations/index.js';
 import type { TrialRetry } from './retry.js';
 import { recoverStoredReport } from './recovery.js';
-import { declaredScoring } from './ladder.js';
+import { declaredScoring } from '../verifiers/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, readdir, rename, link, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';

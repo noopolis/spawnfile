@@ -1,7 +1,7 @@
 import type { TrainingScoring } from '../../contracts/training-config.js';
 import type { EvaluationResult } from '../../contracts/evaluation.js';
 import type { TrialReport } from '../trials/index.js';
-import { ladderScore } from './ladder.js';
+import { ladderScore } from '../verifiers/index.js';
 
 function atomicMeasurementFailed(check: EvaluationResult): boolean {
   return Boolean(check.atomicFailure) || check.atomicGrading?.status === 'error' || Boolean(check.atomicGrading?.failure) ||

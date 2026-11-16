@@ -1,5 +1,7 @@
 import type { TrainingScoring } from '../../contracts/training-config.js';
 import type { EvaluationResult, PlanEvaluation } from '../../contracts/evaluation.js';
+import { questionnaireFeedback } from '../../questionnaire/index.js';
+import type { Levels } from './levels.js';
 
 export const DEFAULT_GATE_PENALTY = 0.5;
 export const DEFAULT_MISSING_OUTPUT = 0.05;
@@ -71,4 +73,24 @@ export function ladderScore(evaluation: PlanEvaluation, status: string, stageSco
 /** The scoring policy when it departs from the defaults; it then binds checkpoint identity and is kept on the report. */
 export function declaredScoring(scoring?: TrainingScoring): TrainingScoring | undefined {
   return scoring?.deferred === 'stage-score' || scoring?.search === 'ladder' ? { ...scoring } : undefined;
+}
+
+/**
+ * Where the trial stands on the ladder: accepted or not, the lowest failed rung and what the next rung needs.
+ * A questionnaire rung names only its open gate questions; a rung of hidden questions alone is withheld.
+ */
+export function ladderFeedback(evaluation: PlanEvaluation, status: string, scoring: TrainingScoring | undefined, levels: Levels) {
+  if (scoring?.search !== 'ladder') return {};
+  const ladder = trialLadder(evaluation, status, scoring);
+  const checks = new Map(evaluation.stages.flatMap(stage => stage.checks).flatMap(check => check.id ? [[check.id, check] as const] : []));
+  const rungs = ladder.rungs.map(rung => {
+    const check = checks.get(rung.check);
+    if (rung.absent) return { rung: 'nothing filed', next: `File the graded output; ${rung.check} found none.` };
+    const level = levels.get(rung.check) ?? 'full';
+    const open = check?.questionnaire && level === 'full' ? questionnaireFeedback(check.questionnaire).ladder : undefined;
+    if (check?.questionnaire) return open?.failed.length ? { rung: `${rung.check} gates failed: ${open.failed.map(entry => entry.count ? `${entry.id} (${entry.count})` : entry.id).join(', ')}`, next: open.next }
+      : { rung: `${rung.check} failed a withheld gate`, next: 'Recheck the work against the declared criteria.' };
+    return { rung: `${rung.check} failed`, next: `Pass ${rung.check}.` };
+  });
+  return { ladder: { accepted: ladder.accepted, ...(rungs[0] ? { lowest: rungs[0].rung, next: rungs[0].next, rungs: rungs.length } : { next: 'Every gate passes; raise the graded scores.' }) } };
 }

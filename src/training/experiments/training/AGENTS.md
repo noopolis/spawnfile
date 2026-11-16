@@ -163,8 +163,5 @@ Feedback levels, validation repeats, the open and hidden gap rule and kept criti
 `../verifiers`; `training.ts` only calls them. `validationRepeats` and a declared `selection` rule bind
 checkpoint identity when nondefault.
 
-`ladder.ts` owns opt-in `scoring.search: ladder`: a failed trial's search score is its stage score times
-every failed gate's factor (a laddered questionnaire's own, `gate_penalty` otherwise), with the
-`missing_output` floor for a trial that filed nothing. Acceptance (status `pass`) stays strict, is
-reported beside the search mean, and selection rejects a candidate accepting less often than the
-baseline. The ladder rung enters train feedback through open questionnaire projections only.
+The search ladder (`scoring.search: ladder`) lives in `../verifiers/ladder.ts`; `scoring.ts`, `feedback.ts`
+and `checkpoint.ts` only call it.

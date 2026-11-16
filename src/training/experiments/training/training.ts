@@ -20,7 +20,7 @@ import type { TrialReport } from '../trials/index.js';
 import { resolveTrainingPartitions } from './partition.js';
 import { runStoredTrial, type StoredTrialOptions } from '../trials/index.js';
 import { trialScore } from './scoring.js';
-import { declaredScoring } from './ladder.js';
+import { declaredScoring } from '../verifiers/index.js';
 import { freezeCriteria } from './criteria.js';
 import { trainingFeedback } from './feedback.js';
 import type { CriticGateReport, TrainingCriticOptions } from '../../critic/index.js';
