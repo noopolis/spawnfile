@@ -2858,3 +2858,50 @@ no host environment preparation. Trials are labelled with the subject's own mode
 path), so `--concurrency` needs no host slot descriptors.
 Before teardown every credential-shaped file in the container is recorded in
 `<out>/booted-trials/credential-scan.jsonl` (expected: none).
+
+### Trial and judgment cache
+
+A trial already measured is replayed, not run again. The cache lives outside any run,
+under `--cache-dir` (default `~/.spawnfile/training-cache`), and survives runs.
+
+- A trial's key is the content digest of its compiled organization (the candidate
+  prompt and every file the agent sees, skills, MCP tools, the Dockerfile with its
+  runtime pins, the model and effort), the moment it boots into (fills by content
+  revision), the first wake's text and the trial deadline. Only the trial's own name,
+  volume lineage hashes and the project's location on disk are normalized out. Any
+  changed byte boots a fresh trial.
+- `--trial-cache reuse` (default) replays an identical recorded trial that this run has
+  not counted yet; otherwise the trial boots and, when it finished cleanly (every wake
+  completed or deferred by the subject, no teardown failure), is recorded with its
+  evidence. A run's claims ledger (`<out>/booted-trials/trial-cache-claims.jsonl`)
+  counts each recorded trial once per run, so validation and test repeats stay
+  distinct trials, also across a stop and `--resume`.
+- `--trial-cache fresh` runs every trial again (measuring one prompt's stability) and
+  still records; `--trial-cache off` neither reads nor records.
+- Judgments are cached separately, keyed on the judge engine, model, effort and the
+  whole judgment text (the article, the question bank and the schema). A grader change
+  re-judges recorded articles without new trials. The n-th identical request of a run
+  reads the n-th recorded reply, so questionnaire repeats stay separate samples. In
+  `reuse` mode optimizer proposals replay the same way under their own key, so an
+  unchanged rerun, including a rerun after a crash, repeats the whole search with no
+  new subject trial; `fresh` asks the optimizer again.
+- The report's per-example table has a Source column: `fresh`, or `cached (from
+  <trial id>)`. A replayed trial's evidence directory holds the original evidence plus
+  `reused-from.json`. Replayed judgments report no usage.
+
+### Run throughput
+
+- `--judge-concurrency N` (1..8, default 4) keeps up to N warm judge containers per
+  judge identity. A Daimon agent takes one manual wake at a time, so one judge
+  serialized every judgment of a run; another judge boots only while every booted one
+  is busy.
+- Trials whose compiled organizations digest equally (one candidate) share one image,
+  built once per run; each trial still gets its own container and volumes.
+- Each phase of every trial and judge (compile, image-build, moment-fill, start, ready,
+  after-boot, wake, stop, evidence, remove, volumes) is appended to
+  `<out>/booted-trials/phases.jsonl`.
+- One run per auth profile: a run takes an OS lock on
+  `~/.spawnfile/training-locks/<profile>.lock.sqlite` before its gateway starts and
+  holds it until it ends; the lock is released when the process ends however it ends.
+  A second run on the same profile waits (`--realm-lock wait`, default, reporting the
+  holder every five minutes) or fails at once (`--realm-lock fail`).

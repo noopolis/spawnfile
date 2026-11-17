@@ -1,11 +1,13 @@
 import { expect, it, vi } from "vitest";
 
-const calls = vi.hoisted(() => ({ argv: [] as string[][], dependencies: [] as unknown[] }));
-vi.mock("../auth/index.js", () => ({ requireAuthProfile: async (name: string) => ({ name }) }));
-vi.mock("../compiler/training/trial/index.js", () => ({ createBootedTrialRun: () => ({ close: async () => undefined }) }));
-vi.mock("../runtime/daimon/training/booted/index.js", () => ({ bindBootedJudges: () => undefined, createDaimonBootedAdapter: () => ({}) }));
-vi.mock("../runtime/trainingCli.js", () => ({ main: async (argv: string[], _io: unknown, dependencies: unknown) => {
-  calls.argv.push(argv); calls.dependencies.push(dependencies); return 0; } }));
+const calls = vi.hoisted(() => ({ argv: [] as string[][], dependencies: [] as unknown[], closed: 0, hang: false }));
+vi.mock("./trainingRun.js", () => ({ openTrainingRun: async () => ({ run: {}, close: async () => { calls.closed++; } }) }));
+vi.mock("../runtime/daimon/training/booted/index.js", () => ({ createDaimonBootedAdapter: () => ({}) }));
+vi.mock("../runtime/trainingCli.js", () => ({ main: async (argv: string[], io: { signal: AbortSignal }, dependencies: unknown) => {
+  calls.argv.push(argv); calls.dependencies.push(dependencies);
+  // A run that only ends when cancelled, as the training core does on its signal.
+  if (calls.hang) await new Promise((resolve) => io.signal.addEventListener("abort", resolve, { once: true }));
+  return calls.hang ? 1 : 0; } }));
 
 const { momentPreparation, runBootedTraining } = await import("./trainingBooted.js");
 
@@ -33,4 +35,16 @@ it("registers the moment preparation, which admits a valid moment and nothing be
   expect(() => momentPreparation.validate({ moment }, "record.a.setup")).not.toThrow();
   expect(() => momentPreparation.validate({ moment, other: 1 }, "record.a.setup")).toThrow("sets only setup.moment");
   expect(() => momentPreparation.validate({ moment: { ...moment, at: "yesterday" } }, "record.a.setup")).toThrow("record.a.setup.moment");
+});
+
+it("cancels the run on SIGINT, tears it down and releases the realm, and exits 130", async () => {
+  calls.hang = true;
+  const before = calls.closed;
+  const running = run(["--out", "/o"], { model: null, engine: "codex" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  process.emit("SIGINT");
+  expect(await running).toBe(130);
+  expect(calls.closed).toBe(before + 1);
+  expect(process.listenerCount("SIGINT")).toBe(0);
+  calls.hang = false;
 });

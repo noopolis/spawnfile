@@ -30,12 +30,13 @@ export function renderTrainingMarkdown(summary: TrainingSummary, bundle: string,
         number(value.train), number(value.validation), number(value.availableThroughRound.train.meanScore),
         number(value.availableThroughRound.validation.meanScore)]))), '',
     '## Per-example scores', '',
-    table(['Candidate', 'Split', 'Example', 'Trial', 'Measurement', 'Round', 'Score', 'Status', 'Host ms', 'Fidelity'],
+    table(['Candidate', 'Split', 'Example', 'Trial', 'Measurement', 'Round', 'Score', 'Status', 'Source', 'Host ms', 'Fidelity'],
       summary.candidates.flatMap(value => (['train', 'validation', 'test'] as const).flatMap(split => value.splits[split].examples.flatMap(example =>
         example.measurements.length ? example.measurements.map(measurement => [value.label, split, example.id, measurement.trialId,
-          measurement.evaluationId, split === 'test' ? 'post-selection' : measurement.round ?? 'not recorded', number(measurement.score), measurement.status, number(measurement.durationMs),
+          measurement.evaluationId, split === 'test' ? 'post-selection' : measurement.round ?? 'not recorded', number(measurement.score), measurement.status,
+          measurement.source === 'cached' ? `cached (from ${measurement.reusedFrom})` : 'fresh', number(measurement.durationMs),
           `${measurement.fidelity.measurement}; ${measurement.fidelity.execution}; historical unverified; isolation ${measurement.fidelity.declaredIsolation ?? 'unknown'}`])
-          : [[value.label, split, example.id, 'not run', 'none', 'not recorded', 'unknown', 'not run', 'unknown', 'unverified']])))), '',
+          : [[value.label, split, example.id, 'not run', 'none', 'not recorded', 'unknown', 'not run', 'none', 'unknown', 'unverified']])))), '',
     ...(summary.retries?.length ? ['## Infrastructure retries', '',
       table(['Failed trial', 'Replacement trial', 'Retry', 'Cause'], summary.retries.map(retry =>
         [retry.failedTrialId, retry.replacementTrialId, retry.attempt, retry.cause])), '',

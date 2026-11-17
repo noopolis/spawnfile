@@ -34,7 +34,7 @@ gateway sidecar. The training core drives it through the engine-neutral
   is `kind: message` at the moment's instant, as Moltnet delivers it; `read`
   returns a declared output from the container workspace. Teardown saves the
   container's evidence, removes the container, its (prefixed) volumes and its
-  image, and resolves with the runtime's last reported failure; the launcher
+  own image (a shared run image stays until the run closes), and resolves with the runtime's last reported failure; the launcher
   records a credential scan first.
 - `evidence.ts` keeps what a container can still say before it is removed
   (`captureTrialEvidence`), in the boot's evidence directory on the operator's
@@ -75,11 +75,24 @@ gateway sidecar. The training core drives it through the engine-neutral
   (`<trial root>/evidence`, passed down by the adapter), a judge's a fresh
   `<scratch root>/evidence/judge-*` per boot.
 - `launcher.ts` is one run: lazily starts the gateway from the first image of a
-  gatewayed engine, boots trials against it, keeps one warm judge per engine,
-  model and effort (booted through the same trial path), and `close` tears the
-  judges down and stops the gateway. The gateway holds every gatewayed login
-  the run's auth profile imported, read only from the profile, never a
-  personal engine home.
+  gatewayed engine, boots trials against it, keeps warm judges per engine,
+  model and effort (booted through the same trial path; `judgePool.ts` boots up
+  to `judgeConcurrency` of them, one more only while every booted one is busy,
+  since a Daimon agent takes one manual wake at a time), and `close` tears the
+  judges down, removes the run's images and stops the gateway. Trials go
+  through the trial cache (`cache/`) when the run has one. Trials whose compiled
+  organizations digest equally share one image (`createTrialImages`), built
+  once per run on first boot; containers and volumes stay per trial. Every
+  preparation and boot phase (compile, image-build, moment-fill, start, ready,
+  after-boot, wake, stop, evidence, remove, volumes) is appended to
+  `<scratch root>/phases.jsonl`.
+- `realmLock.ts` admits one run per auth profile: an OS lock held through
+  SQLite on `<spawnfile home>/training-locks/<profile>.lock.sqlite`, released
+  when the process ends however it ends. A second run waits (`wait`, default)
+  or refuses at once (`fail`), naming the holder from the note beside it.
+- `bootedTrial.ts` is a booted organization's wake, read and credential scan.
+- The gateway holds every gatewayed login the run's auth profile imported,
+  read only from the profile, never a personal engine home.
 - An engine whose login is one exclusive keyring realm (descriptor staging
   `secret-service`: AGY) is not gatewayed. Its organizations boot with no
   gateway, on Docker's default network (the engine needs egress), mounting the

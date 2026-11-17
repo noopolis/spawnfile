@@ -1,17 +1,14 @@
-import path from "node:path";
-
-import { requireAuthProfile } from "../auth/index.js";
-import { createBootedTrialRun } from "../compiler/training/trial/index.js";
-import { bindBootedJudges } from "../runtime/daimon/training/booted/index.js";
 import { regradeTraining } from "../runtime/trainingRegrade.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { CliStreams } from "./runCli.js";
+import { openTrainingRun, type TrainingRunControls } from "./trainingRun.js";
 
 export interface RunTrainingRegradeOptions {
   manifest: string;
   out: string;
   authProfile?: string;
   concurrency?: number;
+  controls?: TrainingRunControls;
   streams: CliStreams;
   signal?: AbortSignal;
 }
@@ -22,12 +19,11 @@ export interface RunTrainingRegradeOptions {
  */
 export const runTrainingRegrade = async (options: RunTrainingRegradeOptions): Promise<number> => {
   if (!options.authProfile) throw new SpawnfileError("validation_error", "A regrade asks the run's booted judges; pass --auth-profile (the login its auth gateway holds)");
-  const run = createBootedTrialRun({ authProfile: await requireAuthProfile(options.authProfile), scratchRoot: path.join(path.resolve(options.out), "booted-judges") });
-  bindBootedJudges(run, (line) => options.streams.stderr(line));
+  const { close } = await openTrainingRun({ ...options.controls, authProfile: options.authProfile, out: options.out, scratch: "booted-judges",
+    streams: options.streams, ...(options.signal ? { signal: options.signal } : {}) });
   try {
     return await regradeTraining({ manifest: options.manifest, out: options.out, concurrency: options.concurrency, streams: options.streams, signal: options.signal });
   } finally {
-    bindBootedJudges(undefined);
-    await run.close();
+    await close();
   }
 };

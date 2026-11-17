@@ -2,6 +2,7 @@ import { canonicalWireId } from '../shared/index.js';
 import type { TrainingContext } from "../compiler/training/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { CliStreams } from "./runCli.js";
+import type { TrainingRunControls } from "./trainingRun.js";
 import { runBootedTraining } from "./trainingBooted.js";
 
 export interface RunTrainingOptions {
@@ -10,6 +11,8 @@ export interface RunTrainingOptions {
   dryRun: boolean;
   /** Auth profile whose login a production-booted run's gateway holds. */
   authProfile?: string;
+  /** Realm lock, trial and judgment cache, judge concurrency of a production-booted run. */
+  controls?: TrainingRunControls;
   timeoutMs: number;
   streams: CliStreams;
   signal?: AbortSignal;

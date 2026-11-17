@@ -242,6 +242,8 @@ export interface SubjectEvidence {
   adapterId: string;
   /** Adapter-owned typed payload; core consumers must not interpret runtime identities. */
   payload: unknown;
+  /** Set when this result replays an identical earlier trial instead of running one: that trial's id. */
+  reusedFrom?: string;
 }
 
 /** A subject-declared budget a runtime may report as exhausted. */
