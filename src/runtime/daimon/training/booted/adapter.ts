@@ -18,6 +18,8 @@ export interface BootedWake {
   requestToolCalls?: readonly (readonly string[] | null)[];
   /** The engine failure Daimon reported for a delivery that did not complete, in full; null when none. */
   failure?: string | null;
+  /** Set when the run's trial cache replayed this wake: the trial that measured it. */
+  reusedFrom?: string;
 }
 
 /**
@@ -154,7 +156,7 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
           return {
             status, text: wake.text, usage,
             evidence: { adapterId: BOOTED_ADAPTER_ID, payload: { schema: BOOTED_EVIDENCE_SCHEMA, acceptanceId: wake.acceptanceId,
-              executionId: wake.executionId, state: wake.state, code: wake.code } },
+              executionId: wake.executionId, state: wake.state, code: wake.code }, ...(wake.reusedFrom === undefined ? {} : { reusedFrom: wake.reusedFrom }) },
             coverage: [
               { channel: 'output', completeness: ended ? 'complete' : 'partial', ordering: 'none' },
               { channel: 'usage', completeness: usage === null ? 'absent' : wake.usage.every((row) => row.complete) ? 'complete' : 'partial', ordering: 'none' },

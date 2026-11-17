@@ -1,11 +1,8 @@
-import path from "node:path";
-
-import { requireAuthProfile } from "../auth/index.js";
 import { TRAINING_MOMENT_PROFILE, TRAINING_MOMENT_VERSION, trainingMomentSchema } from "../compiler/training/moments.js";
-import { createBootedTrialRun } from "../compiler/training/trial/index.js";
-import { bindBootedJudges, createDaimonBootedAdapter } from "../runtime/daimon/training/booted/index.js";
+import { createDaimonBootedAdapter } from "../runtime/daimon/training/booted/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { RunTrainingOptions } from "./trainingExecution.js";
+import { openTrainingRun } from "./trainingRun.js";
 
 const failure = (message: string): SpawnfileError => new SpawnfileError("runtime_error", message);
 
@@ -41,13 +38,9 @@ export const runBootedTraining = async (options: RunTrainingOptions): Promise<nu
     ? system ? ["--source-root", options.context.project.root, "--instructions", system.destinationPath]
       : (() => { throw failure(`Agent ${options.context.agent.id} declares no system document to train`); })()
     : [];
-  const run = createBootedTrialRun({
-    agentManifestPath: options.context.agent.source,
-    projectManifestPath: options.context.project.manifest,
-    authProfile: await requireAuthProfile(options.authProfile),
-    scratchRoot: path.join(path.resolve(out), "booted-trials")
-  });
-  bindBootedJudges(run, (line) => options.streams.stderr(line));
+  const { run, close } = await openTrainingRun({ ...options.controls, authProfile: options.authProfile, out, scratch: "booted-trials",
+    agentManifestPath: options.context.agent.source, projectManifestPath: options.context.project.manifest,
+    streams: options.streams, ...(options.signal ? { signal: options.signal } : {}) });
   try {
     const { main } = await import("../runtime/trainingCli.js");
     // The subject's own model labels its trials; an engine that pins no model is labelled by the engine.
@@ -60,7 +53,6 @@ export const runBootedTraining = async (options: RunTrainingOptions): Promise<nu
       // The trial container boots its record's moment itself; the host prepares nothing for it.
       prepareEnvironment: async () => ({}) });
   } finally {
-    bindBootedJudges(undefined);
-    await run.close();
+    await close();
   }
 };

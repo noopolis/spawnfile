@@ -11,6 +11,8 @@ export interface Failure {
 export interface Measurement {
   trialId: string; evaluationId: string; round: number | null; score: number | null; scoreUnavailable: string | null;
   status: TrialReport['status']; durationMs: number | null;
+  /** `cached`: replayed from an identical earlier trial (`reusedFrom`), not run again. */
+  source: 'fresh' | 'cached'; reusedFrom: string | null;
   fidelity: { execution: TrialReport['execution']; measurement: 'native-trial' | 'rescore';
     historical: 'unverified'; declaredIsolation: string | null; captureClosed: boolean;
     coverage: TrialReport['snapshot']['coverage'] };
@@ -69,8 +71,9 @@ function measurement(trial: TrialReport, rescored?: RescoreReport, scoring?: Tra
   const current = rescored ?? trial;
   let score: number | null = null, scoreUnavailable: string | null = null;
   try { score = trialScore(current, scoring); } catch (error) { scoreUnavailable = String(error); }
+  const reusedFrom = trial.turns.find(turn => turn.native.evidence?.reusedFrom)?.native.evidence?.reusedFrom ?? null;
   return { trialId: trial.id, evaluationId: current.id, round: trial.round ?? null, score, scoreUnavailable, status: current.status,
-    durationMs: trial.durationMs ?? null, fidelity: { execution: trial.execution,
+    durationMs: trial.durationMs ?? null, source: reusedFrom === null ? 'fresh' : 'cached', reusedFrom, fidelity: { execution: trial.execution,
       measurement: rescored ? 'rescore' : 'native-trial', historical: 'unverified',
       declaredIsolation: trial.subject?.isolation ?? null, captureClosed: trial.snapshot.closed,
       coverage: trial.snapshot.coverage } };

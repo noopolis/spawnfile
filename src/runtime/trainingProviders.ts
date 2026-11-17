@@ -37,7 +37,7 @@ export function createTrainingProviderRegistry(): InferenceProviderRegistry {
     capabilities: { evaluatorPurposes: ['proposals', 'extraction'], evaluatorBudget: 'requests' },
     // An authored effort pins the judge organization's reasoning effort; without one the engine default judges.
     validate: (model, path) => validate(model, path, 'optional'),
-    create: (model, context) => createBootedJudgeInference({ engine: 'codex', timeoutMs: context.timeoutMs,
+    create: (model, context) => createBootedJudgeInference({ engine: 'codex', timeoutMs: context.timeoutMs, cacheable: context.purpose === 'judge',
       ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }),
   };
   const grok: InferenceProviderDescriptor = {
@@ -45,12 +45,12 @@ export function createTrainingProviderRegistry(): InferenceProviderRegistry {
     incompatibleWith: ['grok-broker'], incompatibilityReason: 'grok-broker routes cannot fall back to a desktop grok-subscription login',
     validate: (model, path) => validate(model, path, 'optional'),
     normalizeIdentity: model => ({ ...model, reasoning_effort: model.reasoning_effort ?? 'medium' }),
-    create: (model, context) => createBootedJudgeInference({ engine: 'grok', effort: model.reasoning_effort ?? 'medium', timeoutMs: context.timeoutMs }),
+    create: (model, context) => createBootedJudgeInference({ engine: 'grok', effort: model.reasoning_effort ?? 'medium', timeoutMs: context.timeoutMs, cacheable: context.purpose === 'judge' }),
   };
   const agy: InferenceProviderDescriptor = {
     policyVersion: INFERENCE_POLICY_VERSIONS['agy-subscription']!, capabilities: {},
     validate: (model, path) => validate(model, path, 'none'),
-    create: (_model, context) => createBootedJudgeInference({ engine: 'agy', timeoutMs: context.timeoutMs }),
+    create: (_model, context) => createBootedJudgeInference({ engine: 'agy', timeoutMs: context.timeoutMs, cacheable: context.purpose === 'judge' }),
   };
   // Broker grants lived in the removed training container; the ID still validates, and calls fail closed.
   const broker: InferenceProviderDescriptor = {

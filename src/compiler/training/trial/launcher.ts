@@ -12,6 +12,11 @@ import { startTrainingGateway, trainingGatewayLogins, type TrainingGateway } fro
 import { JUDGE_INSTRUCTIONS, writeJudgeAgent, type JudgeSpec } from "./judge.js";
 import { HOME_LOGIN_FILES } from "./homeLogin.js";
 import { createRealmTurns, type RealmTurns } from "./realmTurns.js";
+import { createTrialImages, timed, type TrialPhaseSink } from "./boot.js";
+import { cachedTrial } from "./cache/session.js";
+import { trialBaseKey } from "./cache/digest.js";
+import type { TrialCacheMode, TrialCacheStore } from "./cache/store.js";
+import { createJudgePool } from "./judgePool.js";
 
 export interface BootedTrialLauncherOptions {
   /** The subject agent's own Spawnfile; absent for a judges-only run (a regrade), which can boot no trial. */
@@ -27,6 +32,12 @@ export interface BootedTrialLauncherOptions {
   prepare?: typeof prepareTrial;
   /** Bound on a judge's wait for a volume-held login another container holds (default 30 minutes). */
   judgeRealmWaitMs?: number;
+  /** Reuse of identical earlier trials (`cache/`); absent: every trial boots. */
+  cache?: { store: TrialCacheStore; mode: TrialCacheMode };
+  /** Warm judge containers per judge identity, booted only while every one is busy (default 1). */
+  judgeConcurrency?: number;
+  /** The operator's channel for cache decisions. */
+  report?: (line: string) => void;
 }
 
 type Wake = (text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }) => Promise<TrialWake>;
@@ -57,7 +68,12 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
   const logins = trainingGatewayLogins(options.authProfile);
   let gateway: Promise<{ gateway: TrainingGateway; image: string }> | undefined;
   const judges = new Map<string, Promise<Booted>>();
+  const images = createTrialImages(docker);
   let closed = false;
+  /** Phase durations of every trial and judge, one JSON line each, beside the run's evidence. */
+  const phases = (id: string): TrialPhaseSink => (phase, ms) => {
+    void appendFile(path.join(options.scratchRoot, "phases.jsonl"), `${JSON.stringify({ id, phase, ms, at: new Date().toISOString() })}\n`).catch(() => undefined);
+  };
   const directory = async (prefix: string): Promise<string> => {
     await mkdir(path.dirname(path.join(options.scratchRoot, prefix)), { recursive: true });
     return mkdtemp(path.join(options.scratchRoot, prefix));
@@ -72,6 +88,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
       throw new SpawnfileError("validation_error", `Auth profile ${options.authProfile.name} has no ${missing.map(({ id }) => id).join(", ")} login; run \`spawnfile auth import <engine> --profile ${options.authProfile.name}\``);
     }
     gateway ??= (async () => {
+      await prepared.build?.();
       const image = `spawnfile-training-gateway:${runId.replace(/[^A-Za-z0-9_.-]/gu, "-").slice(0, 100)}`;
       await docker(["tag", prepared.image, image]);
       return { image, gateway: await startTrainingGateway({ authProfile: options.authProfile, docker, engines: logins,
@@ -108,10 +125,10 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
       throw error;
     }
   };
-  const start = async (prepared: PreparedTrial, kind: "trial" | "judge", signal?: AbortSignal, moment?: unknown, evidence?: string): Promise<Booted> => {
+  const start = async (prepared: PreparedTrial, kind: "trial" | "judge", signal?: AbortSignal, moment?: unknown, evidence?: string, phase?: TrialPhaseSink): Promise<Booted> => {
     try {
       const booted = await bootContainer(prepared, kind, signal ? { signal } : {}, moment, evidence);
-      return { ...booted, teardown: async () => {
+      return { ...booted, wake: (text, wakeOptions) => timed(phase, "wake", () => booted.wake(text, wakeOptions)), teardown: async () => {
         try {
           // Evidence that no login reached the trial: every credential-shaped file it holds, recorded before removal.
           const found = await booted.scanCredentials().catch((error: Error) => [`scan failed: ${error.message}`]);
@@ -166,24 +183,40 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
   };
 
   return {
-    boot: async ({ trialId, instructions, moment, signal, evidenceDirectory }) => start(await prepare({
-      agentManifestPath: options.agentManifestPath ?? (() => { throw new SpawnfileError("runtime_error", "this run boots judges only; it has no subject to boot"); })(), docker, instructions, trialId, directory: await directory("trial-"),
-      ...(options.projectManifestPath ? { projectManifestPath: options.projectManifestPath } : {})
-    }), "trial", signal, moment, evidenceDirectory),
+    boot: async ({ trialId, instructions, moment, signal, evidenceDirectory }) => {
+      const phase = phases(trialId);
+      const evidence = evidenceDirectory ?? await directory("evidence/trial-");
+      const prepared = await prepare({
+        agentManifestPath: options.agentManifestPath ?? (() => { throw new SpawnfileError("runtime_error", "this run boots judges only; it has no subject to boot"); })(), docker, instructions, trialId, directory: await directory("trial-"),
+        images, phase, ...(options.projectManifestPath ? { projectManifestPath: options.projectManifestPath } : {})
+      });
+      const live = (): Promise<Booted> => start(prepared, "trial", signal, moment, evidence, phase);
+      if (!options.cache || prepared.digest === undefined) return live();
+      return cachedTrial({ store: options.cache.store, mode: options.cache.mode, trialId, base: trialBaseKey(prepared.digest, moment),
+        evidenceDirectory: evidence, boot: live, discard: () => prepared.dispose(), ...(options.report ? { report: options.report } : {}) });
+    },
     judge: (spec) => {
       if (closed) return Promise.reject(new SpawnfileError("runtime_error", "the training run is closed"));
       const key = JSON.stringify([spec.engine, spec.model, spec.effort ?? null]);
       let judge = judges.get(key);
       if (!judge) {
-        judge = (async () => {
+        let member = 0;
+        const prepareJudge = async () => {
           const root = await directory("judge-");
-          const prepared = await prepare({
+          return prepare({
             agentManifestPath: await writeJudgeAgent(spec, path.join(root, "source")), docker, instructions: JUDGE_INSTRUCTIONS,
-            trialId: `judge-${spec.engine}-${key}-${runId}`, directory: root
+            trialId: `judge-${spec.engine}-${key}-${runId}${member++ === 0 ? "" : `-${member}`}`, directory: root, images, phase: phases(`judge-${spec.engine}`)
           });
+        };
+        judge = (async () => {
+          const prepared = await prepareJudge();
           let turnTaking: boolean;
           try { turnTaking = realmFor(prepared) !== undefined; } catch (error) { await prepared.dispose(); throw error; }
-          return turnTaking ? takeTurnsJudge(prepared) : start(prepared, "judge");
+          if (turnTaking) return takeTurnsJudge(prepared);
+          // A judge wakes one judgment at a time, so judgments in parallel need more judges: one more boots only when all are busy.
+          const first = start(prepared, "judge");
+          await first;
+          return createJudgePool(options.judgeConcurrency ?? 1, (index) => index === 0 ? first : prepareJudge().then((next) => start(next, "judge")));
         })();
         judges.set(key, judge);
         // A failed boot is not cached: the next judgment retries it.
@@ -197,6 +230,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
       judges.clear();
       await Promise.all(booted.map((judge) => judge?.teardown().catch(() => undefined)));
       const started = await gateway?.catch(() => undefined);
+      await images.close();
       if (!started) return;
       await started.gateway.stop();
       await docker(["image", "rm", "-f", started.image]).catch(() => undefined);

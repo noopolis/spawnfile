@@ -1,9 +1,8 @@
 import { expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({ argv: [] as string[][], dependencies: [] as unknown[] }));
-vi.mock("../auth/index.js", () => ({ requireAuthProfile: async (name: string) => ({ name }) }));
-vi.mock("../compiler/training/trial/index.js", () => ({ createBootedTrialRun: () => ({ close: async () => undefined }) }));
-vi.mock("../runtime/daimon/training/booted/index.js", () => ({ bindBootedJudges: () => undefined, createDaimonBootedAdapter: () => ({}) }));
+vi.mock("./trainingRun.js", () => ({ openTrainingRun: async () => ({ run: {}, close: async () => undefined }) }));
+vi.mock("../runtime/daimon/training/booted/index.js", () => ({ createDaimonBootedAdapter: () => ({}) }));
 vi.mock("../runtime/trainingCli.js", () => ({ main: async (argv: string[], _io: unknown, dependencies: unknown) => {
   calls.argv.push(argv); calls.dependencies.push(dependencies); return 0; } }));
 

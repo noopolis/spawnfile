@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { InferenceFailureKind, InferenceProvider } from '../../../../training/index.js';
 import { InferenceFailure, validateInferenceResponse, validateInferenceSchema } from '../../../../training/index.js';
 import { bootedUsage, type BootedWake } from './adapter.js';
@@ -14,6 +14,25 @@ export interface BootedJudgeLauncher {
 let bound: BootedJudgeLauncher | undefined;
 
 /**
+ * Valid judgments kept across runs. `take` hands out the n-th recorded reply for the n-th identical request of this
+ * process, so a judgment asked twice on purpose (questionnaire repeats) stays two samples; `put` records a fresh one
+ * at the occurrence `take` returned.
+ */
+export interface BootedJudgmentCache {
+  take(key: string): Promise<{ occurrence: number; reply?: string }>;
+  put(key: string, occurrence: number, reply: string): Promise<void>;
+}
+let judgments: BootedJudgmentCache | undefined;
+
+/** Binds the run's judgment cache (or none) for the run's duration, beside its judge launcher. */
+export function bindBootedJudgmentCache(cache: BootedJudgmentCache | undefined): void { judgments = cache; }
+
+/** The judge identity and the whole wake text: the article, every question of the bank, the schema and the model. */
+export function judgmentKey(engine: string, model: string, effort: string | undefined, text: string): string {
+  return createHash('sha256').update(JSON.stringify([engine, model, effort ?? null, text])).digest('hex');
+}
+
+/**
  * Composition binds the training run's judge launcher for the run's duration
  * (`spawnfile train` runs one run per process). Providers resolve it per
  * judgment, so grader and model registries stay static data.
@@ -27,7 +46,11 @@ export function bindBootedJudges(launcher: BootedJudgeLauncher | undefined, repo
  */
 let reportFailure: ((line: string) => void) | undefined;
 
-export interface BootedJudgeOptions { engine: string; effort?: string; timeoutMs?: number }
+export interface BootedJudgeOptions {
+  engine: string; effort?: string; timeoutMs?: number;
+  /** Only judgments are cached; an optimizer's proposals are asked fresh every run. */
+  cacheable?: boolean;
+}
 
 /**
  * Structured records of a wake transcript that are not a message or
@@ -127,17 +150,22 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
       if (request.signal?.aborted) throw new InferenceFailure('cancelled', `${route} cancelled before the wake`);
       if (!bound) throw new InferenceFailure('unavailable', 'Subscription judges run only as booted containers inside `spawnfile train --auth-profile <name>`');
       const evidence = { responseModel: null, responseRoute: route };
+      const schemaText = request.responseSchema === undefined ? '' : [
+        '', '', 'Reply with exactly one JSON value that validates against this JSON Schema and nothing else:',
+        JSON.stringify(request.responseSchema),
+      ].join('\n');
+      const text = `${request.system === undefined ? '' : `${request.system}\n\n`}${request.prompt}${schemaText}`;
+      const cache = options.cacheable ? judgments : undefined;
+      const key = judgmentKey(options.engine, request.model, options.effort, text);
+      const slot = cache ? await cache.take(key).catch(() => undefined) : undefined;
+      // A cached judgment spent nothing now: no usage is reported for it.
+      if (slot?.reply !== undefined) return { text: slot.reply, model: request.model, modelBasis: 'requested-assumption', usage: null, route };
       const judge = await bound.judge({ engine: options.engine, model: request.model, ...(options.effort === undefined ? {} : { effort: options.effort }) })
         .catch((error: unknown) => {
           const message = `${route} judge did not boot: ${error instanceof Error ? error.message : String(error)}`;
           reportFailure?.(message);
           throw new InferenceFailure('unavailable', message, evidence);
         });
-      const schema = request.responseSchema === undefined ? '' : [
-        '', '', 'Reply with exactly one JSON value that validates against this JSON Schema and nothing else:',
-        JSON.stringify(request.responseSchema),
-      ].join('\n');
-      const text = `${request.system === undefined ? '' : `${request.system}\n\n`}${request.prompt}${schema}`;
       // A wake that throws (not accepted, the container unreachable) is a failure with a reason like any other: left
       // unclassified it reached the operator as "Routed inference stopped (unknown)" and nothing else.
       const wake = await judge.wake(text, { deliveryId: `judge-${randomUUID()}`, timeoutMs: options.timeoutMs ?? 180_000, signal: request.signal })
@@ -170,6 +198,7 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
       } catch {
         throw new InferenceFailure('invalid-response', `${route} answer violated the requested schema`, withUsage);
       }
+      if (cache && slot) await cache.put(key, slot.occurrence, reply).catch(() => undefined);
       return { text: reply, model: request.model, modelBasis: 'requested-assumption', usage, route };
     },
   };

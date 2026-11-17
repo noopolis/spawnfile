@@ -3,6 +3,7 @@ import type { Command } from "commander";
 import { SpawnfileError } from "../shared/index.js";
 import { resumedMomentDatasets, withLoweredDatasets } from "../compiler/training/moments.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
+import { parseTrainingRunControls } from "./trainingRun.js";
 
 const forwarded = ["train", "validation", "test", "editable", "resource", "judge", "judge-citation-repairs", "validation-group", "optimizer-model",
   "bridge-command", "out", "max-trials", "max-proposals", "seed", "timeout-ms", "experiment-timeout-ms", "trial-timeout-ms", "view", "cost-config", "concurrency"] as const;
@@ -27,19 +28,24 @@ export const registerTrainCommand = (
     .option("--history <directory>", "Local recorded history for --materialize")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
     .option("--resume", "Resume the exact persisted training experiment in --out")
-    .option("--regrade <manifest>", "Grade recorded outputs with a declared check on the run's judges; boots no subject");
+    .option("--regrade <manifest>", "Grade recorded outputs with a declared check on the run's judges; boots no subject")
+    .option("--trial-cache <mode>", "reuse (default): replay identical earlier trials and judgments; fresh: run every trial again (stability repeats), still recording; off: neither")
+    .option("--cache-dir <directory>", "Trial and judgment cache kept across runs (default ~/.spawnfile/training-cache)")
+    .option("--judge-concurrency <n>", "Warm judge containers per judge, booted only when all are busy (1..8, default 4)")
+    .option("--realm-lock <mode>", "wait (default): queue behind another run on the same auth profile; fail: refuse at once");
   for (const name of forwarded) {
     const flag = `--${name} <value>`;
     if (repeated.has(name)) command.option(flag, `Training ${name}; repeatable`, (value: string, previous: string[]) => [...previous, value], []);
     else command.option(flag, name === "out" ? "Output directory for training or moment materialization" : `Training ${name}`);
   }
   command.action(async (inputPath: string, options: Record<string, string | string[] | boolean | undefined>) => {
+    const controls = parseTrainingRunControls(options);
     if (typeof options.regrade === "string") {
       if (typeof options.out !== "string") throw new SpawnfileError("validation_error", "--regrade requires --out");
       const concurrency = typeof options.concurrency === "string" ? Number(options.concurrency) : undefined;
       if (concurrency !== undefined && (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 16)) throw new SpawnfileError("validation_error", "--concurrency for --regrade must be an integer from 1 to 16");
       setExitCode(await handlers.runTrainingRegrade({ manifest: options.regrade, out: options.out,
-        authProfile: options.authProfile as string | undefined, ...(concurrency === undefined ? {} : { concurrency }), streams, signal }));
+        authProfile: options.authProfile as string | undefined, ...(concurrency === undefined ? {} : { concurrency }), controls, streams, signal }));
       return;
     }
     if (typeof options.materialize === "string") {
@@ -120,7 +126,7 @@ export const registerTrainCommand = (
         : await handlers.lowerTrainingMoments({ project, plan, out: lowered.execution.output }))
       : lowered?.execution.args ?? args;
     setExitCode(await handlers.runTraining({ context, args: executable,
-      authProfile: options.authProfile as string | undefined,
+      authProfile: options.authProfile as string | undefined, controls,
       dryRun: options.dryRun === true,
       timeoutMs: timeout + 5000, streams, signal }));
   });
