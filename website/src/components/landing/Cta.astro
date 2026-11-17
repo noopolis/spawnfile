@@ -1,0 +1,11 @@
+---
+// The two calls to action: copy the agent setup prompt, or copy the install command.
+import { INSTALL_CMD, SETUP_PROMPT } from '../../scripts/landing/content';
+---
+<div class="cta">
+  <button type="button" class="btn" data-copy={SETUP_PROMPT}>Copy setup prompt <small>paste into your agent</small></button>
+  <span class="install">
+    <code><span>$</span> npm i -g spawnfile</code>
+    <button type="button" data-copy={INSTALL_CMD} data-toast="Copied the install command.">copy</button>
+  </span>
+</div>

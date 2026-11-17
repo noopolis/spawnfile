@@ -1,0 +1,52 @@
+/* Hero and the stage: Spawnfile, compiled tree, running org. */
+.hero { padding: clamp(2rem, 5.5vh, 3.5rem) 0 clamp(3.5rem, 8vh, 6rem); }
+.intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem 3rem; flex-wrap: wrap; margin-top: clamp(1.25rem, 3vh, 2rem); }
+.sub { margin: 0; max-width: 31rem; font-size: clamp(1.05rem, 1.5vw, 1.25rem); line-height: 1.45; }
+
+.stage { margin-top: clamp(1.75rem, 4.5vh, 3rem); font: 400 .8125rem/1.85 var(--mono); }
+.stage.live::before, .stage.live::after { border-color: var(--sig); }
+.cols { display: grid; grid-template-columns: 1.42fr 1.12fr .86fr; }
+.col { min-width: 0; padding: 0 1.25rem 1rem; border-left: 1px solid var(--line); }
+.col:first-child { border-left: 0; padding-left: .25rem; }
+.col:last-child { padding-right: .25rem; }
+
+/* column headers double as the replay buttons */
+.step { display: flex; align-items: center; gap: .75rem; width: 100%; height: 2.75rem; margin-bottom: .5rem; border-bottom: 1px solid var(--line); color: var(--mute); text-align: left; white-space: nowrap; }
+.step i { font-style: normal; color: var(--faint); }
+.step.on i { color: var(--sig); }
+.step .note { margin-left: auto; color: var(--faint); }
+.step .cmd { margin-left: auto; color: var(--faint); overflow: hidden; text-overflow: ellipsis; transition: color .2s; }
+.step .cmd::before { content: '$ '; color: var(--faint); }
+button.step:hover .cmd, .step.on .cmd { color: var(--sig); }
+
+.row { display: flex; gap: .9rem; margin: 0 -.5rem; padding: 0 .5rem; border-radius: 2px; white-space: pre; cursor: default; box-shadow: inset 2px 0 0 transparent; transition: background .12s, box-shadow .12s, opacity .2s; }
+.row .n { flex: none; width: 1.25rem; text-align: right; color: var(--faint); user-select: none; }
+.row .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.tr { color: var(--faint); }
+.d { color: var(--mute); }
+
+/* linking: rows that share a group with the focused row stay lit */
+.focus [data-g] { opacity: .32; }
+.focus [data-g].hit { opacity: 1; background: var(--sig-soft); box-shadow: inset 2px 0 0 var(--sig); }
+.focus .team.hit { background: none; box-shadow: none; }
+.row.scan { background: var(--sig-soft); box-shadow: inset 2px 0 0 var(--sig); }
+
+/* run column */
+.box { margin: 0 -.5rem; }
+.box > * { margin-bottom: .3rem; }
+.room, .chip { display: flex; align-items: center; gap: .6rem; padding: 0 .5rem; border-radius: 2px; white-space: nowrap; color: var(--ink); transition: background .12s, box-shadow .12s, opacity .2s; }
+:is(.room, .chip, .tn) small { margin-left: auto; font-size: inherit; color: var(--faint); }
+.room .h { color: var(--sig); }
+.team { position: relative; margin-top: .45rem; padding-left: .9rem; transition: opacity .2s; }
+.team::before { content: ''; position: absolute; left: .68rem; top: 1.85em; bottom: .9em; width: .45rem; border: 1px solid var(--line-2); border-right: 0; }
+.team > .tn { display: flex; padding: 0 .5rem; margin-left: -.9rem; color: var(--mute); }
+.team .chip { padding-left: .9rem; }
+
+/* playback: outputs appear when their command runs */
+.anim .o { opacity: 0; transform: translateY(3px); }
+.anim .o.in { opacity: 1; transform: none; transition: opacity .25s, transform .25s; }
+.anim.focus .o.in:not(.hit) { opacity: .32; }
+
+.cap { display: flex; justify-content: space-between; gap: 1rem; margin-top: .25rem; padding: .7rem .25rem .1rem; border-top: 1px solid var(--line); color: var(--mute); }
+.cap span:last-child { color: var(--faint); white-space: nowrap; }
+.cap em { font-style: normal; color: var(--sig); }

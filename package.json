@@ -1,7 +1,31 @@
 {
   "name": "spawnfile",
   "version": "0.1.55",
-  "description": "Canonical source compiler for autonomous agents and teams.",
+  "description": "Compose for AI agent teams: declare agents once, compile for OpenClaw, PicoClaw and Daimon, run them in Docker on your subscriptions, and train them in place.",
+  "keywords": [
+    "ai-agents",
+    "agent-teams",
+    "multi-agent",
+    "agent-orchestration",
+    "compiler",
+    "docker",
+    "openclaw",
+    "picoclaw",
+    "daimon",
+    "codex",
+    "grok",
+    "moltnet",
+    "mcp",
+    "spawnfile"
+  ],
+  "bugs": {
+    "url": "https://github.com/noopolis/spawnfile/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noopolis/spawnfile.git"
+  },
+  "homepage": "https://spawnfile.com",
   "license": "MIT",
   "type": "module",
   "bin": {

@@ -1,34 +1,46 @@
-/* Force dark mode — no theme toggle */
-:root {
-  color-scheme: dark;
+/* Starlight docs in the Noopolis identity: neutral on near-black, blueprint marks,
+   Geist / Geist Mono. Dark is the only theme (see components/ThemeProvider.astro). */
+@import './tokens.css';
+
+:root,
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #0f1d38;
+  --sl-color-accent: #4f8cff;
+  --sl-color-accent-high: #86b0ff;
+  --sl-color-white: #eef1f4;
+  --sl-color-gray-1: #d5d9de;
+  --sl-color-gray-2: #b1b7be;
+  --sl-color-gray-3: #8a929a;
+  --sl-color-gray-4: #3a4047;
+  --sl-color-gray-5: #1e2226;
+  --sl-color-gray-6: #0e1012;
+  --sl-color-black: #08090a;
+  --sl-color-bg-nav: #08090a;
+  --sl-color-bg-sidebar: #08090a;
+  --sl-color-hairline: #1e2226;
+  --sl-color-hairline-light: #2b3036;
+  --sl-color-hairline-shade: #1e2226;
+  --sl-color-text-accent: #86b0ff;
+  --sl-font: var(--sans);
+  --sl-font-mono: var(--mono);
 }
 
-::selection {
-  background: #d4604a;
-  color: #fff;
-}
-::-moz-selection {
-  background: #d4604a;
-  color: #fff;
-}
+body { -webkit-font-smoothing: antialiased; }
 
-/* Spawnfile docs custom styles */
-:root {
-  --sl-color-accent-low: #2a1510;
-  --sl-color-accent: #d4604a;
-  --sl-color-accent-high: #ff8a72;
-  --sl-color-white: #f3eee7;
-  --sl-color-gray-1: #d1c7b8;
-  --sl-color-gray-2: #a59d94;
-  --sl-color-gray-3: #6b6560;
-  --sl-color-gray-4: #3a3632;
-  --sl-color-gray-5: #1a1a1a;
-  --sl-color-gray-6: #111;
-  --sl-color-black: #0b0b0b;
-}
+.sl-markdown-content :is(h1, h2, h3),
+h1#_top { letter-spacing: -0.03em; font-weight: 700; }
+h1#_top { letter-spacing: -0.04em; }
 
-/* Override the default Starlight font */
-:root {
-  --sl-font: 'DM Sans', system-ui, sans-serif;
-  --sl-font-mono: 'JetBrains Mono', monospace;
-}
+.sl-markdown-content a:not(:where(.not-content *)) { color: var(--sig-hi); text-decoration-color: color-mix(in srgb, var(--sig) 40%, transparent); text-underline-offset: 3px; }
+.sl-markdown-content a:not(:where(.not-content *)):hover { color: var(--ink); }
+
+.sl-markdown-content :not(pre) > code { background: var(--panel-2); border: 1px solid var(--line); border-radius: 5px; padding: 0.1em 0.35em; color: var(--ink); }
+
+.sl-markdown-content table th { font-family: var(--mono); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sub); background: var(--panel); }
+.sl-markdown-content table :is(th, td) { border-color: var(--line); }
+
+nav.sidebar .group-label .large { font-family: var(--mono); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--sig); }
+nav.sidebar a[aria-current='page'],
+nav.sidebar a[aria-current='page']:hover { background: var(--sl-color-accent-low); color: var(--ink); font-weight: 600; }
+
+header.header { border-bottom-color: var(--line); }

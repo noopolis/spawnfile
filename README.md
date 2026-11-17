@@ -1,109 +1,125 @@
 # Spawnfile
 
-> Write your agent team once. Compile it for different runtimes.
+> Your AI team, compiled. Declare it once, run it in Docker on the subscriptions you already have.
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/spawnfile"><img src="https://img.shields.io/npm/v/spawnfile?style=flat-square&color=d4604a&label=npm" alt="npm"></a>
-  <a href="https://www.npmjs.com/package/spawnfile"><img src="https://img.shields.io/npm/dm/spawnfile?style=flat-square&color=d4604a" alt="downloads"></a>
-  <a href="#try-it"><img src="https://img.shields.io/node/v/spawnfile?style=flat-square&color=d4604a" alt="node"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/npm/l/spawnfile?style=flat-square&color=d4604a" alt="MIT"></a>
-  <a href="https://spawnfile.com"><img src="https://img.shields.io/website?url=https%3A%2F%2Fspawnfile.com&style=flat-square&label=spawnfile.com&color=d4604a" alt="website"></a>
+  <a href="https://www.npmjs.com/package/spawnfile"><img src="https://img.shields.io/npm/v/spawnfile?style=flat-square&color=4f8cff&label=npm" alt="npm"></a>
+  <a href="https://github.com/noopolis/spawnfile/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/noopolis/spawnfile/test.yml?branch=main&style=flat-square&color=4f8cff&label=ci" alt="CI"></a>
+  <a href="https://github.com/noopolis/spawnfile/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/spawnfile?style=flat-square&color=4f8cff" alt="MIT"></a>
+  <a href="https://www.npmjs.com/package/spawnfile"><img src="https://img.shields.io/node/v/spawnfile?style=flat-square&color=4f8cff" alt="node"></a>
+  <a href="https://spawnfile.com"><img src="https://img.shields.io/website?url=https%3A%2F%2Fspawnfile.com&style=flat-square&label=spawnfile.com&color=4f8cff" alt="website"></a>
 </p>
 
 <p align="center">
-  <img src="website/public/new-claw-images.png" alt="Spawnfile compiles one agent source into multiple runtimes" width="420" />
+  <img src="https://raw.githubusercontent.com/noopolis/spawnfile/main/website/public/illustrations/spawnfile-hero.svg" alt="A team Spawnfile started with spawnfile up: three agents on OpenClaw and Daimon, talking in a Moltnet room" width="720" />
 </p>
 
-Describe your agents, give them identities and tools, and keep the whole team in one source project. Spawnfile compiles that project into the configuration and workspaces their runtimes need, then builds and deploys it with Docker.
-
-```text
-Spawnfile + workspace ─→ compile ─→ runtime files
-```
+Spawnfile is Compose for agent teams. Declare who your agents are, what they use, when they wake and where they talk, in Markdown and a little YAML. Spawnfile compiles that source into each harness's native configuration, runs the whole team in Docker, and can train its agents in place.
 
 ## Try it
 
-Start with one agent. Requires **Node.js 22.19+**; compilation needs no Docker or model credentials.
+Requires **Node.js 22.19+**. Compiling needs no Docker and no credentials.
 
 ```bash
 npm install -g spawnfile
-spawnfile init my-agent
-cd my-agent
+spawnfile init my-team --template moltnet-team-chat
+cd my-team
 spawnfile validate
 spawnfile compile
 ```
 
-`init` creates an OpenClaw project with `IDENTITY.md`, `SOUL.md`, and `AGENTS.md`. `compile` writes runtime configuration, the generated workspace, and container files into `.spawn/`. Read `spawnfile-report.json` there to see how your source was compiled. **The agent is configured, but has not started.**
+`compile` writes each agent's runtime configuration, workspace and container files into `.spawn/`. Read `.spawn/spawnfile-report.json` to see how every feature carried over: **supported**, **degraded** or **unsupported**. Nothing is running yet.
 
-Edit the Markdown files to define who the agent is and what it should do, then compile again. Keep the source in Git; `.spawn/` is generated and ignored.
+Run `spawnfile init --list-templates` for other starting points, or `spawnfile init my-agent` for a single agent.
 
-## From one agent to a team
+## Run it
 
-A team has its own `Spawnfile`, which references the member agent projects. Create its directory with `spawnfile init my-team --team`. Once you have two projects with distinct agent names under `my-team/agents/`, put their references in `my-team/Spawnfile`:
+With Docker available:
+
+```bash
+spawnfile auth import codex            # or: spawnfile auth import claude-code
+spawnfile up . --detach                # compile, build and start the team
+spawnfile status . --live              # check the running deployment
+```
+
+`up` starts every agent and the team's [Moltnet](https://moltnet.dev) network. A Docker context can point at another machine. Credentials live in local auth profiles, never in the source; see [Docker packaging](https://spawnfile.com/guides/docker/).
+
+## What a Spawnfile declares
+
+A team is a directory with its own `Spawnfile` that references member agents:
 
 ```yaml
 spawnfile_version: "0.1"
 kind: team
-name: research-team
-mode: swarm
+name: research-desk
+mode: hierarchical
+lead: lead
 members:
-  - id: researcher
-    ref: ./agents/researcher
-  - id: writer
-    ref: ./agents/writer
+  - { id: lead, ref: ./agents/lead }
+  - { id: researcher, ref: ./agents/researcher }
+  - { id: writer, ref: ./agents/writer }
+networks:
+  - id: desk
+    provider: moltnet
+    rooms:
+      - { id: general, members: [lead, researcher, writer] }
 ```
 
-Each member has its own Spawnfile, identity, and runtime. Teams can share instructions and resources, contain nested teams, and declare [Moltnet](https://moltnet.dev) rooms. The [team guide](https://spawnfile.com/guides/teams/) covers the full setup; [examples](examples/) show complete projects.
+- **Identity:** SOUL, IDENTITY and AGENTS docs for each agent.
+- **Skills and MCP:** shared or per agent.
+- **Model:** provider, model and which login it uses.
+- **Schedules:** when each agent wakes, and with what prompt.
+- **Rooms:** Moltnet networks, rooms, and who wakes on mentions.
+- **Nested teams:** teams inside teams, with a lead and shared resources.
+- **Memory:** scoped stores and who can read them.
+- **Secrets:** which ones are required, never their values.
 
-## What travels with your team
+The [team guide](https://spawnfile.com/guides/teams/) and [examples](https://github.com/noopolis/spawnfile/tree/main/examples) show complete projects.
 
-- **Agents:** Identity documents, instructions, skills, workspace resources, and each agent’s wake schedule.
-- **Tools and models:** MCP connections, model selection, and declared secret requirements.
-- **Team structure:** Members, nested teams, and shared resources.
-- **Communication:** Declared [Moltnet](https://moltnet.dev) networks and rooms for agents to exchange messages across runtimes.
-- **Deployment:** Runtime configuration, container files, and a capability report built from the same source.
+## Harnesses and models
 
-A team declaration alone does not create a conversation or a useful division of work. Give the agents a task, configure their communication, and choose how they wake. Start with the [team guide](https://spawnfile.com/guides/teams/) and [example projects](examples/).
+| Harness | Models | Logins |
+|---|---|---|
+| **OpenClaw** | OpenAI, Anthropic, custom or local endpoints | ChatGPT or Claude subscription, API key |
+| **PicoClaw** | OpenAI, Anthropic, custom or local endpoints | ChatGPT or Claude subscription, API key |
+| **Daimon** | Codex, Grok and Antigravity engines | ChatGPT, Grok or Antigravity subscription |
+| *More coming soon* | Hermes Agent and OpenCode are in research. | [Request a harness](https://github.com/noopolis/spawnfile/issues) |
 
-## Run and share it
+Pick a harness per agent and mix them in one team. Exact versions are pinned in [runtimes.yaml](https://github.com/noopolis/spawnfile/blob/main/runtimes.yaml); the full support matrix is in the [runtime specification](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIMES.md).
 
-Once the prompts and configuration are ready:
+## Train it
 
-1. **Provide credentials.** Import an existing subscription login or configure provider credentials with [auth profiles](https://spawnfile.com/guides/docker/). Keep secret values out of Git.
-2. **Build and start.** With Docker available, `spawnfile up . --detach --auth-profile <profile>` compiles, builds, and starts the project. A Docker context can target another machine.
-3. **Check the deployment.** `spawnfile status . --live` probes the running deployment; `spawnfile status .` reads only local declared and compiled state.
-4. **Share an image.** `spawnfile publish` packages the project for an OCI registry so another operator can run it without the source, using their own credentials.
+`spawnfile train` improves one agent's prompt docs against your own train and test cases. Every trial boots your real organization the way production does, judges score the result, and the optimizer rewrites only the files you mark editable.
 
-See [container deployment](specs/CONTAINERS.md), [status](specs/STATUS.md), and [image distribution](specs/DISTRIBUTION.md) for complete commands and requirements.
+```bash
+spawnfile train ./Spawnfile --agent writer \
+  --train evals/train.spawnfile-training.yaml \
+  --test evals/test.spawnfile-training.yaml \
+  --editable agents/writer/AGENTS.md --dry-run
+```
 
-## Runtime support
+`--dry-run` estimates the cost first; `--resume` continues a stopped run. Trials can start from recorded moments of real turns. Training covers Daimon agents on the Codex and Grok engines today. See the [training guide](https://spawnfile.com/guides/training/).
 
-| Runtime | Use it for |
-|---|---|
-| **Daimon** | Agents using subscription CLI engines such as Codex and Claude Code, with Moltnet and memory integration. |
-| **OpenClaw** | OpenClaw agents and their native messaging surfaces. The default agent scaffold. |
-| **PicoClaw** | PicoClaw agents and their native messaging surfaces. |
+## Share it
 
-Daimon requires a pinned runtime image matching the compiler contract.
-
-Portability is capability-specific: the compiler reports each feature as **supported**, **degraded**, or **unsupported**. Read that report before switching runtimes. Exact versions live in [runtimes.yaml](runtimes.yaml); the [runtime specification](specs/RUNTIMES.md) describes the adapter model.
+`spawnfile publish` packages the project as an OCI image that another operator runs with their own logins, without the source. See [distribution](https://spawnfile.com/guides/distribution/).
 
 ## Go further
 
-| I want to… | Read |
+| I want to... | Read |
 |---|---|
-| Understand the source format | [Spawnfile specification](specs/SPEC.md) |
-| Explore complete projects | [Examples](examples/) |
-| Add an adapter or contribute | [Contributing](CONTRIBUTING.md) |
-| Integrate with deployment tooling | [Target and lifecycle contracts](specs/TARGETS.md) |
-| Plan isolated agent training | [Agent training](specs/TRAINING.md) |
-| Find a detailed contract | [Specification index](specs/INDEX.md) |
+| Start from zero | [Quickstart](https://spawnfile.com/quickstart/) |
+| Understand the source format | [Specification](https://github.com/noopolis/spawnfile/blob/main/specs/SPEC.md) |
+| Explore complete projects | [Examples](https://github.com/noopolis/spawnfile/tree/main/examples) |
+| Integrate with deployment tooling | [Target and lifecycle contracts](https://github.com/noopolis/spawnfile/blob/main/specs/TARGETS.md) |
+| Add a harness or contribute | [Contributing](https://github.com/noopolis/spawnfile/blob/main/CONTRIBUTING.md) |
 
-Spawnfile is part of [Noopolis](https://github.com/noopolis). [Moltnet](https://moltnet.dev) supplies messaging; [Daimon](https://github.com/noopolis/daimon-harness) runs individual agents; [Simfile](https://simfile.org) builds simulation worlds around organizations. You can use Spawnfile on its own.
+Spawnfile is part of [Noopolis](https://github.com/noopolis): [Moltnet](https://moltnet.dev) carries messages between agents, [Daimon](https://github.com/noopolis/daimon-harness) runs one agent on a subscription engine, and [Simfile](https://simfile.org) builds worlds around a team. Spawnfile works on its own.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/noopolis/spawnfile/blob/main/LICENSE)
 
 ---
 
-**[spawnfile.com](https://spawnfile.com)** · **[Examples](examples/)** · **[Contributing](CONTRIBUTING.md)**
+**[spawnfile.com](https://spawnfile.com)** · **[Docs](https://spawnfile.com/introduction/)** · **[Examples](https://github.com/noopolis/spawnfile/tree/main/examples)** · **[npm](https://www.npmjs.com/package/spawnfile)**

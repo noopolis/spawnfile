@@ -64,7 +64,7 @@ for (const file of files) {
 const indexLines = [
   '# Spawnfile',
   '',
-  '> A fully open-source spec and compiler for autonomous agents and teams. MIT licensed.',
+  '> The Dockerfile for agentic organizations: declare a Spawnfile, compile it for OpenClaw, PicoClaw or Daimon, run it in Docker. MIT licensed.',
   '',
   '## Documentation',
   '',
@@ -88,7 +88,7 @@ writeFileSync(join(DIST_DIR, 'llms.txt'), indexLines.join('\n'));
 const fullLines = [
   '# Spawnfile -- Full Documentation',
   '',
-  '> A fully open-source spec and compiler for autonomous agents and teams.',
+  '> The Dockerfile for agentic organizations: declare a Spawnfile, compile it for OpenClaw, PicoClaw or Daimon, run it in Docker.',
   '',
 ];
 

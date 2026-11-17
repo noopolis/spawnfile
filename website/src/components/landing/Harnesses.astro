@@ -1,0 +1,21 @@
+---
+// Supported harnesses. Versions, models and logins must match specs/RUNTIMES.md and runtimes.yaml.
+const HARNESSES = [
+  { name: 'Daimon', pinned: '0.2.16', models: 'Codex, Grok and Antigravity engines', logins: 'ChatGPT, Grok or Antigravity subscription' },
+  { name: 'OpenClaw', pinned: 'v2026.6.11', models: 'OpenAI, Anthropic, custom or local', logins: 'ChatGPT or Claude subscription, API key' },
+  { name: 'PicoClaw', pinned: 'v0.3.1', models: 'OpenAI, Anthropic, custom or local', logins: 'ChatGPT or Claude subscription, API key' },
+];
+---
+<section class="sec" id="harnesses">
+  <div class="wrap">
+    <span class="tag">[ <b>harnesses</b> ]</span>
+    <h2>Three harnesses, mixed in one team.</h2>
+    <table class="spec">
+      <tr><th>Harness</th><th>Pinned</th><th>Models</th><th>Logins</th></tr>
+      {HARNESSES.map((h) => (
+        <tr><td>{h.name}</td><td><code>{h.pinned}</code></td><td>{h.models}</td><td>{h.logins}</td></tr>
+      ))}
+    </table>
+    <p class="foot">More harnesses are in research. <a href="https://github.com/noopolis/spawnfile/issues" rel="noopener">Ask for one</a>. <a href="/runtimes/overview/">Runtime support matrix</a>.</p>
+  </div>
+</section>

@@ -9,8 +9,9 @@ export default defineConfig({
     sitemap(),
     starlight({
       title: 'Spawnfile',
-      description: 'Define autonomous AI agents and multi-agent teams once, then compile portable Spawnfile manifests into runtime-native configuration.',
+      description: 'Declare an AI agent team once, compile it for OpenClaw, PicoClaw and Daimon, run it in Docker on your subscriptions, and train its agents in place.',
       components: {
+        ThemeProvider: './src/components/ThemeProvider.astro',
         ThemeSelect: './src/components/EmptyThemeSelect.astro',
         SiteTitle: './src/components/SiteTitle.astro',
       },
@@ -18,6 +19,15 @@ export default defineConfig({
         { icon: 'github', label: 'GitHub', href: 'https://github.com/noopolis/spawnfile' },
       ],
       head: [
+        { tag: 'link', attrs: { rel: 'preload', href: '/fonts/geist-latin.woff2', as: 'font', type: 'font/woff2', crossorigin: true } },
+        { tag: 'meta', attrs: { name: 'theme-color', content: '#08090a' } },
+        { tag: 'meta', attrs: { property: 'og:image', content: 'https://spawnfile.com/og.png' } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        { tag: 'meta', attrs: { name: 'twitter:card', content: 'summary_large_image' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: 'https://spawnfile.com/og.png' } },
+        { tag: 'link', attrs: { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' } },
         {
           tag: 'script',
           attrs: { async: true, src: 'https://www.googletagmanager.com/gtag/js?id=G-8ZM3Y7MCD5' },
@@ -28,6 +38,25 @@ export default defineConfig({
         },
       ],
       customCss: ['./src/styles/custom.css'],
+      expressiveCode: {
+        themes: ['github-dark'],
+        styleOverrides: {
+          borderRadius: '10px',
+          borderColor: '#2b3036',
+          codeBackground: '#050607',
+          codeFontFamily: '"Geist Mono", ui-monospace, monospace',
+          uiFontFamily: '"Geist Mono", ui-monospace, monospace',
+          frames: {
+            editorTabBarBackground: '#0e1012',
+            editorActiveTabBackground: '#050607',
+            editorActiveTabIndicatorTopColor: '#4f8cff',
+            terminalTitlebarBackground: '#0e1012',
+            terminalBackground: '#050607',
+            frameBoxShadowCssValue: 'none',
+            inlineButtonBorder: '#2b3036',
+          },
+        },
+      },
       sidebar: [
         {
           label: 'Getting Started',
@@ -46,6 +75,7 @@ export default defineConfig({
             { label: 'Teams', slug: 'guides/teams' },
             { label: 'Compiling', slug: 'guides/compiling' },
             { label: 'Docker Packaging', slug: 'guides/docker' },
+            { label: 'Training', slug: 'guides/training' },
             { label: 'Release Images in CI', slug: 'guides/ci-release' },
             { label: 'Status', slug: 'guides/status' },
             { label: 'Releasing', slug: 'guides/release' },
@@ -56,6 +86,7 @@ export default defineConfig({
           label: 'Runtimes',
           items: [
             { label: 'Overview', slug: 'runtimes/overview' },
+            { label: 'Daimon', slug: 'runtimes/daimon' },
             { label: 'OpenClaw', slug: 'runtimes/openclaw' },
             { label: 'PicoClaw', slug: 'runtimes/picoclaw' },
           ],
@@ -63,13 +94,13 @@ export default defineConfig({
         {
           label: 'Specification',
           items: [
-            { label: 'SPEC.md', slug: 'spec/spec' },
-            { label: 'COMPILER.md', slug: 'spec/compiler' },
-            { label: 'CONTAINERS.md', slug: 'spec/containers' },
-            { label: 'SURFACES.md', slug: 'spec/surfaces' },
-            { label: 'RUNTIMES.md', slug: 'spec/runtimes' },
-            { label: 'STATUS.md', slug: 'spec/status' },
-            { label: 'DISTRIBUTION.md', slug: 'spec/distribution' },
+            { label: 'Source format', slug: 'spec/spec' },
+            { label: 'Compiler', slug: 'spec/compiler' },
+            { label: 'Containers', slug: 'spec/containers' },
+            { label: 'Surfaces', slug: 'spec/surfaces' },
+            { label: 'Runtimes', slug: 'spec/runtimes' },
+            { label: 'Status', slug: 'spec/status' },
+            { label: 'Distribution', slug: 'spec/distribution' },
           ],
         },
         {
