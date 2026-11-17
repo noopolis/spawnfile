@@ -26,7 +26,9 @@ gateway sidecar. The training core drives it through the engine-neutral
   `runtime/daimon/control.ts` client; a wake's `failure` is a failed
   receipt's text or, for a delivery Daimon deferred, the agent's execution
   error from `/v2/availability`; usage is the ledger rows the wake
-  appended, transcript the engine's newest session record. A wake still open
+  appended, transcript every engine session record written during it. A wake
+  lasts until the agent's queue settles, so the fresh turns it continued into
+  with Daimon's `daimon_continue` (write now, verify later) belong to it. A wake still open
   at the trial's deadline reports the same execution error (the failed
   execution behind an open retry); every failure text is whole, secrets masked. Every compiled
   volume except gatewayed realms is renamed to the trial's own
@@ -55,7 +57,8 @@ gateway sidecar. The training core drives it through the engine-neutral
   never became ready): stop, capture, then remove the container and volumes.
   What an engine exposes is Daimon's declaration; Spawnfile only collects it.
 - `trialReads.ts` reads a running organization: usage and request ledgers, the
-  engine's newest session record, the agent's execution error.
+  engine's session records since a wake began, the agent's execution error and
+  whether its queue has settled.
 - `gateway.ts` places Daimon's auth gateway as a sidecar
   (`renderDaimonGatewaySidecarScript`): production Docker security args, the
   realm volume `spawnfile-training-<profile>-<engine>-realm` (kept across
