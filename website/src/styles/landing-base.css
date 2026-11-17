@@ -21,7 +21,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .gh { font: 400 .8125rem var(--mono); color: var(--mute); white-space: nowrap; }
 
 /* headings and running text */
-h1 { margin: 0; font: 700 clamp(2.5rem, 6.1vw, 5.5rem)/.96 var(--display); font-stretch: 90%; letter-spacing: -.022em; color: var(--ink); text-wrap: balance; max-width: 19ch; }
+h1 { margin: 0; font: 700 clamp(2.5rem, 6.1vw, 5.5rem)/.96 var(--display); font-stretch: 90%; letter-spacing: -.022em; color: var(--ink); text-wrap: balance; max-width: 10em; }
 h2 { margin: 0; font: 650 clamp(1.9rem, 3.4vw, 3rem)/1.02 var(--display); font-stretch: 90%; letter-spacing: -.02em; color: var(--ink); text-wrap: balance; }
 .tag { display: block; margin-bottom: 1.1rem; font: 400 .8125rem var(--mono); color: var(--faint); }
 .tag b { color: var(--sig); font-weight: 400; }

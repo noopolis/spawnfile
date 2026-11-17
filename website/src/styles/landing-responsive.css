@@ -1,5 +1,6 @@
 /* Narrow layouts. Most traffic is phones: columns stack and code scrolls sideways in place. */
 @media (max-width: 62rem) {
+  .top .wrap, .top nav { gap: .75rem; }
   .cols, .grid, .built .wrap, .org { grid-template-columns: minmax(0, 1fr); }
   .col, .col:first-child, .col:last-child { border-left: 0; padding: 0 .5rem 1.25rem; overflow-x: auto; }
   .col .row { width: max-content; min-width: 100%; margin: 0; }
