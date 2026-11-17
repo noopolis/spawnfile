@@ -75,7 +75,9 @@ export const openTrainingRun = async (options: OpenTrainingRunOptions): Promise<
       ...(mode === "off" ? {} : { cache: { mode, store: openTrialCacheStore(path.join(root, "trials"), path.join(scratchRoot, "trial-cache-claims.jsonl")) } })
     });
     bindBootedJudges(run, report);
-    bindBootedJudgmentCache(mode === "off" ? undefined : openJudgmentCacheStore(root));
+    // Reuse replays proposals too, so an unchanged rerun (or a rerun after a crash) repeats the whole search for free;
+    // fresh asks the optimizer again while identical articles still reuse their judgments.
+    bindBootedJudgmentCache(mode === "off" ? undefined : openJudgmentCacheStore(root), { proposals: mode === "reuse" });
     return { run, close: async () => {
       try {
         bindBootedJudges(undefined);

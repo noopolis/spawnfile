@@ -23,13 +23,20 @@ export interface BootedJudgmentCache {
   put(key: string, occurrence: number, reply: string): Promise<void>;
 }
 let judgments: BootedJudgmentCache | undefined;
+let proposals = false;
 
-/** Binds the run's judgment cache (or none) for the run's duration, beside its judge launcher. */
-export function bindBootedJudgmentCache(cache: BootedJudgmentCache | undefined): void { judgments = cache; }
+/**
+ * Binds the run's judgment cache (or none) for the run's duration, beside its judge launcher. With `proposals`, an
+ * optimizer's identical request also replays its recorded proposal, so an unchanged rerun repeats the whole search.
+ */
+export function bindBootedJudgmentCache(cache: BootedJudgmentCache | undefined, options: { proposals?: boolean } = {}): void {
+  judgments = cache;
+  proposals = options.proposals === true;
+}
 
 /** The judge identity and the whole wake text: the article, every question of the bank, the schema and the model. */
-export function judgmentKey(engine: string, model: string, effort: string | undefined, text: string): string {
-  return createHash('sha256').update(JSON.stringify([engine, model, effort ?? null, text])).digest('hex');
+export function judgmentKey(engine: string, model: string, effort: string | undefined, text: string, purpose: 'judge' | 'optimizer' = 'judge'): string {
+  return createHash('sha256').update(JSON.stringify([engine, model, effort ?? null, text, ...(purpose === 'judge' ? [] : [purpose])])).digest('hex');
 }
 
 /**
@@ -48,8 +55,8 @@ let reportFailure: ((line: string) => void) | undefined;
 
 export interface BootedJudgeOptions {
   engine: string; effort?: string; timeoutMs?: number;
-  /** Only judgments are cached; an optimizer's proposals are asked fresh every run. */
-  cacheable?: boolean;
+  /** What the route asks for: judgments are cached; an optimizer's proposals only when the run binds `proposals`. */
+  purpose?: 'judge' | 'optimizer';
 }
 
 /**
@@ -155,8 +162,9 @@ export function createBootedJudgeInference(options: BootedJudgeOptions): Inferen
         JSON.stringify(request.responseSchema),
       ].join('\n');
       const text = `${request.system === undefined ? '' : `${request.system}\n\n`}${request.prompt}${schemaText}`;
-      const cache = options.cacheable ? judgments : undefined;
-      const key = judgmentKey(options.engine, request.model, options.effort, text);
+      const purpose = options.purpose ?? 'optimizer';
+      const cache = purpose === 'judge' || proposals ? judgments : undefined;
+      const key = judgmentKey(options.engine, request.model, options.effort, text, purpose);
       const slot = cache ? await cache.take(key).catch(() => undefined) : undefined;
       // A cached judgment spent nothing now: no usage is reported for it.
       if (slot?.reply !== undefined) return { text: slot.reply, model: request.model, modelBasis: 'requested-assumption', usage: null, route };

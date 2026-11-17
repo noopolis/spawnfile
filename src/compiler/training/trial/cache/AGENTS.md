@@ -25,8 +25,10 @@ The cache lives outside any run (`<spawnfile home>/training-cache` by default) a
 - `judgments.ts` keeps valid judge replies at `judgments/<key>/<n>.json`, keyed on the judge
   engine, model, effort and the whole wake text (article, question bank, schema) plus the judge
   instructions. The n-th identical request of a process reads the n-th reply, so questionnaire
-  repeats stay separate samples. Only judge-purpose routes use it, never optimizer proposals. A
-  grader change changes the text and is judged again without new trials.
+  repeats stay separate samples. A grader change changes the text and is judged again without new
+  trials. Optimizer proposals use it under their own key only in `reuse` mode, so an unchanged
+  rerun (or a rerun after a crash) repeats the whole search without a new subject trial; `fresh`
+  asks the optimizer again.
 
 Tests: `session.test.ts` drives the real launcher with a fake compile and must fail if a changed
 prompt or skill file is served from cache.

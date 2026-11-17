@@ -9,21 +9,25 @@ const setup = () => {
   let wakes = 0;
   bindBootedJudges({ judge: async () => ({ wake: async () => ({ state: 'completed', acceptanceId: 'a', executionId: 'e', code: null,
     text: `{"score":${++wakes}}`, usage: [], transcript: clean }) }) });
-  const stored = new Map<string, string>();
-  const seen = new Map<string, number>();
+  bindBootedJudgmentCache(cacheOf());
+  return { wakes: () => wakes, restart: () => seen.clear() };
+};
+const stored = new Map<string, string>();
+const seen = new Map<string, number>();
+const resetSeen = () => seen.clear();
+const cacheOf = (): BootedJudgmentCache => {
   const cache: BootedJudgmentCache = {
     take: async (key) => { const occurrence = seen.get(key) ?? 0; seen.set(key, occurrence + 1); const reply = stored.get(`${key}/${occurrence}`); return reply === undefined ? { occurrence } : { occurrence, reply }; },
     put: async (key, occurrence, reply) => { stored.set(`${key}/${occurrence}`, reply); }
   };
-  bindBootedJudgmentCache(cache);
-  return { wakes: () => wakes, restart: () => seen.clear() };
+  return cache;
 };
 
-afterEach(() => { bindBootedJudges(undefined); bindBootedJudgmentCache(undefined); });
+afterEach(() => { bindBootedJudges(undefined); bindBootedJudgmentCache(undefined); stored.clear(); seen.clear(); });
 
 test('a later run reads the same judgment for the same article and bank, and asks again when either changes', async () => {
   const { wakes, restart } = setup();
-  const judge = createBootedJudgeInference({ engine: 'codex', effort: 'medium', cacheable: true });
+  const judge = createBootedJudgeInference({ engine: 'codex', effort: 'medium', purpose: 'judge' });
   const ask = (prompt: string) => judge.generate({ prompt, model: 'gpt-6-astra', responseSchema: schema });
   const first = await ask('article A; questions v1');
   restart();
@@ -37,14 +41,27 @@ test('a later run reads the same judgment for the same article and bank, and ask
 
 test('keeps repeated identical requests as separate samples, and never caches an optimizer route', async () => {
   const { wakes, restart } = setup();
-  const judge = createBootedJudgeInference({ engine: 'codex', cacheable: true });
+  const judge = createBootedJudgeInference({ engine: 'codex', purpose: 'judge' });
   const ask = () => judge.generate({ prompt: 'same', model: 'm', responseSchema: schema });
   const [one, two] = [await ask(), await ask()];
   expect(one.text).not.toBe(two.text);
   restart();
   expect([(await ask()).text, (await ask()).text]).toEqual([one.text, two.text]);
   expect(wakes()).toBe(2);
-  const optimizer = createBootedJudgeInference({ engine: 'codex' });
+  const optimizer = createBootedJudgeInference({ engine: 'codex', purpose: 'optimizer' });
   await optimizer.generate({ prompt: 'same', model: 'm', responseSchema: schema });
   expect(wakes()).toBe(3);
+});
+
+test('replays an optimizer proposal only when the run binds proposals, under its own key', async () => {
+  const { wakes, restart } = setup();
+  const optimizer = createBootedJudgeInference({ engine: 'codex', purpose: 'optimizer' });
+  const judge = createBootedJudgeInference({ engine: 'codex', purpose: 'judge' });
+  bindBootedJudgmentCache(cacheOf(), { proposals: true });
+  const proposal = await optimizer.generate({ prompt: 'propose', model: 'm', responseSchema: schema });
+  restart(); resetSeen();
+  expect((await optimizer.generate({ prompt: 'propose', model: 'm', responseSchema: schema })).text).toBe(proposal.text);
+  // The same text asked as a judgment is a different question.
+  expect((await judge.generate({ prompt: 'propose', model: 'm', responseSchema: schema })).text).not.toBe(proposal.text);
+  expect(wakes()).toBe(2);
 });
