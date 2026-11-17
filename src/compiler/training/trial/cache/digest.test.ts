@@ -6,13 +6,13 @@ import { expect, it } from "vitest";
 
 import { compiledAgentDigest, trialBaseKey, trialWakeKey } from "./digest.js";
 
-const compiled = async (slug: string, files: Record<string, string>): Promise<string> => {
+const compiled = async (slug: string, files: Record<string, string>, runId = "run-1"): Promise<string> => {
   const out = await mkdtemp(path.join(os.tmpdir(), "spawnfile-digest-"));
   for (const [file, text] of Object.entries(files)) {
     await mkdir(path.dirname(path.join(out, file)), { recursive: true });
-    await writeFile(path.join(out, file), text.split("{slug}").join(slug));
+    await writeFile(path.join(out, file), text.split("{slug}").join(slug).split("{run}").join(runId));
   }
-  return compiledAgentDigest(out, slug);
+  return compiledAgentDigest(out, slug, runId);
 };
 
 const organization = (team: string, volume: string, fingerprint: string, prompt = "Write the story.") => ({
@@ -40,4 +40,10 @@ it("keys a moment by its content, never by where its directory or repository sit
   expect(trialBaseKey("d", moment("/a", "w"))).not.toBe(trialBaseKey("d", moment("/a", "v")));
   expect(trialBaseKey("d", undefined)).not.toBe(trialBaseKey("e", undefined));
   expect(trialWakeKey("go", 1)).not.toBe(trialWakeKey("go", 2));
+});
+
+it("digests equally across runs: the run id and the run-scoped volume names it derives are not the organization", async () => {
+  const files = { "entrypoint.sh": "NOOPOLIS_RUN_ID='{run}' launch\nrequire_backed_mount 'h' '/h' '/h' 'spawnfile-org-home-{run}-cb494273'", "AGENTS.md": "p" };
+  expect(await compiled("t-1", files, "run-aaaa1111")).toBe(await compiled("t-1", files, "run-bbbb2222"));
+  expect(await compiled("t-1", { ...files, "AGENTS.md": "q" }, "run-bbbb2222")).not.toBe(await compiled("t-1", files, "run-aaaa1111"));
 });
