@@ -234,3 +234,27 @@ it("reports the execution error of a delivery Daimon deferred after its failed r
   expect(wake).toMatchObject({ state: "deferred", code: null, failure: "engine_failed: Individual quota reached. Resets in 95h51m47s." });
   await trial.teardown();
 }, 20_000);
+
+it("follows the turns a wake continued into until the agent's queue settles, and keeps every turn's usage", async () => {
+  const usage = (wake: string, input: number) => JSON.stringify({ v: "noopolis.daimon.turn-usage.v1", agent: "agent:writer", wake, engine: "codex", at: "2026-11-04T00:00:00.000Z",
+    input, output: 5, cache_read: 0, cache_write: 0, total: input + 5, calls: 1, complete: true, notional_usd: 0 });
+  // The first turn completed its delivery and continued itself; the continued turn is queued, then runs, then ends.
+  const queue = [{ pending: 1, running: false, deferred: 0 }, { pending: 0, running: true, deferred: 0 }, { pending: 0, running: false, deferred: 0 }];
+  let polls = 0;
+  const control = async (_target: unknown, method: string, route: string) => {
+    if (method === "POST" && route === "/v2/wakes") return { status: 202, body: JSON.stringify({ state: "accepted", acceptance_id: "a-1" }) };
+    if (route.startsWith("/v2/wake-receipts/")) return { status: 200, body: JSON.stringify({ state: "completed", execution_id: "0b1c2d3e-4f50-4617-8899-aabbccddeeff", text: "drafted" }) };
+    if (route === "/v2/availability") return { status: 200, body: JSON.stringify({ agents: [{ agent_id: "agent:writer", ...queue[Math.min(polls++, queue.length - 1)] }] }) };
+    return { status: 200, body: JSON.stringify({ executions: [] }) };
+  };
+  const ledger = async (args: readonly string[], options?: { stdin?: string | Buffer }) =>
+    args[0] === "exec" && args.at(-1)?.endsWith("usage.jsonl") ? `${usage("e-1", 100)}\n${polls >= queue.length ? `${usage("e-2", 40)}\n` : ""}` : docker(args, options);
+  const prepared = await prepareTrial({ agentManifestPath: "/nonexistent/Spawnfile", directory: path.join(state.root, "continued"), docker: ledger, evidence: noEvidence,
+    instructions: "i", trialId: "continued", control: control as never });
+  const trial = await prepared.boot(null, { evidenceDirectory: path.join(state.root, "evidence"), readyTimeoutMs: 1_000 });
+  const wake = await trial.wake("go", { deliveryId: "d-1", timeoutMs: 20_000 });
+  expect(polls).toBeGreaterThanOrEqual(queue.length);
+  expect(wake.usage.map((row) => row.wake)).toEqual(["e-1", "e-2"]);
+  expect(wake).toMatchObject({ state: "completed", text: "drafted" });
+  await trial.teardown();
+}, 30_000);

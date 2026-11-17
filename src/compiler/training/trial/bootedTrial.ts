@@ -4,7 +4,7 @@ import type { DaimonControlCall, DaimonControlTarget } from "../../../runtime/da
 import { maskSecrets, SpawnfileError } from "../../../shared/index.js";
 import type { BootedTrial, TrialWake } from "./boot.js";
 import type { TrialDocker } from "./docker.js";
-import { agentExecutionError, readLedger, readRequestLedger, readTranscript, requestUsage } from "./trialReads.js";
+import { agentExecutionError, agentSettled, readLedger, readRequestLedger, readTranscript, requestUsage } from "./trialReads.js";
 import { renderMomentWake, type TrainingMoment } from "../moments.js";
 
 const WAKE_VERSION = "noopolis.daimon.wake.v2";
@@ -45,6 +45,7 @@ export const createBootedTrial = (input: {
         throw new SpawnfileError("runtime_error", `trial wake was not accepted (HTTP ${accepted.status}${acceptance.code ? `, ${acceptance.code}` : ""})`);
       }
       const id = acceptance.acceptance_id;
+      const startedMs = Date.now() - 5_000;
       let receipt: { state?: string; execution_id?: string; code?: string; text?: string; deferred?: boolean } = {};
       const deadline = Date.now() + options.timeoutMs;
       // The subject may end its turn by deferring the delivery: Daimon returns it to `accepted`, marked deferred,
@@ -65,6 +66,11 @@ export const createBootedTrial = (input: {
         if (!executions.some((entry) => entry.execution_id === execution || entry.delivery_ids?.includes(options.deliveryId))) break;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
+      // A turn may hand its work to a fresh turn of its own (Daimon's `daimon_continue`), as production would run
+      // it: the trial's wake lasts until the agent's queue settles, so a write-then-verify filing is graded whole.
+      while (Date.now() < deadline && !options.signal?.aborted && !(await agentSettled(input.call, input.target, input.agentId))) {
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+      }
       // Daimon defers a delivery whose execution failed twice, and a delivery still open at the deadline may be
       // on the retry of a failed execution; only the agent's availability names that failure.
       const reported = receipt.state === "failed" ? receipt.text || null
@@ -83,7 +89,7 @@ export const createBootedTrial = (input: {
         text: receipt.text ?? "",
         failure,
         requestToolCalls: fresh.filter((row) => row.wake === options.deliveryId).map((row) => row.tool_calls ?? null),
-        transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath)
+        transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath, startedMs)
       };
     }
   };
