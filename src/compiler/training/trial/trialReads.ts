@@ -7,6 +7,8 @@ import { parseUsageRequestLedger, type UsageRequestRecord } from "../../../runti
 import type { TrialDocker } from "./docker.js";
 
 const MAX_TRANSCRIPT_BYTES = 1024 * 1024;
+/** A wake and the continued turns it may start; Daimon caps a continuation chain at three links. */
+const MAX_TRANSCRIPT_FILES = 4;
 
 /** Daimon's per-request stream sits beside the usage ledger. */
 const REQUEST_LEDGER = path.posix.join(path.posix.dirname(DAIMON_GROK_TURN_USAGE_LEDGER.filePath), "requests.jsonl");
@@ -40,10 +42,25 @@ export const agentExecutionError = async (call: DaimonControlCall, target: Daimo
   return agents.find((agent) => agent.agent_id === agentId)?.error || null;
 };
 
-/** The engine's newest session record, bounded. */
-export const readTranscript = async (docker: TrialDocker, container: string, sessionsPath: string): Promise<string | null> => {
-  const newest = await docker(["exec", container, "sh", "-c", 'find "$1" -name "*.jsonl" -type f -printf "%T@ %p\\n" 2>/dev/null | sort -n | tail -1 | cut -d" " -f2-', "sh", sessionsPath]).catch(() => "");
-  if (!newest) return null;
-  const text = await docker(["exec", container, "head", "-c", String(MAX_TRANSCRIPT_BYTES), newest]).catch(() => "");
+/** The agent's queue is settled: nothing runs and no delivery waits that is not deferred. */
+export const agentSettled = async (call: DaimonControlCall, target: DaimonControlTarget, agentId: string): Promise<boolean> => {
+  const response = await call(target, "GET", "/v2/availability").catch(() => undefined);
+  if (response?.status !== 200) return true;
+  const agent = (JSON.parse(response.body) as { agents?: { agent_id?: string; pending?: number; running?: boolean; deferred?: number }[] }).agents?.find((entry) => entry.agent_id === agentId);
+  return agent === undefined || (!agent.running && (agent.pending ?? 0) - (agent.deferred ?? 0) <= 0);
+};
+
+/**
+ * The engine's session records written since `sinceMs`, oldest first, each bounded: one per turn when the agent
+ * continued its work in fresh turns. Without any, the newest record, as before.
+ */
+export const readTranscript = async (docker: TrialDocker, container: string, sessionsPath: string, sinceMs = Number.POSITIVE_INFINITY): Promise<string | null> => {
+  const listing = await docker(["exec", container, "sh", "-c", 'find "$1" -name "*.jsonl" -type f -printf "%T@ %p\\n" 2>/dev/null | sort -n', "sh", sessionsPath]).catch(() => "");
+  const files = listing.split("\n").filter(Boolean).map((line) => ({ at: Number(line.slice(0, line.indexOf(" "))) * 1000, file: line.slice(line.indexOf(" ") + 1) }));
+  if (files.length === 0) return null;
+  const recent = files.filter((entry) => entry.at >= sinceMs);
+  const chosen = (recent.length > 0 ? recent : files.slice(-1)).slice(-MAX_TRANSCRIPT_FILES);
+  const texts = await Promise.all(chosen.map(async (entry) => await docker(["exec", container, "head", "-c", String(MAX_TRANSCRIPT_BYTES), entry.file]).catch(() => "")));
+  const text = texts.filter(Boolean).map((value) => value.endsWith("\n") ? value : `${value}\n`).join("");
   return text || null;
 };
