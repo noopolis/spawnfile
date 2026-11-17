@@ -31,6 +31,32 @@ const flag = (args: readonly string[], name: string): string | undefined => {
  */
 export const runBootedTraining = async (options: RunTrainingOptions): Promise<number> => {
   if (!options.authProfile) throw failure("Production-booted Daimon training requires --auth-profile (the login its auth gateway holds)");
+  // An interrupt cancels the run so its trials, judges and gateway are torn down and the realm is free again; without
+  // this, the process died at once and left a gateway holding the login for every later run. A second interrupt exits.
+  const controller = new AbortController();
+  let interrupted: number | undefined;
+  const onSignal = (code: number) => () => {
+    if (interrupted !== undefined) process.exit(code);
+    interrupted = code;
+    options.streams.stderr("training interrupted: stopping trials and judges and releasing the training realm (interrupt again to exit now)");
+    controller.abort();
+  };
+  const onInt = onSignal(130), onTerm = onSignal(143);
+  process.on("SIGINT", onInt); process.on("SIGTERM", onTerm);
+  options.signal?.addEventListener("abort", () => controller.abort(), { once: true });
+  try {
+    const code = await runBooted({ ...options, signal: controller.signal });
+    return interrupted ?? code;
+  } catch (error) {
+    if (interrupted !== undefined) return interrupted;
+    throw error;
+  } finally {
+    process.removeListener("SIGINT", onInt); process.removeListener("SIGTERM", onTerm);
+  }
+};
+
+const runBooted = async (options: RunTrainingOptions & { authProfile?: string }): Promise<number> => {
+  if (!options.authProfile) throw failure("Production-booted Daimon training requires --auth-profile (the login its auth gateway holds)");
   const out = flag(options.args, "out");
   if (!out) throw failure("Production-booted Daimon training requires --out");
   const system = options.context.documents.find((document) => document.role === "system");

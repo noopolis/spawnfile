@@ -38,6 +38,8 @@ export interface BootedTrialLauncherOptions {
   judgeConcurrency?: number;
   /** The operator's channel for cache decisions. */
   report?: (line: string) => void;
+  /** Notes every container and network the run starts (the realm lock keeps them for cleanup after a crash). */
+  own?: (resource: { container?: string; network?: string }) => void | Promise<void>;
 }
 
 type Wake = (text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }) => Promise<TrialWake>;
@@ -91,8 +93,11 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
       await prepared.build?.();
       const image = `spawnfile-training-gateway:${runId.replace(/[^A-Za-z0-9_.-]/gu, "-").slice(0, 100)}`;
       await docker(["tag", prepared.image, image]);
-      return { image, gateway: await startTrainingGateway({ authProfile: options.authProfile, docker, engines: logins,
-        image, runId, runtimeRoot: prepared.runtimeRoot, evidenceDirectory: await directory("evidence/gateway-") }) };
+      const started = await startTrainingGateway({ authProfile: options.authProfile, docker, engines: logins,
+        image, runId, runtimeRoot: prepared.runtimeRoot, evidenceDirectory: await directory("evidence/gateway-") });
+      await options.own?.({ container: started.container, network: started.network });
+      await options.own?.({ network: started.container.replace("spawnfile-training-gateway-", "spawnfile-training-egress-") });
+      return { image, gateway: started };
     })();
     return (await gateway).gateway;
   };
@@ -118,6 +123,7 @@ export const createBootedTrialRun = (options: BootedTrialLauncherOptions): Boote
     try {
       // Every boot keeps its own evidence: a judge that hands its realm turn over boots again, into a new directory.
       const evidenceDirectory = evidence ?? await directory(`evidence/${kind}-`);
+      if (prepared.container) await options.own?.({ container: prepared.container });
       const booted = await prepared.boot(access, { evidenceDirectory, ...(realm ? { realms: realm.profile } : {}), ...(moment === undefined ? {} : { moment }) });
       return { ...booted, teardown: async () => { try { return await booted.teardown(); } finally { release?.(); } } };
     } catch (error) {

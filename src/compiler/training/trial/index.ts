@@ -7,4 +7,4 @@ export { TRIAL_INSTRUCTIONS_FILE, writeTrialProject } from "./project.js";
 export { ensureSubscriptionRealmVolumes, loginSubscriptionRealm, subscriptionRealmBinding, type SubscriptionRealmLoginOptions, type SubscriptionRealmLoginResult } from "./login.js";
 export { createRealmTurns, type RealmTurnOptions, type RealmTurns, type ReleaseRealmTurn } from "./realmTurns.js";
 export { openJudgmentCacheStore, openTrialCacheStore, TRIAL_CACHE_MODES, type TrialCacheMode } from "./cache/index.js";
-export { createTrainingRealmLock, type TrainingRealmLockOptions } from "./realmLock.js";
+export { createTrainingRealmLock, removeStaleRun, type TrainingRealmLock, type TrainingRealmLockOptions } from "./realmLock.js";

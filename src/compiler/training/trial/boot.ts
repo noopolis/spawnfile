@@ -156,6 +156,8 @@ export interface PreparedTrial {
   image: string;
   /** Content digest of the compiled organization (`cache/digest.ts`); absent for test doubles. */
   digest?: string;
+  /** The container `boot` starts, named before it exists so a crash mid-boot still leaves a name to remove. */
+  container?: string;
   /** Builds the image (once; shared images build once per run). `boot` and `login` call it themselves. */
   build?(): Promise<void>;
   runtimeRoot: string;
@@ -246,7 +248,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
     await rm(options.directory, { recursive: true, force: true });
   };
   return {
-    agentId, build, digest, dispose, image,
+    agentId, build, container: `spawnfile-trial-${slug}`, digest, dispose, image,
     engines: agents.map(([, engine]) => engine),
     runtimeRoot: `${RUNTIME_INSTALL_ROOT}/daimon`,
     login: async (realms, loginOptions = {}) => {
