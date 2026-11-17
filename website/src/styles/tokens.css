@@ -1,6 +1,8 @@
 /* Noopolis identity tokens for Spawnfile, shared by the landing page and the docs.
    Neutral base with a blueprint signature: blue marks only (active rows, labels,
    step numbers). Buttons and headlines stay neutral. Green means live. */
+@import './fonts.css';
+
 :root {
   color-scheme: dark;
   --bg: #08090a;
@@ -22,8 +24,8 @@
   --sig-dim: #1e3a70;
   --green: #3ddc84;
   --amber: #f5c451;
-  --display: "Bricolage Grotesque", "Geist", system-ui, sans-serif;
-  --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Bricolage Grotesque", "Bricolage Fallback", system-ui, sans-serif;
+  --sans: "Geist", "Geist Fallback", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Geist Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
 }
 

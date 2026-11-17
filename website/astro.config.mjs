@@ -19,12 +19,7 @@ export default defineConfig({
         { icon: 'github', label: 'GitHub', href: 'https://github.com/noopolis/spawnfile' },
       ],
       head: [
-        { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.googleapis.com' } },
-        { tag: 'link', attrs: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: true } },
-        {
-          tag: 'link',
-          attrs: { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400..700&display=swap' },
-        },
+        { tag: 'link', attrs: { rel: 'preload', href: '/fonts/geist-latin.woff2', as: 'font', type: 'font/woff2', crossorigin: true } },
         { tag: 'meta', attrs: { name: 'theme-color', content: '#08090a' } },
         { tag: 'meta', attrs: { property: 'og:image', content: 'https://spawnfile.com/og.png' } },
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },

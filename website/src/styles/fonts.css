@@ -1,0 +1,44 @@
+/* Fonts are served from /fonts so the first paint does not wait on another host.
+   The "Fallback" faces resize a system font to the web font's width, so text
+   keeps its line breaks if the real font arrives late. */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 400 800;
+  font-stretch: 75% 100%;
+  font-display: swap;
+  src: url("/fonts/bricolage-grotesque-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url("/fonts/geist-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/geist-mono-latin.woff2") format("woff2");
+}
+/* Box-drawing characters for file trees. */
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/geist-mono-symbols.woff2") format("woff2");
+  unicode-range: U+2000-2001, U+2004-2008, U+200A, U+23B8-23BD, U+2500-259F;
+}
+@font-face {
+  font-family: "Bricolage Fallback";
+  src: local("Arial"), local("Roboto"), local("Helvetica Neue");
+  size-adjust: 86%;
+}
+@font-face {
+  font-family: "Geist Fallback";
+  src: local("Arial"), local("Roboto"), local("Helvetica Neue");
+  size-adjust: 102%;
+}
