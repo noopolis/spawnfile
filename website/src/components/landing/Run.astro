@@ -1,0 +1,18 @@
+---
+// Run: auth, up, status, publish.
+import Panel from './Panel.astro';
+const RUN = `$ spawnfile auth import codex
+$ spawnfile up . --detach
+$ spawnfile status . --live
+$ spawnfile publish`;
+---
+<section class="sec" id="run">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">[ <b>run</b> ]</span>
+      <h2>Run it, check it, share it.</h2>
+      <p class="lead">Use a subscription login you already have. The whole team and its rooms start in Docker.</p>
+    </div>
+    <Panel lang="shell" code={RUN} />
+  </div>
+</section>

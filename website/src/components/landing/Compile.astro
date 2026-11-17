@@ -1,0 +1,14 @@
+---
+// Compile: one command, native output per harness.
+import Panel from './Panel.astro';
+---
+<section class="sec" id="compile">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">[ <b>compile</b> ]</span>
+      <h2>Compile it for each harness.</h2>
+      <p class="lead">One command writes the config and workspace every harness reads natively.</p>
+    </div>
+    <Panel lang="shell" code={'$ spawnfile compile\ncompiled to .spawn'} />
+  </div>
+</section>

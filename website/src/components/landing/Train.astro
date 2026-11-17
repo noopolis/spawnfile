@@ -1,0 +1,14 @@
+---
+// Training: improve one agent's docs in trials that boot the real organization.
+import Panel from './Panel.astro';
+---
+<section class="sec" id="train">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">[ <b>train</b> ]</span>
+      <h2>Train an agent inside its team.</h2>
+      <p class="lead"><code>spawnfile train</code> improves an agent’s docs against your own cases, in trials that boot the real organization. You review the result. <a href="/guides/training/">Training guide</a></p>
+    </div>
+    <Panel lang="shell" code="$ spawnfile train ./Spawnfile --agent writer --dry-run" />
+  </div>
+</section>

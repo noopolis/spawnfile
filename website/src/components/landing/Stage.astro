@@ -1,0 +1,38 @@
+---
+// Hero stage: an example Spawnfile, the tree it compiles to, and the org running.
+// Rows carry `data-g` link groups; `scripts/landing/stage.ts` does the linking and playback.
+import { STAGE_IDLE, STAGE_OUTPUT, STAGE_SOURCE } from '../../scripts/landing/content';
+import { spawnfile } from './highlight';
+---
+<div class="stage br" id="stage">
+  <div class="cols">
+    <div class="col">
+      <div class="step on"><i>01</i><b>Spawnfile</b><span class="note">an example org</span></div>
+      {STAGE_SOURCE.map((row, i) => (
+        <div class="row" data-g={row.g}><span class="n">{i + 1}</span><span class="t" set:html={spawnfile(row.text)} /></div>
+      ))}
+    </div>
+
+    <div class="col">
+      <button type="button" class="step" data-run="compile" aria-label="Run spawnfile compile"><i>02</i><b>.spawn/</b><span class="cmd">spawnfile compile</span></button>
+      {STAGE_OUTPUT.map((row) => (
+        <div class="row o" data-g={row.g}><span class="t"><span class="tr">{row.tree}</span>{row.text}{row.note && <span class="d">{row.note}</span>}</span></div>
+      ))}
+    </div>
+
+    <div class="col">
+      <button type="button" class="step" data-run="up" aria-label="Run spawnfile up"><i>03</i><b>docker</b><span class="cmd">spawnfile up</span></button>
+      <div class="box">
+        <div class="room o" data-g="net"><span class="h">#</span>mission-control<small>moltnet</small></div>
+        <div class="chip o" data-g="coordinator lead"><span class="dot"></span>coordinator<small>daimon · codex</small></div>
+        <div class="chip o" data-g="analyst"><span class="dot"></span>analyst<small>picoclaw · claude</small></div>
+        <div class="team o" data-g="field">
+          <span class="tn">field-team<small>openclaw · gpt-5</small></span>
+          <div class="chip o" data-g="field lead"><span class="dot"></span>field-representative</div>
+          <div class="chip o" data-g="field"><span class="dot"></span>field-observer</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="cap"><span id="stage-cap">{STAGE_IDLE}</span><span>Runs on the Codex, Claude or Grok subscription you already have.</span></div>
+</div>

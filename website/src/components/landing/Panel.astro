@@ -1,0 +1,11 @@
+---
+// A code sample inside the bracket frame. `lang` picks the highlighter.
+import { shell, spawnfile } from './highlight';
+interface Props { code: string; lang: 'spawnfile' | 'shell'; title?: string }
+const { code, lang, title } = Astro.props;
+const html = lang === 'shell' ? shell(code) : spawnfile(code);
+---
+<div class="panel br">
+  {title && <span class="bar">{title}</span>}
+  <pre set:html={html} />
+</div>

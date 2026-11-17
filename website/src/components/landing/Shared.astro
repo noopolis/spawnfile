@@ -1,0 +1,23 @@
+---
+// Team-level shared surface: skills, MCP tools, docs and secrets.
+import Panel from './Panel.astro';
+const SHARED = `shared:
+  workspace:
+    skills: [{ ref: ./skills/cite-sources }]
+  environment:
+    mcp_servers:
+      - name: web_search
+        transport: streamable_http
+        url: https://search.example.com/mcp
+        tools: [search]`;
+---
+<section class="sec" id="shared">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">[ <b>shared</b> ]</span>
+      <h2>Skills and tools, declared once.</h2>
+      <p class="lead">Put skills, MCP tools, docs and secrets on the team. Every direct member inherits them, written in the format its own harness reads.</p>
+    </div>
+    <Panel lang="spawnfile" title="Spawnfile" code={SHARED} />
+  </div>
+</section>
