@@ -1,5 +1,5 @@
-import type { DaimonCapabilityReceipts } from "./registry.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER } from "./daimon/contractManifest.js";
+import type { DaimonCapabilityReceipts } from "../registry.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER } from "./contractManifest.js";
 
 /**
  * A published multi-architecture Daimon index embeds a different receipt per

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   loadLocalDaimonRuntimeIdentity
 } from "./localDaimonAuthority.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 const tempDirectories: string[] = [];

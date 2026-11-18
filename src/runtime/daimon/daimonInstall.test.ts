@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
 import { createDaimonInstallCommands } from "./daimonInstall.js";
 
 const directories: string[] = [];
@@ -16,7 +16,7 @@ const fixture = () => {
   directories.push(root);
   const receipt = JSON.stringify({ manifest_sha256: DAIMON_CONTRACT_MANIFEST_SHA256 });
   writeFileSync(path.join(root, "capability-receipt.json"), receipt);
-  writeFileSync(path.join(root, "contract-manifest.json"), readFileSync(new URL("./daimon/contract-manifest.json", import.meta.url)));
+  writeFileSync(path.join(root, "contract-manifest.json"), readFileSync(new URL("./contract-manifest.json", import.meta.url)));
   writeFileSync(path.join(root, "contract-manifest.sha256"), DAIMON_CONTRACT_MANIFEST_SHA256);
   // Portable local stand-ins for the Linux tools; hashes are calculated from actual fixture bytes.
   // The CommonJS marker keeps the extensionless stub CommonJS even when TMPDIR sits inside an ESM package.

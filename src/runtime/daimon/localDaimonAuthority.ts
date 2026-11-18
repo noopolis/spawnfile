@@ -3,8 +3,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { SpawnfileError } from "../shared/index.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
+import { SpawnfileError } from "../../shared/index.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
 
 export const DAIMON_LOCAL_RUNTIME_IDENTITY_ENV =
   "SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY";

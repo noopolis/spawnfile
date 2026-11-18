@@ -16,9 +16,10 @@ src/runtime/
 ├── operations.ts          # Optional live drain, readiness, recording, artifact and usage contracts
 ├── common.ts              # Shared lowering helpers used by adapters
 ├── mnemeMcp.ts            # Shared Mneme MCP lowering plus the durable memory mount authority
-├── container.ts           # Container install recipes (createRuntimeInstallRecipe) per bundled runtime
+├── container.ts           # Compatibility entrypoint for adapter-owned container install recipes
+├── containerRecipe.ts     # Shared recipe input and image copy helpers
+├── install.ts             # Registry install selection normalization
 ├── containerPackageOverrides.ts # Runtime install npm package override contract consumed by container.ts
-├── localDaimonAuthority.ts # Exact non-production identity-file parser for loopback Daimon images
 ├── registry.ts            # Bundled adapter registration and lookup
 ├── usageTypes.ts          # Normalized usage row types
 ├── usageLedger.ts         # Usage aggregation and historical parser exports
@@ -32,7 +33,7 @@ src/runtime/
 └── registry.test.ts       # Adapter registry tests
 ```
 
-Adapter-specific behavior belongs in the runtime subfolders. That includes init scaffolds, static package assets, and the runtime image context. Image builds are discovered from each adapter's `image/build.json` without loading runtime code. `common.ts` should only hold logic that is truly shared across adapters.
+Each adapter owns its init scaffold, install hints, native install recipe, static package assets, and image build context. Image builds read each adapter's `image/build.json` without loading runtime code. Keep shared adapter helpers in `common.ts`.
 
 Adapters expose native chat and memory wiring through `RuntimeAdapter.wiring`.
 The compiler asks for the selected adapter's Moltnet client layout, bridge
@@ -53,10 +54,10 @@ volume. An in-process Mneme home must use the same path as its volume.
 
 `containerPackageOverrides.ts` defines the `RuntimeContainerPackageOverrides` contract (`packageName -> { filename }`) for opt-in package staging. The Phase-A Daimon host never installs a local package: it copies a separately released generic image by immutable digest and verifies that image's capability receipt. The actual `npm pack`-into-build-context step is compiler-level I/O and lives in `src/compiler/containerPackageOverrides.ts`; this folder only owns recipe shaping, never packing or engine installation.
 
-`localDaimonAuthority.ts` is the only local Daimon image seam. It accepts only
+`daimon/localDaimonAuthority.ts` is the only local Daimon image seam. It accepts only
 an attested `127.0.0.1:<port>` registry authority and is activated
 only by an absolute path in `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`, accepts
-the exact v2 non-production schema, and requires the fixed loopback registry
+the exact v3 non-production schema, and requires the fixed loopback registry
 repository by OCI manifest digest plus a capability-receipt SHA-256. Raw image
 or receipt environment overrides fail closed. With no identity path,
 `container.ts` uses the checked-in `runtimes.yaml` digest and receipt unchanged.
@@ -97,8 +98,8 @@ functions, never a copy.
 `trainingPublic.ts` is the selected package CLI integration barrel. It delegates
 to `trainingCli.ts` for runtime composition without exposing its internal `main`.
 
-`daimonInstall.ts` owns the receipt/manifest verification and CLI/broker
-installation commands `container.ts` renders. Keep this one authority; never
+`daimon/daimonInstall.ts` owns the receipt/manifest verification and CLI/broker
+installation commands used by `daimon/install.ts`. Keep this one authority; never
 weaken verification. Its adjacent tests execute verification
 against matching, missing and mismatched install files.
 

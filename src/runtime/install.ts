@@ -1,5 +1,10 @@
 import { SpawnfileError } from "../shared/index.js";
 
+import type { NativeInstallHintProfile } from "./containerRecipe.js";
+import { daimonInstallHints } from "./daimon/install.js";
+import { openClawInstallHints } from "./openclaw/install.js";
+import { picoClawInstallHints } from "./picoclaw/install.js";
+
 import {
   assertRuntimeCanCompile,
   loadRuntimeRegistry,
@@ -64,80 +69,10 @@ const convertRemoteToHttps = (remote: string): string => {
   return remote.replace(/^git\+/, "");
 };
 
-const installHints = new Map<
-  string,
-  Record<
-    RuntimeInstallSelection["kind"],
-    {
-      ecosystem: "go" | "node";
-      installHint: string;
-    }
-  >
->([
-  [
-    "daimon",
-    {
-      container_image: {
-        ecosystem: "node",
-        installHint: "Copy a pinned Daimon runtime image."
-      },
-      github_release_archive: {
-        ecosystem: "node",
-        installHint: "Download a pinned Daimon runtime release archive."
-      },
-      npm: {
-        ecosystem: "node",
-        installHint: "Install the pinned Daimon package and Pi SDK dependencies inside the generated runtime app."
-      },
-      source_repo: {
-        ecosystem: "node",
-        installHint: "Checkout the pinned Daimon repo ref and install from the repository root."
-      }
-    }
-  ],
-  [
-    "openclaw",
-    {
-      container_image: {
-        ecosystem: "node",
-        installHint:
-          "Copy the pinned OpenClaw runtime files from the official container image."
-      },
-      github_release_archive: {
-        ecosystem: "node",
-        installHint: "Download the pinned OpenClaw artifact archive from the release."
-      },
-      npm: {
-        ecosystem: "node",
-        installHint: "Install the pinned OpenClaw package version from npm."
-      },
-      source_repo: {
-        ecosystem: "node",
-        installHint: "Checkout the pinned repo ref and install from the repository root."
-      }
-    }
-  ],
-  [
-    "picoclaw",
-    {
-      container_image: {
-        ecosystem: "go",
-        installHint: "Copy the pinned PicoClaw runtime files from the official container image."
-      },
-      github_release_archive: {
-        ecosystem: "go",
-        installHint: "Download the pinned PicoClaw release archive for the target platform."
-      },
-      npm: {
-        ecosystem: "node",
-        installHint: "Install the pinned PicoClaw package version from npm."
-      },
-      source_repo: {
-        ecosystem: "go",
-        installHint: "Checkout the pinned repo ref and build/install from the repository root."
-      }
-    }
-  ]
+const installHints = new Map<string, NativeInstallHintProfile>([
+  ["daimon", daimonInstallHints],
+  ["openclaw", openClawInstallHints],
+  ["picoclaw", picoClawInstallHints]
 ]);
 
 export const resolveRuntimeInstallSelection = async (

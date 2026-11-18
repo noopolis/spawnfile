@@ -1,26 +1,13 @@
-import { createDaimonInstallCommands } from "./daimonInstall.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { NOOPOLIS_RUN_ID_ENV, resolveNoopolisRunId } from "./common.js";
 import type { RuntimeContainerPackageOverrides } from "./containerPackageOverrides.js";
+import { createDaimonInstallRecipe } from "./daimon/install.js";
 import { resolveRuntimeInstallSelection } from "./install.js";
-import type { DaimonCapabilityReceipts } from "./registry.js";
-import {
-  DAIMON_LOCAL_RUNTIME_IDENTITY_ENV,
-  loadLocalDaimonRuntimeIdentity
-} from "./localDaimonAuthority.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./daimon/contractManifest.js";
-import {
-  DAIMON_WAKE_FUSE_DIRECTORY,
-  DAIMON_WAKE_FUSE_DIRECTORY_ENV
-} from "./daimon/config.js";
+import { createOpenClawInstallRecipe } from "./openclaw/install.js";
+import { createPicoClawInstallRecipe } from "./picoclaw/install.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
-const LEGACY_DAIMON_RUNTIME_IMAGE_ENV = "SPAWNFILE_DAIMON_RUNTIME_IMAGE";
-const LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV =
-  "SPAWNFILE_DAIMON_RUNTIME_CAPABILITY_RECEIPT";
-const OPENCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_OPENCLAW_RUNTIME_IMAGE";
-const PICOCLAW_RUNTIME_IMAGE_ENV = "SPAWNFILE_PICOCLAW_RUNTIME_IMAGE";
 
 export interface RuntimeInstallRecipe {
   baseImage?: string;
@@ -65,86 +52,6 @@ const assertArtifactInstallSelection = (
   );
 };
 
-const createPicoClawArchiveInstallCommands = (
-  runtimeRoot: string,
-  selection: Extract<
-    Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>,
-    { kind: "github_release_archive" }
-  >
-): string[] => [
-  `mkdir -p ${runtimeRoot}/bin`,
-  `arch="$(dpkg --print-architecture)" && case "$arch" in amd64) asset=${JSON.stringify(
-    selection.versionedAssets.linux_amd64
-  )} ;; arm64) asset=${JSON.stringify(
-    selection.versionedAssets.linux_arm64
-  )} ;; *) echo "Unsupported PicoClaw release architecture: $arch" >&2; exit 1 ;; esac && url="https://github.com/${selection.repository}/releases/download/${selection.tag}/$asset" && curl -fsSL -o /tmp/picoclaw.tar.gz "$url" && rm -rf /tmp/picoclaw-extract && mkdir -p /tmp/picoclaw-extract && tar -xzf /tmp/picoclaw.tar.gz -C /tmp/picoclaw-extract && binary_path="$(find /tmp/picoclaw-extract -type f -name ${JSON.stringify(
-    selection.binaryName
-  )} | head -n 1)" && [ -n "$binary_path" ] && install -m 0755 "$binary_path" ${runtimeRoot}/bin/${selection.binaryName} && ln -sf ${runtimeRoot}/bin/${selection.binaryName} /usr/local/bin/${selection.binaryName} && rm -rf /tmp/picoclaw.tar.gz /tmp/picoclaw-extract`
-];
-
-const createRuntimeImageCopyCommand = (
-  imageRef: string,
-  runtimeRoot: string
-): string => `COPY --from=${imageRef} ${runtimeRoot} ${runtimeRoot}`;
-
-const resolveRuntimeImageRef = (
-  envName: string,
-  selection: Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>
-): string | undefined =>
-  process.env[envName]?.trim() ||
-  (selection.kind === "container_image"
-    ? `${selection.image}:${selection.tag}`
-    : undefined);
-
-/**
- * Daimon is distributed only as a generic, source-free runtime image. A
- * local-development authority is deliberately narrow: it must be an explicit
- * generated identity file naming the approved loopback registry repository by
- * manifest digest plus the exact embedded receipt digest. Raw image/receipt
- * overrides, mutable tags, checkouts, and host-installed CLIs are rejected.
- */
-const resolveDaimonRuntimeImageRef = async (
-  selection: Awaited<ReturnType<typeof resolveRuntimeInstallSelection>>
-): Promise<{ capabilityReceipt: string | DaimonCapabilityReceipts; image: string }> => {
-  if (
-    selection.kind !== "container_image" ||
-    !selection.digest ||
-    !(selection.capabilityReceipt || selection.capabilityReceipts)
-  ) {
-    throw new SpawnfileError(
-      "runtime_error",
-      "Daimon organization runtime v1 requires a pinned generic Daimon runtime image"
-    );
-  }
-
-  const pinnedImage = `${selection.image}@${selection.digest}`;
-  if (
-    process.env[LEGACY_DAIMON_RUNTIME_IMAGE_ENV]?.trim() ||
-    process.env[LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV]?.trim()
-  ) {
-    throw new SpawnfileError(
-      "runtime_error",
-      `Raw Daimon runtime image overrides are disabled; use ${DAIMON_LOCAL_RUNTIME_IDENTITY_ENV}`
-    );
-  }
-
-  const identityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
-  if (identityPath) {
-    const identity = await loadLocalDaimonRuntimeIdentity(identityPath);
-    return { capabilityReceipt: identity.capabilityReceipt, image: identity.imageReference };
-  }
-  if (selection.contractManifestSha256 !== DAIMON_CONTRACT_MANIFEST_SHA256) {
-    throw new SpawnfileError(
-      "runtime_error",
-      "Selected Daimon runtime image does not attest the compiler's exact contract manifest; build and select a matching local artifact or pin a published compatible release"
-    );
-  }
-  return {
-    capabilityReceipt: selection.capabilityReceipts ?? selection.capabilityReceipt as string,
-    image: pinnedImage
-  };
-};
-
 export interface RuntimeInstallRecipeOptions {
   /**
    * Compile-time-only local overrides for this runtime's install npm
@@ -167,78 +74,14 @@ export const createRuntimeInstallRecipe = async (
   const installRoot = `${RUNTIME_INSTALL_ROOT}/${runtimeName}`;
   const containerEnv = createRuntimeContainerEnv();
 
+  const input = { containerEnv, installRoot, runtimeName, selection };
   switch (runtimeName) {
-    case "openclaw": {
-      const openClawRuntimeImage = resolveRuntimeImageRef(OPENCLAW_RUNTIME_IMAGE_ENV, selection);
-      if (openClawRuntimeImage) {
-        return {
-          commands: [],
-          copyCommands: [createRuntimeImageCopyCommand(openClawRuntimeImage, installRoot)],
-          env: containerEnv,
-          runtimeName,
-          runtimeRoot: installRoot
-        };
-      }
-
-      if (selection.kind !== "npm") {
-        throw new SpawnfileError(
-          "runtime_error",
-          `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
-        );
-      }
-
-      return {
-        commands: [
-          `npm install -g --omit=dev --no-fund --no-audit ${selection.packageName}@${selection.version}`
-        ],
-        copyCommands: [],
-        env: containerEnv,
-        runtimeName,
-        runtimeRoot: `/usr/local/lib/node_modules/${selection.packageName}`
-      };
-    }
-    case "picoclaw": {
-      const picoClawRuntimeImage = resolveRuntimeImageRef(PICOCLAW_RUNTIME_IMAGE_ENV, selection);
-      if (picoClawRuntimeImage) {
-        return {
-          commands: [
-            `mkdir -p /usr/local/bin && ln -sf ${installRoot}/bin/picoclaw /usr/local/bin/picoclaw`
-          ],
-          copyCommands: [createRuntimeImageCopyCommand(picoClawRuntimeImage, installRoot)],
-          env: containerEnv,
-          runtimeName,
-          runtimeRoot: installRoot
-        };
-      }
-
-      if (selection.kind !== "github_release_archive") {
-        throw new SpawnfileError(
-          "runtime_error",
-          `Runtime ${runtimeName} has no compiled artifact recipe for ${selection.kind}`
-        );
-      }
-
-      return {
-        commands: createPicoClawArchiveInstallCommands(installRoot, selection),
-        copyCommands: [],
-        env: containerEnv,
-        runtimeName,
-        runtimeRoot: installRoot
-      };
-    }
-    case "daimon": {
-      const daimonRuntime = await resolveDaimonRuntimeImageRef(selection);
-      return {
-        commands: createDaimonInstallCommands(installRoot, daimonRuntime.capabilityReceipt),
-        copyCommands: [createRuntimeImageCopyCommand(daimonRuntime.image, installRoot)],
-        env: {
-          ...containerEnv,
-          [DAIMON_WAKE_FUSE_DIRECTORY_ENV]: DAIMON_WAKE_FUSE_DIRECTORY
-        },
-        runtimeName,
-        runtimeRoot: installRoot
-      };
-    }
+    case "openclaw":
+      return createOpenClawInstallRecipe(input);
+    case "picoclaw":
+      return createPicoClawInstallRecipe(input);
+    case "daimon":
+      return createDaimonInstallRecipe(input);
     /* c8 ignore next 5 -- compileable runtimes are exhaustively covered above */
     default:
       throw new SpawnfileError(

@@ -15,6 +15,11 @@ pi` remains the legacy generated Pi path.
 The `image/` directory owns the generic image context, local builder, and pinned publisher.
 `package-assets.json` lists the contract files copied into the installed CLI.
 
+`install.ts` owns the registry install hints and builds the native container recipe.
+`daimonInstall.ts` verifies the selected architecture's image receipt, manifest,
+and executables. `localDaimonAuthority.ts` validates the explicit non-production
+loopback image identity shared with schedule authority.
+
 The consumed Daimon manifest declares stable Codex, AGY and Grok host-realm volumes
 plus their opaque bootstrap slots. This adapter renders those resources but
 never starts a provider CLI, D-Bus, or a turn.
