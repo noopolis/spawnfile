@@ -1221,13 +1221,7 @@ describe("createContainerArtifacts distribution contract", () => {
     expect(Array.isArray(instance?.model_auth_methods)).toBe(false);
   });
 
-  /**
-   * `specs/SURFACES.md` promises a Moltnet release without `daimon-bridge` is
-   * rejected. No published release implements the daimon node runtime kind, and
-   * the node config decodes with DisallowUnknownFields, so an ungated compile
-   * ships a container that dies at boot on strict decode of `agent_id`. A node
-   * plan declares the capability required by its adapter.
-   */
+  // Compile each native attachment against the bridge capabilities in its pinned release.
   const piBridgeRelease = {
     architecture: "amd64",
     asset: "moltnet_linux_amd64.tar.gz",

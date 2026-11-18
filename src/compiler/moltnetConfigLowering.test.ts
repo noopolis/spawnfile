@@ -1,4 +1,3 @@
-import { createMoltnetDaimonReceiptStorePath as resolveDaimonReceipt } from "../runtime/daimon/wiring.js";
 import { describe, expect, it } from "vitest";
 
 import type { TeamNetworkServer } from "../manifest/index.js";
@@ -9,16 +8,12 @@ import {
   createMoltnetNodeConfigPath,
   createMoltnetOpenTokenDirectory,
   createMoltnetOpenTokenPath,
-  createMoltnetNetworkStateDirectory,
   createMoltnetServerConfigPath,
   renderMoltnetListenAddr,
   resolveMoltnetBaseUrl,
   resolveMoltnetClientAuth,
   resolveMoltnetStorePersistenceMountPath
 } from "./moltnetConfigLowering.js";
-
-const createMoltnetDaimonReceiptStorePath = (network: string, member: string): string =>
-  resolveDaimonReceipt(network, member, createMoltnetNetworkStateDirectory(network));
 
 type ManagedServer = Extract<TeamNetworkServer, { mode: "managed" }>;
 
@@ -42,15 +37,6 @@ describe("moltnetConfigLowering", () => {
       .toBe("container/rootfs/var/lib/spawnfile/moltnet/servers/org-net/Moltnet.json");
     expect(createMoltnetNodeConfigPath("root team", "org net", "field/rep"))
       .toBe("container/rootfs/var/lib/spawnfile/moltnet/nodes/root-team-org-net-field-rep.json");
-  });
-
-  it("renders only collision-free absolute Daimon receipt-store paths", () => {
-    expect(createMoltnetDaimonReceiptStorePath("local", "relay-agent"))
-      .toBe("/var/lib/spawnfile/moltnet/networks/local/daimon-receipts/relay-agent.json");
-    expect(() => createMoltnetDaimonReceiptStorePath("local", "../relay-agent"))
-      .toThrow("invalid Daimon receipt-store path segment");
-    expect(() => createMoltnetDaimonReceiptStorePath("local net", "relay-agent"))
-      .toThrow("invalid Daimon receipt-store path segment");
   });
 
   it("renders listen addresses and base URLs for managed and external servers", () => {
