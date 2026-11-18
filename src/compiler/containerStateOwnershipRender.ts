@@ -6,7 +6,7 @@ import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import {
   DAIMON_RUNTIME_UID,
   resolveDaimonUidEntrypointStateRoots
-} from "./containerDaimonUidEntrypointRender.js";
+} from "../runtime/daimon/host/uidEntrypointRender.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 import { VOLUME_BOOTSTRAP_MARKER,VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
 export { VOLUME_BOOTSTRAP_MARKER,VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";

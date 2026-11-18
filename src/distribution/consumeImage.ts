@@ -36,7 +36,7 @@ import {
   rollbackCandidateContainer
 } from "./consumeImageLifecycle.js";
 import { createConsumerDockerRunner } from "./dockerRunner.js";
-import { resolveDaimonRuntimeForImage } from "./consumeImageDaimonDocker.js";
+import { resolveDaimonRuntimeForImage } from "../runtime/daimon/host/imageDocker.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
 import { parseImageReference } from "./imageRef.js";

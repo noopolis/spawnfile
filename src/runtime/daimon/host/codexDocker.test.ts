@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as daimon from "../runtime/daimon/index.js";
+import * as daimon from "../index.js";
 
 import {
   daimonEngineDockerSecurityArgsForConfigs,
   materializeDaimonGrokSeccompProfile,
   resolveDaimonEngineDockerInterop
-} from "./daimonCodexDocker.js";
-import { DAIMON_GROK_SECCOMP_PROFILE_BYTES, DAIMON_GROK_SECCOMP_PROFILE_SHA256 } from "./daimonGrokSeccompProfile.js";
+} from "./codexDocker.js";
+import { DAIMON_GROK_SECCOMP_PROFILE_BYTES, DAIMON_GROK_SECCOMP_PROFILE_SHA256 } from "./grokSeccompProfile.js";
 
 const config = (...engines: Array<Record<string, unknown>>): string => JSON.stringify({
   agents: engines.map((engine, index) => ({ engine, id: `agent:${index}` })),

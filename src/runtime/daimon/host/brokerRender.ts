@@ -1,15 +1,15 @@
 import {
   DAIMON_GROK_ENGINE_BROKER,
   DAIMON_GROK_TURN_USAGE_LEDGER
-} from "../runtime/daimon/contractManifest.js";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./containerDaimonGrokWorkerRender.js";
-import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
+} from "../contractManifest.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./grokWorkerRender.js";
+import { renderDaimonGrokWorkerProvisioning } from "./grokWorkerProvisioning.js";
 import {
   DAIMON_BROKER_UID,
   DAIMON_FIRST_WORKER_UID,
   DAIMON_ORGANIZATION_UID
-} from "../runtime/daimon/runtimeIdentity.js";
+} from "../runtimeIdentity.js";
 
 export { DAIMON_BROKER_UID, DAIMON_FIRST_WORKER_UID, DAIMON_ORGANIZATION_UID };
 export const DAIMON_BROKER_EXECUTABLE = "/opt/daimon/bin/daimon-engine-broker";
@@ -30,7 +30,7 @@ export {
   DAIMON_ORGANIZATION_STATE_DIRECTORY,
   DAIMON_WORKER_ROOT,
   resolveDaimonGrokRegistrations
-} from "./containerDaimonGrokWorkerRender.js";
+} from "./grokWorkerRender.js";
 
 interface WorkspaceSecurityResource {
   backingPath: string;

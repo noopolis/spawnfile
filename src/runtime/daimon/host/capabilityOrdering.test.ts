@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { renderDaimonUidEntrypoint } from "./containerDaimonUidEntrypointRender.js";
-import { createStateOwnershipCommand } from "./containerStateOwnershipRender.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { renderDaimonUidEntrypoint } from "./uidEntrypointRender.js";
+import { createStateOwnershipCommand } from "../../../compiler/containerStateOwnershipRender.js";
 
 const daimonPlan = {
   engineByNodeId: { "agent:grok": "grok" },

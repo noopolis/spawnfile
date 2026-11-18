@@ -1,4 +1,4 @@
-import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
+import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../index.js";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -7,8 +7,8 @@ import {
   DAIMON_GROK_SECCOMP_PROFILE_BYTES,
   DAIMON_GROK_SECCOMP_PROFILE_FILE_NAME,
   DAIMON_GROK_SECCOMP_PROFILE_SHA256
-} from "./daimonGrokSeccompProfile.js";
-import { SpawnfileError } from "./errors.js";
+} from "./grokSeccompProfile.js";
+import { SpawnfileError } from "../../../shared/errors.js";
 
 export const DAIMON_DOCKER_RUNTIME_SECURITY_ARGS = [
   "--cap-drop=ALL",

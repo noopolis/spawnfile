@@ -3,10 +3,10 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from "../runtime/daimon/contractManifest.js";
-import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_CONFIG, DAIMON_GATEWAY_KEY_TABLE } from "../runtime/daimon/gateway.js";
-import { daimonGatewayedSubscriptionRealms } from "../runtime/daimon/subscriptionRealms.js";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from "../contractManifest.js";
+import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_CONFIG, DAIMON_GATEWAY_KEY_TABLE } from "../gateway.js";
+import { daimonGatewayedSubscriptionRealms } from "../subscriptionRealms.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
 import {
   DAIMON_GATEWAY_UID,
   renderDaimonGatewayLaunch,
@@ -14,8 +14,8 @@ import {
   renderDaimonGatewayRuntimeEnv,
   renderDaimonGatewaySidecarScript,
   resolveDaimonGatewayRealmPaths
-} from "./containerDaimonGatewayRender.js";
-import { renderDaimonUidEntrypoint } from "./containerDaimonUidEntrypointRender.js";
+} from "./gatewayRender.js";
+import { renderDaimonUidEntrypoint } from "./uidEntrypointRender.js";
 
 const execFile = promisify(execFileCallback);
 const realm = DAIMON_CODEX_SUBSCRIPTION_REALM.durableMountPath;

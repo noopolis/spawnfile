@@ -1,15 +1,15 @@
-import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN, daimonGatewayRealmPath, isDaimonGatewayedEngine } from "../runtime/daimon/gateway.js";
-import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
+import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN, daimonGatewayRealmPath, isDaimonGatewayedEngine } from "../gateway.js";
+import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../index.js";
 import path from "node:path";
 
-import { SpawnfileError } from "../shared/index.js";
-import { resolveDaimonGrokRegistrationLimits } from "../runtime/daimon/grokTurnLimits.js";
+import { SpawnfileError } from "../../../shared/index.js";
+import { resolveDaimonGrokRegistrationLimits } from "../grokTurnLimits.js";
 import {
   DAIMON_ORGANIZATION_TARGET_ID,
   DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY,
   DAIMON_RUNTIME_HOMES_DIRECTORY,
   DAIMON_WAKE_FUSE_DIRECTORY
-} from "../runtime/daimon/config.js";
+} from "../config.js";
 import {
   DAIMON_AGY_SUBSCRIPTION_REALM,
   DAIMON_GROK_BROKER_MODELS,
@@ -20,16 +20,16 @@ import {
   DAIMON_RUNTIME_HOME_ROOT,
   type DaimonGrokBrokerModel,
   type DaimonGrokBrokerReasoningEffort
-} from "../runtime/daimon/contractManifest.js";
+} from "../contractManifest.js";
 import {
   DAIMON_GROK_WORKER_HOME_DIRECTORY,
   daimonGrokWorkerSandboxProfileSha256,
   renderDaimonGrokWorkerSandboxProfile,
   resolveDaimonGrokWorkerConfig
-} from "../runtime/daimon/grokWorkerContract.js";
-import { resolveDaimonGrokWorkerSkills, type DaimonGrokWorkerSkills } from "../runtime/daimon/grokWorkerSkills.js";
-import { DAIMON_FIRST_WORKER_UID } from "../runtime/daimon/runtimeIdentity.js";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+} from "../grokWorkerContract.js";
+import { resolveDaimonGrokWorkerSkills, type DaimonGrokWorkerSkills } from "../grokWorkerSkills.js";
+import { DAIMON_FIRST_WORKER_UID } from "../runtimeIdentity.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
 
 export const DAIMON_WORKER_ROOT = "/var/lib/daimon-workers";
 export const DAIMON_GROK_WORKER_READ_ONLY_FILES = DAIMON_GROK_ENGINE_BROKER.worker.home.readOnlyFiles.names;

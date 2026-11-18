@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
 import {
   DAIMON_GATEWAY_BOOTSTRAP_ROOT,
   DAIMON_GATEWAY_CONFIG,
@@ -21,8 +21,8 @@ import {
   daimonGatewayRealmPath,
   daimonGatewayRefreshScratchPath,
   renderDaimonGatewayConfig
-} from "../runtime/daimon/gateway.js";
-import { DAIMON_BROKER_UID, DAIMON_GATEWAY_UID, DAIMON_ORGANIZATION_UID } from "../runtime/daimon/runtimeIdentity.js";
+} from "../gateway.js";
+import { DAIMON_BROKER_UID, DAIMON_GATEWAY_UID, DAIMON_ORGANIZATION_UID } from "../runtimeIdentity.js";
 
 export { DAIMON_GATEWAY_UID };
 export const DAIMON_GATEWAY_STARTUP_TIMEOUT_SECONDS = 60;

@@ -3,14 +3,14 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { daimonGrokWorkerSandboxProfileSha256, renderDaimonGrokWorkerSandboxProfile } from "../runtime/daimon/grokWorkerContract.js";
-import { DAIMON_GROK_ENGINE_BROKER } from "../runtime/daimon/contractManifest.js";
-import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerConfigBytes.js";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { renderDaimonGrokHostPreflight, renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
-import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./containerDaimonGrokWorkerRender.js";
+import { daimonGrokWorkerSandboxProfileSha256, renderDaimonGrokWorkerSandboxProfile } from "../grokWorkerContract.js";
+import { DAIMON_GROK_ENGINE_BROKER } from "../contractManifest.js";
+import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../grokWorkerConfigBytes.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { renderDaimonGrokHostPreflight, renderDaimonGrokWorkerProvisioning } from "./grokWorkerProvisioning.js";
+import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./grokWorkerRender.js";
 
-import { BROKER, INSTANCE, plan, run, seedFor, type Node } from "./containerDaimonGrokWorkerProvisioning.test-helper.js";
+import { BROKER, INSTANCE, plan, run, seedFor, type Node } from "./grokWorkerProvisioning.test-helper.js";
 
 describe("Grok worker home provisioning", () => {
   const registrations = resolveDaimonGrokRegistrations([plan({ "agent:a": "grok", "agent:b": "grok", "agent:c": "codex" })]);

@@ -4,13 +4,13 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { removeDirectory } from "../filesystem/index.js";
+import { removeDirectory } from "../../../filesystem/index.js";
 
-import { daimonImageContractFiles, daimonImageManifestBytes } from "./daimonImageContract.test-fixtures.js";
-import { buildDistributionReport } from "./buildDistributionReport.js";
-import { consumeImageUp } from "./consumeImage.js";
-import { DISTRIBUTION_REPORT_IMAGE_PATH } from "./types.js";
-import type { DistributionRuntimeInstance } from "./types.js";
+import { daimonImageContractFiles, daimonImageManifestBytes } from "./imageContract.test-fixtures.js";
+import { buildDistributionReport } from "../../../distribution/buildDistributionReport.js";
+import { consumeImageUp } from "../../../distribution/consumeImage.js";
+import { DISTRIBUTION_REPORT_IMAGE_PATH } from "../../../distribution/types.js";
+import type { DistributionRuntimeInstance } from "../../../distribution/types.js";
 
 const previousHome = process.env.SPAWNFILE_HOME;
 const previousDaimonCodexSource = process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH;

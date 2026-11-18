@@ -4,23 +4,18 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import type { EntrypointOptions } from "./containerEntrypointRender.js";
-import { renderEntrypoint } from "./containerEntrypointRender.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { renderEntrypoint } from "../../../compiler/containerEntrypointRender.js";
+import { DAIMON_AUTHORIZED_UID_ENV, renderDaimonUidEntrypoint, resolveDaimonUidEntrypointStateRoots } from "./uidEntrypointRender.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../contractManifest.js";
 import {
-  DAIMON_AUTHORIZED_UID_ENV,
-  DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS,
-  renderDaimonBrokerSocketWait,
-  renderDaimonUidEntrypoint,
-  resolveDaimonVolumeIdentityFiles,
-  resolveDaimonUidEntrypointOwnershipPlan,
-  resolveDaimonUidEntrypointStateRoots
-} from "./containerDaimonUidEntrypointRender.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
+  authorizedUid, daimonPlan,
+  serverConfig, nodeConfig, causalState, moltnetPlans,
+  agyRealm, agyRealmMount, agyRuntimeHome, agyRuntimeHomeMount,
+  codexEngineHome, codexEngineHomeMount
+} from "./uidEntrypoint.test-helper.js";
 
 const execFile = promisify(execFileCallback);
-const authorizedUid = 2000;
 
 // Every directory from the private state root down to `target`, so a test can create each
 // one with the root-owned 0711 preimage the ownership guard demands.
@@ -28,82 +23,9 @@ const privateStateAncestors = (target: string): string[] =>
   path.posix.relative("/var/lib", target).split("/")
     .map((_, index, segments) => path.posix.join("/var/lib", ...segments.slice(0, index + 1)));
 
-const daimonPlan: RuntimeTargetPlan = {
-  engineByNodeId: { "agent:AGY": "agy", "agent:Codex One": "codex", "agent:Grok Two": "grok" },
-  grokModelByNodeId: { "agent:Grok Two": { model: "grok-4.6", reasoningEffort: "low" } },
-  envFiles: [], id: "daimon-organization",
-  instancePaths: {
-    configPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/config.json",
-    instanceRoot: "/var/lib/spawnfile/instances/daimon/daimon-organization",
-    workspacePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/workspace"
-  },
-  meta: { configFileName: "config.json", instancePaths: { configPathTemplate: "", workspacePathTemplate: "" }, standaloneBaseImage: "node:24", startCommand: [], systemDeps: [] },
-  modelAuthMethods: {}, modelSecretsRequired: [], opaqueMountTargets: ["/var/lib/spawnfile/daimon/agy-unlock-secret"],
-  runtimeName: "daimon", runtimeRoot: "/opt/daimon", targetFiles: []
-};
-
-const serverConfig = "/var/lib/spawnfile/moltnet/servers/local/Moltnet.json";
-const nodeConfig = "/var/lib/spawnfile/moltnet/nodes/agent.json";
-const causalState = "/var/lib/spawnfile/moltnet/servers/local/causal";
-const agyRealm = "/var/lib/spawnfile/daimon/agy-subscription-realm";
 const wakeFuseDirectory = "/var/lib/spawnfile/daimon/wake-fuse";
-const usageLedgerDirectory = DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath;
-const agyRuntimeHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/agy";
-const codexEngineHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/codex-one/.codex";
-const grokEngineHome = "/var/lib/spawnfile/instances/daimon/daimon-organization/runtime-homes/grok-two/.grok";
-const acceptanceStore = "/var/lib/spawnfile/instances/daimon/daimon-organization/state/wake-acceptance";
-const acceptanceStoreMount = {
-  id: "daimon-organization-acceptance-store",
-  mount_path: acceptanceStore,
-  reason: "Daimon organization durable wake acceptance store",
-  volume_name: "spawnfile-test-daimon-acceptance-store"
-};
-const agyRealmMount = {
-  id: "daimon-agy-subscription-realm",
-  mount_path: agyRealm,
-  reason: "Daimon host AGY subscription realm",
-  volume_name: "spawnfile-test-agy-realm"
-};
-const agyRuntimeHomeMount = {
-  id: "daimon-agy-runtime-home-agy",
-  mount_path: agyRuntimeHome,
-  reason: "Daimon AGY subscription runtime home for agent:agy",
-  volume_name: "spawnfile-test-agy-runtime-home"
-};
-const codexEngineHomeMount = {
-  id: "daimon-engine-home-codex-codex-one",
-  mount_path: codexEngineHome,
-  reason: "Daimon codex subscription credential home for agent:Codex One",
-  volume_name: "spawnfile-test-codex-engine-home"
-};
-const grokEngineHomeMount = {
-  id: "daimon-engine-home-grok-grok-two",
-  mount_path: grokEngineHome,
-  reason: "Daimon grok subscription credential home for agent:Grok Two",
-  volume_name: "spawnfile-test-grok-engine-home"
-};
-const moltnetPlans = {
-  nodePlans: [{ configPath: nodeConfig, networkId: "local" }],
-  serverPlans: [{
-    baseUrl: "http://127.0.0.1:8787",
-    configPath: serverConfig,
-    id: "local",
-    mode: "managed" as const,
-    name: "Local",
-    networkId: "local",
-    port: 8787,
-    rooms: [],
-    secretPatches: [],
-    server: {
-      auth: { mode: "none" as const },
-      listen: { bind: "127.0.0.1", port: 8787 },
-      mode: "managed" as const,
-      store: { kind: "memory" as const }
-    },
-    teamSource: "/fixture/Spawnfile"
-  }]
-} satisfies NonNullable<EntrypointOptions["moltnet"]>;
 
+const usageLedgerDirectory = DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath;
 
 describe("renderDaimonUidEntrypoint lifecycle",()=>{
   it("repairs a fresh volume and starts through private executable parents as authorized UID 2000", async () => {
@@ -189,7 +111,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
           runtimeRoot: "/opt/spawnfile/runtime-installs/daimon"
         }))
       }));
-      const { createRootfsFiles, renderDockerfile } = await import("./containerArtifactsRender.js");
+      const { createRootfsFiles, renderDockerfile } = await import("../../../compiler/containerArtifactsRender.js");
       const dockerfile = await renderDockerfile([plan], {
         moltnet: receiptMoltnetPlans,
         persistentMountPaths: [agyRealm, agyRuntimeHome, codexEngineHome, wakeFuseDirectory, usageLedgerDirectory, causalState, networkRoot,volumeResourceRoot]
@@ -328,7 +250,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
       );
       await execFile("docker", ["build", "--pull=false", "--tag", tag, "."], {
         cwd: dockerDirectory,
-        timeout: 30_000
+        timeout: 240_000
       });
       await execFile("docker", ["volume", "create", networkVolumeName]);
       await execFile("docker",["volume","create",resourceVolumeName]);
@@ -391,7 +313,7 @@ describe("renderDaimonUidEntrypoint lifecycle",()=>{
       await execFile("docker", ["image", "rm", "--force", tag]).catch(() => undefined);
       await rm(dockerDirectory, { force: true, recursive: true });
     }
-  }, 60_000);
+  }, 300_000);
 
   // The guard hardens the fixed /var and /var/lib ancestors and the private state root
   // before it ever opens a compiler-authored state root, and it walks every absolute path

@@ -2,16 +2,16 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
-import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../runtime/daimon/grokWorkerConfigBytes.js";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
+import { DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_TURN_USAGE_LEDGER } from "../contractManifest.js";
+import { DAIMON_GROK_WORKER_CONFIG_BYTES } from "../grokWorkerConfigBytes.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
 import {
   assertCanonicalRegisteredPath,
   daimonGrokAcceptanceStoreDenyPath,
   DAIMON_GROK_OPTIONAL_DENY_PATHS,
   renderDaimonGrokServiceConfig,
   resolveDaimonGrokRegistrations
-} from "./containerDaimonGrokWorkerRender.js";
+} from "./grokWorkerRender.js";
 
 const INSTANCE = "/var/lib/spawnfile/instances/daimon/daimon-organization";
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");

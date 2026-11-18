@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import path from "node:path";
 
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
-import type { DaimonGrokRegistration } from "./containerDaimonGrokWorkerRender.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { renderDaimonGrokWorkerProvisioning } from "./grokWorkerProvisioning.js";
+import type { DaimonGrokRegistration } from "./grokWorkerRender.js";
 
 export const INSTANCE = "/var/lib/spawnfile/instances/daimon/daimon-organization";
 export const BROKER = 2100;

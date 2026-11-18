@@ -3,10 +3,10 @@ import vm from "node:vm";
 
 import { describe, expect, it } from "vitest";
 
-import { DAIMON_GROK_BROKER_MODELS, DAIMON_GROK_BROKER_REASONING_EFFORTS } from "../runtime/daimon/contractManifest.js";
-import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
-import { plan } from "./containerDaimonGrokWorkerProvisioning.test-helper.js";
-import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./containerDaimonGrokWorkerRender.js";
+import { DAIMON_GROK_BROKER_MODELS, DAIMON_GROK_BROKER_REASONING_EFFORTS } from "../contractManifest.js";
+import { renderDaimonGrokWorkerProvisioning } from "./grokWorkerProvisioning.js";
+import { plan } from "./grokWorkerProvisioning.test-helper.js";
+import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./grokWorkerRender.js";
 
 const registrationFor = (model: string, reasoningEffort: string): DaimonGrokRegistration =>
   resolveDaimonGrokRegistrations([{ ...plan({ agent: "grok" }), grokModelByNodeId: { agent: { model, reasoningEffort } } }])[0]!;

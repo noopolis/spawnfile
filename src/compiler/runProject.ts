@@ -27,7 +27,7 @@ import { DAIMON_GATEWAY_URL_ENV, daimonProfileRealmVolume, isDaimonGatewayRealmM
 import { compileProject, type CompileProjectOptions, type CompileProjectResult } from "./compileProject.js";
 import { createDefaultImageTag, resolveDockerBuildArchitecture } from "./buildProject.js";
 import { slugify } from "./helpers.js";
-import { resolveDaimonCodexNativeSandboxDockerSecurityOptions } from "./runProjectDaimonCodexDocker.js";
+import { resolveDaimonCodexNativeSandboxDockerSecurityOptions } from "../runtime/daimon/host/dockerRun.js";
 import {
   inspectDetachedContainer as recoverDetachedDockerRun,
   runDockerContainer,

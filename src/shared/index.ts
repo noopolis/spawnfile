@@ -5,7 +5,7 @@ export * from "./redaction.js";
 export * from "./secretMask.js";
 export * from "./types.js";
 export * from "./volumeNames.js";
-export * from "./daimonCodexDocker.js";
+export * from "../runtime/daimon/host/codexDocker.js";
 
 export * from './trainingLegacy/index.js';
 export * from "./bridgeCapabilities.js";

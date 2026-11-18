@@ -1,11 +1,11 @@
 import path from "node:path";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
-import { readVerifiedDaimonContractManifest } from "../runtime/daimon/contractManifest.js";
-import { SpawnfileError } from "../shared/errors.js";
+import { readVerifiedDaimonContractManifest } from "../contractManifest.js";
+import { SpawnfileError } from "../../../shared/errors.js";
 
-import type { DockerCommandRunner } from "./dockerRunner.js";
-import { extractSingleFileFromTar } from "./tarReader.js";
+import type { DockerCommandRunner } from "../../../distribution/dockerRunner.js";
+import { extractSingleFileFromTar } from "../../../distribution/tarReader.js";
 
 const RUNTIME_ROOT = "/opt/spawnfile/runtime-installs/daimon";
 

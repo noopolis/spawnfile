@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
-import { SpawnfileError } from "../shared/index.js";
+import { SpawnfileError } from "../../../shared/index.js";
 
 const execFile = promisify(execFileCallback);
 

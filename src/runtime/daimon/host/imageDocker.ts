@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 
-import { SpawnfileError } from "../shared/errors.js";
+import { SpawnfileError } from "../../../shared/errors.js";
 import {
   DAIMON_DOCKER_RUNTIME_SECURITY_ARGS,
   daimonEngineDockerSecurityArgsForConfigs,
   materializeDaimonGrokSeccompProfile
-} from "../shared/daimonCodexDocker.js";
+} from "./codexDocker.js";
 
-import { readDaimonImageContract } from "./consumeImageDaimonContract.js";
-import type { DaimonEngineDescriptors } from "../runtime/daimon/engineDescriptorSchema.js";
-import type { DockerCommandRunner } from "./dockerRunner.js";
-import { extractSingleFileFromTar } from "./tarReader.js";
-import type { DistributionReport, DistributionRuntimeInstance } from "./types.js";
+import { readDaimonImageContract } from "./imageContract.js";
+import type { DaimonEngineDescriptors } from "../engineDescriptorSchema.js";
+import type { DockerCommandRunner } from "../../../distribution/dockerRunner.js";
+import { extractSingleFileFromTar } from "../../../distribution/tarReader.js";
+import type { DistributionReport, DistributionRuntimeInstance } from "../../../distribution/types.js";
 
 const DAIMON_CONFIG_SIZE_CAP_BYTES = 4 * 1024 * 1024;
 

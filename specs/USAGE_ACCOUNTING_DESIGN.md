@@ -59,7 +59,7 @@ so a call placed after the success `finish()` structurally cannot double-count.
 - **An unprovisioned path.** Revision 1 chose `/var/lib/spawnfile/daimon/usage/`
   without creating it. The writer is pinned to uid 2100
   (`engineBrokerServiceCli.ts:10`); only the realm dir is provisioned
-  (`containerDaimonBrokerRender.ts:83`); the parent is a root-owned mountpoint.
+  (`src/runtime/daimon/host/brokerRender.ts:83`); the parent is a root-owned mountpoint.
   `mkdir` returns EACCES, and because writes are advisory the ledger would be
   **silently empty forever**.
 
@@ -72,15 +72,15 @@ A dedicated persistent volume, provisioned like the realm, owned by the broker.
 
 Three changes make it real, all previously missing:
 
-1. `containerDaimonBrokerRender.ts` — a `mkdirSync` + `chownSync(2100,2100)` +
+1. `src/runtime/daimon/host/brokerRender.ts` — a `mkdirSync` + `chownSync(2100,2100)` +
    `chmodSync(0o750)` line beside the existing realm line.
 2. `spawnfile/src/runtime/daimon/config.ts` — a `persistentMounts` entry, so the
    ledger survives redeploy. Without it the file lives in the container writable
    layer and dies exactly when the incident report is needed.
-3. `containerDaimonBrokerRender.ts:92` — a worker deny-list entry. Peer isolation
+3. `src/runtime/daimon/host/brokerRender.ts:92` — a worker deny-list entry. Peer isolation
    is an explicit posture there; a readable ledger would leak every agent's wake
    ids and cadence to every sandboxed worker.
-4. **`containerDaimonUidEntrypointRender.ts:103-111` — exclude the usage mount
+4. **`src/runtime/daimon/host/uidEntrypointRender.ts:103-111` — exclude the usage mount
    from `state_roots`.** This is the one revision 2 missed and it is fatal without
    it. The ownership guard runs *before* broker provisioning (guard at `:270-281`,
    provisioning spliced at `:286`) and recursively chowns every persistent mount
@@ -238,8 +238,8 @@ usage-adjacent command is `du`.
     daimon/src/runtime/turnUsageLedger.ts            new — append one line, advisory
     daimon/src/runtime/grokEngineBroker.ts           call it in the success branch
     daimon/src/contracts/runtimeContractManifest.ts  register turn-usage.v1
-    spawnfile/src/compiler/containerDaimonBrokerRender.ts  provision dir + deny-list entry
-    spawnfile/src/compiler/containerDaimonUidEntrypointRender.ts  exclude usage from state_roots + write probe
+    spawnfile/src/runtime/daimon/host/brokerRender.ts  provision dir + deny-list entry
+    spawnfile/src/runtime/daimon/host/uidEntrypointRender.ts  exclude usage from state_roots + write probe
     spawnfile/src/deployment/dockerProbeGateway.ts   maxBuffer (or a streaming read)
     spawnfile/src/runtime/daimon/config.ts           persistent mount
     spawnfile/src/runtime/daimon/contractManifest.ts mirror turn-usage.v1

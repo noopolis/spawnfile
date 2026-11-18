@@ -17,7 +17,7 @@ import {
   DAIMON_GATEWAY_SIDECAR_URL,
   DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV,
   renderDaimonGatewaySidecarScript
-} from "../../containerDaimonGatewayRender.js";
+} from "../../../runtime/daimon/host/gatewayRender.js";
 import { slugify } from "../../helpers.js";
 import { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
 import { captureTrialEvidence, type TrialEvidenceCaptureCall } from "./evidence.js";

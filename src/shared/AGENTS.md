@@ -10,7 +10,6 @@ src/shared/
 ├── constants.ts     # Small shared constants
 ├── bridgeCapabilities.ts # Canonical capability tuples for Moltnet release identities
 ├── recording.ts     # Opt-in recording retention parsing (default 30 days)
-├── daimonCodexDocker.ts # Shared Daimon Docker posture and strict Codex policy parser
 ├── errors.ts        # Typed error helpers and guards
 ├── secretMask.ts    # Same-length masking of known secrets and credential shapes, as text or as a byte stream
 ├── types.ts         # Cross-cutting shared types

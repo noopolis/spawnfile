@@ -6,7 +6,7 @@ import { SpawnfileError } from "../shared/index.js";
 import {
   assertOpaqueDaimonCredentialsHaveNoUserNamespace,
   pinOpaqueDaimonDockerEndpoint
-} from "./runProjectDockerDaimonGuards.js";
+} from "../runtime/daimon/host/dockerGuards.js";
 import { withExclusiveVolumeReservations } from "./runProjectDockerReservation.js";
 
 const execFile = promisify(execFileCallback);

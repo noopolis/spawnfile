@@ -1,6 +1,6 @@
 import path from "node:path";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { VOLUME_BOOTSTRAP_MARKER, VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { VOLUME_BOOTSTRAP_MARKER, VOLUME_BOOTSTRAP_MARKER_CONTENT } from "../../../compiler/containerVolumeBootstrap.js";
 const SPAWNFILE_PRIVATE_STATE_ROOT = "/var/lib/spawnfile";
 export const renderDaimonOwnershipProgram = (
   opaqueTargets: string[],

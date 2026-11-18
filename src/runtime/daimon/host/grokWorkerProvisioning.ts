@@ -1,6 +1,6 @@
-import { DAIMON_GROK_ENGINE_BROKER } from "../runtime/daimon/contractManifest.js";
-import { resolveDaimonGrokWorkerConfig } from "../runtime/daimon/grokWorkerContract.js";
-import { DAIMON_BROKER_UID, DAIMON_ORGANIZATION_UID } from "../runtime/daimon/runtimeIdentity.js";
+import { DAIMON_GROK_ENGINE_BROKER } from "../contractManifest.js";
+import { resolveDaimonGrokWorkerConfig } from "../grokWorkerContract.js";
+import { DAIMON_BROKER_UID, DAIMON_ORGANIZATION_UID } from "../runtimeIdentity.js";
 import {
   DAIMON_GROK_DENIED_STATE_ROOTS,
   DAIMON_GROK_OPTIONAL_DENY_PATHS,
@@ -8,7 +8,7 @@ import {
   DAIMON_WORKER_ROOT,
   renderDaimonGrokServiceConfig,
   type DaimonGrokRegistration
-} from "./containerDaimonGrokWorkerRender.js";
+} from "./grokWorkerRender.js";
 
 /** Only the bytes the program writes; everything else it needs is recomputed or checked in place. */
 const programRegistration = (entry: DaimonGrokRegistration) => ({

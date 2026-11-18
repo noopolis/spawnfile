@@ -6,13 +6,13 @@ import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../contractManifest.js";
 import {
   DAIMON_ORGANIZATION_STATE_DIRECTORY,
   renderDaimonBrokerProvisioning,
   renderDaimonUsageLedgerProvisioning,
   renderDaimonWorkspaceResourceSecurity
-} from "./containerDaimonBrokerRender.js";
+} from "./brokerRender.js";
 
 const execFile = promisify(execFileCallback);
 type Plan = Parameters<typeof renderDaimonBrokerProvisioning>[0][number];

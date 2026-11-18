@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from "../runtime/daimon/contractManifest.js";
-import { DAIMON_GROK_WORKER_SKILLS_SAMPLES } from "../runtime/daimon/grokWorkerConfigBytes.js";
-import { daimonGrokWorkerSkillsSha256 } from "../runtime/daimon/grokWorkerSkills.js";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { renderDaimonGrokWorkerProvisioning } from "./containerDaimonGrokWorkerProvisioning.js";
-import { memoryFs, plan, run, runOn, seedFor } from "./containerDaimonGrokWorkerProvisioning.test-helper.js";
-import { renderDaimonGrokServiceConfig, resolveDaimonGrokRegistrations } from "./containerDaimonGrokWorkerRender.js";
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from "../contractManifest.js";
+import { DAIMON_GROK_WORKER_SKILLS_SAMPLES } from "../grokWorkerConfigBytes.js";
+import { daimonGrokWorkerSkillsSha256 } from "../grokWorkerSkills.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { renderDaimonGrokWorkerProvisioning } from "./grokWorkerProvisioning.js";
+import { memoryFs, plan, run, runOn, seedFor } from "./grokWorkerProvisioning.test-helper.js";
+import { renderDaimonGrokServiceConfig, resolveDaimonGrokRegistrations } from "./grokWorkerRender.js";
 
 const SAMPLE = DAIMON_GROK_WORKER_SKILLS_SAMPLES[2]!;
 const sampleSkills = () => SAMPLE.skills.map((skill) => ({ name: skill.name, files: skill.files.map((file) => ({ ...file })) }));

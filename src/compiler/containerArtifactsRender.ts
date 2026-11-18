@@ -23,7 +23,7 @@ import {
   DAIMON_RUNTIME_UID,
   DAIMON_UID_ENTRYPOINT_PATH,
   renderDaimonUidEntrypoint
-} from "./containerDaimonUidEntrypointRender.js";
+} from "../runtime/daimon/host/uidEntrypointRender.js";
 import { createStateOwnershipCommand } from "./containerStateOwnershipRender.js";
 import type { BackedMountRequirement } from "./containerBackedMountRender.js";
 import {

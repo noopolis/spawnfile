@@ -8,15 +8,15 @@ import {
   ensureDirectory,
   removeDirectory,
   writeUtf8File
-} from "../filesystem/index.js";
+} from "../../../filesystem/index.js";
 import type {
   CompileReport,
   ContainerReport,
   ContainerRuntimeInstanceReport
-} from "../report/index.js";
-import type { OrganizationReadinessEvidence } from "./organizationReadyEvidence.js";
+} from "../../../report/index.js";
+import type { OrganizationReadinessEvidence } from "../../../compiler/organizationReadyEvidence.js";
 
-import { createDockerRunInvocation } from "./runProject.js";
+import { createDockerRunInvocation } from "../../../compiler/runProject.js";
 
 const temporaryDirectories: string[] = [];
 const previousDaimonCodexSource = process.env.SPAWNFILE_DAIMON_SOURCE_CODEX_AUTH;

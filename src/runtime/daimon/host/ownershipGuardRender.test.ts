@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { renderDaimonOwnershipProgram } from "./containerDaimonOwnershipGuardRender.js";
+import { renderDaimonOwnershipProgram } from "./ownershipGuardRender.js";
 
 const execFileAsync = promisify(execFile);
 

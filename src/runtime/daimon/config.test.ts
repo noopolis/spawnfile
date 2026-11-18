@@ -9,7 +9,7 @@ vi.mock("./grokSkillsSupport.js", async (importOriginal) => {
 });
 
 
-import { resolveDaimonUidEntrypointOwnershipPlan } from "../../compiler/containerDaimonUidEntrypointRender.js";
+import { resolveDaimonUidEntrypointOwnershipPlan } from "./host/uidEntrypointRender.js";
 import { createMemoryArtifactBundle } from "../../compiler/memoryArtifacts.js";
 import { resolveInstancePaths } from "../../compiler/containerTargetPlanResolution.js";
 import type { RuntimeTargetPlan } from "../../compiler/containerArtifactsTypes.js";

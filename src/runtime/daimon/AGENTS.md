@@ -38,7 +38,7 @@ directory is missing or unreadable (`ensureUsageLedgerReadable` in Daimon's
 is the volume identity and renaming it orphans existing data. The container
 entrypoint also fixes this directory group-writable (`0770`, not `0750`):
 Codex and AGY write from the organization-uid runtime process
-(`renderDaimonUsageLedgerProvisioning` in `containerDaimonBrokerRender.ts`),
+(`renderDaimonUsageLedgerProvisioning` in `src/runtime/daimon/host/brokerRender.ts`),
 not the Grok-only broker, so a mode granting the group only read+execute lets
 that process list the directory but not create `usage.jsonl` inside it. The
 file itself is handed to broker:organization at `0660` on every start: Daimon's
@@ -183,7 +183,7 @@ adapter change.
 `runtimeIdentity.ts` is the single source of truth for the fixed container-side
 uids a compiled Daimon image runs under (`DAIMON_ORGANIZATION_UID`,
 `DAIMON_BROKER_UID`, `DAIMON_FIRST_WORKER_UID`);
-`src/compiler/containerDaimonBrokerRender.ts` re-exports them so the compiler and
+`src/runtime/daimon/host/brokerRender.ts` re-exports them so the compiler and
 the deploy path cannot drift apart. They are compiler-wide constants, not
 per-organization values: the rendered entrypoint pins `uid=2000` and drops to it
 with `setpriv --reuid`.

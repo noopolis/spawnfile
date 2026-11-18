@@ -1,24 +1,24 @@
-import { createMoltnetDaimonReceiptStorePath as resolveDaimonReceipt } from "../runtime/daimon/wiring.js";
+import { createMoltnetDaimonReceiptStorePath as resolveDaimonReceipt } from "../wiring.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { daimonAdapter } from "../runtime/daimon/adapter.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_SUBSCRIPTION_REALM, DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
-import { DAIMON_WAKE_FUSE_DIRECTORY } from "../runtime/daimon/config.js";
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
-import { resolveDaimonGrokRegistrations } from "./containerDaimonGrokWorkerRender.js";
-import { resolveDaimonUidEntrypointOwnershipPlan } from "./containerDaimonUidEntrypointRender.js";
-import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
-import type { EntrypointOptions } from "./containerEntrypointRender.js";
-import { createMoltnetNetworkStateDirectory, createMoltnetOpenTokenPath } from "./moltnetConfigLowering.js";
+import { daimonAdapter } from "../adapter.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER, DAIMON_GROK_SUBSCRIPTION_REALM, DAIMON_GROK_TURN_USAGE_LEDGER } from "../contractManifest.js";
+import { DAIMON_WAKE_FUSE_DIRECTORY } from "../config.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import { createRuntimeTargetPlans } from "../../../compiler/containerArtifactsPlans.js";
+import { resolveDaimonGrokRegistrations } from "./grokWorkerRender.js";
+import { resolveDaimonUidEntrypointOwnershipPlan } from "./uidEntrypointRender.js";
+import { MOLTNET_READINESS_DIRECTORY } from "../../../compiler/containerReadinessPaths.js";
+import type { EntrypointOptions } from "../../../compiler/containerEntrypointRender.js";
+import { createMoltnetNetworkStateDirectory, createMoltnetOpenTokenPath } from "../../../compiler/moltnetConfigLowering.js";
+import type { CompilePlan, ResolvedAgentNode } from "../../../compiler/types.js";
 
 const createMoltnetDaimonReceiptStorePath = (network: string, member: string): string =>
   resolveDaimonReceipt(network, member, createMoltnetNetworkStateDirectory(network));
-import type { CompilePlan, ResolvedAgentNode } from "./types.js";
 
 const INSTANCE = "/var/lib/spawnfile/instances/daimon/daimon-organization";
 const temporary: string[] = [];

@@ -1,25 +1,25 @@
-import { DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../runtime/daimon/index.js";
+import { DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../index.js";
 import path from "node:path";
 
-import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import type { EntrypointOptions } from "./containerEntrypointRender.js";
+import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
+import type { EntrypointOptions } from "../../../compiler/containerEntrypointRender.js";
 import {
   DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID,
   DAIMON_WAKE_FUSE_DIRECTORY
-} from "../runtime/daimon/config.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
-import { DAIMON_RECORDING_MOUNT_ID_PREFIX } from "../runtime/daimon/recording.js";
-import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
+} from "../config.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../contractManifest.js";
+import { DAIMON_RECORDING_MOUNT_ID_PREFIX } from "../recording.js";
+import { MOLTNET_READINESS_DIRECTORY } from "../../../compiler/containerReadinessPaths.js";
 import {
   createBackedMountGuard,
   type BackedMountRequirement
-} from "./containerBackedMountRender.js";
+} from "../../../compiler/containerBackedMountRender.js";
 import {
   renderDaimonOwnershipProgram,
   resolveDaimonVolumeIdentityFiles
-} from "./containerDaimonOwnershipGuardRender.js";
-export { resolveDaimonVolumeIdentityFiles } from "./containerDaimonOwnershipGuardRender.js";
-import { renderDaimonGrokHostPreflight } from "./containerDaimonGrokWorkerProvisioning.js";
+} from "./ownershipGuardRender.js";
+export { resolveDaimonVolumeIdentityFiles } from "./ownershipGuardRender.js";
+import { renderDaimonGrokHostPreflight } from "./grokWorkerProvisioning.js";
 import {
   DAIMON_BROKER_EXECUTABLE,
   DAIMON_BROKER_BACKEND_SOCKET,
@@ -31,17 +31,17 @@ import {
   renderDaimonBrokerProvisioning,
   renderDaimonUsageLedgerProvisioning,
   resolveDaimonGrokRegistrations
-} from "./containerDaimonBrokerRender.js";
+} from "./brokerRender.js";
 
-import { renderDaimonStartupSupervision } from "./containerDaimonStartupSupervision.js";
+import { renderDaimonStartupSupervision } from "./startupSupervision.js";
 import {
   DAIMON_GATEWAY_UID,
   renderDaimonGatewayLaunch,
   renderDaimonGatewayProvisioning,
   renderDaimonGatewayRuntimeEnv,
   resolveDaimonGatewayRealmPaths
-} from "./containerDaimonGatewayRender.js";
-export { DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS, renderDaimonBrokerSocketWait } from "./containerDaimonStartupSupervision.js";
+} from "./gatewayRender.js";
+export { DAIMON_BROKER_STARTUP_TIMEOUT_SECONDS, renderDaimonBrokerSocketWait } from "./startupSupervision.js";
 
 export const DAIMON_AUTHORIZED_UID_ENV = "SPAWNFILE_DAIMON_AUTHORIZED_UID";
 export const DAIMON_RUNTIME_UID = DAIMON_ORGANIZATION_UID;

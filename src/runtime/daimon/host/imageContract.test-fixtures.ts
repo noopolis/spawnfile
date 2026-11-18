@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 // Historical bytes, unchanged: v5 a483f6e4, v6 bf61e6bb.
 export const daimonImageManifestBytes = (version: 5 | 6 | 7 = 7): Buffer =>
-  readFileSync(new URL(version === 7 ? "../runtime/daimon/contract-manifest.json"
+  readFileSync(new URL(version === 7 ? "../contract-manifest.json"
     : `./daimon-contract-v${version}.fixture.json`, import.meta.url));
 
 export const daimonImageContractFiles = (bytes = daimonImageManifestBytes()): Record<string, Buffer> => {

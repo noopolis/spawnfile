@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { downDeployment, readHomeDeploymentRecord, readHomeDeploymentReport } from "../deployment/index.js";
 import { removeDirectory } from "../filesystem/index.js";
 
-import { daimonImageContractFiles } from "./daimonImageContract.test-fixtures.js";
+import { daimonImageContractFiles } from "../runtime/daimon/host/imageContract.test-fixtures.js";
 import { buildDistributionReport } from "./buildDistributionReport.js";
 import { DISTRIBUTION_REPORT_IMAGE_PATH } from "./types.js";
 import type { DistributionPersistentMount } from "./types.js";
