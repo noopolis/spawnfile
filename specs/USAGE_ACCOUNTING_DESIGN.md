@@ -70,17 +70,17 @@ A dedicated persistent volume, provisioned like the realm, owned by the broker.
     /var/lib/spawnfile/daimon/usage/           0750, chown 2100:2100, root-provisioned
       usage.jsonl                              0640, append-only
 
-Three changes make it real, all previously missing:
+The adapter implements four changes.
 
-1. `src/runtime/daimon/host/brokerRender.ts` — a `mkdirSync` + `chownSync(2100,2100)` +
-   `chmodSync(0o750)` line beside the existing realm line.
-2. `spawnfile/src/runtime/daimon/config.ts` — a `persistentMounts` entry, so the
+1. `src/runtime/daimon/host/brokerRender.ts` creates the directory, assigns it to
+   UID and GID 2100, and sets its mode to 0750.
+2. `src/runtime/daimon/config.ts` declares a persistent mount so the
    ledger survives redeploy. Without it the file lives in the container writable
    layer and dies exactly when the incident report is needed.
-3. `src/runtime/daimon/host/brokerRender.ts:92` — a worker deny-list entry. Peer isolation
+3. `src/runtime/daimon/host/brokerRender.ts` denies workers access to the ledger. Peer isolation
    is an explicit posture there; a readable ledger would leak every agent's wake
    ids and cadence to every sandboxed worker.
-4. **`src/runtime/daimon/host/uidEntrypointRender.ts:103-111` — exclude the usage mount
+4. **`src/runtime/daimon/host/uidEntrypointRender.ts` excludes the usage mount
    from `state_roots`.** This is the one revision 2 missed and it is fatal without
    it. The ownership guard runs *before* broker provisioning (guard at `:270-281`,
    provisioning spliced at `:286`) and recursively chowns every persistent mount

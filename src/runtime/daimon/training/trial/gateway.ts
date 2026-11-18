@@ -7,7 +7,7 @@ import type { ResolvedAuthProfile } from "../../../../auth/index.js";
 import {
   DAIMON_GATEWAY_SIDECAR_ALIAS, DAIMON_GATEWAY_SIDECAR_KEY_ENV, DAIMON_GATEWAY_SIDECAR_URL,
   DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV, renderDaimonGatewaySidecarScript
-} from "../../host/gatewayRender.js";
+} from "../../host/index.js";
 import { slugify } from "../../../../compiler/index.js";
 import {
   captureTrialEvidence, createTrialDocker, waitFor, type TrialDocker, type TrialEvidenceCaptureCall
