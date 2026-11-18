@@ -7,7 +7,7 @@ authoring, native compilation, evaluation, cost planning, optimization and isola
 Actual training is production-booted: every trial is the subject agent's own
 compiled organization, booted with production's entrypoint and Docker security
 arguments, and all trials of one run share one Daimon auth gateway sidecar that
-holds the login of `--auth-profile` (see `src/compiler/training/trial/AGENTS.md`).
+holds the login of `--auth-profile` (see `src/runtime/daimon/training/trial/AGENTS.md`).
 The training core and graders run in the parent process. Only Daimon subjects
 train; dry-run remains a host-only estimate.
 

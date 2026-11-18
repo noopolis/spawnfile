@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { ResolvedAuthProfile } from "../../../auth/index.js";
+import type { ResolvedAuthProfile } from "../../../../auth/index.js";
 import { HOME_LOGIN_FILES, HOME_LOGIN_PROGRAM } from "./homeLogin.js";
 
 const run = promisify(execFile);
@@ -18,9 +18,9 @@ const state = vi.hoisted(() => ({
   /** What the booted organization saw in its home: enrollment and leftovers from earlier trials. */
   sightings: [] as Array<{ token: string | null; history: boolean }>
 }));
-vi.mock("./project.js", () => ({ writeTrialProject: async () => ({ manifestPath: "/nonexistent/Spawnfile", manifestOverrides: new Map() }) }));
-vi.mock("../../buildProject.js", () => ({ buildCompiledProject: async () => undefined }));
-vi.mock("../../compileProject.js", () => ({
+vi.mock("../../../../compiler/training/trial/project.js", () => ({ writeTrialProject: async () => ({ manifestPath: "/nonexistent/Spawnfile", manifestOverrides: new Map() }) }));
+vi.mock("../../../../compiler/buildProject.js", () => ({ buildCompiledProject: async () => undefined }));
+vi.mock("../../../../compiler/compileProject.js", () => ({
   compileProject: async () => {
     const mount = { id: "daimon-agy-runtime-home-subject", mount_path: HOME, volume_name: `trial-home-${state.compiled++}` };
     // The trial renames it to its own volume; the test follows the mount it handed out.
@@ -32,12 +32,12 @@ vi.mock("../../compileProject.js", () => ({
     } } };
   }
 }));
-vi.mock("../../runProject.js", () => ({
+vi.mock("../../../../compiler/runProject.js", () => ({
   runDockerContainer: async () => undefined,
   createDockerRunInvocation: async () => ({ args: [], command: "docker", envFilePath: "/nonexistent", supportDirectory: path.join(state.root, "support") })
 }));
 // The organization: AGY probes its login in the home, works (writes history) and refreshes its token.
-vi.mock("../../runProjectLifecycle.js", () => ({
+vi.mock("../../../../compiler/runProjectLifecycle.js", () => ({
   executeDockerRunWithSupportCleanup: async () => {
     const home = path.join(state.root, "volumes", homes().at(-1)!);
     const token = await readFile(path.join(home, ".gemini/antigravity-cli/antigravity-oauth-token"), "utf8").catch(() => null);

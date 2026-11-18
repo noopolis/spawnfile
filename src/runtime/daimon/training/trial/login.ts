@@ -2,14 +2,13 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { ensureAuthProfile, registerSubscriptionRealm, type ResolvedAuthProfile, type SubscriptionRealmBinding } from "../../../auth/index.js";
-import { getDaimonEngineDescriptor } from "../../../runtime/daimon/index.js";
-import { DAIMON_ORGANIZATION_UID } from "../../../runtime/daimon/runtimeIdentity.js";
-import { DAIMON_PROFILE_UNLOCK_FILE } from "../../../runtime/daimon/subscriptionRealms.js";
-import { SpawnfileError } from "../../../shared/index.js";
-import { slugify } from "../../helpers.js";
+import { ensureAuthProfile, registerSubscriptionRealm, type ResolvedAuthProfile, type SubscriptionRealmBinding } from "../../../../auth/index.js";
+import { slugify } from "../../../../compiler/index.js";
+import { createTrialDocker, type TrialDocker } from "../../../../compiler/training/trial/index.js";
+import { SpawnfileError } from "../../../../shared/index.js";
+import { DAIMON_ORGANIZATION_UID, DAIMON_PROFILE_UNLOCK_FILE, getDaimonEngineDescriptor } from "../../index.js";
+
 import { prepareTrial, type PreparedTrial } from "./boot.js";
-import { createTrialDocker, type TrialDocker } from "./docker.js";
 import { trainingGatewayRealmVolume } from "./gateway.js";
 import { JUDGE_INSTRUCTIONS, writeJudgeAgent } from "./judge.js";
 

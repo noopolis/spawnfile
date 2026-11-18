@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,6 +110,14 @@ test('installed tarball exposes every integration value and type through explici
     await run('npm', ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund',
       join(directory, packs[0].filename)], directory);
     const installed = join(directory, 'node_modules/spawnfile');
+    const trial = join(installed, 'dist/runtime/daimon/training/trial');
+    for (const name of ['boot', 'bootedTrial', 'gateway', 'homeLogin', 'judge', 'judgmentCache', 'launcher', 'login',
+      'momentVolumes', 'trialReads']) {
+      for (const extension of ['js', 'd.ts']) {
+        const artifact = join(trial, `${name}.${extension}`);
+        assert.ok((await stat(artifact)).size > 0, `Missing trial host build artifact: ${name}.${extension}`);
+      }
+    }
     const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8')) as {
       exports: Record<string, { types: string; import: string } | string>;
       dependencies: Record<string, string>;

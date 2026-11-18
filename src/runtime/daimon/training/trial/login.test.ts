@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import { loadAuthProfile, registerSubscriptionRealm, type ResolvedAuthProfile } from "../../../auth/index.js";
+import { loadAuthProfile, registerSubscriptionRealm, type ResolvedAuthProfile } from "../../../../auth/index.js";
 import type { PreparedTrial } from "./boot.js";
 import { loginSubscriptionRealm } from "./login.js";
 

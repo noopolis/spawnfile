@@ -6,8 +6,8 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import { resolveFeedSource } from "../../../volume/index.js";
-import { TRAINING_MOMENT_VERSION, type TrainingMoment } from "../moments.js";
+import { resolveFeedSource } from "../../../../volume/index.js";
+import { TRAINING_MOMENT_VERSION, type TrainingMoment } from "../../../../compiler/training/index.js";
 
 const run = promisify(execFile);
 const BACKING = "/var/lib/spawnfile/resources/teams/desk/corpus";
@@ -20,9 +20,9 @@ const state = vi.hoisted(() => ({
   boots: [] as Array<{ volumes: Record<string, string>; index: string | null; seed: string | null; sentinel: string | null }>,
   pending: [] as Array<Record<string, string>>
 }));
-vi.mock("./project.js", () => ({ writeTrialProject: async () => ({ manifestPath: "/nonexistent/Spawnfile", manifestOverrides: new Map() }) }));
-vi.mock("../../buildProject.js", () => ({ buildCompiledProject: async () => undefined }));
-vi.mock("../../compileProject.js", () => ({
+vi.mock("../../../../compiler/training/trial/project.js", () => ({ writeTrialProject: async () => ({ manifestPath: "/nonexistent/Spawnfile", manifestOverrides: new Map() }) }));
+vi.mock("../../../../compiler/buildProject.js", () => ({ buildCompiledProject: async () => undefined }));
+vi.mock("../../../../compiler/compileProject.js", () => ({
   // Every trial compiles the same project, so the compiler hands every trial the same declared team volume names.
   compileProject: async () => ({ report: { container: {
     runtime_instances: [{ runtime: "daimon", config_path: "/c.json", engine_by_node_id: { "agent:writer": "codex" },
@@ -37,7 +37,7 @@ vi.mock("../../compileProject.js", () => ({
     ]
   } } })
 }));
-vi.mock("../../runProject.js", () => ({
+vi.mock("../../../../compiler/runProject.js", () => ({
   runDockerContainer: async () => undefined,
   createDockerRunInvocation: async (compiled: { report: { container: { persistent_mounts: Array<{ mount_path: string; volume_name: string }> } } }) => {
     state.pending.push(Object.fromEntries(compiled.report.container.persistent_mounts.map((mount) => [mount.mount_path, mount.volume_name])));
@@ -45,7 +45,7 @@ vi.mock("../../runProject.js", () => ({
   }
 }));
 // The organization: reads its assignment index through the feed's `current`, as the newsroom does.
-vi.mock("../../runProjectLifecycle.js", () => ({
+vi.mock("../../../../compiler/runProjectLifecycle.js", () => ({
   executeDockerRunWithSupportCleanup: async () => {
     const volumes = state.pending.shift()!;
     const corpus = path.join(state.root, "volumes", volumes[BACKING]!);

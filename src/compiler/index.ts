@@ -22,3 +22,6 @@ export * from "./worldBindings.js";
 export * from "./view/index.js";
 export * from "./training/index.js";
 export * from "./recordingReport.js";
+export { slugify } from "./helpers.js";
+export { executeDockerRunWithSupportCleanup } from "./runProjectLifecycle.js";
+export { normalizeBundleMode, ustarHeader } from "./workspaceBundleTar.js";

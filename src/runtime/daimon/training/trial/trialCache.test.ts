@@ -1,14 +1,15 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { expect, it } from "vitest";
 
 import type { ResolvedAuthProfile } from "../../../../auth/index.js";
-import type { PreparedTrial, TrialOptions, TrialWake } from "../boot.js";
-import { createBootedTrialRun } from "../launcher.js";
-import { compiledAgentDigest } from "./digest.js";
-import { openTrialCacheStore, type TrialCacheMode } from "./store.js";
+import type { PreparedTrial, TrialOptions, TrialWake } from "./boot.js";
+import { createBootedTrialRun } from "./launcher.js";
+import { openDaimonJudgmentCacheStore } from "./judgmentCache.js";
+import { compiledAgentDigest } from "../../../../compiler/training/trial/cache/index.js";
+import { openTrialCacheStore, type TrialCacheMode } from "../../../../compiler/training/trial/cache/index.js";
 
 const profile: ResolvedAuthProfile = { authHome: "/x", env: {}, imports: {}, name: "training", profileDirectory: "/x", profilePath: "/x/p.json", version: 1 };
 const done = (text: string): TrialWake => ({ state: "completed", acceptanceId: "a", executionId: "e", code: null, text, usage: [], transcript: null, requestToolCalls: [[]], failure: null });
@@ -113,4 +114,18 @@ it("boots without a cache when told off", async () => {
   await trial(open("run-1", "off"), "t1", "p");
   await trial(open("run-2"), "t2", "p");
   expect(state.boots).toBe(2);
+});
+
+it("reads a judgment written before the trial files moved", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-judgment-key-"));
+  try {
+    // Frozen hash of the original version, Daimon judge instructions, and request key.
+    const recorded = path.join(root, "judgments", "e5c5b8b2db733e5d8b5a65e4196a82354d0c3dc0d6b37f6d6ef5b9dc9b964157");
+    await mkdir(recorded, { recursive: true });
+    await writeFile(path.join(recorded, "0.json"), JSON.stringify({ reply: "cached before the move" }));
+    await expect(openDaimonJudgmentCacheStore(root).take("existing judgment"))
+      .resolves.toEqual({ occurrence: 0, reply: "cached before the move" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

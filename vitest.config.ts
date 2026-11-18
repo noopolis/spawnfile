@@ -35,7 +35,11 @@ const sourceGateTests = [
 const trainingThresholds = Object.fromEntries(globSync(
   ["src/training/**/*.ts", "src/runtime/daimon/training/**/*.ts", "tooling/training/**/*.ts"],
   { cwd: fileURLToPath(new URL(".", import.meta.url)),
-    exclude: ["**/*.test.ts", "**/*.d.ts", "src/training/copyAssets.ts"] },
+    exclude: [
+      "**/*.test.ts", "**/*.d.ts", "src/training/copyAssets.ts",
+      // Relocated native trial host files retain the previous aggregate floor.
+      "src/runtime/daimon/training/trial/**"
+    ] },
 ).map(file => [file, { branches: 90, functions: 90, lines: 90, statements: 90 }]));
 
 export default defineConfig({

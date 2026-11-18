@@ -1,11 +1,11 @@
 import path from "node:path";
 
-import type { DaimonControlCall, DaimonControlTarget } from "../../../runtime/daimon/control.js";
-import { maskSecrets, SpawnfileError } from "../../../shared/index.js";
+import type { DaimonControlCall, DaimonControlTarget } from "../../index.js";
+import { maskSecrets, SpawnfileError } from "../../../../shared/index.js";
 import type { BootedTrial, TrialWake } from "./boot.js";
-import type { TrialDocker } from "./docker.js";
+import type { TrialDocker } from "../../../../compiler/training/trial/index.js";
 import { agentExecutionError, agentSettled, readLedger, readRequestLedger, readTranscript, requestUsage } from "./trialReads.js";
-import { renderMomentWake, type TrainingMoment } from "../moments.js";
+import { renderMomentWake, type TrainingMoment } from "../../../../compiler/training/index.js";
 
 const WAKE_VERSION = "noopolis.daimon.wake.v2";
 const TERMINAL = new Set(["completed", "failed", "stopped"]);

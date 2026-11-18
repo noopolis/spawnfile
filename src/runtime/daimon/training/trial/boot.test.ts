@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeDeploymentName } from "../../../deployment/names.js";
+import { normalizeDeploymentName } from "../../../../deployment/index.js";
 import { trialSlug } from "./boot.js";
 
 describe("trialSlug", () => {

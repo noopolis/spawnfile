@@ -2,9 +2,9 @@ import path from "node:path";
 
 import { requireAuthProfile, resolveSpawnfileHome } from "../auth/index.js";
 import {
-  createBootedTrialRun, createTrainingRealmLock, openJudgmentCacheStore, openTrialCacheStore, removeStaleRun, TRIAL_CACHE_MODES,
-  type BootedTrialRun, type TrialCacheMode
+  createTrainingRealmLock, openTrialCacheStore, removeStaleRun, TRIAL_CACHE_MODES, type TrialCacheMode
 } from "../compiler/training/trial/index.js";
+import { createBootedTrialRun, openDaimonJudgmentCacheStore, type BootedTrialRun } from "../runtime/daimon/training/trial/index.js";
 import { bindBootedJudges, bindBootedJudgmentCache } from "../runtime/daimon/training/booted/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { CliStreams } from "./runCli.js";
@@ -83,7 +83,7 @@ export const openTrainingRun = async (options: OpenTrainingRunOptions): Promise<
     bindBootedJudges(run, report);
     // Reuse replays proposals too, so an unchanged rerun (or a rerun after a crash) repeats the whole search for free;
     // fresh asks the optimizer again while identical articles still reuse their judgments.
-    bindBootedJudgmentCache(mode === "off" ? undefined : openJudgmentCacheStore(root), { proposals: mode === "reuse" });
+    bindBootedJudgmentCache(mode === "off" ? undefined : openDaimonJudgmentCacheStore(root), { proposals: mode === "reuse" });
     return { run, close: async () => {
       try {
         bindBootedJudges(undefined);

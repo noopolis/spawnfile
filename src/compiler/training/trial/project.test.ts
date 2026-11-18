@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 
 import { compileProject } from "../../compileProject.js";
-import { isolateTrialVolumes, TRIAL_VOLUME_PREFIX } from "./boot.js";
+import { isolateTrialVolumes, TRIAL_VOLUME_PREFIX } from "../../../runtime/daimon/training/trial/boot.js";
 import { TRIAL_INSTRUCTIONS_FILE, writeTrialProject } from "./project.js";
 
 const roots: string[] = [];

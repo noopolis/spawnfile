@@ -1,10 +1,8 @@
-export { TRAINING_TRIAL_LINEAGE_NAMESPACE, prepareTrial, type BootedTrial, type PreparedTrial, type TrialOptions, type TrialWake } from "./boot.js";
-export { startTrainingGateway, trainingGatewayLogins, trainingGatewayRealmVolume, type TrainingGateway, type TrainingGatewayAccess, type TrainingGatewayOptions } from "./gateway.js";
-export { HOME_LOGIN_FILES, saveHomeLogin, seedHomeLogin, type HomeLogin } from "./homeLogin.js";
-export { JUDGE_INSTRUCTIONS, writeJudgeAgent, type JudgeSpec } from "./judge.js";
-export { createBootedTrialRun, type BootedTrialLauncherOptions, type BootedTrialRun } from "./launcher.js";
+export { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
+export { captureTrialEvidence, type TrialEvidenceCaptureCall, type TrialEvidenceInput } from "./evidence.js";
+export { createJudgePool } from "./judgePool.js";
 export { TRIAL_INSTRUCTIONS_FILE, writeTrialProject } from "./project.js";
-export { ensureSubscriptionRealmVolumes, loginSubscriptionRealm, subscriptionRealmBinding, type SubscriptionRealmLoginOptions, type SubscriptionRealmLoginResult } from "./login.js";
 export { createRealmTurns, type RealmTurnOptions, type RealmTurns, type ReleaseRealmTurn } from "./realmTurns.js";
-export { openJudgmentCacheStore, openTrialCacheStore, TRIAL_CACHE_MODES, type TrialCacheMode } from "./cache/index.js";
+export { openTrialCacheStore, TRIAL_CACHE_MODES, type TrialCacheMode } from "./cache/index.js";
 export { createTrainingRealmLock, removeStaleRun, type TrainingRealmLock, type TrainingRealmLockOptions } from "./realmLock.js";
+export type { BootedTrial, TrialWake } from "./types.js";

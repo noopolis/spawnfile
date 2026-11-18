@@ -3,10 +3,10 @@ import path from "node:path";
 
 import { expect, it } from "vitest";
 
-import type { ResolvedAuthProfile } from "../../../auth/index.js";
+import type { ResolvedAuthProfile } from "../../../../auth/index.js";
 import type { PreparedTrial, TrialWake } from "./boot.js";
 import { createBootedTrialRun } from "./launcher.js";
-import type { RealmTurns } from "./realmTurns.js";
+import type { RealmTurns } from "../../../../compiler/training/trial/index.js";
 
 const profile = (realms?: ResolvedAuthProfile["realms"]): ResolvedAuthProfile => ({
   authHome: "/nonexistent", env: { SECRET: "x" }, imports: { codex: { kind: "codex", path: "/nonexistent/codex" } }, name: "training",

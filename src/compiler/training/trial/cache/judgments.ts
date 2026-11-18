@@ -2,8 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { JUDGE_INSTRUCTIONS } from "../judge.js";
-
 /** Bumped whenever what a cached judgment means changes. */
 export const JUDGMENT_CACHE_VERSION = "spawnfile.training.judgment-cache.v1";
 
@@ -18,10 +16,10 @@ export interface JudgmentCacheStore {
  * question, so it is judged again; the n-th identical request of a process reads the n-th reply, so repeats
  * stay separate samples.
  */
-export const openJudgmentCacheStore = (root: string, reuse = true): JudgmentCacheStore => {
+export const openJudgmentCacheStore = (root: string, judgeInstructions: string, reuse = true): JudgmentCacheStore => {
   const seen = new Map<string, number>();
   const directory = (key: string): string => path.join(root, "judgments",
-    createHash("sha256").update(JSON.stringify([JUDGMENT_CACHE_VERSION, JUDGE_INSTRUCTIONS, key])).digest("hex"));
+    createHash("sha256").update(JSON.stringify([JUDGMENT_CACHE_VERSION, judgeInstructions, key])).digest("hex"));
   return {
     take: async (key) => {
       const occurrence = seen.get(key) ?? 0;

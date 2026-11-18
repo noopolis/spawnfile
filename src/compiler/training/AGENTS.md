@@ -1,6 +1,6 @@
 # Canonical Training Context
 
-- `trial/` owns actual training: production-booted trials for Daimon subjects, one compiled organization container per trial, sharing one auth gateway sidecar per run. There is no other training launch.
+- `trial/` owns shared production trial services, including project projection, evidence, caches and realm locks. The runtime adapter owns native launch and login.
 - `contract.ts` owns the strict, versioned public JSON handoff to the training core.
 - `context.ts` resolves the full compiler graph and pins source files without compiling or launching it.
 - `resolution.ts` merges direct-member training metadata during traversal and preserves declaring sources.

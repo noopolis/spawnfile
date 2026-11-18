@@ -3,12 +3,12 @@ import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { DAIMON_ORGANIZATION_UID } from "../../../runtime/daimon/runtimeIdentity.js";
-import { SpawnfileError } from "../../../shared/index.js";
-import { digestDirectory, FEED_IDENTITY_VERSION } from "../../../volume/index.js";
-import { normalizeBundleMode, ustarHeader } from "../../workspaceBundleTar.js";
-import type { TrainingMoment, TrainingMomentFill } from "../moments.js";
-import type { TrialDocker } from "./docker.js";
+import { DAIMON_ORGANIZATION_UID } from "../../index.js";
+import { SpawnfileError } from "../../../../shared/index.js";
+import { digestDirectory, FEED_IDENTITY_VERSION } from "../../../../volume/index.js";
+import { normalizeBundleMode, ustarHeader } from "../../../../compiler/index.js";
+import type { TrainingMoment, TrainingMomentFill } from "../../../../compiler/training/index.js";
+import type { TrialDocker } from "../../../../compiler/training/trial/index.js";
 
 const run = promisify(execFile);
 const MAX_FILL_BYTES = 512 * 1024 * 1024;

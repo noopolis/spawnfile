@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { getDaimonEngineDescriptor } from "../../../runtime/daimon/index.js";
-import { SpawnfileError } from "../../../shared/index.js";
+import { getDaimonEngineDescriptor } from "../../index.js";
+import { SpawnfileError } from "../../../../shared/index.js";
 
 /** One judge identity of a run: the engine, and the model and effort its compiled organization pins. */
 export interface JudgeSpec {

@@ -1,10 +1,10 @@
 import path from "node:path";
 
-import type { DaimonControlCall, DaimonControlTarget } from "../../../runtime/daimon/control.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../../../runtime/daimon/contractManifest.js";
-import { parseUsageLedger, USAGE_TURN_RECORD_VERSION, type UsageRecord } from "../../../runtime/usageLedger.js";
-import { parseUsageRequestLedger, type UsageRequestRecord } from "../../../runtime/usageRequestLedger.js";
-import type { TrialDocker } from "./docker.js";
+import type { TrialDocker } from "../../../../compiler/training/trial/index.js";
+import {
+  parseUsageLedger, parseUsageRequestLedger, USAGE_TURN_RECORD_VERSION, type UsageRecord, type UsageRequestRecord
+} from "../../../index.js";
+import { DAIMON_GROK_TURN_USAGE_LEDGER, type DaimonControlCall, type DaimonControlTarget } from "../../index.js";
 
 const MAX_TRANSCRIPT_BYTES = 1024 * 1024;
 /** A wake and the continued turns it may start; Daimon caps a continuation chain at three links. */

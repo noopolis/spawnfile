@@ -4,10 +4,9 @@ import path from "node:path";
 
 import { afterEach, expect, it } from "vitest";
 
-import { loadManifest } from "../../../manifest/index.js";
-import { compileProject } from "../../compileProject.js";
+import { compileProject } from "../../../../compiler/index.js";
 import { JUDGE_INSTRUCTIONS, JUDGE_MAX_WAKE_TEXT_BYTES, writeJudgeAgent } from "./judge.js";
-import { writeTrialProject } from "./project.js";
+import { writeTrialProject } from "../../../../compiler/training/trial/index.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });

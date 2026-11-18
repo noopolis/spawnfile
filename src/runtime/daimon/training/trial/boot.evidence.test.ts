@@ -4,26 +4,26 @@ import path from "node:path";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { TrialEvidenceInput } from "./evidence.js";
+import type { TrialEvidenceInput } from "../../../../compiler/training/trial/index.js";
 
 const HOME = "/var/lib/spawnfile/instances/daimon/runtime-homes/writer";
 const state = vi.hoisted(() => ({ root: "", envFile: "" }));
-vi.mock("./project.js", () => ({ writeTrialProject: async () => ({ manifestPath: "/nonexistent/Spawnfile", manifestOverrides: new Map() }) }));
-vi.mock("../../buildProject.js", () => ({ buildCompiledProject: async () => undefined }));
-vi.mock("../../compileProject.js", () => ({
+vi.mock("../../../../compiler/training/trial/project.js", () => ({ writeTrialProject: async () => ({ manifestPath: "/nonexistent/Spawnfile", manifestOverrides: new Map() }) }));
+vi.mock("../../../../compiler/buildProject.js", () => ({ buildCompiledProject: async () => undefined }));
+vi.mock("../../../../compiler/compileProject.js", () => ({
   compileProject: async () => ({ report: { container: {
     runtime_instances: [{ runtime: "daimon", config_path: "/c.json", engine_by_node_id: { "agent:writer": "codex" }, agent_paths: { "agent:writer": { home_path: HOME } } }],
     persistent_mounts: [{ id: "daimon-codex-runtime-home-writer", mount_path: HOME, volume_name: "home" }]
   } } })
 }));
-vi.mock("../../runProject.js", () => ({
+vi.mock("../../../../compiler/runProject.js", () => ({
   runDockerContainer: async () => undefined,
   createDockerRunInvocation: async (_compiled: unknown, _image: string, options: { envFilePath: string }) => {
     state.envFile = await (await import("node:fs/promises")).readFile(options.envFilePath, "utf8");
     return { args: [], command: "docker", envFilePath: "/nonexistent", supportDirectory: path.join(state.root, "support") };
   }
 }));
-vi.mock("../../runProjectLifecycle.js", () => ({ executeDockerRunWithSupportCleanup: async () => undefined }));
+vi.mock("../../../../compiler/runProjectLifecycle.js", () => ({ executeDockerRunWithSupportCleanup: async () => undefined }));
 
 const { prepareTrial } = await import("./boot.js");
 

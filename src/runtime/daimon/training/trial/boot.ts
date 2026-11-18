@@ -2,28 +2,31 @@ import { createHash, randomBytes } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { ResolvedAuthProfile } from "../../../auth/index.js";
-import { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, daimonProfileRealmVolume, getDaimonEngineDescriptor, isDaimonGatewayRealmMountId } from "../../../runtime/daimon/index.js";
-import { daimonHelperControlCall, type DaimonControlCall, type DaimonControlTarget } from "../../../runtime/daimon/control.js";
-import { RUNTIME_INSTALL_ROOT } from "../../../runtime/container.js";
-import type { UsageRecord } from "../../../runtime/usageLedger.js";
-import { maskSecrets, SpawnfileError } from "../../../shared/index.js";
-import { buildCompiledProject } from "../../buildProject.js";
-import { compileProject } from "../../compileProject.js";
-import { resolveDeploymentLineage } from "../../deploymentLineage.js";
-import { slugify } from "../../helpers.js";
-import { createDockerRunInvocation, runDockerContainer } from "../../runProject.js";
-import { executeDockerRunWithSupportCleanup } from "../../runProjectLifecycle.js";
-import { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
-import { captureTrialEvidence, type TrialEvidenceCaptureCall } from "./evidence.js";
+import type { ResolvedAuthProfile } from "../../../../auth/index.js";
+import {
+  buildCompiledProject, compileProject, createDockerRunInvocation, executeDockerRunWithSupportCleanup,
+  resolveDeploymentLineage, runDockerContainer, slugify
+} from "../../../../compiler/index.js";
+import { trainingMomentSchema } from "../../../../compiler/training/index.js";
+import {
+  captureTrialEvidence, createTrialDocker, waitFor, writeTrialProject,
+  type BootedTrial, type TrialDocker, type TrialEvidenceCaptureCall
+} from "../../../../compiler/training/trial/index.js";
+import { compiledAgentDigest } from "../../../../compiler/training/trial/cache/index.js";
+import { maskSecrets, SpawnfileError } from "../../../../shared/index.js";
+import { RUNTIME_INSTALL_ROOT } from "../../../index.js";
+import {
+  DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, daimonHelperControlCall, daimonProfileRealmVolume,
+  getDaimonEngineDescriptor, isDaimonGatewayRealmMountId, type DaimonControlCall, type DaimonControlTarget
+} from "../../index.js";
+
+import { createBootedTrial } from "./bootedTrial.js";
 import type { TrainingGatewayAccess } from "./gateway.js";
 import { HOME_LOGIN_FILES, saveHomeLogin, seedHomeLogin, type HomeLogin } from "./homeLogin.js";
 import { fillMomentVolumes, momentVolumesFor } from "./momentVolumes.js";
-import { writeTrialProject } from "./project.js";
 import { agentExecutionError } from "./trialReads.js";
-import { trainingMomentSchema } from "../moments.js";
-import { createBootedTrial } from "./bootedTrial.js";
-import { compiledAgentDigest } from "./cache/digest.js";
+
+export type { BootedTrial, TrialWake } from "../../../../compiler/training/trial/index.js";
 
 /**
  * Lineage namespace for training trials: every trial derives its own durable
@@ -103,43 +106,6 @@ export const timed = async <T>(sink: TrialPhaseSink | undefined, phase: string, 
   const started = performance.now();
   try { return await work(); } finally { sink?.(phase, Math.round(performance.now() - started)); }
 };
-
-export interface TrialWake {
-  /** `deferred`: Daimon left the delivery deferred: the subject's own choice when `failure` is null, else Daimon deferring it after a failed retry. */
-  state: "completed" | "deferred" | "failed" | "stopped" | "timeout";
-  acceptanceId: string;
-  executionId: string | null;
-  code: string | null;
-  text: string;
-  /** Usage ledger rows this wake appended; empty means none were written, never zero spend. */
-  usage: UsageRecord[];
-  /** The engine's own newest session record, bounded; null when none exists. */
-  transcript: string | null;
-  /** Per model request of this wake, the tool-call names its response carried; null where the runtime could not say. */
-  requestToolCalls: (readonly string[] | null)[];
-  /** Set only on a replay from the run's trial cache: the trial that measured this wake. */
-  reusedFrom?: string;
-  /**
-   * The engine failure Daimon reported for this delivery, in full, secrets masked: a failed receipt's detail, or
-   * the agent's execution error when the delivery did not complete (Daimon deferred it after retrying a failed
-   * execution, or its retry was still open at the trial's deadline). Null when none.
-   */
-  failure: string | null;
-}
-
-export interface BootedTrial {
-  container: string;
-  wake(text: string, options: { deliveryId: string; timeoutMs: number; signal?: AbortSignal }): Promise<TrialWake>;
-  /** A workspace-relative file the subject left; null when absent. */
-  read(path: string): Promise<string | null>;
-  /** Credential-shaped files anywhere in the trial container (expected: none). */
-  scanCredentials(): Promise<string[]>;
-  /**
-   * Saves the container's evidence, then removes it and its volumes. Resolves with the failure its runtime
-   * still reported for the agent at that moment (secrets masked), or null: what a turn cut short never returned.
-   */
-  teardown(): Promise<string | null>;
-}
 
 export interface TrialBootOptions {
   /**

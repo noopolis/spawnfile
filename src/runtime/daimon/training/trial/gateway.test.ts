@@ -4,14 +4,19 @@ import path from "node:path";
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { ResolvedAuthProfile } from "../../../auth/index.js";
-import type { TrialEvidenceInput } from "./evidence.js";
+import type { ResolvedAuthProfile } from "../../../../auth/index.js";
+import type { TrialEvidenceInput } from "../../../../compiler/training/trial/index.js";
 
-vi.mock("../../../runtime/daimon/runAuth.js", () => ({ assertSafeDaimonSourceFile: async () => undefined }));
-vi.mock("../../../target/dockerCommandExecutor.js", () => ({ createDockerTargetExecutors: () => ({ resource: {} }) }));
-vi.mock("../../../target/dockerResources.js", () => ({ removeExactDockerResource: async () => undefined }));
-vi.mock("../../../target/dockerResourcesProvider.js", () => ({
-  createDockerResourceSpec: () => ({ args: [], name: "run-net" }), executeDockerResource: async () => undefined
+vi.mock("../../runAuth.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../runAuth.js")>(),
+  assertSafeDaimonSourceFile: async () => undefined
+}));
+vi.mock("../../../../target/docker/index.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../../../target/docker/index.js")>(),
+  createDockerTargetExecutors: () => ({ resource: {} }),
+  removeExactDockerResource: async () => undefined,
+  createDockerResourceSpec: () => ({ args: [], name: "run-net" }),
+  executeDockerResource: async () => undefined
 }));
 
 const { startTrainingGateway } = await import("./gateway.js");

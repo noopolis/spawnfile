@@ -9,6 +9,8 @@
     "src/runtime/daimon/training/**/*.ts"
   ],
   "exclude": [
+    // Native trial host files keep their Spawnfile compiler settings.
+    "src/runtime/daimon/training/trial/**",
     "src/training/**/*.test.ts",
     "src/training/copyAssets.ts",
     "src/runtime/**/*.test.ts"

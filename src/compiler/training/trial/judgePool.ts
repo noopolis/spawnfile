@@ -1,4 +1,4 @@
-import type { TrialWake } from "./boot.js";
+import type { TrialWake } from "./types.js";
 
 type WakeOptions = { deliveryId: string; timeoutMs: number; signal?: AbortSignal };
 interface Member {
@@ -10,8 +10,8 @@ interface Member {
 }
 
 /**
- * Up to `size` warm judges of one identity. A Daimon agent takes one manual wake at a time, so one judge
- * container serializes every judgment of the run; the pool hands each judgment to an idle judge and boots
+ * Up to `size` warm judges of one identity. A judge container takes one wake at a time.
+ * The pool hands each judgment to an idle judge and boots
  * another (`create(index)`) only when every booted one is busy. A judge that fails to boot is dropped, so the
  * next judgment tries again.
  */

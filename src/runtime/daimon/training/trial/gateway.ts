@@ -3,24 +3,25 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { ResolvedAuthProfile } from "../../../auth/index.js";
-import { DAIMON_GATEWAY_PORT, daimonGatewayBootstrapMountPath, daimonGatewayedEngines, daimonGatewayRealmPath } from "../../../runtime/daimon/gateway.js";
-import { assertSafeDaimonSourceFile } from "../../../runtime/daimon/runAuth.js";
-import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, SpawnfileError } from "../../../shared/index.js";
-import { createDockerTargetExecutors } from "../../../target/dockerCommandExecutor.js";
-import { removeExactDockerResource } from "../../../target/dockerResources.js";
-import { createDockerResourceSpec, executeDockerResource } from "../../../target/dockerResourcesProvider.js";
-import { parseOpaqueTargetHandle } from "../../../target/contracts.js";
+import type { ResolvedAuthProfile } from "../../../../auth/index.js";
 import {
-  DAIMON_GATEWAY_SIDECAR_ALIAS,
-  DAIMON_GATEWAY_SIDECAR_KEY_ENV,
-  DAIMON_GATEWAY_SIDECAR_URL,
-  DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV,
-  renderDaimonGatewaySidecarScript
-} from "../../../runtime/daimon/host/gatewayRender.js";
-import { slugify } from "../../helpers.js";
-import { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
-import { captureTrialEvidence, type TrialEvidenceCaptureCall } from "./evidence.js";
+  DAIMON_GATEWAY_SIDECAR_ALIAS, DAIMON_GATEWAY_SIDECAR_KEY_ENV, DAIMON_GATEWAY_SIDECAR_URL,
+  DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV, renderDaimonGatewaySidecarScript
+} from "../../host/gatewayRender.js";
+import { slugify } from "../../../../compiler/index.js";
+import {
+  captureTrialEvidence, createTrialDocker, waitFor, type TrialDocker, type TrialEvidenceCaptureCall
+} from "../../../../compiler/training/trial/index.js";
+import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, SpawnfileError } from "../../../../shared/index.js";
+import { parseOpaqueTargetHandle } from "../../../../target/index.js";
+import {
+  createDockerResourceSpec, createDockerTargetExecutors, executeDockerResource,
+  removeExactDockerResource
+} from "../../../../target/docker/index.js";
+import {
+  assertSafeDaimonSourceFile, DAIMON_GATEWAY_PORT, daimonGatewayBootstrapMountPath, daimonGatewayedEngines,
+  daimonGatewayRealmPath
+} from "../../index.js";
 
 export interface TrainingGatewayOptions {
   /** Any compiled image of the subject: it carries the pinned Daimon runtime the gateway binary comes from. */

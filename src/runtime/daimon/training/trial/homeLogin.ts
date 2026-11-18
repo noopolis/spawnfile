@@ -1,5 +1,5 @@
-import { DAIMON_ORGANIZATION_UID } from "../../../runtime/daimon/runtimeIdentity.js";
-import type { TrialDocker } from "./docker.js";
+import { DAIMON_ORGANIZATION_UID } from "../../index.js";
+import type { TrialDocker } from "../../../../compiler/training/trial/index.js";
 
 /**
  * The login files an engine with a volume-held login keeps in its runtime home,

@@ -1,22 +1,23 @@
 import { appendFile, mkdir, mkdtemp } from "node:fs/promises";
 import path from "node:path";
 
-import type { ResolvedAuthProfile } from "../../../auth/index.js";
-import { daimonGatewayedEngines } from "../../../runtime/daimon/gateway.js";
-import { getDaimonEngineDescriptor } from "../../../runtime/daimon/index.js";
-import { ensureNoopolisRunId } from "../../../runtime/index.js";
-import { SpawnfileError } from "../../../shared/index.js";
-import { prepareTrial, type BootedTrial, type PreparedTrial, type TrialWake } from "./boot.js";
-import { createTrialDocker, type TrialDocker } from "./docker.js";
+import type { ResolvedAuthProfile } from "../../../../auth/index.js";
+import {
+  createJudgePool, createRealmTurns, createTrialDocker, type RealmTurns, type TrialDocker
+} from "../../../../compiler/training/trial/index.js";
+import {
+  cachedTrial, trialBaseKey, type TrialCacheMode, type TrialCacheStore
+} from "../../../../compiler/training/trial/cache/index.js";
+import { SpawnfileError } from "../../../../shared/index.js";
+import { ensureNoopolisRunId } from "../../../index.js";
+import { daimonGatewayedEngines, getDaimonEngineDescriptor } from "../../index.js";
+
+import {
+  createTrialImages, prepareTrial, timed, type BootedTrial, type PreparedTrial, type TrialPhaseSink, type TrialWake
+} from "./boot.js";
 import { startTrainingGateway, trainingGatewayLogins, type TrainingGateway } from "./gateway.js";
-import { JUDGE_INSTRUCTIONS, writeJudgeAgent, type JudgeSpec } from "./judge.js";
 import { HOME_LOGIN_FILES } from "./homeLogin.js";
-import { createRealmTurns, type RealmTurns } from "./realmTurns.js";
-import { createTrialImages, timed, type TrialPhaseSink } from "./boot.js";
-import { cachedTrial } from "./cache/session.js";
-import { trialBaseKey } from "./cache/digest.js";
-import type { TrialCacheMode, TrialCacheStore } from "./cache/store.js";
-import { createJudgePool } from "./judgePool.js";
+import { JUDGE_INSTRUCTIONS, writeJudgeAgent, type JudgeSpec } from "./judge.js";
 
 export interface BootedTrialLauncherOptions {
   /** The subject agent's own Spawnfile; absent for a judges-only run (a regrade), which can boot no trial. */

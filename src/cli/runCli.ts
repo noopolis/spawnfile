@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { loginSubscriptionRealm } from "../compiler/training/trial/index.js";
+import { loginSubscriptionRealm } from "../runtime/daimon/training/trial/index.js";
 
 import { Command } from "commander";
 
