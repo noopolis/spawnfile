@@ -33,6 +33,7 @@ export interface MoltnetNodePlan {
   memberId?: string;
   networkId: string;
   receiptStorePath?: string;
+  releaseCapability?: string;
 }
 
 export interface MoltnetPersistentMount {

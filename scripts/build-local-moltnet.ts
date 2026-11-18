@@ -8,6 +8,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSy
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { MOLTNET_ACP_BRIDGE_CAPABILITIES, MOLTNET_DUAL_BRIDGE_CAPABILITIES } from "../src/shared/bridgeCapabilities.ts";
 import { validateSourceBundle } from "./source-provenance-bundle.ts";
 import type { SourceBundleProfile, SourceBundleReceipt } from "./source-provenance-bundle.ts";
 
@@ -18,7 +19,7 @@ export type TrackedSourceEntry = {
   path: string;
 };
 
-type CapabilityKind = "daimon" | "pi";
+type CapabilityKind = "acp" | "daimon" | "pi";
 
 type ProvenanceArchive = SourceBundleReceipt & {
   path: string;
@@ -114,13 +115,15 @@ export const createCapabilityProbeConfig = (kind: CapabilityKind, receiptStorePa
   moltnet: { base_url: "http://127.0.0.1:9", network_id: "capability" },
   attachments: [{ agent: { id: `${kind}-agent`, name: `${kind} agent` }, runtime: kind === "daimon"
     ? { kind, control_url: "http://127.0.0.1:19700", receipt_store_path: receiptStorePath, token_env: "SPAWNFILE_DAIMON_CONTROL_TOKEN" }
-    : { kind, control_url: "http://127.0.0.1:19690/agents/pi-agent/wake" } }]
+    : kind === "acp"
+      ? { kind, command: "true", args: ["literal argument with spaces"], workspace_path: path.dirname(receiptStorePath) }
+      : { kind, control_url: "http://127.0.0.1:19690/agents/pi-agent/wake" } }]
 });
 
-const assertBuiltBinaryCapabilities = (binaryPath: string): void => {
+const assertBuiltBinaryCapabilities = (binaryPath: string, kinds: readonly CapabilityKind[]): void => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-moltnet-capability-"));
   try {
-    for (const kind of ["pi", "daimon"] as const) {
+    for (const kind of kinds) {
       const configPath = path.join(temporaryDirectory, `${kind}.json`);
       const receiptDirectory = path.join(temporaryDirectory, "daimon-receipts");
       mkdirSync(receiptDirectory, { mode: 0o700, recursive: true });
@@ -144,8 +147,8 @@ const assertBuiltBinaryCapabilities = (binaryPath: string): void => {
   }
 };
 
-const assertDockerBinaryCapabilities = (binaryPath: string, arch: GoArchitecture): void => {
-  for (const kind of ["pi", "daimon"] as const) {
+const assertDockerBinaryCapabilities = (binaryPath: string, arch: GoArchitecture, kinds: readonly CapabilityKind[]): void => {
+  for (const kind of kinds) {
     const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "spawnfile-moltnet-probe-")), configPath = path.join(temporaryDirectory, "config.json"), receiptDirectory = path.join(temporaryDirectory, "receipts"); mkdirSync(receiptDirectory);
     writeFileSync(configPath, JSON.stringify(createCapabilityProbeConfig(kind, "/receipts/agent.json")));
     const id = execFileSync("docker", ["create", "--platform", `linux/${arch}`, "--env", "SPAWNFILE_DAIMON_CONTROL_TOKEN=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"], { encoding: "utf8" }).trim();
@@ -174,6 +177,8 @@ const main = (): void => {
   if (!archiveMode && !existsSync(path.join(moltnetDir, ".git"))) throw new Error(`Missing sibling Moltnet checkout: ${moltnetDir}`);
   if (!archiveMode) assertCleanSource(moltnetDir);
   const arch = goarchForTarget();
+  const enableAcp = process.env.SPAWNFILE_MOLTNET_ENABLE_ACP === "1";
+  const kinds: CapabilityKind[] = enableAcp ? ["pi", "daimon", "acp"] : ["pi", "daimon"];
   if (!archiveMode && arch !== goarchForHost()) throw new Error("Cross-compiled local archives cannot prove their binary capabilities on this host");
   const sourceBundlePath = archiveMode ? requiredArchiveEnvPath("SPAWNFILE_MOLTNET_SOURCE_BUNDLE") : undefined;
   const goDependencyBundlePath = archiveMode ? requiredArchiveEnvPath("SPAWNFILE_MOLTNET_GO_DEPENDENCY_BUNDLE") : undefined;
@@ -187,7 +192,7 @@ const main = (): void => {
       const source = requiredBundle("SPAWNFILE_MOLTNET_SOURCE_BUNDLE", "build-source"), dependencies = requiredBundle("SPAWNFILE_MOLTNET_GO_DEPENDENCY_BUNDLE", "go-dependencies"), sourceContext = path.join(workDirectory, "source"), dependencyContext = path.join(workDirectory, "dependencies"), output = path.join(workDirectory, "output");
       mkdirSync(sourceContext); mkdirSync(dependencyContext); mkdirSync(output); writeFileSync(path.join(sourceContext, "source.tar"), readFileSync(source.path)); writeFileSync(path.join(dependencyContext, "dependencies.tar"), readFileSync(dependencies.path));
       execFileSync("docker", ["build", "--network=none", "--platform", `linux/${goarchForHost()}`, "--build-context", `source_bundle=${sourceContext}`, "--build-context", `dependency_bundle=${dependencyContext}`, "--output", `type=local,dest=${output}`, "--build-arg", `SOURCE_ARCHIVE_SHA256=${source.archive_sha256}`, "--build-arg", `DEPENDENCY_ARCHIVE_SHA256=${dependencies.archive_sha256}`, "-f", path.join(repoRoot, "runtime-images", "moltnet", "SourceBundle.Dockerfile"), repoRoot], { stdio: "inherit" });
-      writeFileSync(binaryPath, readFileSync(path.join(output, "moltnet")), { mode: 0o755 }); assertDockerBinaryCapabilities(binaryPath, arch);
+      writeFileSync(binaryPath, readFileSync(path.join(output, "moltnet")), { mode: 0o755 }); assertDockerBinaryCapabilities(binaryPath, arch, kinds);
     } else execFileSync("go", ["build", "-trimpath", "-ldflags", "-s -w", "-o", binaryPath, "./cmd/moltnet"], {
       cwd: moltnetDir,
       env: { ...process.env, CGO_ENABLED: "0", GOARCH: arch, GOOS: "linux", GOTOOLCHAIN: "local" },
@@ -196,8 +201,8 @@ const main = (): void => {
     // The build is always GOOS=linux, so a matching GOARCH on a non-Linux host
     // (darwin/arm64 vs linux/arm64) still cannot exec the ELF: probe via Docker.
     if (!archiveMode) {
-      if (process.platform === "linux") assertBuiltBinaryCapabilities(binaryPath);
-      else assertDockerBinaryCapabilities(binaryPath, arch);
+      if (process.platform === "linux") assertBuiltBinaryCapabilities(binaryPath, kinds);
+      else assertDockerBinaryCapabilities(binaryPath, arch, kinds);
     }
     mkdirSync(releaseDir, { recursive: true });
     execFileSync("tar", ["-C", workDirectory, "-czf", assetPath, "moltnet"], { stdio: "inherit" });
@@ -211,7 +216,7 @@ const main = (): void => {
     ? { dependencies_sha256: validateSourceBundle(readFileSync(goDependencyBundlePath)).archive_sha256, mode: "source-bundle", source_sha256: validateSourceBundle(readFileSync(sourceBundlePath)).archive_sha256, toolchain: "golang:1.24-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac" }
     : undefined;
   const stamp = {
-    arch, asset, capabilities: ["daimon-bridge", "pi-bridge"],
+    arch, asset, capabilities: enableAcp ? MOLTNET_ACP_BRIDGE_CAPABILITIES : MOLTNET_DUAL_BRIDGE_CAPABILITIES,
     development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
     sha256: sha256(readFileSync(assetPath)),
     source_sha256: sourceSha256,

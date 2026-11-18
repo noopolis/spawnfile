@@ -9,6 +9,9 @@ src/runtime/
 ├── index.ts               # Barrel for adapter registry exports
 ├── scaffoldAssets.ts      # Shared loader for runtime-owned init template assets
 ├── types.ts               # Shared adapter contract types
+├── wiringTypes.ts          # Optional Moltnet, memory, and readiness capabilities
+├── wiringSelection.ts      # Adapter capability lookup for shared consumers
+├── portableMoltnetWiring.ts # ACP stdio and workspace layout helpers
 ├── common.ts              # Shared lowering helpers used by adapters
 ├── mnemeMcp.ts            # Shared Mneme MCP lowering plus the durable memory mount authority
 ├── container.ts           # Container install recipes (createRuntimeInstallRecipe) per bundled runtime
@@ -28,16 +31,18 @@ src/runtime/
 
 Adapter-specific behavior belongs in the runtime subfolders. That includes runtime-owned init scaffolds and scaffold markdown assets. `common.ts` should only hold logic that is truly shared across adapters.
 
-`mnemeMcp.ts` also owns `resolveMnemeDurableMemoryMountPath`, the single
-authority for "does this memory bank get a durable container volume, and at what
-path". `src/compiler/memoryArtifacts.ts` calls it to emit the persistent mount
-(which is also what puts the path into the Daimon UID entrypoint's writable state
-roots, i.e. what chowns a fresh volume to the runtime uid), and `daimon/config.ts`
-calls it to decide whether to emit an agent `memory` block at all. Keep those two
-sides on this one function: a config that points an in-process Mneme runtime at a
-path the container does not mount fails at its first write instead of degrading.
+Adapters expose native chat and memory wiring through `RuntimeAdapter.wiring`.
+The compiler asks for the selected adapter's Moltnet client layout, bridge
+config, and required release capability. `createAcpStdioWiring` preserves each
+argument as a string array and requires an authenticated `acp-bridge` release.
+An explicit local Moltnet build can prove and stamp that capability.
 
-`common.ts` owns where declared `workspace.skills` are emitted. `createSkillFiles` accepts either one root or a list of roots, and the roots are named constants there: `WORKSPACE_SKILL_BASE_DIRECTORY` (`workspace/skills`) for OpenClaw and PicoClaw, which read that directory with their own skill loaders, and `CLI_ENGINE_SKILL_BASE_DIRECTORIES` (`workspace/.agents/skills` and `workspace/.codex/skills`) for Daimon, whose skills are discovered by an external coding-agent CLI. Both CLI-engine roots are required and their files are byte-identical on purpose: `.codex/skills` is Codex's own discovery root and `.agents/skills` is the generic root grok, agy, and other file-reading engines use. This mirrors the Moltnet skill install exactly , `resolveMoltnetWorkspaceLayout` in `src/compiler/moltnetClientConfig.ts` runs `moltnet skill install --runtime codex` for Daimon and Moltnet writes both roots , and it is the reason declared skills now reach an engine at all: a plain `workspace/skills/` root is read by no engine Daimon can host, so everything emitted there was invisible. A brokered Daimon Grok agent gets the same two roots: its worker cannot read them in place (Grok discovers project skills only in a trusted workspace, and Daimon keeps it untrusted), so root provisioning renders the same skills into the worker's `$GROK_HOME/skills`, which Grok loads as user-scoped skills, and binds them with `skillsSha256` (`daimon/grokWorkerSkills.ts`, `src/compiler/containerDaimonGrokWorkerProvisioning.ts`).
+`mnemeMcp.ts` provides the shared Mneme durable mount rule. Adapters use it when
+selecting native memory configuration and describing a bank to the compiler.
+`src/compiler/memoryArtifacts.ts` uses the adapter's mount path to allocate the
+volume. An in-process Mneme home must use the same path as its volume.
+
+`common.ts` owns where declared `workspace.skills` are emitted. `createSkillFiles` accepts either one root or a list of roots, and the roots are named constants there: `WORKSPACE_SKILL_BASE_DIRECTORY` (`workspace/skills`) for OpenClaw and PicoClaw, which read that directory with their own skill loaders, and `CLI_ENGINE_SKILL_BASE_DIRECTORIES` (`workspace/.agents/skills` and `workspace/.codex/skills`) for Daimon, whose skills are discovered by an external coding-agent CLI. Both CLI-engine roots are required and their files are byte-identical on purpose: `.codex/skills` is Codex's own discovery root and `.agents/skills` is the generic root grok, agy, and other file-reading engines use. Daimon uses native Moltnet tools and skips installing the Moltnet CLI skill. A brokered Daimon Grok agent gets the same two roots: its worker cannot read them in place (Grok discovers project skills only in a trusted workspace, and Daimon keeps it untrusted), so root provisioning renders the same skills into the worker's `$GROK_HOME/skills`, which Grok loads as user-scoped skills, and binds them with `skillsSha256` (`daimon/grokWorkerSkills.ts`, `src/compiler/containerDaimonGrokWorkerProvisioning.ts`).
 
 `common.ts` also owns the `NOOPOLIS_RUN_ID` container env constant (`NOOPOLIS_RUN_ID_ENV` / `resolveNoopolisRunId`); `container.ts` reads it via `createRuntimeContainerEnv` and stamps it into every generated `RuntimeInstallRecipe.env` so every authority container agrees on one run id for causal event envelopes (see `specs/CAUSAL.md`). Never read `run_id` or `principal_id` from model output here.
 

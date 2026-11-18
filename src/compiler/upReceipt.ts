@@ -5,7 +5,7 @@ import {
   type CompiledScheduleEntry,
   type UpReceipt
 } from "../deployment/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import { parseMoltnetBridgeCapabilities, SpawnfileError } from "../shared/index.js";
 
 import { buildCompilePlan } from "./buildCompilePlan.js";
 import type { CompilePlan, CompilePlanNode, ResolvedAgentNode } from "./types.js";
@@ -34,23 +34,9 @@ const createReceiptMoltnetIdentity = (
   release: NonNullable<UpProjectResult["report"]["container"]>["moltnet"] extends infer Moltnet
     ? Moltnet extends { release?: infer Identity } ? Identity : never
     : never
-) => {
+): UpReceipt["moltnet_release"] => {
   if (!release) return undefined;
-  // Discriminate on PROVENANCE, never on capability count. A published release
-  // now advertises `daimon-bridge` too (moltnet v0.1.18), so `length === 1` would
-  // route it into the local-development branch and reject it for lacking a
-  // `development` marker it is never supposed to have.
-  //
-  // The canonical list lives in `moltnetReleaseAuthority.ts`, but the H2 boundary
-  // (`../deployment/organizationHandoffTypes.test.ts`) forbids this file from
-  // importing any `moltnet*` module, so the ordering is compared inline here the
-  // same way the local branch below already compares it. `upReceiptTypes.ts`'s
-  // schema is the authority that rejects any other list on parse.
-  const joined = release.capabilities.join("\0");
-  const receiptCapabilities: ["daimon-bridge", "pi-bridge"] | ["pi-bridge"] | null =
-    joined === "daimon-bridge\0pi-bridge"
-      ? ["daimon-bridge", "pi-bridge"]
-      : joined === "pi-bridge" ? ["pi-bridge"] : null;
+  const receiptCapabilities = parseMoltnetBridgeCapabilities(release.capabilities);
   if (receiptCapabilities === null) {
     throw new SpawnfileError("runtime_error", "Moltnet receipt advertises unknown bridge capabilities");
   }
@@ -62,23 +48,20 @@ const createReceiptMoltnetIdentity = (
       architecture: release.architecture,
       asset: release.asset,
       asset_sha256: release.asset_sha256,
-      capabilities: receiptCapabilities,
+      capabilities: [...receiptCapabilities],
       release_version: release.release_version,
       source_revision: release.source_revision,
       version: release.version
     };
   }
-  if (
-    release.capabilities.join("\0") !== "daimon-bridge\0pi-bridge" ||
-    !release.source_sha256
-  ) {
+  if (receiptCapabilities.length === 1 || !release.source_sha256) {
     throw new SpawnfileError("runtime_error", "Local Moltnet receipt lacks its development provenance");
   }
   return {
     architecture: release.architecture,
     asset: release.asset,
     asset_sha256: release.asset_sha256,
-    capabilities: ["daimon-bridge", "pi-bridge"] as ["daimon-bridge", "pi-bridge"],
+    capabilities: [...receiptCapabilities],
     development: release.development,
     source_sha256: release.source_sha256,
     version: release.version

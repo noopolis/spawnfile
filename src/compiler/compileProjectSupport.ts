@@ -179,13 +179,7 @@ export const injectMoltnetWorkspaceFiles = async (
     }
     await writeEmittedFiles(runtimeOutputDirectory, moltnetClientConfigFiles);
 
-    // Daimon agents talk Moltnet through the native moltnet_send/moltnet_read
-    // tools, and the moltnet CLI is not authenticated inside a Daimon
-    // workspace. Installing its skill there only teaches the agent a shell
-    // path that fails before it falls back to the tools it already has, so
-    // Daimon skips the skill install entirely; .moltnet/config.json above is
-    // still emitted since the native tools read it.
-    if (compiled.value.runtime.name === "daimon") {
+    if (layout.installSkill === false) {
       continue;
     }
 

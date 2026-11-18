@@ -1,3 +1,4 @@
+import { createMoltnetDaimonReceiptStorePath as resolveDaimonReceipt } from "../runtime/daimon/wiring.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +14,10 @@ import { resolveDaimonGrokRegistrations } from "./containerDaimonGrokWorkerRende
 import { resolveDaimonUidEntrypointOwnershipPlan } from "./containerDaimonUidEntrypointRender.js";
 import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
-import { createMoltnetDaimonReceiptStorePath, createMoltnetNetworkStateDirectory, createMoltnetOpenTokenPath } from "./moltnetConfigLowering.js";
+import { createMoltnetNetworkStateDirectory, createMoltnetOpenTokenPath } from "./moltnetConfigLowering.js";
+
+const createMoltnetDaimonReceiptStorePath = (network: string, member: string): string =>
+  resolveDaimonReceipt(network, member, createMoltnetNetworkStateDirectory(network));
 import type { CompilePlan, ResolvedAgentNode } from "./types.js";
 
 const INSTANCE = "/var/lib/spawnfile/instances/daimon/daimon-organization";

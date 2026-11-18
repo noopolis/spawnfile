@@ -10,6 +10,7 @@ import { createDockerIgnoreContent } from "./dockerBuildContext.js";
 import { createRootfsFiles, renderDockerfile, renderEntrypoint, renderEnvExample } from "./containerArtifactsRender.js";
 import { createMemoryArtifactBundle } from "./memoryArtifacts.js";
 import { resolveRecordingReport } from "./recordingReport.js";
+import { assertMoltnetBridgeCapabilities } from "./moltnetBridgeCapabilities.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
 import type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
@@ -33,39 +34,12 @@ export interface ContainerArtifactOptions {
   runtimePackageOverrides?: RuntimeContainerPackageOverrides;
 }
 
-/**
- * Refuse a Daimon attachment unless the pinned Moltnet release advertises
- * daimon-bridge (specs/SURFACES.md). Older pi-only releases reject its config
- * and tear down the container at boot. receiptStorePath identifies resolved
- * Daimon attachments; unsupported configs are errors, never degradations.
- */
-const assertMoltnetDaimonBridgeCapability = (
-  moltnet: MoltnetArtifacts | undefined | null,
-  release: MoltnetReleaseIdentity | undefined
-): void => {
-  const daimonNetworks = [...new Set((moltnet?.nodePlans ?? [])
-    .filter((nodePlan) => nodePlan.receiptStorePath !== undefined)
-    .map((nodePlan) => nodePlan.networkId))].sort();
-  if (daimonNetworks.length === 0) return;
-  const capabilities: readonly string[] = release?.capabilities ?? [];
-  if (capabilities.includes("daimon-bridge")) return;
-  throw new SpawnfileError(
-    "compile_error",
-    `Moltnet release ${release?.version ?? "(unstaged)"} does not advertise the daimon-bridge capability, but `
-      + `${daimonNetworks.length} network attachment(s) lower a daimon runtime bridge (${daimonNetworks.join(", ")}). `
-      + "The published release implements pi-bridge only and rejects a daimon node config at strict JSON decode, so "
-      + "the container would exit at boot. Build Moltnet locally (scripts/build-local-moltnet.ts, then "
-      + "SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR with SPAWNFILE_ALLOW_LOCAL_E2E=1) to stage a daimon-bridge release, or "
-      + "remove the Moltnet attachment from the daimon agent(s)."
-  );
-};
-
 export const createContainerArtifacts = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[],
   options: ContainerArtifactOptions = {}
 ): Promise<GeneratedContainerArtifacts> => {
-  assertMoltnetDaimonBridgeCapability(options.moltnet, options.moltnetRelease);
+  assertMoltnetBridgeCapabilities(options.moltnet?.nodePlans ?? [], options.moltnetRelease);
   const localDaimonIdentityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
   const localDaimonIdentity = localDaimonIdentityPath ? await loadLocalDaimonRuntimeIdentity(localDaimonIdentityPath) : undefined;
   const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings, options.deploymentLineage);

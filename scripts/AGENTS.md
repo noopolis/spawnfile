@@ -60,6 +60,10 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
   `SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE`. Strict deterministic USTAR archives bind
   source, lockfile, package archives, and npm cache. Dependency preparation is
   pinned to `linux/amd64`; Docker verifies those bytes and installs offline.
+- To stamp an ACP-capable local Moltnet archive, set
+  `SPAWNFILE_MOLTNET_ENABLE_ACP=1` when building an ACP-capable source revision.
+  The builder must prove the ACP node contract before writing its capability.
+  The production release pin is independent of this local opt-in.
 - Moltnet archive mode requires source and Go dependency provenance archives.
   Its pinned Go build verifies the graph and runs with `GOPROXY=off` and
   Docker `--network=none`.

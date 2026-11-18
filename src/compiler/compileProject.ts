@@ -1,3 +1,4 @@
+import { assertMoltnetBridgeCapabilities } from "./moltnetBridgeCapabilities.js";
 import { cleanCompileOutput } from "./cleanCompileOutput.js";
 import { assertRecordingCapability } from "./recordingCapability.js";
 import type { DaimonContractManifest } from "../runtime/daimon/contractManifest.js";
@@ -348,6 +349,7 @@ export const compileProject = async (
         architecture: options.containerArchitecture
       })
     : undefined;
+  assertMoltnetBridgeCapabilities(moltnetArtifacts?.nodePlans ?? [], moltnetRelease);
   await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
 
   const resolvedRuntimePackageOverrides = await stageRuntimePackageOverrides(

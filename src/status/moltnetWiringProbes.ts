@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import { resolveMoltnetStatusFields } from "../runtime/index.js";
+
 import type {
   LoadedCompileReport,
   StatusReportMoltnetNodePlan,
@@ -35,15 +37,9 @@ const WIRING_KEYS = [
   "network.wiring.membership"
 ] as const;
 
-interface ParsedMoltnetAttachmentRuntime {
-  config_path?: unknown;
-  control_url?: unknown;
-  kind?: unknown;
-}
-
 interface ParsedMoltnetAttachment {
   agent?: { id?: unknown };
-  runtime?: ParsedMoltnetAttachmentRuntime;
+  runtime?: Record<string, unknown>;
 }
 
 interface ParsedMoltnetNodeConfig {
@@ -148,14 +144,15 @@ const collectControlUrlObservations = (plans: ReadNodePlan[]): StatusObservation
       const kind = attachment.runtime?.kind;
       const agentId = typeof attachment.agent?.id === "string" ? attachment.agent.id : "unknown-agent";
 
-      if (kind === "picoclaw") {
-        const configPath = attachment.runtime?.config_path;
-        const valid = typeof configPath === "string" && configPath.length > 0;
+      if (typeof kind !== "string") continue;
+      for (const field of resolveMoltnetStatusFields(kind)) {
+        const value = attachment.runtime?.[field];
+        const valid = typeof value === "string" && value.length > 0;
         observations.push(createObservation({
           key: "network.wiring.control_url",
           message: valid
-            ? `${agentId} picoclaw runtime declares config_path ${String(configPath)}`
-            : `${agentId} picoclaw attachment is missing config_path`,
+            ? `${agentId} ${kind} runtime declares ${field} ${String(value)}`
+            : `${agentId} ${kind} attachment is missing ${field}`,
           severity: valid ? "ok" : "error",
           subject
         }));

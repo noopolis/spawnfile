@@ -1,3 +1,4 @@
+import { resolveMoltnetActorTokenScopes } from "../runtime/index.js";
 import type { TeamNetworkServer } from "../manifest/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -54,15 +55,6 @@ export const createMoltnetOpenTokenPath = (
 
 export const createMoltnetNetworkStateDirectory = (networkId: string): string =>
   `/var/lib/spawnfile/moltnet/networks/${pathSafeSegment(networkId)}`;
-
-export const createMoltnetDaimonReceiptStorePath = (networkId: string, memberId: string): string => {
-  const network = pathSafeSegment(networkId);
-  const member = pathSafeSegment(memberId);
-  if (network !== networkId || member !== memberId || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$/u.test(memberId)) {
-    throw new SpawnfileError("validation_error", "invalid Daimon receipt-store path segment");
-  }
-  return `${createMoltnetNetworkStateDirectory(networkId)}/daimon-receipts/${member}.json`;
-};
 
 export const createDefaultMoltnetStorePath = (
   networkId: string,
@@ -199,9 +191,7 @@ export const resolveMoltnetClientAuth = (
         `invalid Moltnet actor token ${attachmentTokenId} for ${memberId}: token id must exist exactly once`
       );
     }
-    const requiredScopes = runtimeName === "daimon"
-      ? ["attach", "observe", "write"]
-      : ["attach", "write"];
+    const requiredScopes = resolveMoltnetActorTokenScopes(runtimeName);
     if (token.scopes.length !== requiredScopes.length
       || token.scopes.some((scope, index) => scope !== requiredScopes[index])) {
       throw new SpawnfileError(

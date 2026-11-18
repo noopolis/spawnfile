@@ -1,10 +1,9 @@
 import type { EmittedFile } from "../runtime/index.js";
-import { resolveNoopolisRunId } from "../runtime/index.js";
+import { requireMoltnetWiring, resolveNoopolisRunId } from "../runtime/index.js";
 import { createExclusiveReattachVolumeName, SpawnfileError } from "../shared/index.js";
 
 import {
   createMoltnetCausalDirectory,
-  createMoltnetDaimonReceiptStorePath,
   createMoltnetNetworkStateDirectory,
   createMoltnetServerConfigPath,
   createMoltnetOpenTokenDirectory,
@@ -208,25 +207,6 @@ export const generateMoltnetArtifacts = async (
         attachment.network,
         attachment.memberId
       );
-      const receiptStorePath = agentNode.runtime.name === "daimon"
-        ? createMoltnetDaimonReceiptStorePath(attachment.network, attachment.memberId)
-        : undefined;
-      if (receiptStorePath) {
-        const owner = `${attachment.network}\u0000${attachment.memberId}`;
-        const existingOwner = receiptStoreOwners.get(receiptStorePath);
-        if (existingOwner !== undefined && existingOwner !== owner) {
-          throw new SpawnfileError("validation_error", "Daimon receipt-store paths collide");
-        }
-        receiptStoreOwners.set(receiptStorePath, owner);
-        const networkRoot = createMoltnetNetworkStateDirectory(attachment.network);
-        const covered = [...persistentMounts.values()].some((mount) =>
-          networkRoot === mount.mountPath || networkRoot.startsWith(`${mount.mountPath}/`)
-        );
-        if (!covered) {
-          const mountId = `moltnet-${attachment.network}-runtime-state`;
-          addPersistentMount({ id: mountId, mountPath: networkRoot, reason: `Moltnet runtime state for ${attachment.network}`, volumeName: createPersistentVolumeName(plan.root, mountId, runId) });
-        }
-      }
       const nodePlanKey = `${attachment.network}::${attachment.memberId}`;
       if (nodePlanKeys.has(nodePlanKey)) {
         throw new SpawnfileError(
@@ -245,7 +225,26 @@ export const generateMoltnetArtifacts = async (
         plan,
         serverPlan
       });
-      const { clientAuth, usesPerAttachmentOpenToken } = nodeConfig;
+      const { clientAuth, runtime, usesPerAttachmentOpenToken } = nodeConfig;
+      const { releaseCapability } = requireMoltnetWiring(agentNode.runtime.name, agentNode.name);
+      const receiptStorePath = runtime.receipt_store_path;
+
+      if (receiptStorePath) {
+        const owner = `${attachment.network}\u0000${attachment.memberId}`;
+        const existingOwner = receiptStoreOwners.get(receiptStorePath);
+        if (existingOwner !== undefined && existingOwner !== owner) {
+          throw new SpawnfileError("validation_error", "Moltnet runtime receipt-store paths collide");
+        }
+        receiptStoreOwners.set(receiptStorePath, owner);
+        const networkRoot = createMoltnetNetworkStateDirectory(attachment.network);
+        const covered = [...persistentMounts.values()].some((mount) =>
+          networkRoot === mount.mountPath || networkRoot.startsWith(`${mount.mountPath}/`)
+        );
+        if (!covered) {
+          const mountId = `moltnet-${attachment.network}-runtime-state`;
+          addPersistentMount({ id: mountId, mountPath: networkRoot, reason: `Moltnet runtime state for ${attachment.network}`, volumeName: createPersistentVolumeName(plan.root, mountId, runId) });
+        }
+      }
 
       if (usesPerAttachmentOpenToken && clientAuth.tokenPath) {
         const mountId = `agent-${node.slug}-moltnet-tokens`;
@@ -274,6 +273,7 @@ export const generateMoltnetArtifacts = async (
         ...(clientAuth.tokenEnv ? { credentialSecret: clientAuth.tokenEnv } : {}),
         memberId: attachment.memberId,
         networkId: attachment.network,
+        ...(releaseCapability ? { releaseCapability } : {}),
         ...(receiptStorePath ? { receiptStorePath } : {})
       });
     }

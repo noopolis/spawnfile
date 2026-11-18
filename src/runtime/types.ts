@@ -11,6 +11,9 @@ import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
 import type { DeploymentRecord, DockerUnitInspection } from "../deployment/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
+import type { RuntimeWiring } from "./wiringTypes.js";
+
+export type { RuntimeWiring } from "./wiringTypes.js";
 
 export interface EmittedFile {
   content: string;
@@ -238,4 +241,5 @@ export interface RuntimeAdapter {
   statusProbes?: RuntimeStatusProbe[];
   systemInstructionSurface?: RuntimeSystemInstructionSurface;
   validateRuntimeOptions?(options: Record<string, unknown>): DiagnosticReport[];
+  wiring?: RuntimeWiring;
 }

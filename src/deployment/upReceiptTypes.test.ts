@@ -119,6 +119,19 @@ describe("upReceiptSchema / parseUpReceipt", () => {
     }
   });
 
+  it("round-trips an explicit ACP-capable local Moltnet identity", () => {
+    const moltnetRelease: NonNullable<UpReceipt["moltnet_release"]> = {
+      architecture: "amd64",
+      asset: "moltnet_linux_amd64.tar.gz",
+      asset_sha256: `sha256:${"b".repeat(64)}`,
+      capabilities: ["acp-bridge", "daimon-bridge", "pi-bridge"],
+      development: { mode: "local-development", non_production: true, unpublished: true, unsigned: true },
+      source_sha256: `sha256:${"c".repeat(64)}`,
+      version: "spawnfile.moltnet-release-identity.v1"
+    };
+    expect(parseUpReceipt(createReceipt({ moltnet_release: moltnetRelease })).moltnet_release).toEqual(moltnetRelease);
+  });
+
   it("round-trips stored organization readiness and retains old absence compatibility", () => {
     expect(upReceiptSchema.safeParse(createReceipt({ organization_ready: organizationReadiness })).success).toBe(true);
     expect(upReceiptSchema.safeParse(createReceipt()).success).toBe(true);

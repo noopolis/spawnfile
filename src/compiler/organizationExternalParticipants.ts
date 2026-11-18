@@ -1,3 +1,4 @@
+import { resolveMoltnetActorTokenScopes } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { TeamNetworkServer } from "../manifest/index.js";
 import type {
@@ -14,11 +15,13 @@ import {
   requiredOrganizationIdentity,
   rootOrganizationTeam,
 } from "./organizationIdentityGraph.js";
+const externalActorScopes = [["attach", "write"], ["attach", "observe", "write"]] as const;
+
 const actorTokenFor = (
   server: Extract<TeamNetworkServer, { mode: "managed" }>,
   tokenId: string,
   memberId: string,
-  observePolicy: "allow" | "forbid" | "require" = "forbid",
+  allowedScopes: readonly (readonly string[])[],
 ) => {
   const token = server.auth.tokens?.filter((entry) => entry.id === tokenId);
   if (token?.length !== 1) {
@@ -27,12 +30,7 @@ const actorTokenFor = (
   const selected = requiredOrganizationIdentity(
     token?.[0], `Moltnet actor token ${tokenId} must exist exactly once`,
   );
-  const validScopes = (
-    observePolicy !== "require" && exactOrganizationStrings(selected.scopes, ["attach", "write"])
-  ) || (
-    observePolicy !== "forbid"
-      && exactOrganizationStrings(selected.scopes, ["attach", "observe", "write"])
-  );
+  const validScopes = allowedScopes.some((scopes) => exactOrganizationStrings(selected.scopes, scopes));
   if (!validScopes || !exactOrganizationStrings(selected.agents, [memberId])) {
     organizationIdentityFail(`Moltnet actor token ${tokenId} has invalid scopes or agents for ${memberId}`);
   }
@@ -130,7 +128,7 @@ export const validateB31MoltnetAuth = (plan: CompilePlan): void => {
           network.server,
           selectedTokenId,
           member.memberId,
-          node?.runtimeName === "daimon" ? "require" : "forbid",
+          [resolveMoltnetActorTokenScopes(node?.runtimeName ?? undefined)],
         );
         const selected = selectedByNetwork.get(attachment.network) ?? new Map<string, string>();
         const previous = selected.get(selectedTokenId);
@@ -149,7 +147,7 @@ export const validateB31MoltnetAuth = (plan: CompilePlan): void => {
     for (const attachment of service.surfaces.moltnet) {
       const network = root.networks?.find((entry) => entry.id === attachment.network);
       if (network?.server?.mode !== "managed") continue;
-      const token = actorTokenFor(network.server, attachment.auth.token_id, service.id, "allow");
+      const token = actorTokenFor(network.server, attachment.auth.token_id, service.id, externalActorScopes);
       if (token.id === "operator") {
         organizationIdentityFail(`B31 external participant ${service.id} must not use operator token`);
       }
@@ -213,7 +211,7 @@ export const resolveMoltnetExternalParticipantIntents = (
       peers.sort(compareOrganizationIds);
       const network = root.networks?.find((entry) => entry.id === attachment.network);
       const token = network?.server?.mode === "managed"
-        ? actorTokenFor(network.server, attachment.auth.token_id, service.id, "allow")
+        ? actorTokenFor(network.server, attachment.auth.token_id, service.id, externalActorScopes)
         : undefined;
       result.push({ participant, networkId: attachment.network, tokenId: attachment.auth.token_id,
         tokenEnv: token?.secret ?? "", directMessagePeers: peers });

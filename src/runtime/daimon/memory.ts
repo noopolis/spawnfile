@@ -1,7 +1,8 @@
-import type { ResolvedAgentNode } from "../../compiler/types.js";
+import type { ResolvedAgentNode, ResolvedMemoryBank } from "../../compiler/types.js";
 import type { CapabilityReport } from "../../report/index.js";
 import { resolveMnemeDurableMemoryMountPath } from "../mnemeMcp.js";
 import { SpawnfileError } from "../../shared/index.js";
+import type { RuntimeMemoryWiring } from "../wiringTypes.js";
 
 /**
  * Memory lowering for the Daimon organization runtime, split out of
@@ -46,12 +47,20 @@ const selectDaimonMemoryAccess = (
  */
 export const DAIMON_INSTANCE_STATE_ROOT = "/var/lib/spawnfile/instances";
 
+export const resolveDaimonMemoryWiring = (bank: ResolvedMemoryBank): RuntimeMemoryWiring => {
+  const mountPath = resolveMnemeDurableMemoryMountPath(bank);
+  return {
+    mountPath,
+    transport: bank.store.kind === "postgres" ? "unsupported" : mountPath === null ? "degraded" : "direct"
+  };
+};
+
 export const resolveDaimonAgentMemory = (
   node: ResolvedAgentNode
 ): { runtimeHomePath: string; source: string } | undefined => {
   const access = selectDaimonMemoryAccess(node);
   if (!access) return undefined;
-  const runtimeHomePath = resolveMnemeDurableMemoryMountPath(access.bank);
+  const runtimeHomePath = resolveDaimonMemoryWiring(access.bank).mountPath;
   if (runtimeHomePath === null) return undefined;
   if (
     runtimeHomePath === DAIMON_INSTANCE_STATE_ROOT ||

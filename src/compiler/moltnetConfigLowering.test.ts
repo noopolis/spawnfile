@@ -1,20 +1,24 @@
+import { createMoltnetDaimonReceiptStorePath as resolveDaimonReceipt } from "../runtime/daimon/wiring.js";
 import { describe, expect, it } from "vitest";
 
 import type { TeamNetworkServer } from "../manifest/index.js";
 
 import {
   createMoltnetNativeServerConfig,
-  createMoltnetDaimonReceiptStorePath,
   createDefaultMoltnetStorePath,
   createMoltnetNodeConfigPath,
   createMoltnetOpenTokenDirectory,
   createMoltnetOpenTokenPath,
+  createMoltnetNetworkStateDirectory,
   createMoltnetServerConfigPath,
   renderMoltnetListenAddr,
   resolveMoltnetBaseUrl,
   resolveMoltnetClientAuth,
   resolveMoltnetStorePersistenceMountPath
 } from "./moltnetConfigLowering.js";
+
+const createMoltnetDaimonReceiptStorePath = (network: string, member: string): string =>
+  resolveDaimonReceipt(network, member, createMoltnetNetworkStateDirectory(network));
 
 type ManagedServer = Extract<TeamNetworkServer, { mode: "managed" }>;
 

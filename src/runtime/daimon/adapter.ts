@@ -1,3 +1,4 @@
+import { daimonWiring, DAIMON_CONTROL_TOKEN_ENV } from "./wiring.js";
 import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
 import type { CapabilityReport } from "../../report/index.js";
 import { SpawnfileError } from "../../shared/index.js";
@@ -181,7 +182,7 @@ export const daimonAdapter: RuntimeAdapter = {
     env: [{
       description: "Bearer token for the Daimon organization control API",
       generated: true,
-      name: "SPAWNFILE_DAIMON_CONTROL_TOKEN",
+      name: DAIMON_CONTROL_TOKEN_ENV,
       required: true
     }],
     instancePaths: {
@@ -238,6 +239,7 @@ export const daimonAdapter: RuntimeAdapter = {
   },
   createContainerTargets: createDaimonContainerTargets,
   name: "daimon",
+  wiring: daimonWiring,
   preflightAgent(node, nodeId) {
     unsupportedAgentFeatures(node);
     const codexPolicyError = daimonCodexPolicyError(node);

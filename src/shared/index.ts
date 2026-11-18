@@ -8,3 +8,4 @@ export * from "./volumeNames.js";
 export * from "./daimonCodexDocker.js";
 
 export * from './trainingLegacy/index.js';
+export * from "./bridgeCapabilities.js";

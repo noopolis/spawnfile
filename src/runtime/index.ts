@@ -10,3 +10,6 @@ export * from "./usageLedger.js";
 export * from "./usageLedgerRead.js";
 export * from "./usageRequestLedger.js";
 export * from "./daimonInstall.js";
+export * from "./portableMoltnetWiring.js";
+export * from "./wiringTypes.js";
+export * from "./wiringSelection.js";

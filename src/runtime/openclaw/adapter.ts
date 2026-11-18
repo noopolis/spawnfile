@@ -1,3 +1,4 @@
+import { openClawWiring } from "./wiring.js";
 import type {
   ResolvedAgentNode,
 } from "../../compiler/types.js";
@@ -303,6 +304,7 @@ export const openClawAdapter: RuntimeAdapter = {
     return createContainerTargets(inputs);
   },
   name: "openclaw",
+  wiring: openClawWiring,
   prepareRuntimeAuth: prepareOpenClawRuntimeAuth,
   scaffoldAgentProject: createOpenClawAgentScaffold,
   statusProbes: openClawStatusProbes,

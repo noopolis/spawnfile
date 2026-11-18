@@ -1,3 +1,4 @@
+import { picoClawWiring } from "./wiring.js";
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 
 import {
@@ -321,6 +322,7 @@ export const picoClawAdapter: RuntimeAdapter = {
     return createContainerTargets(inputs);
   },
   name: "picoclaw",
+  wiring: picoClawWiring,
   prepareRuntimeAuth: preparePicoClawRuntimeAuth,
   scaffoldAgentProject: createPicoClawAgentScaffold,
   statusProbes: picoClawStatusProbes,
