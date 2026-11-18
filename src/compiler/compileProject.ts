@@ -1,7 +1,6 @@
 import { assertMoltnetBridgeCapabilities } from "./moltnetBridgeCapabilities.js";
 import { cleanCompileOutput } from "./cleanCompileOutput.js";
 import { assertRecordingCapability } from "./recordingCapability.js";
-import type { DaimonContractManifest } from "../runtime/daimon/contractManifest.js";
 import path from "node:path";
 import { chmod } from "node:fs/promises";
 
@@ -20,7 +19,8 @@ import {
   assertRuntimeCanCompile,
   createRuntimeLifecycleDiagnostics,
   getRuntimeAdapter,
-  resolveNoopolisRunId
+  resolveNoopolisRunId,
+  type DaimonContractManifest
 } from "../runtime/index.js";
 
 import { buildCompilePlan, type BuildCompilePlanOptions } from "./buildCompilePlan.js";

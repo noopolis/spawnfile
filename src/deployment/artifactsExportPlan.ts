@@ -1,36 +1,8 @@
-import path from "node:path/posix";
-
 import type { CompileReport, ContainerPersistentMountReport } from "../report/index.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
+import { getRuntimeOperations, listRuntimeOperations } from "../runtime/registry.js";
+import type { RuntimeExportFile, RuntimeUsageOperations } from "../runtime/operations.js";
 
-/** One durable-artifact file `spawnfile artifacts export` egresses, and where it lands
- * under `<out>` (Decision 21 §2 run-dir layout). Pure planning data — no Docker/IO here;
- * `artifactsExport.ts` executes each plan entry and `artifactsExportDocker.ts` knows how. */
-export interface PlannedExportFile {
-  /** Path relative to the export destination directory, e.g. "raw/moltnet/causal.jsonl". */
-  relativePath: string;
-  source:
-    | { kind: "volume"; volumeName: string; volumePath: string }
-    | { kind: "container"; containerPath: string };
-  /** True when the file may legitimately be absent (e.g. a bank's causal.jsonl before any
-   * recall event, or events.jsonl before any memory write) — a missing optional file is a
-   * silent skip, never a diagnostic. Non-optional sources missing is worth flagging. */
-  optional: boolean;
-}
-
-const AGENT_NODE_ID_PREFIX = "agent:";
-const TEAM_NODE_ID_PREFIX = "team:";
-
-/** Strips the compiler's `agent:` node-id prefix down to the generated runtime slug, the
- * same convention `src/e2e/moltnetMemeticsArtifacts.ts`'s `agentSlugFromNodeId` uses (kept
- * as a local copy here rather than an import: compiler/deployment code must not depend on
- * `src/e2e`, per that folder's own charter — e2e depends on compiler, never the reverse). */
-const agentSlugFromNodeId = (nodeId: string): string | null => {
-  if (nodeId.startsWith(AGENT_NODE_ID_PREFIX)) {
-    return nodeId.slice(AGENT_NODE_ID_PREFIX.length);
-  }
-  return nodeId.startsWith(TEAM_NODE_ID_PREFIX) ? null : nodeId;
-};
+export type PlannedExportFile = RuntimeExportFile;
 
 const mountById = (
   mounts: ContainerPersistentMountReport[] | undefined
@@ -110,100 +82,16 @@ const planMnemeFiles = (
     }));
   });
 
-/** Plans optional Daimon causal telemetry exports from declared mounts or a legacy instance home. */
-const planDaimonFiles = (
-  report: CompileReport,
-  mounts: Map<string, ContainerPersistentMountReport>
-): PlannedExportFile[] =>
-  (report.container?.runtime_instances ?? [])
-    .filter((instance) => instance.runtime === "daimon")
-    .flatMap((instance) =>
-      (instance.node_ids ?? []).flatMap((nodeId): PlannedExportFile[] => {
-        const slug = agentSlugFromNodeId(nodeId);
-        if (!slug) {
-          return [];
-        }
-
-        const mountId = instance.telemetry_mount_ids?.[nodeId];
-        const mount = mountId ? mounts.get(mountId) : undefined;
-        if (mount) {
-          return [{
-            optional: true,
-            relativePath: `raw/daimon/${slug}/causal.jsonl`,
-            source: {
-              kind: "volume" as const,
-              volumeName: mount.volume_name,
-              volumePath: "causal.jsonl"
-            }
-          }];
-        }
-
-        if (!instance.home_path) {
-          return [];
-        }
-        const instanceRoot = path.dirname(instance.home_path);
-        return [{
-          optional: true,
-          relativePath: `raw/daimon/${slug}/causal.jsonl`,
-          source: {
-            kind: "container" as const,
-            containerPath: `${instanceRoot}/runtime/agents/${slug}/telemetry/causal.jsonl`
-          }
-        }];
-      })
-    );
-
-/** The persistent-mount id the Daimon adapter gives the per-turn engine usage ledger
- * (`src/runtime/daimon/config.ts`). Deliberately still says `grok` now that AGY writes
- * there too: the id is the volume's identity, and renaming it orphans every existing
- * deployment's accumulated ledger. */
-const DAIMON_USAGE_MOUNT_ID = "daimon-grok-usage-ledger";
-
-/** Daimon usage: the organization-wide per-turn engine token ledger.
- *
- * Unlike the causal streams above this is NOT per agent -- one exclusive-reattach volume
- * carries every metered turn for the whole Daimon host -- so it exports flat under
- * `raw/daimon/`, the way a single managed Moltnet network exports flat under
- * `raw/moltnet/`. Flat also keeps it clear of the `raw/daimon/<slug>/` directories the
- * per-agent causal files use.
- *
- * BOTH generations ship. The broker rotates by size at
- * `DAIMON_GROK_TURN_USAGE_LEDGER.rotateBytes`, so a long-lived deployment's earlier turns
- * live in `usage.jsonl.1`; exporting only the live file would silently truncate history
- * for exactly the runs expensive enough to care about. This is the same rotation the read
- * path already handles (`src/runtime/usageLedgerRead.ts` reads both generations).
- *
- * The mount root IS the ledger directory (`mountPath` is
- * `DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath`), so both names are resolved as
- * mount-relative paths off the pinned contract constants rather than written out here --
- * if the contract ever moves the ledger, this follows it instead of silently exporting
- * nothing.
- *
- * Optional, because absent must stay distinguishable from empty: a codex-only
- * organization is never provisioned this volume and writes no ledger at all, which is
- * legitimate, and the mount is absent from the report entirely in that case. Where the
- * volume exists but a generation does not (no rotation yet, or no metered turn yet), the
- * executor records it under `missingOptionalFiles` rather than as an exported empty file
- * (`artifactsExport.ts`). */
-const planDaimonUsageFiles = (
-  mounts: Map<string, ContainerPersistentMountReport>
+const planUsageFiles = (
+  usage: RuntimeUsageOperations, mounts: ReadonlyMap<string, ContainerPersistentMountReport>
 ): PlannedExportFile[] => {
-  const mount = mounts.get(DAIMON_USAGE_MOUNT_ID);
-  if (!mount) {
-    return [];
-  }
-
-  return [
-    DAIMON_GROK_TURN_USAGE_LEDGER.filePath,
-    DAIMON_GROK_TURN_USAGE_LEDGER.rotatedFilePath
-  ].map((absolutePath) => {
-    const volumePath = path.relative(DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath, absolutePath);
-    return {
-      optional: true,
-      relativePath: `raw/daimon/${volumePath}`,
-      source: { kind: "volume" as const, volumeName: mount.volume_name, volumePath }
-    };
-  });
+  const mount = mounts.get(usage.mountId);
+  if (!mount) return [];
+  return (["filePath", "rotatedFilePath"] as const).map((generation) => ({
+    optional: true,
+    relativePath: usage.exportedPaths[generation],
+    source: { kind: "volume", volumeName: mount.volume_name, volumePath: usage.volumePaths[generation] }
+  }));
 };
 
 /** Resolves every durable artifact file this run's compile report declares, and where each
@@ -214,7 +102,8 @@ export const planArtifactExports = (report: CompileReport): PlannedExportFile[] 
   return [
     ...planMoltnetFiles(report, mounts),
     ...planMnemeFiles(report, mounts),
-    ...planDaimonFiles(report, mounts),
-    ...planDaimonUsageFiles(mounts)
+    ...(report.container?.runtime_instances ?? []).flatMap((instance) =>
+      getRuntimeOperations(instance.runtime)?.exportFiles?.(instance, mounts) ?? []),
+    ...listRuntimeOperations().flatMap(({ usage }) => usage ? planUsageFiles(usage, mounts) : [])
   ];
 };

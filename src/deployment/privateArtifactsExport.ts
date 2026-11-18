@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { ensureDirectory } from "../filesystem/index.js";
 import type { CompileReport } from "../report/index.js";
+import { getRuntimeOperations } from "../runtime/registry.js";
 
 import {
   copyContainerFileToHost,
@@ -12,28 +13,9 @@ import {
 import type { ExportIndexFile } from "./artifactsExportTypes.js";
 import type { DeploymentRecord } from "./record.js";
 
-interface PrivateDirectoryPlan {
-  readonly containerPath: string;
-  readonly relativePath: string;
-}
-
-const plans = (report: CompileReport): readonly PrivateDirectoryPlan[] =>
-  (report.container?.runtime_instances ?? [])
-    .filter((instance) =>
-      instance.runtime === "daimon"
-      && instance.home_path !== null)
-    .flatMap((instance) => {
-      const instanceRoot = path.posix.dirname(instance.home_path!);
-      return (instance.node_ids ?? [])
-        .filter((nodeId) => nodeId.startsWith("agent:"))
-        .map((nodeId) => nodeId.slice("agent:".length))
-        .filter((slug) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(slug))
-        .map((slug) => Object.freeze({
-          containerPath:
-            `${instanceRoot}/runtime/agents/${slug}/private-training/pi/raw`,
-          relativePath: `private/daimon/${slug}/private-training/pi/raw`,
-        }));
-    });
+const plans = (report: CompileReport) =>
+  (report.container?.runtime_instances ?? []).flatMap((instance) =>
+    getRuntimeOperations(instance.runtime)?.privateExportDirectories?.(instance) ?? []);
 
 const filesUnder = async (root: string): Promise<readonly string[]> => {
   if (!(await lstat(root)).isDirectory()) {

@@ -249,3 +249,22 @@ export const getRuntimeAdapter = (runtimeName: string): RuntimeAdapter => {
 };
 
 export const listRuntimeAdapters = (): string[] => [...runtimeAdapters.keys()].sort();
+
+/** Saved reports may refer to a runtime that is no longer bundled. */
+export const getRuntimeOperations = (runtimeName: string) => runtimeAdapters.get(runtimeName)?.operations;
+
+export const listRuntimeOperations = () =>
+  [...runtimeAdapters.values()].flatMap((adapter) => adapter.operations ? [adapter.operations] : []);
+
+// Historical module APIs, composed here alongside the built-in adapters.
+export type { DaimonContractManifest } from "./daimon/contractManifest.js";
+export { parseUsageLedger, parseUsageLedgerLine, USAGE_TURN_RECORD_VERSION } from "./daimon/usageLedger.js";
+export {
+  parseUsageRequestLedger, parseUsageRequestLedgerLine, USAGE_REQUEST_RECORD_VERSION, USAGE_REQUEST_SOURCES
+} from "./daimon/usageRequestLedger.js";
+export type { UsageRequestRecord, UsageRequestSource } from "./daimon/usageRequestLedger.js";
+export {
+  CONTROL_CALL_TIMEOUT_MS, DAIMON_CONTROL_TOKEN_ENV, controlHelperArgs, helperControlCall,
+  controlTargetFor, parseAvailability, parseHelperOutput, requestDrain, requestResume, resolveControlToken, waitForDrained
+} from "./daimon/drain.js";
+export type { ControlCall, ControlResponse } from "./daimon/drain.js";

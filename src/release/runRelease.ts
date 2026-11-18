@@ -2,7 +2,8 @@ import { rm } from "node:fs/promises";
 
 import { normalizeDeploymentName } from "../deployment/index.js";
 
-import { controlTargetFor, recoverInterruptedDrain, requestForTarget, resolveControlToken } from "./drainPhase.js";
+import { recoverInterruptedDrain, requestForTarget, resumeTargets } from "./drainPhase.js";
+import { drainTargetsFor } from "./drainTargets.js";
 import {
   acquireReleaseLock,
   appendReleaseLog,
@@ -19,8 +20,8 @@ import { createNotification } from "./notify.js";
 import type { PostDeployContext, PostDeployHook } from "./postDeploy.js";
 import { clearDeferral, markDeferralNotified, recordDeferral } from "./pending.js";
 import { releaseImageTag, type RunningUnit } from "./releaseDocker.js";
-import { DAIMON_CONTROL_TOKEN_ENV, type ReleaseDependencies, type ReleaseRequest } from "./releaseTypes.js";
-import { drainAndSwap, releaseContainerName } from "./swap.js";
+import type { ReleaseDependencies, ReleaseRequest } from "./releaseTypes.js";
+import { drainAndSwap, releaseContainerName, type PreparedDrain } from "./swap.js";
 import { ReleaseError, isReleaseError, type ReleaseFailureReason, type ReleaseOutcome, type ReleaseTimings } from "./types.js";
 
 interface Progress {
@@ -83,9 +84,11 @@ const releaseLocked = async (
     request.log(`release: ${compiled.identity.slice(0, 19)} is already running as ${ledger!.image_tag}; nothing to do`);
     return { identity: compiled.identity, imageTag: ledger!.image_tag, kind: "unchanged" };
   }
-  if (request.drain && running?.running && resolveControlToken(request) === null) {
-    throw new ReleaseError("blocked", `${DAIMON_CONTROL_TOKEN_ENV} is not set in the env file or environment; a drained release needs the running deployment's control token`);
-  }
+  const prepared = request.drain && running?.running ? {
+    containerRef: running.id,
+    imageRef: running.imageId,
+    targets: await drainTargetsFor(request, deps, running)
+  } : undefined;
   request.log(ledger
     ? `release: ${compiled.identity.slice(0, 19)} differs from the released ${ledger.identity.slice(0, 19)} (${ledger.image_tag}); releasing`
     : `release: nothing recorded as released for ${request.deployment}; releasing ${compiled.identity.slice(0, 19)}`);
@@ -108,7 +111,7 @@ const releaseLocked = async (
     throw new ReleaseError("blocked", `cannot lock the deployment: ${(error as Error).message}`);
   });
   try {
-    return await swapAndRecord(request, deps, paths, progress, { built, compiled, imageTag, ledger, started });
+    return await swapAndRecord(request, deps, paths, progress, { built, compiled, imageTag, ledger, prepared, started });
   } finally {
     await unlockDeployment().catch(() => undefined);
   }
@@ -119,6 +122,7 @@ interface Built {
   compiled: Awaited<ReturnType<ReleaseDependencies["compile"]>>;
   imageTag: string;
   ledger: ReleaseLedger | null;
+  prepared?: PreparedDrain;
   started: number;
 }
 
@@ -127,9 +131,9 @@ const swapAndRecord = async (
   deps: ReleaseDependencies,
   paths: ReleasePaths,
   progress: Progress,
-  { built, compiled, imageTag, ledger, started }: Built
+  { built, compiled, imageTag, ledger, prepared, started }: Built
 ): Promise<ReleaseOutcome> => {
-  const swap = await drainAndSwap(request, deps, paths, imageTag);
+  const swap = await drainAndSwap(request, deps, paths, imageTag, prepared);
   if (swap.kind === "deferred") return defer(request, deps, paths, compiled.identity);
   const { deployed, drained } = swap;
 
@@ -141,7 +145,9 @@ const swapAndRecord = async (
   if (request.drain) {
     progress.stage = "resume";
     try {
-      await deps.requestResume(controlTargetFor(request, settled.id, settled.imageId));
+      const runtimes = compiled.compileResult.report.container?.runtime_instances.map((instance) => instance.runtime);
+      const targets = await drainTargetsFor(request, deps, settled, { requireAll: false, runtimes });
+      await resumeTargets(deps, targets);
     } catch (error) {
       throw new ReleaseError("resume-failed", `the new container did not confirm admission: ${(error as Error).message}`);
     }

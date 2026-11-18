@@ -280,3 +280,11 @@ It reads the optional per-agent CLI turn bound the same way: a manifest whose
 `consumedConfigFields` ends in `agents[].engine.turnTimeoutMs` (after the wake
 text field when both are present) must publish that integer in its v2 agent
 engine schema, and its minimum and maximum become `turnTimeoutMsBounds`.
+
+`operations.ts` registers optional drain, compiled readiness, recording, usage
+and artifact evidence. `drain.ts` implements the running host's admission
+protocol. `readiness.ts` pairs the emitted receipt path with strict verification.
+`artifactEvidence.ts` preserves historical mount ids, paths and rotation
+limits. Native ledger parsing lives in `usageLedger.ts` and
+`usageRequestLedger.ts`. Release sequencing, deployment reconciliation and
+artifact egress remain in their shared callers.

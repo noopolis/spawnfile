@@ -13,15 +13,17 @@ src/runtime/
 ├── wiringTypes.ts          # Optional Moltnet, memory, and readiness capabilities
 ├── wiringSelection.ts      # Adapter capability lookup for shared consumers
 ├── portableMoltnetWiring.ts # ACP stdio and workspace layout helpers
+├── operations.ts          # Optional live drain, readiness, recording, artifact and usage contracts
 ├── common.ts              # Shared lowering helpers used by adapters
 ├── mnemeMcp.ts            # Shared Mneme MCP lowering plus the durable memory mount authority
 ├── container.ts           # Container install recipes (createRuntimeInstallRecipe) per bundled runtime
 ├── containerPackageOverrides.ts # Runtime install npm package override contract consumed by container.ts
 ├── localDaimonAuthority.ts # Exact non-production identity-file parser for loopback Daimon images
 ├── registry.ts            # Bundled adapter registration and lookup
-├── usageLedger.ts         # Pure parser/aggregator for Daimon's per-turn usage ledger
+├── usageTypes.ts          # Normalized usage row types
+├── usageLedger.ts         # Usage aggregation and historical parser exports
 ├── usageLedgerRead.ts     # Shared artifact `cat` reader distinguishes absent/unreadable; usage merges two generations
-├── usageRequestLedger.ts  # Pure parser for Daimon's per-request stream (`requests.jsonl`): timing, model, usage source, broker-turn dedupe
+├── usageRequestLedger.ts  # Historical parser exports for per-request rows
 ├── scheduleUtils.ts       # Shared duration schedule helpers for runtime lowering
 ├── daimon/                # Public Daimon organization-host adapter
 ├── openclaw/              # OpenClaw adapter implementation
@@ -68,6 +70,9 @@ or receipt environment overrides fail closed. With no identity path,
 - Adapters receive resolved nodes, not raw manifests.
 - Keep runtime-specific behavior isolated here.
 - Share only the adapter contract, not runtime-specific implementation details.
+
+Native usage formats and paths live with their adapters. Live readers invoke
+the registered parser and read bound. The legacy parser exports remain callable.
 
 Daimon's Grok broker is the single sealed usage writer, and a replayed turn may
 re-append its sealed rows. `usageLedger.ts` therefore dedupes every

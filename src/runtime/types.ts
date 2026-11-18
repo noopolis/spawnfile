@@ -15,6 +15,8 @@ import type { RuntimeWiring } from "./wiringTypes.js";
 
 export type { RuntimeWiring } from "./wiringTypes.js";
 
+import type { RuntimeOperations } from "./operations.js";
+
 export interface EmittedFile {
   content: string;
   mode?: number;
@@ -232,6 +234,7 @@ export interface RuntimeAdapter {
   compileTeam?(node: ResolvedTeamNode): Promise<AdapterCompileResult>;
   createContainerTargets?(inputs: ContainerTargetInput[]): Promise<ContainerTarget[]>;
   name: string;
+  operations?: RuntimeOperations;
   /** Throws a SpawnfileError for what compile would refuse for this agent; run by `spawnfile validate`. */
   preflightAgent?(node: ResolvedAgentNode, nodeId: string): void;
   prepareRuntimeAuth?(

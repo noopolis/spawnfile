@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import * as registry from "../runtime/registry.js";
 
 import type { OrganizationReadinessEvidence } from "../compiler/organizationReadyEvidence.js";
 import { dockerDeploymentLabelKeys } from "./dockerLabels.js";
@@ -122,12 +124,34 @@ const dockerRecord = (): DeploymentRecord => ({
 
 describe("organization readiness reconciliation", () => {
   it("requires an exact Daimon engine receipt for no-world readiness", () => {
-    const noWorld = { ...evidence, worldBindings: null, daimon: { receiptPath: "/state/readiness.json", agents: [{ agentId: "agent:alpha", engine: "codex" }] } };
+    const noWorld = { ...evidence, worldBindings: null, runtimeReceipts: [{ runtime: "daimon", receiptPath: "/state/readiness.json", expected: [{ agent_id: "agent:alpha", engine: "codex" }] }] };
     const baseProbe = { attachmentReceipts: probe().attachmentReceipts, configs: probe().configs, networks: probe().networks, worldBindings: null };
     const valid = JSON.stringify({ version: "noopolis.daimon.readiness-receipt.v1", agents: [{ agent_id: "agent:alpha", engine: "codex" }] });
-    expect(reconcileOrganizationReadiness({ evidence: noWorld, inspection: inspection(), record, probe: { ...baseProbe, daimonReceipt: valid } }).state).toBe("ready");
+    expect(reconcileOrganizationReadiness({ evidence: noWorld, inspection: inspection(), record, probe: { ...baseProbe, runtimeReceipts: new Map([["/state/readiness.json", valid]]) } }).state).toBe("ready");
     for (const daimonReceipt of [null, "{", JSON.stringify({ version: "bad", agents: [] }), JSON.stringify({ version: "noopolis.daimon.readiness-receipt.v1", agents: [{}] }), JSON.stringify({ version: "noopolis.daimon.readiness-receipt.v1", agents: [{ agent_id: "agent:alpha", engine: "grok" }] })]) {
-      expect(reconcileOrganizationReadiness({ evidence: noWorld, inspection: inspection(), record, probe: { ...baseProbe, daimonReceipt } }).code).toBe("topology_mismatch");
+      expect(reconcileOrganizationReadiness({ evidence: noWorld, inspection: inspection(), record, probe: { ...baseProbe, runtimeReceipts: daimonReceipt === null ? new Map() : new Map([["/state/readiness.json", daimonReceipt]]) } }).code).toBe("topology_mismatch");
+    }
+  });
+  it("validates the selected runtime receipt with the adapter's own format", () => {
+    const runtime = "test-runtime";
+    const receiptPath = "/state/test-ready";
+    const validateReceipt = vi.fn((expected: unknown, receipt: string) => receipt === expected);
+    const registered = registry.getRuntimeOperations;
+    const lookup = vi.spyOn(registry, "getRuntimeOperations").mockImplementation((name) =>
+      name === runtime ? { readiness: { compileEvidence: vi.fn(), validateReceipt } } : registered(name));
+    const input = {
+      evidence: { ...evidence, runtimeReceipts: [{ runtime, receiptPath, expected: "READY" }] },
+      inspection: inspection(),
+      record,
+      probe: { ...probe(), runtimeReceipts: new Map([[receiptPath, "READY"]]) }
+    };
+    try {
+      expect(reconcileOrganizationReadiness(input).state).toBe("ready");
+      expect(validateReceipt).toHaveBeenCalledWith("READY", "READY");
+      input.probe.runtimeReceipts.set("/state/extra", "ignored");
+      expect(reconcileOrganizationReadiness(input).code).toBe("topology_mismatch");
+    } finally {
+      lookup.mockRestore();
     }
   });
   it("reconciles a healthy never-restarted real-shaped Docker inspection as ready", async () => {

@@ -27,6 +27,7 @@ import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
 import { assertDaimonTurnTimeoutBound, resolveDaimonCliTurnTimeoutMs } from "./turnTimeout.js";
 import { assertDaimonWakeTextBound, resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
+import { DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY, daimonReadinessReceiptPath } from "./readiness.js";
 import { assertDaimonRecordingIsolation, daimonRecordingMountId, resolveDaimonAgentRecording } from "./recording.js";
 
 import { DAIMON_PINNED_PORTABLE_DESCRIPTOR } from "./engineDescriptorSchema.js";
@@ -45,8 +46,9 @@ export {
 export const DAIMON_CONFIG_FILE = "daimon-organization-runtime.json";
 export const DAIMON_CONTROL_PORT = 19700;
 export const DAIMON_MAX_AGENTS = 32;
+export const DAIMON_USAGE_MOUNT_ID = "daimon-grok-usage-ledger";
 export const DAIMON_ORGANIZATION_TARGET_ID = "daimon-organization";
-export const DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY = "state/wake-acceptance";
+export { DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY };
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_ENV = "DAIMON_RUNTIME_ACCEPTANCE_STORE";
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID = "daimon-organization-acceptance-store";
 export const DAIMON_RUNTIME_READINESS_RECEIPT_ENV = "DAIMON_RUNTIME_READINESS_RECEIPT";
@@ -165,7 +167,7 @@ const renderStartScript = (agents: Array<{
   workspacePath: string;
 }>): string => {
   const acceptanceStorePath = `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`;
-  const readinessReceiptPath = `${acceptanceStorePath}/runtime-readiness.json`;
+  const readinessReceiptPath = daimonReadinessReceiptPath("<instance-root>");
   const setup = agents.flatMap((agent) => {
     const material = getDaimonEngineDescriptor(agent.engine.kind)?.credentialMaterial;
     const credential = material?.sourceRelativePath ? material as typeof DAIMON_ENGINE_CREDENTIALS[keyof typeof DAIMON_ENGINE_CREDENTIALS] : undefined;
@@ -375,7 +377,7 @@ export const createDaimonContainerTargets = async (
         // `ensureUsageLedgerReadable`), and Codex also writes here
         // (`engineDispatcher.ts`'s `onTurnUsage`) even in a codex-only
         // organization with no Grok or AGY agent at all.
-        id: "daimon-grok-usage-ledger",
+        id: DAIMON_USAGE_MOUNT_ID,
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
         reason: "Daimon per-turn engine usage ledger"

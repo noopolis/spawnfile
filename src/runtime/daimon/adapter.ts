@@ -31,6 +31,7 @@ import { prepareDaimonRuntimeAuth } from "./runAuth.js";
 import { hasDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { resolveDaimonAttention } from "./attention.js";
 import { resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
+import { daimonOperations } from "./operations.js";
 
 const assertDaimonSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void => {
   if (!surfaces) return;
@@ -240,6 +241,7 @@ export const daimonAdapter: RuntimeAdapter = {
   createContainerTargets: createDaimonContainerTargets,
   name: "daimon",
   wiring: daimonWiring,
+  operations: daimonOperations,
   preflightAgent(node, nodeId) {
     unsupportedAgentFeatures(node);
     const codexPolicyError = daimonCodexPolicyError(node);

@@ -1,17 +1,4 @@
-/**
- * Transport half of Daimon's per-turn usage ledger reader
- * (`noopolis.daimon.turn-usage.v1`, see `specs/USAGE_ACCOUNTING_DESIGN.md`). Split
- * out of `usageLedger.ts` so that file stays a pure parser/aggregator and this
- * one owns the single I/O-shaped concern: `cat` two ledger generations through
- * a caller-supplied `exec` and decide, per generation, whether a failed read
- * means "empty" or "unknown".
- *
- * `exec` is duck-typed (structurally the same shape as
- * `RuntimeProbeGateway.exec` in `./types.ts`) rather than a concrete gateway,
- * so this module never depends on `src/deployment` — which already imports
- * real exports from this folder, and so must not be imported back.
- */
-
+/** Read a runtime's two ledger generations through an injected container or file transport. */
 import { parseUsageLedger, type UsageRecord } from "./usageLedger.js";
 
 /** The exec shape this module needs to read a ledger — structurally the same
@@ -124,7 +111,8 @@ export const readRuntimeFileViaExec = async (
  */
 export const readUsageLedgerViaExec = async (
   exec: UsageLedgerExec,
-  paths: UsageLedgerPaths
+  paths: UsageLedgerPaths,
+  parse: (text: string) => UsageRecord[] = parseUsageLedger
 ): Promise<UsageLedgerRead> => {
   const [rotated, primary] = await Promise.all([
     readRuntimeFileViaExec(exec, paths.rotatedFilePath),
@@ -134,7 +122,7 @@ export const readUsageLedgerViaExec = async (
     // Every row is kept, across both generations: aggregates dedupe by `turn`
     // (a replay can re-append after a rotation) and coverage reports rows that
     // share a key but differ.
-    records: [...parseUsageLedger(rotated.text), ...parseUsageLedger(primary.text)],
+    records: [...parse(rotated.text), ...parse(primary.text)],
     unreadable: [rotated.failure, primary.failure].filter(
       (failure): failure is UsageLedgerReadFailure => failure !== undefined
     )

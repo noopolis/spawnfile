@@ -6,30 +6,9 @@ import {
   type DeploymentRecord,
   type DockerInspectionResult
 } from "../deployment/index.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import type { UsageRecord, UsageRosterEntry } from "../runtime/usageLedger.js";
-import {
-  readUsageLedgerViaExec,
-  type UsageLedgerExec
-} from "../runtime/usageLedgerRead.js";
-
-/**
- * Transport for `spawnfile usage`.
- *
- * The ledger lives inside the container, and the host may be macOS Docker
- * Desktop or a remote Docker context, so a host-side `readFile` is impossible.
- * Reads therefore go through the sanctioned channel — the docker probe gateway,
- * which already supports `--context` / `--host` remote targets and is already
- * used to `cat` container files. `docker exec` runs as the image user (root for
- * a Daimon image), so a 0640 uid-2100 ledger is readable.
- *
- * Deferred: the stopped-container post-mortem path. `spawnfile down`
- * deliberately preserves volumes, so a stopped unit's ledger is still on disk,
- * but `docker exec` cannot reach it; the repo's `docker create` + `docker cp`
- * volume-egress pattern (`artifactsExportDocker.ts`) is the intended fallback.
- * Until it lands, a stopped unit is reported as UNREADABLE — never silently as
- * zero usage, which would misreport a dead subscription as a cheap one.
- */
+import { readUsageLedgerViaExec } from "../runtime/usageLedgerRead.js";
+import { usageByDeploymentUnit } from "./usageRuntime.js";
 
 /**
  * Why a unit's usage is missing.
@@ -37,10 +16,7 @@ import {
  * `stopped`/`unreachable` are decided before any read is attempted, from the
  * container inspection. `ledger_read_failed` is decided by the read itself
  * (`readUsageLedgerViaExec`) and carries the generation and bounded reason in
- * `detail`: the container was running and reachable, but one of its two ledger
- * generations could not be `cat`ed — a `maxBuffer` overrun on a rotated
- * generation, a timeout, or a daemon failure. All three mean the same thing
- * for reporting: UNKNOWN usage, never zero.
+ * `detail`: the container was running and reachable, but a ledger generation could not be read.
  */
 export interface UsageUnitReadFailure {
   containerRef: string;
@@ -74,11 +50,8 @@ export interface CollectOrganizationUsageOptions {
  * The org roster, from the deployment record itself.
  *
  * Engine assignment is not recorded per agent in a deployment record, so an
- * agent's engine is learned from its own ledger records. An agent that never
- * reports — every Codex agent, which is uninstrumented — keeps a `null` engine
- * and renders as a dashed row. It still counts toward the coverage denominator,
- * which is the whole point: a total computed over a partial roster must never be
- * presented as the organization's cost.
+ * agent's engine is learned from its own ledger records. An agent without
+ * usage records still counts toward the coverage denominator.
  */
 export const rosterForRecord = (record: DeploymentRecord): UsageRosterEntry[] => {
   const agents = new Set<string>();
@@ -134,6 +107,12 @@ export const collectOrganizationUsage = async (
   const selected = selectUsageDeployment(await list(options.outputDirectory), options.deployment);
   if ("error" in selected) return selected;
 
+  const runtimeUsage = await usageByDeploymentUnit(selected);
+  const metered = selected.units.filter((unit) => runtimeUsage.get(unit.id)?.length);
+  if (metered.length === 0) {
+    return { deploymentName: selected.name, records: [], roster: rosterForRecord(selected), unreadableUnits: [] };
+  }
+
   let inspections: DockerInspectionResult;
   try {
     inspections = await inspect(selected, { dockerCommand: options.dockerCommand, timeoutMs: options.timeoutMs });
@@ -143,7 +122,7 @@ export const collectOrganizationUsage = async (
 
   const records: UsageRecord[] = [];
   const unreadableUnits: UsageUnitReadFailure[] = [];
-  for (const unit of selected.units) {
+  for (const unit of metered) {
     const inspection = inspections.get(unit.id);
     if (inspection?.running !== true) {
       unreadableUnits.push({
@@ -153,21 +132,23 @@ export const collectOrganizationUsage = async (
       });
       continue;
     }
-    const gateway = gatewayFor(selected, unit, {
-      dockerCommand: options.dockerCommand,
-      inspection,
-      timeoutMs: options.timeoutMs
-    });
-    const exec: UsageLedgerExec = (command) => gateway.exec(command);
-    const read = await readUsageLedgerViaExec(exec, DAIMON_GROK_TURN_USAGE_LEDGER);
-    records.push(...read.records);
-    for (const failure of read.unreadable) {
-      unreadableUnits.push({
-        containerRef: containerRefForUnit(unit),
-        detail: `${failure.filePath}: ${failure.reason}`,
-        reason: "ledger_read_failed",
-        unitId: unit.id
+    for (const usage of runtimeUsage.get(unit.id) ?? []) {
+      const gateway = gatewayFor(selected, unit, {
+        dockerCommand: options.dockerCommand,
+        inspection,
+        maxBufferBytes: usage.maxReadBytes,
+        timeoutMs: options.timeoutMs
       });
+      const read = await readUsageLedgerViaExec((command) => gateway.exec(command), usage.livePaths, usage.parse);
+      records.push(...read.records);
+      for (const failure of read.unreadable) {
+        unreadableUnits.push({
+          containerRef: containerRefForUnit(unit),
+          detail: `${failure.filePath}: ${failure.reason}`,
+          reason: "ledger_read_failed",
+          unitId: unit.id
+        });
+      }
     }
   }
 

@@ -13,3 +13,4 @@ export * from "./daimonInstall.js";
 export * from "./portableMoltnetWiring.js";
 export * from "./wiringTypes.js";
 export * from "./wiringSelection.js";
+export type * from "./operations.js";

@@ -5,7 +5,6 @@ import { Command } from "commander";
 
 import { listDeploymentRecords, parseExportIndex } from "../deployment/index.js";
 import { resolveProjectOutputDirectory } from "../filesystem/index.js";
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import { readUsageLedgerViaExec, type UsageLedgerExec } from "../runtime/usageLedgerRead.js";
 import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode } from "../shared/index.js";
 import {
@@ -23,6 +22,7 @@ import {
 } from "../runtime/usageLedger.js";
 
 import type { CliStreams } from "./runCli.js";
+import { registeredUsage, usageByDeploymentUnit } from "./usageRuntime.js";
 import { resolveUsageDeploymentSource } from "./usageDeploymentSource.js";
 import {
   collectOrganizationUsage,
@@ -162,22 +162,6 @@ const renderTable = (
   return lines.join("\n");
 };
 
-/** Where `artifactsExportPlan.ts` lands the ledger inside an exported run
- * directory. Both halves are derived from the same pinned contract constant the
- * export plan derives them from, so the two cannot drift apart. */
-const EXPORTED_USAGE_DIRECTORY = "raw/daimon";
-const exportedLedgerPaths = (exportedDirectory: string) => {
-  const resolve = (absoluteContainerPath: string): string => path.join(
-    exportedDirectory,
-    EXPORTED_USAGE_DIRECTORY,
-    path.posix.basename(absoluteContainerPath)
-  );
-  return {
-    filePath: resolve(DAIMON_GROK_TURN_USAGE_LEDGER.filePath),
-    rotatedFilePath: resolve(DAIMON_GROK_TURN_USAGE_LEDGER.rotatedFilePath)
-  };
-};
-
 /**
  * Reads exported ledger bytes through the SAME reader the live path uses.
  *
@@ -213,24 +197,7 @@ const fileExists = async (filePath: string): Promise<boolean> => {
   }
 };
 
-/**
- * Reads one sealed, exported run instead of a live container.
- *
- * The roster still comes from the deployment record, exactly as the live path
- * resolves it, so the coverage denominator means the same thing in both modes —
- * that equivalence is the point, and it is what lets a single aggregation layer
- * serve both.
- *
- * The one semantic that CANNOT be shared is what an absent ledger means. On a
- * running container an absent file is genuinely "no turns yet", so the shared
- * reader stays silent about it. In an export it means the bytes were never
- * captured — a codex-only organization is never provisioned the volume, and an
- * export taken before the first metered turn carries nothing — and neither of
- * those is evidence that the organization cost nothing. So when the export
- * carries no generation at all this reports an explicit unreadable unit, which
- * forces coverage PARTIAL and keeps every notional column at `—`, rather than
- * rendering a confident `$0.00` over a ledger nobody ever read.
- */
+/** Read sealed usage with the same parser and roster used for live accounting. */
 const collectExportedUsage = async (
   exportedDirectory: string,
   options: UsageCommandOptions,
@@ -256,35 +223,34 @@ const collectExportedUsage = async (
   );
   if ("error" in selected) return selected;
 
-  const paths = exportedLedgerPaths(exportedDirectory);
-  const present = await Promise.all([fileExists(paths.filePath), fileExists(paths.rotatedFilePath)]);
-  if (!present.some(Boolean)) {
-    return {
-      deploymentName: selected.name,
-      records: [],
-      roster: rosterForRecord(selected),
-      runId: index.run_id,
-      unreadableUnits: [{
-        containerRef: exportedDirectory,
-        detail: `${EXPORTED_USAGE_DIRECTORY}/${path.posix.basename(DAIMON_GROK_TURN_USAGE_LEDGER.filePath)} is not in this export`,
-        reason: "ledger_read_failed",
-        unitId: `export:${index.run_id}`
-      }]
-    };
-  }
-
-  const read = await readUsageLedgerViaExec(exportedLedgerExec, paths);
-  return {
-    deploymentName: selected.name,
-    records: read.records,
-    roster: rosterForRecord(selected),
-    runId: index.run_id,
-    unreadableUnits: read.unreadable.map((failure) => ({
+  const declared = new Set([...(await usageByDeploymentUnit(selected)).values()].flat());
+  const records: UsageRecord[] = [];
+  const unreadableUnits: UsageUnitReadFailure[] = [];
+  const missing = (detail: string): void => {
+    unreadableUnits.push({
       containerRef: exportedDirectory,
-      detail: `${failure.filePath}: ${failure.reason}`,
-      reason: "ledger_read_failed" as const,
+      detail,
+      reason: "ledger_read_failed",
       unitId: `export:${index.run_id}`
-    }))
+    });
+  };
+  for (const usage of registeredUsage()) {
+    const paths = {
+      filePath: path.join(exportedDirectory, usage.exportedPaths.filePath),
+      rotatedFilePath: path.join(exportedDirectory, usage.exportedPaths.rotatedFilePath)
+    };
+    const present = await Promise.all([fileExists(paths.filePath), fileExists(paths.rotatedFilePath)]);
+    if (!present.some(Boolean)) {
+      if (declared.has(usage)) missing(`${usage.exportedPaths.filePath} is not in this export`);
+      continue;
+    }
+    const read = await readUsageLedgerViaExec(exportedLedgerExec, paths, usage.parse);
+    records.push(...read.records);
+    for (const failure of read.unreadable) missing(`${failure.filePath}: ${failure.reason}`);
+  }
+  return {
+    deploymentName: selected.name, records, roster: rosterForRecord(selected),
+    runId: index.run_id, unreadableUnits
   };
 };
 

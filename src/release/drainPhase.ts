@@ -1,12 +1,12 @@
 import { readFile, rm } from "node:fs/promises";
 
 import type { DockerDeploymentTarget } from "../deployment/index.js";
-import { resolveDockerBaseArgs } from "../distribution/index.js";
 
 import type { RuntimeControlTarget } from "./drainControl.js";
+import { drainTargetsFor } from "./drainTargets.js";
 import { writeJsonAtomic, type ReleasePaths } from "./ledger.js";
 import type { RunningUnit } from "./releaseDocker.js";
-import { DAIMON_CONTROL_TOKEN_ENV, type ReleaseDependencies, type ReleaseRequest } from "./releaseTypes.js";
+import type { ReleaseDependencies, ReleaseRequest } from "./releaseTypes.js";
 import { ReleaseError } from "./types.js";
 
 export const RELEASE_DRAIN_MARKER_VERSION = "spawnfile.release-drain.v1" as const;
@@ -20,26 +20,14 @@ interface DrainMarker {
   version: typeof RELEASE_DRAIN_MARKER_VERSION;
 }
 
-/** Same precedence `up` applies: a process value overrides the env file. */
-export const resolveControlToken = (request: ReleaseRequest): string | null => {
-  const fromProcess = process.env[DAIMON_CONTROL_TOKEN_ENV];
-  if (typeof fromProcess === "string" && fromProcess.length > 0) return fromProcess;
-  const fromFile = request.envFileEnv[DAIMON_CONTROL_TOKEN_ENV];
-  return typeof fromFile === "string" && fromFile.length > 0 ? fromFile : null;
-};
+export { controlTargetFor, resolveControlToken } from "../runtime/registry.js";
 
-export const controlTargetFor = (request: ReleaseRequest, containerRef: string, imageRef: string): RuntimeControlTarget => {
-  const token = resolveControlToken(request);
-  if (token === null) {
-    throw new ReleaseError("blocked", `${DAIMON_CONTROL_TOKEN_ENV} is not set in the env file or environment; a drained release needs the running deployment's control token`);
+export const resumeTargets = async (deps: ReleaseDependencies, targets: readonly RuntimeControlTarget[]): Promise<void> => {
+  const results = await Promise.allSettled(targets.map((target) => deps.requestResume(target)));
+  for (const result of results) {
+    if (result.status === "rejected") throw result.reason;
+    if (result.value.drain !== null) throw new ReleaseError("resume-failed", "the runtime still reports a drain");
   }
-  return {
-    containerRef,
-    dockerArgs: resolveDockerBaseArgs({ ...(request.dockerContext ? { dockerContext: request.dockerContext } : {}), ...(request.dockerHost ? { dockerHost: request.dockerHost } : {}) }),
-    dockerCommand: request.dockerCommand,
-    imageRef,
-    token
-  };
 };
 
 /**
@@ -91,7 +79,8 @@ export const recoverInterruptedDrain = async (request: ReleaseRequest, deps: Rel
     return true;
   }
   try {
-    await deps.requestResume(controlTargetFor(target, unit.id, unit.imageId));
+    if (unit.imageId !== marker.image) throw new Error("the marked container no longer matches the drained image");
+    await resumeTargets(deps, await drainTargetsFor(target, deps, unit));
   } catch (error) {
     throw new ReleaseError("resume-failed", `an earlier release left the organization drained and resuming it failed: ${(error as Error).message}`);
   }
@@ -111,7 +100,8 @@ export const drainForRelease = async (
   request: ReleaseRequest,
   deps: ReleaseDependencies,
   paths: ReleasePaths,
-  unit: RunningUnit | null
+  unit: RunningUnit | null,
+  prepared?: readonly RuntimeControlTarget[]
 ): Promise<DrainOutcome> => {
   if (!request.drain) {
     request.log("release: --no-drain: deploying without draining; in-flight turns will be killed");
@@ -121,38 +111,49 @@ export const drainForRelease = async (
     request.log("release: no running container, so no turn can be in flight; nothing to drain");
     return { drainMs: 0, kind: "skipped" };
   }
-  const target = controlTargetFor(request, unit.id, unit.imageId);
+  const targets = prepared ?? await drainTargetsFor(request, deps, unit);
   const started = Date.now();
   await writeMarker(request, paths, unit);
   try {
-    await deps.requestDrain(target);
+    for (const target of targets) {
+      const { drain } = await deps.requestDrain(target);
+      if (drain === null) throw new ReleaseError("drain-failed", "the runtime did not confirm an admission drain");
+    }
     request.log(`release: admission paused; waiting up to ${Math.round(request.drainTimeoutMs / 1000)}s for running turns to finish`);
-    const waited = await deps.waitForDrained(target, {
+    const timings = await Promise.all(targets.map((target) => deps.waitForDrained(target, {
       pollMs: request.drainPollMs,
       ...(request.signal ? { signal: request.signal } : {}),
       timeoutMs: request.drainTimeoutMs
-    });
-    if (waited.drained && !request.signal?.aborted) {
-      request.log(`release: drained after ${Math.round(waited.waitedMs / 1000)}s`);
+    })));
+    const waitFailed = timings.find((timing) => !timing.drained);
+    if (waitFailed === undefined && !request.signal?.aborted) {
+      const waitedMs = Math.max(...timings.map((timing) => timing.waitedMs));
+      request.log(`release: drained after ${Math.round(waitedMs / 1000)}s`);
       return { drainMs: Date.now() - started, kind: "drained" };
     }
-    await resumeOrThrow(request, deps, paths, target);
-    if (waited.drained || waited.reason === "interrupted") throw new ReleaseError("interrupted", "the release was interrupted while waiting for running turns; admission resumed, nothing deployed");
+    await resumeOrThrow(request, deps, paths, () => targets);
+    if (request.signal?.aborted || waitFailed?.reason === "interrupted") throw new ReleaseError("interrupted", "the release was interrupted while waiting for running turns; admission resumed, nothing deployed");
     return { drainMs: Date.now() - started, kind: "timeout" };
   } catch (error) {
     if (error instanceof ReleaseError && (error.reason === "interrupted" || error.reason === "resume-failed")) throw error;
-    await resumeOrThrow(request, deps, paths, target);
+    await resumeOrThrow(request, deps, paths, () => targets);
     throw error instanceof ReleaseError ? error : new ReleaseError("drain-failed", (error as Error).message);
   }
 };
 
 /** Resumes a container this release drained, keeping the marker if that fails. */
-export const resumeDrained = async (request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths, unit: RunningUnit): Promise<void> =>
-  resumeOrThrow(request, deps, paths, controlTargetFor(request, unit.id, unit.imageId));
+export const resumeDrained = async (
+  request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths, unit: RunningUnit,
+  prepared?: readonly RuntimeControlTarget[]
+): Promise<void> =>
+  resumeOrThrow(request, deps, paths, () => prepared ?? drainTargetsFor(request, deps, unit));
 
-const resumeOrThrow = async (request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths, target: RuntimeControlTarget): Promise<void> => {
+const resumeOrThrow = async (
+  request: ReleaseRequest, deps: ReleaseDependencies, paths: ReleasePaths,
+  targets: () => Promise<RuntimeControlTarget[]> | readonly RuntimeControlTarget[]
+): Promise<void> => {
   try {
-    await deps.requestResume(target);
+    await resumeTargets(deps, await targets());
   } catch (error) {
     throw new ReleaseError("resume-failed", `admission could not be resumed after abandoning the release; the organization is refusing new work: ${(error as Error).message}`);
   }
@@ -169,7 +170,8 @@ export const resumeAfterFailedDeploy = async (
   request: ReleaseRequest,
   deps: ReleaseDependencies,
   paths: ReleasePaths,
-  containerName: string
+  containerName: string,
+  prepared?: readonly RuntimeControlTarget[]
 ): Promise<void> => {
   let unit: RunningUnit | null;
   try {
@@ -182,5 +184,8 @@ export const resumeAfterFailedDeploy = async (
     await clearDrainMarker(paths);
     return;
   }
-  await resumeOrThrow(request, deps, paths, controlTargetFor(request, unit.id, unit.imageId));
+  const reusable = prepared?.every((target) => target.containerRef === unit.id && target.imageRef === unit.imageId)
+    ? prepared
+    : undefined;
+  await resumeOrThrow(request, deps, paths, () => reusable ?? drainTargetsFor(request, deps, unit, { requireAll: false }));
 };

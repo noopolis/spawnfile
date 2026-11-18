@@ -123,7 +123,7 @@ src/deployment/
   `artifactsExport.ts` only preflight-checks the recorded container still exists (and fails
   loudly — never a silent empty export — when it does not) IF the plan actually contains a
   `kind: "container"` file; today that only happens for a legacy pre-Piece-4b compile
-  report (`artifactsExportPlan.ts`'s `planDaimonFiles` container-cp fallback). Per-file
+  report (the runtime adapter's container-copy fallback). Per-file
   misses inside an otherwise-live deployment (e.g. a bank that never wrote `events.jsonl`)
   are not that failure; each planned file in `artifactsExportPlan.ts` carries its own
   `optional` flag for exactly that distinction.

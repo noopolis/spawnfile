@@ -74,7 +74,7 @@ const harness = (options: {
     },
     async compile() {
       calls.push("compile");
-      return { compileMs: 5, compileResult: { report: { compile_fingerprint: "sf1:x" } } as never, identity: IDENTITY, repository: "spawnfile-org" };
+      return { compileMs: 5, compileResult: { report: { compile_fingerprint: "sf1:x", container: { runtime_instances: [{ runtime: "daimon" }] } } } as never, identity: IDENTITY, repository: "spawnfile-org" };
     },
     async deploy(_request, imageTag) {
       calls.push(`deploy ${imageTag}`);
@@ -129,8 +129,8 @@ describe("runRelease", () => {
     const outcome = await runRelease(request(), h.deps);
     expect(outcome.kind).toBe("released");
     expect(h.calls).toEqual([
-      "compile", "inspect spawnfile-org", "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb",
-      "build spawnfile-org:r-aaaaaaaaaaaa", "lock", "inspect spawnfile-org", "runtimes", "drain c", "wait", "inspect spawnfile-org",
+      "compile", "inspect spawnfile-org", "runtimes", "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb",
+      "build spawnfile-org:r-aaaaaaaaaaaa", "lock", "inspect spawnfile-org", "drain c", "wait", "inspect spawnfile-org",
       "deploy spawnfile-org:r-aaaaaaaaaaaa", "settle", "resume d",
       "prune spawnfile-org:r-aaaaaaaaaaaa,spawnfile-org:r-bbbbbbbbbbbb", "unlock"
     ]);
@@ -298,7 +298,7 @@ describe("runRelease", () => {
     await writeFile(paths.drainMarker, JSON.stringify({ container: "c".repeat(64), image: OLD_IMAGE, since: "x", target: { "endpoint_fingerprint": "sha256:local", "kind": "context", "name": "default" }, version: "spawnfile.release-drain.v1" }));
     const h = harness();
     expect((await runRelease(request(), h.deps)).kind).toBe("unchanged");
-    expect(h.calls.slice(0, 4)).toEqual(["verify-target", "inspect cccccccccccccc", "resume c", "compile"]);
+    expect(h.calls.slice(0, 5)).toEqual(["verify-target", "inspect cccccccccccccc", "runtimes", "resume c", "compile"]);
     await expect(readFile(paths.drainMarker, "utf8")).rejects.toThrow();
   });
 
@@ -306,7 +306,7 @@ describe("runRelease", () => {
     const h = harness({ runtimes: ["daimon", "openclaw"] });
     expect(await runRelease(request(), h.deps)).toMatchObject({ kind: "failed", reason: "blocked", message: expect.stringContaining("openclaw") });
     expect(h.calls.some((call) => call.startsWith("drain") || call.startsWith("deploy"))).toBe(false);
-    expect(h.calls).toContain("unlock");
+    expect(h.calls).not.toContain("lock");
   });
 
   it("aborts and resumes when the drained container restarted before the deploy", async () => {

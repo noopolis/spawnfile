@@ -339,14 +339,17 @@ export const probeDockerOrganizationReadiness = async (
         attachmentReceipts.set(node.receiptPath, receipt.stdout);
       }
     }
-    const daimonReceipt = input.evidence.daimon == null ? null : (await gateway.exec(["cat", input.evidence.daimon.receiptPath])).stdout;
+    const runtimeReceipts = new Map<string, string>();
+    for (const { receiptPath } of input.evidence.runtimeReceipts ?? []) {
+      runtimeReceipts.set(receiptPath, (await gateway.exec(["cat", receiptPath])).stdout);
+    }
     const bindings = input.evidence.worldBindings === null
       ? null
       : await gateway.exec(["cat", input.evidence.worldBindings.artifactPath]);
     return reconcileOrganizationReadiness({
       evidence: input.evidence,
       inspection,
-      probe: { attachmentReceipts, configs, daimonReceipt, networks, worldBindings: bindings?.stdout ?? null },
+      probe: { attachmentReceipts, configs, runtimeReceipts, networks, worldBindings: bindings?.stdout ?? null },
       record: correlation
     });
   } catch (error) {

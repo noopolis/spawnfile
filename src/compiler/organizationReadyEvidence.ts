@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import { normalizeProjectLabelSlug } from "../distribution/projectName.js";
 import { createDistributionFingerprint } from "../distribution/fingerprint.js";
 import { WORLD_BINDINGS_IMAGE_PATH } from "../distribution/types.js";
+import { getRuntimeOperations } from "../runtime/registry.js";
+import type { RuntimeReadinessEvidence } from "../runtime/operations.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type { GeneratedContainerArtifacts } from "./containerArtifacts.js";
@@ -30,7 +32,7 @@ export interface OrganizationReadinessEvidence {
     readonly digest: string;
     readonly assignments: readonly { readonly memberId: string; readonly nodeId: string }[];
   } | null;
-  readonly daimon?: { readonly receiptPath: string; readonly agents: readonly { readonly agentId: string; readonly engine: string }[] } | null;
+  readonly runtimeReceipts?: readonly (RuntimeReadinessEvidence & { readonly runtime: string })[];
   readonly networks: readonly {
     readonly id: string;
     readonly mode: "external" | "managed";
@@ -332,21 +334,20 @@ export const createOrganizationReadinessEvidence = (
   const projectLabel = normalizeProjectLabelSlug(distribution.organization.project);
   if (projectLabel.length > 128 || !ID.test(projectLabel)) fail("project label is unbounded or noncanonical");
 
-  const daimonInstance = input.containerArtifacts.report.runtime_instances.find((instance) => instance.runtime === "daimon");
-  const daimon = daimonInstance === undefined ? null : {
-    receiptPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/state/wake-acceptance/runtime-readiness.json",
-    agents: Object.entries(daimonInstance.engine_by_node_id ?? {}).sort(([left], [right]) => left.localeCompare(right)).map(([agentId, engine]) => ({ agentId, engine }))
-  };
-  if (daimon !== null && daimon.agents.length === 0) fail("Daimon readiness has no compiled agent engines");
+  const runtimeReceipts = containerArtifacts.report.runtime_instances.flatMap((instance) => {
+    const readiness = getRuntimeOperations(instance.runtime)?.readiness;
+    return readiness ? [{ runtime: instance.runtime, ...readiness.compileEvidence(instance) }] : [];
+  });
+  assertUnique(runtimeReceipts, (entry) => entry.receiptPath, "runtime readiness receipt path");
 
   return freeze({
     compileFingerprint: fingerprint,
     compileVersion: input.compileVersion,
-    daimon,
     hasExternalMoltnet: networks.some((network) => network.mode === "external"),
     networks,
     organizationMembers,
     projectLabel,
+    runtimeReceipts,
     version: ORGANIZATION_READINESS_EVIDENCE_VERSION,
     worldBindings: projectedWorldBindings
   });
