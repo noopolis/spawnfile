@@ -8,6 +8,7 @@ This folder owns runtime adapters and runtime option validation.
 src/runtime/
 ├── index.ts               # Barrel for adapter registry exports
 ├── scaffoldAssets.ts      # Shared loader for runtime-owned init template assets
+├── copyScaffoldAssets.ts  # Copies each adapter's declared package-assets.json inputs
 ├── types.ts               # Shared adapter contract types
 ├── wiringTypes.ts          # Optional Moltnet, memory, and readiness capabilities
 ├── wiringSelection.ts      # Adapter capability lookup for shared consumers
@@ -29,7 +30,7 @@ src/runtime/
 └── registry.test.ts       # Adapter registry tests
 ```
 
-Adapter-specific behavior belongs in the runtime subfolders. That includes runtime-owned init scaffolds and scaffold markdown assets. `common.ts` should only hold logic that is truly shared across adapters.
+Adapter-specific behavior belongs in the runtime subfolders. That includes init scaffolds, static package assets, and the runtime image context. Image builds are discovered from each adapter's `image/build.json` without loading runtime code. `common.ts` should only hold logic that is truly shared across adapters.
 
 Adapters expose native chat and memory wiring through `RuntimeAdapter.wiring`.
 The compiler asks for the selected adapter's Moltnet client layout, bridge

@@ -7,7 +7,8 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | Entrypoint | Caller | Purpose / prerequisites |
 | --- | --- | --- |
 | `build-local-daimon-runtime.ts` | `npm run build:local-daimon` | Build a locally sourced runtime; explicit artifact pins, Docker, and loopback registry required |
-| `publish-daimon-runtime.ts` | `runtime-images.yml` (`daimon` job) | Build the published multi-arch Daimon image from the pinned commit and CLI digests in `runtime-images/daimon/publish-inputs.json`; dry-run without `--push`, otherwise push by digest, tag `<version>-<short commit>` (never moved), and print the identity and `runtimes.yaml` pin. Docker Buildx (docker-container driver) required |
+| `publish-daimon-runtime.ts` | Local CLI wrapper for the same publisher used by CI | Build the published multi-arch Daimon image from the pinned commit and CLI digests in `src/runtime/daimon/image/publish-inputs.json`; dry-run without `--push`, otherwise push by digest, tag `<version>-<short commit>` (never moved), and print the identity and `runtimes.yaml` pin. Docker Buildx (docker-container driver) required |
+| `build-runtime-images.ts` | `npm run runtime:images` | Build repository images from each adapter's `image/build.json`. Pass an adapter name to select one image |
 | `vendor-daimon-grok-contract.ts` | `npm run vendor:daimon-contract [-- --check]` | Vendor Daimon's contract manifest and Grok worker renderer bytes from a Daimon checkout (`SPAWNFILE_DAIMON_SOURCE_DIR`) |
 | `generate-daimon-engine-descriptors.ts` | `npm run vendor:daimon-engine-descriptors [-- --check]`, CI | Read the exact `runtimes.yaml` Daimon Git commit via `SPAWNFILE_DAIMON_SOURCE_DIR`; interpret only static descriptor data, generate JSON + SHA-256 + typed data mirror, and reject drift with `--check`. Does not execute upstream modules or read working-tree bytes |
 | `grok-lean-worker-live-check.ts` | `SPAWNFILE_GROK_LIVE_CHECK=1 npm run test:live:grok-lean-worker` | Opt-in live check: one brokered Grok 1.0.34 agent, worker-home/deny/service attestation dump, one cheap wake, one deduped broker usage row; Docker, a local Daimon identity, and a dedicated Grok login required |
@@ -23,10 +24,7 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | `source-provenance-bundle.integration.test.ts` | `npm run test:source-provenance-docker` | PR/main and publish workflows: real offline Daimon archive build and tamper rejection; Docker, Daimon checkout (`SPAWNFILE_TEST_DAIMON_SOURCE`), pinned Linux Grok CLI (`SPAWNFILE_GROK_CLI_FILE`) |
 | `moltnet-source-provenance.integration.test.ts` | `npm run test:moltnet-source-provenance-docker` | Test the real offline Moltnet archive build |
 
-`source-provenance-bundle.ts`, `native-helper-artifacts.ts`, and
-`daimon-publish-inputs.ts` (publish-input validation and published identity
-shaping) are shared
-modules imported by these entrypoints and the native artifact copy step.
+`source-provenance-bundle.ts` and `native-helper-artifacts.ts` are shared modules. Daimon publish-input validation and identity shaping live beside the publisher in `src/runtime/daimon/image/publishInputs.ts`.
 Adjacent unit tests run through `npm run test:scripts`; native artifact and
 syscall integration tests also run explicitly in CI.
 

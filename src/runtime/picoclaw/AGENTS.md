@@ -13,6 +13,8 @@ src/runtime/picoclaw/
 ├── schedules.ts      # PicoClaw cron schedule and Mneme dream-job lowering
 ├── scaffold.ts       # PicoClaw-owned `spawnfile init --runtime picoclaw` scaffold
 ├── surfaces.ts       # PicoClaw surface lowering and supported-surface checks
+├── image/            # Repository image context and build metadata
+├── package-assets.json # Assets copied into the installed CLI
 ├── scaffold-assets/  # Bundled PicoClaw starter docs copied into dist at build time
 └── *.test.ts         # PicoClaw adapter, schedule, auth, and surface tests
 ```

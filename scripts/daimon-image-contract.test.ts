@@ -37,7 +37,7 @@ const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.m
 
 // Execute the actual image check, so its acceptance criteria cannot drift behind a test helper.
 const checkImageContract = (value: unknown): number | null => {
-  const dockerfile = readFileSync(new URL("../runtime-images/daimon/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
   const code = /node -e '([^']*const raw=fs.readFileSync[^']*)'/u.exec(dockerfile)?.[1];
   assert.ok(code, "missing Dockerfile manifest check");
   const root = mkdtempSync(path.join(os.tmpdir(), "daimon-image-contract-"));

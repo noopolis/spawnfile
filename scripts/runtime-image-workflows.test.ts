@@ -1,40 +1,81 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runInNewContext } from "node:vm";
 
 import { parse as parseYaml } from "yaml";
 
-const section = (source: string, start: string, end?: string): string => {
-  const from = source.indexOf(start);
-  assert.ok(from >= 0, `missing ${start}`);
-  const to = end ? source.indexOf(end, from + start.length) : -1;
-  return source.slice(from, to < 0 ? undefined : to);
-};
+import { discoverRuntimeImages, repositoryRoot } from "./runtime-image-catalog.ts";
 
-test("runtime-images publishes Daimon through the pinned publisher with the Docker Hub secrets", async () => {
-  const workflow = await readFile(".github/workflows/runtime-images.yml", "utf8");
-  const daimon = section(workflow, "\n  daimon:\n");
-  assert.match(daimon, /docker\/setup-buildx-action@v3/u);
-  assert.match(daimon, /platforms: amd64,arm64/u);
-  assert.match(daimon, /node --experimental-strip-types scripts\/publish-daimon-runtime\.ts/u);
-  assert.match(daimon, /secrets\.DOCKERHUB_USERNAME/u);
-  assert.match(daimon, /secrets\.DOCKERHUB_TOKEN/u);
-  // Pushing stays gated exactly like the matrix images: tags or an explicit dispatch.
-  assert.match(daimon, /refs\/tags\/v\*/u);
-  assert.match(daimon, /inputs\.push/u);
-  assert.match(daimon, /if: steps\.publish\.outputs\.push == 'true'\n\s+uses: docker\/login-action@v3/u);
-  assert.match(daimon, /args\+=\(--push\)/u);
-  // A publish run without an identity is a failure, not a quiet success.
-  assert.match(daimon, /Publishing finished without a Daimon runtime identity/u);
-  const matrix = section(workflow, "matrix:", "\n  daimon:\n");
-  assert.doesNotMatch(matrix, /runtime: daimon/u);
-  for (const trigger of ["scripts/publish-daimon-runtime.ts", "scripts/daimon-publish-inputs.ts", "src/runtime/daimon/contract-manifest.sha256"]) {
-    assert.equal(workflow.split(`- "${trigger}"`).length - 1, 2, `${trigger} must trigger both PR and main runs`);
+type Step = { id?: string; name?: string; run?: string; if?: string; uses?: string };
+type Workflow = {
+  on: {
+    pull_request: { paths: string[] };
+    push: { paths: string[] };
+    workflow_dispatch: { inputs: { runtime: { type: string; default: string } } };
+  };
+  jobs: Record<string, { if?: string; steps: Step[]; concurrency?: { group: string } }>;
+};
+const source = readFileSync(".github/workflows/runtime-images.yml", "utf8");
+const workflow = parseYaml(source) as Workflow;
+const step = (job: string, name: string): Step | undefined => workflow.jobs[job]?.steps.find((item) => item.name === name);
+const publisher = "src/runtime/daimon/image/publishRuntime.ts";
+
+test("CI discovers repository images and gates both build lanes on the same publishing mode", () => {
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.runtime.type, "string");
+  assert.equal(workflow.on.workflow_dispatch.inputs.runtime.default, "all");
+  for (const event of [workflow.on.pull_request, workflow.on.push]) {
+    for (const trigger of ["src/runtime/**/image/**", "src/runtime/**/contract-manifest.*", "scripts/runtime-image-catalog.ts"]) {
+      assert.ok(event.paths.includes(trigger), `missing ${trigger}`);
+    }
+  }
+  assert.equal(workflow.jobs.build?.if, "needs.catalog.outputs.dockerfiles != '[]'");
+  assert.equal(workflow.jobs.scripted?.if, "needs.catalog.outputs.scripted != '[]'");
+  assert.match(source, /fromJSON\(needs.catalog.outputs.dockerfiles\)/u);
+  assert.match(source, /fromJSON\(needs.catalog.outputs.scripted\)/u);
+  assert.equal(workflow.jobs.scripted?.concurrency?.group, "runtime-images-${{ matrix.runtime }}-publish");
+  assert.equal(step("catalog", "Check Docker Hub credentials")?.if, "steps.publish.outputs.push == 'true'");
+  for (const job of ["build", "scripted"]) {
+    assert.equal(step(job, "Set up Buildx")?.uses, "docker/setup-buildx-action@v3");
+    assert.equal(step(job, "Log in to Docker Hub")?.if, "needs.catalog.outputs.push == 'true'");
+  }
+  assert.match(source, /secrets\.DOCKERHUB_USERNAME/u);
+  assert.match(source, /secrets\.DOCKERHUB_TOKEN/u);
+  assert.match(source, /platforms: amd64,arm64/u);
+  assert.match(source, /runner.temp.*matrix.runtime.*-runtime-identity\.json/u);
+  assert.match(step("scripted", "Record published identity")?.run ?? "", /Publishing finished without a/u);
+});
+
+test("Daimon dispatch selects just its scripted publisher and all retains both Dockerfile images", () => {
+  const catalog = discoverRuntimeImages(repositoryRoot);
+  assert.deepEqual(catalog.dockerfiles, [
+    {runtime: "openclaw", context: "src/runtime/openclaw/image", image: "noopolis/spawnfile-runtime-openclaw", version: "2026.6.11", build_args: ["OPENCLAW_VERSION=2026.6.11"]},
+    {runtime: "picoclaw", context: "src/runtime/picoclaw/image", image: "noopolis/spawnfile-runtime-picoclaw", version: "0.3.1", build_args: ["PICOCLAW_VERSION=v0.3.1"]}
+  ]);
+  assert.deepEqual(discoverRuntimeImages(repositoryRoot, "daimon"), {
+    dockerfiles: [],
+    scripted: [{runtime: "daimon", publisher, local_builder: "src/runtime/daimon/image/buildLocalRuntime.ts"}]
+  });
+  assert.throws(() => discoverRuntimeImages(repositoryRoot, "missing"), /Unknown repository runtime image/u);
+});
+
+test("a new repository image is discovered from static metadata alone", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "runtime-images-catalog-"));
+  try {
+    const context = "src/runtime/future-runtime/image";
+    mkdirSync(path.join(root, context), { recursive: true });
+    writeFileSync(path.join(root, context, "Dockerfile"), "FROM scratch\n");
+    writeFileSync(path.join(root, context, "build.json"), '{"image":"example/future","version":"1.0.0"}');
+    writeFileSync(path.join(root, context, "..", "adapter.ts"), "throw new Error('unexpected adapter import');");
+    assert.deepEqual(discoverRuntimeImages(root, "future-runtime"), {
+      dockerfiles: [{runtime: "future-runtime", context, image: "example/future", version: "1.0.0", build_args: []}],
+      scripted: []
+    });
+  } finally {
+    rmSync(root, { force: true, recursive: true });
   }
 });
 
@@ -54,90 +95,56 @@ test("release-image action builds with --release, pushes to the named registry, 
   assert.doesNotMatch(action, /echo[^\n]*inputs\.password/u);
 });
 
-type Step = { id?: string; name?: string; run?: string };
-type Workflow = {
-  on: { workflow_dispatch: { inputs: { runtime: { type: string; default: string; options: string[] } } } };
-  jobs: Record<string, { if?: string; steps: Step[] }>;
+const runWorkflowScript = (script: string | undefined, environment: NodeJS.ProcessEnv): void => {
+  assert.ok(script);
+  execFileSync("bash", ["-c", script], { env: { ...process.env, ...environment } });
 };
 
-test("runtime dispatch defaults to all and daimon skips every other image job", () => {
-  const workflow = parseYaml(readFileSync(".github/workflows/runtime-images.yml", "utf8")) as Workflow;
-  const input = workflow.on.workflow_dispatch.inputs.runtime;
-  assert.equal(input.type, "choice");
-  assert.equal(input.default, "all");
-  assert.deepEqual(input.options, ["all", "daimon"]);
-  const jobsFor = (event: string, selection = input.default): string[] => Object.entries(workflow.jobs)
-    .filter(([, job]) => job.if === undefined || runInNewContext(job.if, {
-      github: { event_name: event }, inputs: { runtime: selection }
-    }))
-    .map(([name]) => name);
-  const allJobs = ["build", "daimon"];
-  assert.deepEqual(jobsFor("workflow_dispatch"), allJobs);
-  assert.deepEqual(jobsFor("workflow_dispatch", "all"), allJobs);
-  assert.deepEqual(jobsFor("workflow_dispatch", "daimon"), ["daimon"]);
-  for (const event of ["pull_request", "push"]) {
-    // Non-dispatch events have no runtime input, even on version tags.
-    assert.deepEqual(jobsFor(event, ""), allJobs);
-  }
-});
-
-/** Executes a job's real "Resolve publishing mode" script under a simulated event. */
-const resolveMode = (job: string, event: { name: string; ref: string; push?: boolean; latest?: boolean }): Record<string, string> => {
-  const workflow = parseYaml(readFileSync(".github/workflows/runtime-images.yml", "utf8")) as Workflow;
-  const script = workflow.jobs[job]?.steps.find((step) => step.id === "publish")?.run;
-  assert.ok(script, `${job} has no publish-mode step`);
-  const rendered = script
-    .replaceAll("${{ inputs.push }}", String(event.push ?? ""))
-    .replaceAll("${{ inputs.push_latest }}", String(event.latest ?? ""))
-    .replaceAll("${{ matrix.image }}", "example/image")
-    .replaceAll("${{ matrix.version }}", "1.0.0");
+const resolveMode = (event: { name: string; ref: string; push?: boolean; latest?: boolean }): Record<string, string> => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "runtime-images-mode-"));
   try {
     const output = path.join(directory, "output");
-    execFileSync("bash", ["-c", rendered], { env: { ...process.env, GITHUB_EVENT_NAME: event.name, GITHUB_OUTPUT: output, GITHUB_REF: event.ref } });
-    const raw = readFileSync(output, "utf8");
-    const values = Object.fromEntries(raw.split("\n").filter((line) => /^(push|latest)=/u.test(line)).map((line) => line.split("=") as [string, string]));
-    const tags = raw.match(/tags<<EOF\n([\s\S]*?)\nEOF/u)?.[1];
-    return tags === undefined ? values : { ...values, tags };
+    runWorkflowScript(step("catalog", "Resolve publishing mode")?.run, {
+      GITHUB_EVENT_NAME: event.name,
+      GITHUB_OUTPUT: output,
+      GITHUB_REF: event.ref,
+      REQUEST_PUSH: String(event.push ?? ""),
+      REQUEST_LATEST: String(event.latest ?? "")
+    });
+    return Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => line.split("=")));
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
 };
 
 test("runtime images publish only on version-tag pushes or an explicit dispatch", () => {
-  for (const job of ["build", "daimon"]) {
-    assert.equal(resolveMode(job, { name: "push", ref: "refs/tags/v1.2.3" }).push, "true", job);
-    assert.equal(resolveMode(job, { name: "push", ref: "refs/heads/main" }).push, "false", job);
-    assert.equal(resolveMode(job, { name: "pull_request", ref: "refs/pull/1/merge" }).push, "false", job);
-    assert.equal(resolveMode(job, { name: "workflow_dispatch", ref: "refs/heads/main", push: true }).push, "true", job);
-    // A dispatch dry run on a version tag must stay a dry run.
-    assert.equal(resolveMode(job, { name: "workflow_dispatch", ref: "refs/tags/v1.2.3", push: false, latest: false }).push, "false", job);
-  }
-  assert.equal(resolveMode("daimon", { name: "workflow_dispatch", ref: "refs/tags/v1.2.3", push: false, latest: false }).latest, "false");
+  assert.deepEqual(resolveMode({ name: "push", ref: "refs/tags/v1.2.3" }), { push: "true", latest: "true" });
+  assert.equal(resolveMode({ name: "push", ref: "refs/heads/main" }).push, "false");
+  assert.equal(resolveMode({ name: "pull_request", ref: "refs/pull/1/merge" }).push, "false");
+  assert.equal(resolveMode({ name: "workflow_dispatch", ref: "refs/heads/main", push: true }).push, "true");
+  assert.deepEqual(resolveMode({ name: "workflow_dispatch", ref: "refs/tags/v1.2.3", push: false, latest: false }), { push: "false", latest: "false" });
 });
 
-test("dispatch push_latest=false omits latest, including when dispatching a version tag", () => {
+test("dispatch builds exact image tags and publisher argv, including on a version tag", () => {
   for (const ref of ["refs/heads/chore/publish-daimon-0.2.8", "refs/tags/v1.2.3"]) {
     for (const latest of [false, true]) {
-      const event = { name: "workflow_dispatch", ref, push: true, latest };
-      const matrix = resolveMode("build", event);
-      assert.equal(matrix.push, "true");
-      assert.equal(matrix.tags, latest ? "example/image:1.0.0\nexample/image:latest" : "example/image:1.0.0");
-
-      const mode = resolveMode("daimon", event);
-      assert.equal(mode.push, "true");
-      assert.equal(mode.latest, String(latest));
-      const workflow = parseYaml(readFileSync(".github/workflows/runtime-images.yml", "utf8")) as Workflow;
-      const script = workflow.jobs.daimon?.steps.find((step) => step.name === "Build Daimon runtime image")?.run;
-      assert.ok(script);
-      const directory = mkdtempSync(path.join(os.tmpdir(), "daimon-publish-args-"));
+      const mode = resolveMode({ name: "workflow_dispatch", ref, push: true, latest });
+      assert.deepEqual(mode, { push: "true", latest: String(latest) });
+      const directory = mkdtempSync(path.join(os.tmpdir(), "runtime-image-publish-args-"));
       try {
-        // Intercept only the publisher invocation; run the workflow's real argument assembly.
-        execFileSync("bash", ["-c", 'node() { printf "%s\\n" "$@" > "${RUNNER_TEMP}/args"; };\n' + script], {
-          env: { ...process.env, RUNNER_TEMP: directory, PUSH: mode.push, LATEST: mode.latest }
+        const output = path.join(directory, "tags");
+        runWorkflowScript(step("build", "Resolve image tags")?.run, {
+          GITHUB_OUTPUT: output, IMAGE: "example/image", VERSION: "1.0.0", LATEST: mode.latest
+        });
+        assert.equal(readFileSync(output, "utf8"), `tags<<EOF\nexample/image:1.0.0\n${latest ? "example/image:latest\n" : ""}EOF\n`);
+
+        const script = step("scripted", "Build scripted runtime image")?.run;
+        assert.ok(script);
+        runWorkflowScript('node() { printf "%s\\n" "$@" > "${RUNNER_TEMP}/args"; };\n' + script, {
+          RUNNER_TEMP: directory, RUNTIME_NAME: "daimon", PUBLISHER: publisher, PUSH: mode.push, LATEST: mode.latest
         });
         const args = readFileSync(path.join(directory, "args"), "utf8").trim().split("\n");
-        assert.deepEqual(args, ["--experimental-strip-types", "scripts/publish-daimon-runtime.ts",
+        assert.deepEqual(args, ["--experimental-strip-types", publisher,
           "--identity-out", `${directory}/daimon-runtime-identity.json`, "--push", ...(latest ? ["--latest"] : [])]);
       } finally {
         rmSync(directory, { force: true, recursive: true });
@@ -145,4 +152,3 @@ test("dispatch push_latest=false omits latest, including when dispatching a vers
     }
   }
 });
-

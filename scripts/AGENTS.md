@@ -44,8 +44,9 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
   Its generated immutable manifest/receipt identity is ignored and never
   edits `runtimes.yaml`. Clean-source builds select the native Docker
   architecture unless an explicit supported architecture is supplied.
-- `publish-daimon-runtime.ts` is the CI publication path. It reads only the
-  checked-in `runtime-images/daimon/publish-inputs.json` (full Daimon commit,
+- `runtime-image-catalog.ts` reads static metadata under each adapter without loading runtime code.
+- `publish-daimon-runtime.ts` delegates to the same adapter-owned publisher as CI. The publisher reads the
+  checked-in `src/runtime/daimon/image/publish-inputs.json` (full Daimon commit,
   per-architecture AGY pins, Codex pin; Grok comes from the vendored manifest),
   refuses a packed manifest that differs from the explicit publication
   `contract_manifest_sha256` (or vendored contract for legacy inputs), and never

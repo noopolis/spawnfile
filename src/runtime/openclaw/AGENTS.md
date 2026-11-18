@@ -13,6 +13,8 @@ src/runtime/openclaw/
 ├── surfaces.ts       # OpenClaw surface lowering and surface-support validation
 ├── runAuth.ts        # OpenClaw runtime-auth preparation for `spawnfile run`
 ├── scaffold.ts       # OpenClaw-owned `spawnfile init --runtime openclaw` scaffold
+├── image/            # Repository image context and build metadata
+├── package-assets.json # Assets copied into the installed CLI
 ├── scaffold-assets/  # Bundled OpenClaw starter docs copied into dist at build time
 └── adapter.test.ts   # OpenClaw adapter tests
 ```

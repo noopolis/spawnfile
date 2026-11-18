@@ -1,7 +1,7 @@
 // Pure validation and identity shaping for the CI-published Daimon runtime image.
-// Docker and git orchestration lives in publish-daimon-runtime.ts.
+// Docker and git orchestration lives in publishRuntime.ts.
 
-import { createLocalDaimonCapabilityReceipt } from "./build-local-daimon-runtime.ts";
+import { createLocalDaimonCapabilityReceipt } from "./buildLocalRuntime.ts";
 
 export type DaimonPublishArchitecture = "amd64" | "arm64";
 

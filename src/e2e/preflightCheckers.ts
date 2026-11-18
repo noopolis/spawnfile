@@ -298,7 +298,7 @@ export const checkRuntimeAssets = async (
   root: string,
   runtime: "openclaw" | "picoclaw"
 ): Promise<B18PreflightCheck> => {
-  const dockerfile = path.join(root, "runtime-images", runtime, "Dockerfile");
+  const dockerfile = path.join(root, "src", "runtime", runtime, "image", "Dockerfile");
   const manifest = runtime === "openclaw"
     ? path.join(root, "blueprints", "openclaw", "openclaw.json")
     : path.join(root, "blueprints", "picoclaw", "config.json");

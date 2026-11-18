@@ -1,0 +1,5 @@
+{
+  "image": "noopolis/spawnfile-runtime-picoclaw",
+  "version": "0.3.1",
+  "build_args": ["PICOCLAW_VERSION=v0.3.1"]
+}

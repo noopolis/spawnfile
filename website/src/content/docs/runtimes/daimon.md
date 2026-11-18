@@ -159,7 +159,7 @@ Daimon uses the immutable image manifest and capability-receipt digests pinned
 in `runtimes.yaml` by default. That image is published by CI: the
 `runtime-images` workflow builds `noopolis/spawnfile-runtime-daimon:<version>-<commit>`
 for `linux/amd64` and `linux/arm64` from the Daimon commit and CLI digests pinned
-in `runtime-images/daimon/publish-inputs.json`, and prints the index digest plus
+in `src/runtime/daimon/image/publish-inputs.json`, and prints the index digest plus
 one capability-receipt digest per architecture. Those values are pinned in
 `runtimes.yaml` (`digest`, `capability_receipts`), and every generated image
 checks the receipt for the architecture it builds, so no environment variable

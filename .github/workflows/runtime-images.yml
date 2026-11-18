@@ -6,16 +6,17 @@ on:
       - "runtime-images/**"
       - "runtimes.yaml"
       - "moltnet-releases.json"
+      - "src/runtime/**/image/**"
+      - "src/runtime/**/contract-manifest.*"
+      - "src/runtime/**/contractManifest.ts"
       - "src/runtime/daimonInstall.ts"
-      - "src/runtime/daimon/contractManifest.ts"
       - "src/compiler/moltnetReleaseAuthority.ts"
       - "src/compiler/moltnetReleaseDownload.ts"
       - "src/runtime/container.ts"
       - "src/runtime/install.ts"
-      - "src/runtime/daimon/contract-manifest.json"
-      - "src/runtime/daimon/contract-manifest.sha256"
+      - "scripts/runtime-image-catalog.ts"
+      - "scripts/build-runtime-images.ts"
       - "scripts/publish-daimon-runtime.ts"
-      - "scripts/daimon-publish-inputs.ts"
       - "scripts/build-local-daimon-runtime.ts"
       - ".github/workflows/runtime-images.yml"
   push:
@@ -24,16 +25,17 @@ on:
       - "runtime-images/**"
       - "runtimes.yaml"
       - "moltnet-releases.json"
+      - "src/runtime/**/image/**"
+      - "src/runtime/**/contract-manifest.*"
+      - "src/runtime/**/contractManifest.ts"
       - "src/runtime/daimonInstall.ts"
-      - "src/runtime/daimon/contractManifest.ts"
       - "src/compiler/moltnetReleaseAuthority.ts"
       - "src/compiler/moltnetReleaseDownload.ts"
       - "src/runtime/container.ts"
       - "src/runtime/install.ts"
-      - "src/runtime/daimon/contract-manifest.json"
-      - "src/runtime/daimon/contract-manifest.sha256"
+      - "scripts/runtime-image-catalog.ts"
+      - "scripts/build-runtime-images.ts"
       - "scripts/publish-daimon-runtime.ts"
-      - "scripts/daimon-publish-inputs.ts"
       - "scripts/build-local-daimon-runtime.ts"
       - ".github/workflows/runtime-images.yml"
     tags:
@@ -41,13 +43,10 @@ on:
   workflow_dispatch:
     inputs:
       runtime:
-        description: "Runtime images to build/publish"
+        description: "Runtime image name, or all"
         required: true
         default: all
-        type: choice
-        options:
-          - all
-          - daimon
+        type: string
       push:
         description: "Push runtime images to Docker Hub"
         required: true
@@ -67,73 +66,55 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: ${{ matrix.runtime }} runtime image
-    if: github.event_name != 'workflow_dispatch' || inputs.runtime == 'all'
-    timeout-minutes: 30
+  catalog:
+    name: Discover runtime images
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runtime: openclaw
-            image: noopolis/spawnfile-runtime-openclaw
-            version: 2026.6.11
-            context: runtime-images/openclaw
-            build_args: |
-              OPENCLAW_VERSION=2026.6.11
-          - runtime: picoclaw
-            image: noopolis/spawnfile-runtime-picoclaw
-            version: 0.3.1
-            context: runtime-images/picoclaw
-            build_args: |
-              PICOCLAW_VERSION=v0.3.1
-          # Daimon is built by the `daimon` job below: its image needs a packed
-          # Daimon tarball per architecture plus a capability receipt, which a
-          # plain context build cannot provide.
+    outputs:
+      dockerfiles: ${{ steps.images.outputs.dockerfiles }}
+      scripted: ${{ steps.images.outputs.scripted }}
+      push: ${{ steps.publish.outputs.push }}
+      latest: ${{ steps.publish.outputs.latest }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Read adapter image metadata
+        id: images
+        env:
+          RUNTIME_SELECTION: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime || 'all' }}
+        run: node --experimental-strip-types scripts/runtime-image-catalog.ts "${RUNTIME_SELECTION}"
 
       - name: Resolve publishing mode
         id: publish
         shell: bash
+        env:
+          REQUEST_PUSH: ${{ inputs.push }}
+          REQUEST_LATEST: ${{ inputs.push_latest }}
         run: |
           set -euo pipefail
 
           should_push=false
           push_latest=false
-
           if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/v* ]]; then
             should_push=true
             push_latest=true
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            if [[ "${{ inputs.push }}" == "true" ]]; then
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${REQUEST_PUSH}" == "true" ]]; then
               should_push=true
             fi
-            if [[ "${{ inputs.push_latest }}" == "true" ]]; then
+            if [[ "${REQUEST_LATEST}" == "true" ]]; then
               push_latest=true
             fi
           fi
 
-          tags="${{ matrix.image }}:${{ matrix.version }}"
-          if [[ "${push_latest}" == "true" ]]; then
-            tags="${tags}"$'\n'"${{ matrix.image }}:latest"
-          fi
-
           {
             echo "push=${should_push}"
-            echo "tags<<EOF"
-            echo "${tags}"
-            echo "EOF"
+            echo "latest=${push_latest}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Check Docker Hub credentials
@@ -144,14 +125,51 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           set -euo pipefail
-
           if [[ -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
             echo "::error::DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets must be configured in noopolis/spawnfile to publish runtime images."
             exit 1
           fi
 
+  build:
+    name: ${{ matrix.runtime }} runtime image
+    needs: catalog
+    if: needs.catalog.outputs.dockerfiles != '[]'
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.catalog.outputs.dockerfiles) }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve image tags
+        id: tags
+        shell: bash
+        env:
+          IMAGE: ${{ matrix.image }}
+          VERSION: ${{ matrix.version }}
+          LATEST: ${{ needs.catalog.outputs.latest }}
+        run: |
+          set -euo pipefail
+          {
+            echo "tags<<EOF"
+            echo "${IMAGE}:${VERSION}"
+            if [[ "${LATEST}" == "true" ]]; then
+              echo "${IMAGE}:latest"
+            fi
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Log in to Docker Hub
-        if: steps.publish.outputs.push == 'true'
+        if: needs.catalog.outputs.push == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -163,19 +181,24 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.context }}/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ steps.publish.outputs.push == 'true' }}
-          tags: ${{ steps.publish.outputs.tags }}
+          push: ${{ needs.catalog.outputs.push == 'true' }}
+          tags: ${{ steps.tags.outputs.tags }}
           build-args: ${{ matrix.build_args }}
 
-  daimon:
-    name: daimon runtime image
-    if: github.event_name != 'workflow_dispatch' || inputs.runtime == 'all' || inputs.runtime == 'daimon'
+  scripted:
+    name: ${{ matrix.runtime }} runtime image
+    needs: catalog
+    if: needs.catalog.outputs.scripted != '[]'
     timeout-minutes: 60
     runs-on: ubuntu-latest
-    # Every ref publishes the same pinned tag, so serialize across refs: the
-    # tag-exists guard is check-then-write and must not race another run.
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.catalog.outputs.scripted) }}
+    # A pinned tag can be published from multiple refs. Serialize that image's
+    # publisher across refs so checking for the tag and writing it cannot race.
     concurrency:
-      group: runtime-images-daimon-publish
+      group: runtime-images-${{ matrix.runtime }}-publish
       cancel-in-progress: false
     steps:
       - name: Check out
@@ -194,104 +217,62 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Resolve publishing mode
-        id: publish
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          should_push=false
-          push_latest=false
-
-          if [[ "${GITHUB_EVENT_NAME}" == "push" && "${GITHUB_REF}" == refs/tags/v* ]]; then
-            should_push=true
-            push_latest=true
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            if [[ "${{ inputs.push }}" == "true" ]]; then
-              should_push=true
-            fi
-            if [[ "${{ inputs.push_latest }}" == "true" ]]; then
-              push_latest=true
-            fi
-          fi
-
-          {
-            echo "push=${should_push}"
-            echo "latest=${push_latest}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Check Docker Hub credentials
-        if: steps.publish.outputs.push == 'true'
-        shell: bash
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${DOCKERHUB_USERNAME}" || -z "${DOCKERHUB_TOKEN}" ]]; then
-            echo "::error::DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets must be configured in noopolis/spawnfile to publish runtime images."
-            exit 1
-          fi
-
       - name: Log in to Docker Hub
-        if: steps.publish.outputs.push == 'true'
+        if: needs.catalog.outputs.push == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Packs the pinned Daimon commit per architecture, builds both platforms,
-      # and (when publishing) pushes them by digest and joins them in one index
-      # tagged <daimon version>-<short commit>. An existing tag is never moved.
-      - name: Build Daimon runtime image
+      - name: Build scripted runtime image
         shell: bash
         env:
-          PUSH: ${{ steps.publish.outputs.push }}
-          LATEST: ${{ steps.publish.outputs.latest }}
+          RUNTIME_NAME: ${{ matrix.runtime }}
+          PUBLISHER: ${{ matrix.publisher }}
+          PUSH: ${{ needs.catalog.outputs.push }}
+          LATEST: ${{ needs.catalog.outputs.latest }}
         run: |
           set -euo pipefail
-
-          args=(--identity-out "${RUNNER_TEMP}/daimon-runtime-identity.json")
+          args=(--identity-out "${RUNNER_TEMP}/${RUNTIME_NAME}-runtime-identity.json")
           if [[ "${PUSH}" == "true" ]]; then
             args+=(--push)
             if [[ "${LATEST}" == "true" ]]; then
               args+=(--latest)
             fi
           fi
-          node --experimental-strip-types scripts/publish-daimon-runtime.ts "${args[@]}" | tee "${RUNNER_TEMP}/daimon-publish.log"
+          node --experimental-strip-types "${PUBLISHER}" "${args[@]}" | tee "${RUNNER_TEMP}/${RUNTIME_NAME}-publish.log"
 
       - name: Record published identity
-        if: steps.publish.outputs.push == 'true'
+        if: needs.catalog.outputs.push == 'true'
         shell: bash
+        env:
+          RUNTIME_NAME: ${{ matrix.runtime }}
         run: |
           set -euo pipefail
-
-          identity="${RUNNER_TEMP}/daimon-runtime-identity.json"
+          identity="${RUNNER_TEMP}/${RUNTIME_NAME}-runtime-identity.json"
+          log="${RUNNER_TEMP}/${RUNTIME_NAME}-publish.log"
           if [[ -s "${identity}" ]]; then
             {
-              echo "### Published Daimon runtime identity"
+              echo "### Published ${RUNTIME_NAME} runtime identity"
               echo '```json'
               cat "${identity}"
               echo '```'
               echo "Pin it in runtimes.yaml:"
               echo '```yaml'
-              sed -n '/^runtimes.yaml pin:$/,$p' "${RUNNER_TEMP}/daimon-publish.log" | tail -n +2
+              sed -n '/^runtimes.yaml pin:$/,$p' "${log}" | tail -n +2
               echo '```'
             } >> "${GITHUB_STEP_SUMMARY}"
-          elif grep -q "already exists; refusing to move a published tag" "${RUNNER_TEMP}/daimon-publish.log"; then
-            echo "Daimon runtime tag already published; nothing new to record." >> "${GITHUB_STEP_SUMMARY}"
+          elif grep -q "already exists; refusing to move a published tag" "${log}"; then
+            echo "${RUNTIME_NAME} runtime tag already published; nothing new to record." >> "${GITHUB_STEP_SUMMARY}"
           else
-            echo "::error::Publishing finished without a Daimon runtime identity."
+            echo "::error::Publishing finished without a ${RUNTIME_NAME} runtime identity."
             exit 1
           fi
 
       - name: Upload published identity
-        if: steps.publish.outputs.push == 'true'
+        if: needs.catalog.outputs.push == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: daimon-runtime-identity
-          path: ${{ runner.temp }}/daimon-runtime-identity.json
+          name: ${{ matrix.runtime }}-runtime-identity
+          path: ${{ runner.temp }}/${{ matrix.runtime }}-runtime-identity.json
           if-no-files-found: ignore
