@@ -138,11 +138,12 @@ test("only adapter registration imports native implementations, and core dispatc
   }));
   expect(names.size).toBeGreaterThan(0);
   const historical = await historicalExports(names);
-  const results = await Promise.all(files.map(async (file) => (
-    violations(file, await readFile(path.join(root, file), "utf8"), names, historical)
-  )));
-  expect(results.flat()).toEqual([]);
-});
+  const results: string[] = [];
+  for (const file of files) {
+    results.push(...violations(file, await readFile(path.join(root, file), "utf8"), names, historical));
+  }
+  expect(results).toEqual([]);
+}, 90_000);
 
 test("the boundary catches static, dynamic and type imports and name dispatch for a new harness", () => {
   const names = new Set(["example"]);

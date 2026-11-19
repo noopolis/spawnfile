@@ -27,6 +27,7 @@ const sourceGateTests = [
   "src/training/boundaries.test.ts",
   "src/deployment/providerRuntimeBoundary.test.ts",
   "src/ownership/mnemePublicImportBoundary.test.ts",
+  "src/ownership/runtimeAdapterBoundary.test.ts",
   "src/compiler/training/execution.mutation.test.ts",
 ];
 
