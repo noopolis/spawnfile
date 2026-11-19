@@ -26,7 +26,7 @@ const conversations = [
 
 type Conversation = typeof conversations[number];
 type History = { messages?: Array<{ id?: string; from?: { id?: string }; parts?: Array<{ text?: string }> }> };
-type Agents = { agents?: Array<{ id?: string; status?: string }> };
+type Agents = { agents?: Array<{ id?: string; connected?: boolean }> };
 
 const waitFor = async <T>(label: string, read: () => Promise<T | undefined>): Promise<T> => {
   const deadline = Date.now() + 45_000;
@@ -175,7 +175,7 @@ export const verifyExternalAcpDocker = async (
       await waitFor("native startup and node readiness", async () => {
         if (!(await docker("logs", "--since", started, created)).includes("external harness ready for echo")) return;
         await docker("exec", created, "test", "-s", "/run/spawnfile/moltnet-readiness/adapter_net-echo.json");
-        if ((await get<Agents>(url, "/v1/agents")).agents?.some(({ id, status }) => id === "echo" && typeof status === "string" && status !== "offline")) return true;
+        if ((await get<Agents>(url, "/v1/agents")).agents?.some(({ id, connected }) => id === "echo" && connected === true)) return true;
       });
       return url;
     };
