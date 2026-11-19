@@ -16,7 +16,7 @@ src/cli/
 ├── compileBuildCommands.ts # `compile` and `build` command registration
 ├── trainCommand.ts # Canonical plan/rewind selection and training-core option forwarding
 ├── trainingExecution.ts # In-process host estimates and isolated training image preparation/launch
-├── trainingBooted.ts # Daimon subjects: training core on the host, production-booted trials behind one auth gateway
+├── trainingBooted.ts # Live training dispatch and interrupt handling by selected runtime
 ├── trainingRegrade.ts # `train --regrade`: a judges-only booted run around the runtime regrade composition; boots no subject
 ├── lifecycleCommands.ts # Thin lifecycle/compile/build/run/publish/up/down registration composition
 ├── lifecyclePlanningCommands.ts # Durable lifecycle plan and lookup command registration

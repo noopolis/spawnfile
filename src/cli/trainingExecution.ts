@@ -1,22 +1,9 @@
 import { canonicalWireId } from '../shared/index.js';
-import type { TrainingContext } from "../compiler/training/index.js";
+import type { RuntimeTrainingRunOptions } from "../runtime/trainingTypes.js";
 import { SpawnfileError } from "../shared/index.js";
-import type { CliStreams } from "./runCli.js";
-import type { TrainingRunControls } from "./trainingRun.js";
 import { runBootedTraining } from "./trainingBooted.js";
 
-export interface RunTrainingOptions {
-  context: TrainingContext;
-  args: readonly string[];
-  dryRun: boolean;
-  /** Auth profile whose login a production-booted run's gateway holds. */
-  authProfile?: string;
-  /** Realm lock, trial and judgment cache, judge concurrency of a production-booted run. */
-  controls?: TrainingRunControls;
-  timeoutMs: number;
-  streams: CliStreams;
-  signal?: AbortSignal;
-}
+export type RunTrainingOptions = RuntimeTrainingRunOptions;
 
 const failure = (message: string): SpawnfileError => new SpawnfileError("runtime_error", message);
 const validCostReceipt = (line: string): boolean => {

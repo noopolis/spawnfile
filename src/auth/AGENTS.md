@@ -8,8 +8,8 @@ This folder owns Spawnfile-managed auth profiles and auth import flows.
 src/auth/
 ├── index.ts            # Barrel exports
 ├── trainingAuth.ts     # Public opaque training ingress staging to fixed native leaves
-├── trainingGrokWriteback.ts # Journal-verified atomic return of renewed training Grok auth to the host import
-├── trainingGrokWritebackLock.ts # Persistent non-secret SQLite transaction lock; kernel releases it on process death
+├── trainingCredentialCompatibility.ts # Public training auth wrappers dispatch to registered runtime
+├── training/ # Persistent non-secret SQLite writeback and import lock
 ├── types.ts            # Auth profile types
 ├── paths.ts            # Spawnfile auth home and profile path helpers
 ├── profileStore.ts     # Read/write auth profiles, imported auth material and volume-held login names (`realms`)
@@ -42,4 +42,4 @@ src/auth/
   it is stored as a target secret for uniform handling, but it is not minted material and its presence in the caller's
   own request file is not a leak.
 
-`trainingCodexAuthority.ts` owns persistent host training account placement. Codex staging validates the same read-only container bootstrap inode and returns its shared target; it never clones credentials into trial homes. Daimon owns the writable rotating account state.
+Daimon's native training adapter owns persistent host training account placement. Codex staging validates the same read-only container bootstrap inode and returns its shared target; it never clones credentials into trial homes. Daimon owns the writable rotating account state.

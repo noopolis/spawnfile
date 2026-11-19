@@ -110,12 +110,14 @@ test('installed tarball exposes every integration value and type through explici
     await run('npm', ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund',
       join(directory, packs[0].filename)], directory);
     const installed = join(directory, 'node_modules/spawnfile');
-    const trial = join(installed, 'dist/runtime/daimon/training/trial');
-    for (const name of ['boot', 'bootedTrial', 'gateway', 'homeLogin', 'judge', 'judgmentCache', 'launcher', 'login',
-      'momentVolumes', 'trialReads']) {
+    const training = join(installed, 'dist/runtime/daimon/training');
+    for (const name of ['trial/boot', 'trial/bootedTrial', 'trial/gateway', 'trial/homeLogin', 'trial/judge',
+      'trial/judgmentCache', 'trial/launcher', 'trial/login', 'trial/momentVolumes', 'trial/trialReads',
+      'trial/run', 'trial/runTraining', 'trial/trainingCodexAuthority', 'trial/trainingGrokWriteback',
+      'graderProviders', 'inferenceProviders']) {
       for (const extension of ['js', 'd.ts']) {
-        const artifact = join(trial, `${name}.${extension}`);
-        assert.ok((await stat(artifact)).size > 0, `Missing trial host build artifact: ${name}.${extension}`);
+        const artifact = join(training, `${name}.${extension}`);
+        assert.ok((await stat(artifact)).size > 0, `Missing native training build artifact: ${name}.${extension}`);
       }
     }
     const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8')) as {

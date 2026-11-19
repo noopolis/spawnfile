@@ -3,8 +3,8 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } fro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareTrainingCodexAuthority } from './trainingCodexAuthority.js';
-import { stageTrainingAuth } from './trainingAuth.js';
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../runtime/daimon/contractManifest.js';
+import { stageTrainingAuth } from '../../../../auth/index.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../index.js';
 
 const original = { ...DAIMON_CODEX_SUBSCRIPTION_REALM };
 afterEach(() => { vi.unstubAllEnvs(); Object.assign(DAIMON_CODEX_SUBSCRIPTION_REALM, original); });

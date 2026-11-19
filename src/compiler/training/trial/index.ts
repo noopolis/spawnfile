@@ -6,3 +6,4 @@ export { createRealmTurns, type RealmTurnOptions, type RealmTurns, type ReleaseR
 export { openTrialCacheStore, TRIAL_CACHE_MODES, type TrialCacheMode } from "./cache/index.js";
 export { createTrainingRealmLock, removeStaleRun, type TrainingRealmLock, type TrainingRealmLockOptions } from "./realmLock.js";
 export type { BootedTrial, TrialWake } from "./types.js";
+export { momentPreparation } from "./momentPreparation.js";

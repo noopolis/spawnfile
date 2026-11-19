@@ -5,7 +5,7 @@ import { loadRuntimeAdapterPlugins } from "../runtime/loadAdapterPlugins.js";
 import { formatCliErrorMessage, isCommanderError } from "./cliErrors.js";
 import { splitAdapterOptions } from "./adapterOptions.js";
 
-import { loginSubscriptionRealm } from "../runtime/daimon/training/trial/index.js";
+import { loginSubscriptionRealm } from "../runtime/trainingSelection.js";
 
 import { Command } from "commander";
 

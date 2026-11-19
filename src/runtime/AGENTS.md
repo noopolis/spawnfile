@@ -18,6 +18,8 @@ src/runtime/
 ├── hostTypes.ts            # Optional native host build and launch contracts
 ├── hostSelection.ts        # Select registered host capabilities and launch wrapper
 ├── operations.ts          # Optional live drain, readiness, recording, artifact and usage contracts
+├── trainingTypes.ts       # Optional live training, provider, login and credential hooks
+├── trainingSelection.ts   # Runtime and credential capability selection
 ├── common.ts              # Shared lowering helpers used by adapters
 ├── mnemeMcp.ts            # Shared Mneme MCP lowering plus the durable memory mount authority
 ├── container.ts           # Compatibility entrypoint for adapter-owned container install recipes
@@ -126,6 +128,6 @@ typecheck/build also covers the moved adapters and supplies their strict checks.
 Host consumers pass canonical context directly; integrations may pass the context-file flag.
 `trainingSubjects.test.ts` owns default factory composition coverage.
 
-Training provider composition lives in trainingProviders.ts; trainingGraderProviders.ts installs immutable grader policy. Engine inference providers live under their runtime's training/providers, while neutral built-ins remain in the core. Training implementations import contracts or the public core barrel, never private helpers. Registry training declarations include adapterId and engine vocabulary; repair admission checks the selected registration.
+Training provider composition lives in `trainingComposition.ts` and loads registered adapter contributions. `trainingProviders.ts` and `trainingGraderProviders.ts` assemble the provider data. Engine inference providers live under their runtime, and neutral built-ins remain in the core. Training implementations import contracts or the public core barrel, never private helpers. Registry training declarations include adapterId and engine vocabulary; repair admission checks the selected registration.
 
 trainingRegrade.ts composes the regrade of recorded outputs: the manifest, the registered judge providers, one result file per output and the REGRADE report. It is a training composition entry point (allowed by the training boundary test) and never creates the booted run; the CLI binds the run's judges around it.

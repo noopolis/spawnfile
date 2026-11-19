@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, realpath, rename, unlink } from "node:fs/promises";
 import path from "node:path";
-import { acquireTrainingGrokWritebackLock } from "./trainingGrokWritebackLock.js";
+import { acquireTrainingGrokWritebackLock } from "../../../../auth/training/index.js";
 
 const failure = (): Error => Error("Training Grok credential writeback failed");
 const digest = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");

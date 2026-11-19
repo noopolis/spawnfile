@@ -12,7 +12,7 @@ import { SpawnfileError } from "../shared/index.js";
 
 import { ensureAuthProfile, registerImportedAuth, setAuthProfileEnv } from "./profileStore.js";
 import { resolveImportedAuthDirectory } from "./paths.js";
-import { acquireTrainingGrokWritebackLock } from "./trainingGrokWritebackLock.js";
+import { acquireTrainingGrokWritebackLock } from "./training/index.js";
 
 const ENV_LINE_PATTERN = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/;
 const CLAUDE_CODE_KEYCHAIN_SERVICE = "Claude Code-credentials";

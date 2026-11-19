@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveSpawnfileHome } from './paths.js';
-import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../runtime/daimon/contractManifest.js';
+import { resolveSpawnfileHome } from '../../../../auth/index.js';
+import { DAIMON_CODEX_SUBSCRIPTION_REALM } from '../../index.js';
 
 /** Stable host state for a declared subscription bootstrap, retained across runs.
  * No credential bytes are copied here; the mounted Daimon authority owns them.

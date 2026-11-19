@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { importGrokAuth } from "./importers.js";
-import { writeBackTrainingGrokCredential } from "./trainingGrokWriteback.js";
-import { acquireTrainingGrokWritebackLock } from "./trainingGrokWritebackLock.js";
+import { writeBackTrainingGrokCredential } from "../runtime/daimon/training/trial/trainingGrokWriteback.js";
+import { acquireTrainingGrokWritebackLock } from "./training/index.js";
 
 // Interpose only at publication; all reads, writes and SQLite locking are real.
 vi.mock("node:fs/promises", async (original) => ({ ...await original<typeof fs>() }));

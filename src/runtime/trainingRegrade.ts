@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createTrainingProviderRegistry } from "./trainingProviders.js";
+import { composeTrainingInference, type TrainingInferenceComposition } from "./trainingComposition.js";
 import { SpawnfileError } from "../shared/index.js";
 import { createEvaluationRegistry, inferenceProviderDescriptor, regradeManifestSchema, regradeRecordedOutputs,
   renderQuestionnaireMarkdown, type InferenceProvider, type JudgeRoute, type CriticReview, type RegradeReport, type RegradedOutput } from "../training/index.js";
@@ -15,6 +15,10 @@ export interface RegradeTrainingOptions {
   judgeTimeoutMs?: number;
   streams: { stdout: (line: string) => void; stderr: (line: string) => void };
   signal?: AbortSignal;
+  openJudges?: (
+    providers: readonly string[],
+    composition: TrainingInferenceComposition
+  ) => Promise<{ close(): Promise<void> } | undefined>;
   /** The provider behind each declared judge (tests only); the registered provider otherwise. */
   provider?: (model: { provider: string; model: string; reasoning_effort?: string }) => InferenceProvider;
 }
@@ -69,17 +73,23 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
     const review = JSON.parse(await readFile(path.join(reviewsDirectory, file), "utf8")) as CriticReview;
     if (review.verdict !== "error") reviewed[file.slice(0, -5)] = review;
   }
-  const registry = createTrainingProviderRegistry();
+  const composition = await composeTrainingInference();
+  const configured = Object.entries(manifest.judges).map(([name, model]) => {
+    const descriptor = inferenceProviderDescriptor(composition.registry, model.provider);
+    descriptor.validate(model, `judges.${name}`);
+    return { name, model, descriptor };
+  });
+  const run = await options.openJudges?.(configured.map(({ model }) => model.provider), composition);
   const resources = new Map<string, unknown>();
   const closers: (() => Promise<void>)[] = [];
-  const judges: Record<string, JudgeRoute> = Object.fromEntries(Object.entries(manifest.judges).map(([name, model]) => {
-    const descriptor = inferenceProviderDescriptor(registry, model.provider);
-    descriptor.validate(model, `judges.${name}`);
-    const provider = options.provider?.(model) ?? descriptor.create(model, { timeoutMs: options.judgeTimeoutMs ?? 900_000, purpose: "judge", resources,
-      onClose: (close: () => Promise<void>) => { closers.push(close); } });
-    return [name, { provider, model: model.model, ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }];
-  }));
   try {
+    const judges: Record<string, JudgeRoute> = Object.fromEntries(configured.map(({ name, model, descriptor }) => {
+      const provider = options.provider?.(model) ?? descriptor.create(model, {
+        timeoutMs: options.judgeTimeoutMs ?? 900_000, purpose: "judge", resources,
+        onClose: (close: () => Promise<void>) => { closers.push(close); }
+      });
+      return [name, { provider, model: model.model, ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }];
+    }));
     const report = await regradeRecordedOutputs({ manifest, completed, concurrency: options.concurrency, reviewed, registry: createEvaluationRegistry(), evaluation: { judges }, signal: options.signal,
       read: async (file) => {
         const real = await realpath(path.resolve(base, file)).catch(() => invalid(`Regrade input does not exist: ${file}`));
@@ -103,6 +113,7 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
       Object.values(report.critic ?? {}).some((review) => review.verdict === "error");
     return unsettled || report.calibration?.ok === false ? 1 : 0;
   } finally {
-    await Promise.all(closers.map((close) => close()));
+    try { await Promise.all(closers.map((close) => close())); }
+    finally { await run?.close(); }
   }
 };

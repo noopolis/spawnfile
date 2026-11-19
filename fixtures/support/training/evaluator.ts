@@ -1,11 +1,11 @@
-import { createTrainingProviderRegistry } from '../../../src/runtime/trainingProviders.js';
+import { providers } from './providers.js';
 import * as policy from '../../../src/training/inference/evaluator/policy.js';
 import * as ledger from '../../../src/training/inference/evaluator/ledger.js';
 import * as provider from '../../../src/training/inference/evaluator/provider.js';
 import * as cap from '../../../src/training/inference/request-cap.js';
 import * as decision from '../../../src/training/inference/decision/index.js';
 
-const registry = createTrainingProviderRegistry();
+const registry = providers;
 export type { EvaluatorRoute } from '../../../src/training/inference/evaluator/policy.js';
 export { readProtectedFile } from '../../../src/training/inference/evaluator/policy.js';
 export { typeSafeEvaluatorEnvironment } from '../../../src/training/inference/evaluator/provider.js';

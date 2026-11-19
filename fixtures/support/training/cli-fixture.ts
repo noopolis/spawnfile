@@ -1,4 +1,4 @@
-import { createTrainingProviderRegistry } from '../../../src/runtime/trainingProviders.js';
+import { providers } from './providers.js';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -17,7 +17,7 @@ export async function cliFixture() {
   const stdout: string[] = [], stderr: string[] = [], observedInstructions: string[] = [];
   const io: CliIO = { cwd: root, stdout: (text) => { stdout.push(text); }, stderr: (text) => { stderr.push(text); } };
   const dependencies: CliDependencies = {
-    inferenceProviders: createTrainingProviderRegistry(),
+    inferenceProviders: providers,
     subjects: { codex: { create: () => fixtureAdapter('codex', observedInstructions) } },
     adapter: (runtime) => fixtureAdapter(runtime, observedInstructions),
     inference: () => ({ id: 'test-subscription', capabilities: { tools: 'disabled', billing: 'subscription', temperature: false, seed: false },

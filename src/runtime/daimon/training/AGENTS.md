@@ -13,3 +13,9 @@ wakes the run's warm, tool-free judge organization for its engine (launched by
 `src/cli/trainingBooted.ts`), validates the reply against the requested schema, and
 refuses a wake whose transcript shows tool activity. Outside `spawnfile train` it
 refuses. No host engine CLI and no personal login is ever used.
+
+
+`inferenceProviders.ts` and `graderProviders.ts` declare native providers and
+the existing council policy. The adapter registers them through
+`../trainingCapability.ts` and loads them when training composition asks.
+The trial hosts implement live runs, judge sessions and volume-held login.

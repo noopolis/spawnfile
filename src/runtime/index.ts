@@ -15,3 +15,7 @@ export * from "./wiringTypes.js";
 export * from "./wiringSelection.js";
 export type * from "./operations.js";
 export type * from "./hostTypes.js";
+export type {
+  RuntimeTrainingCapability, RuntimeTrainingInferenceContribution, RuntimeTrainingJudgeOptions, RuntimeTrainingRunOptions
+} from "./trainingTypes.js";
+export { invokeTrainingCore } from "./trainingCoreInvoker.js";

@@ -1,5 +1,6 @@
 import { commandCheckpoint as checkpoint } from '../../../src/training/cli/training/checkpoint.js';
-import { createTrainingProviderRegistry } from '../../../src/runtime/trainingProviders.js';
+import { assembleTrainingInference } from '../../../src/runtime/trainingProviders.js';
+import { daimonTrainingInferenceProviders } from '../../../src/runtime/daimon/training/inferenceProviders.js';
 import * as cases from '../../../src/training/cases/index.js';
 import * as inference from '../../../src/training/cli/training/inference.js';
 import * as configuration from '../../../src/training/cli/training/configuration.js';
@@ -8,7 +9,9 @@ import * as policies from '../../../src/training/providers/index.js';
 import type { InferenceProviderRegistry } from '../../../src/training/contracts/index.js';
 
 
-export const providers = createTrainingProviderRegistry();
+export const providers = assembleTrainingInference([
+  { owner: { name: 'daimon' }, contribution: daimonTrainingInferenceProviders() }
+]).registry;
 export const parseDatasetYaml: typeof cases.parseDatasetYaml = (source, options = {}) => cases.parseDatasetYaml(source, { inferenceProviders: providers, ...options });
 export const resolveDataset: typeof cases.resolveDataset = (document, options = {}) => cases.resolveDataset(document, { inferenceProviders: providers, ...options });
 export const resolveDatasetForCost: typeof cases.resolveDatasetForCost = (document, options = {}) => cases.resolveDatasetForCost(document, { inferenceProviders: providers, ...options });
@@ -20,8 +23,8 @@ export const resolveTrainingOptimizer: typeof optimizer.resolveTrainingOptimizer
 export const trainingRoutePolicies: typeof policies.trainingRoutePolicies = (config, route, identity, registry = providers) => policies.trainingRoutePolicies(config, route, identity, registry);
 export const trainingInferencePolicies: typeof policies.trainingInferencePolicies = (config, identity, registry = providers) => policies.trainingInferencePolicies(config, identity, registry);
 export const createTrainingInference: typeof inference.createTrainingInference = (args, dependencies, timeout, judges, repairs) => inference.createTrainingInference(args,
-  { ...dependencies, inferenceProviders: dependencies.inferenceProviders ?? createTrainingProviderRegistry() }, timeout, judges, repairs);
+  { ...dependencies, inferenceProviders: dependencies.inferenceProviders ?? providers }, timeout, judges, repairs);
 export type { InferenceProviderRegistry };
 
-export const commandCheckpoint: typeof checkpoint = (args, inputs, dependencies, context, repair) => checkpoint(args, inputs, { ...dependencies, inferenceProviders: dependencies.inferenceProviders ?? createTrainingProviderRegistry() }, context, repair);
+export const commandCheckpoint: typeof checkpoint = (args, inputs, dependencies, context, repair) => checkpoint(args, inputs, { ...dependencies, inferenceProviders: dependencies.inferenceProviders ?? providers }, context, repair);
 export { bindBootedJudges, createBootedJudgeInference } from '../../../src/runtime/daimon/training/booted/index.js';

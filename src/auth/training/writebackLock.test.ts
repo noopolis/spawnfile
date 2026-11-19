@@ -5,8 +5,8 @@ import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { acquireTrainingGrokWritebackLock } from "./trainingGrokWritebackLock.js";
-import { writeBackTrainingGrokCredential } from "./trainingGrokWriteback.js";
+import { acquireTrainingGrokWritebackLock } from "./writebackLock.js";
+import { writeBackTrainingGrokCredential } from "../../runtime/daimon/training/trial/trainingGrokWriteback.js";
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -19,7 +19,7 @@ it("excludes a live holder and reacquires after release", async () => {
     await expect(acquireTrainingGrokWritebackLock(profile)).rejects.toThrow(/locked/u);
     await expect(acquireTrainingGrokWritebackLock(profile, 50)).rejects.toThrow(/locked/u);
     // A same-process contender must not accidentally release the kernel lock.
-    const module = new URL("./trainingGrokWritebackLock.ts", import.meta.url).href;
+    const module = new URL("./writebackLock.ts", import.meta.url).href;
     const contender = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import { acquireTrainingGrokWritebackLock } from ${JSON.stringify(module)};
       try { const release = await acquireTrainingGrokWritebackLock(process.argv[1]); release(); process.exitCode = 2; }
@@ -46,7 +46,7 @@ it("yields to a same-process holder and acquires without caller retries", async 
 it("reacquires after SIGKILL without finally or deleting the lock inode", async () => {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "grok-lock-crash-"))); roots.push(root);
   const profile = path.join(root, "profile");
-  const module = new URL("./trainingGrokWritebackLock.ts", import.meta.url).href;
+  const module = new URL("./writebackLock.ts", import.meta.url).href;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
     import { acquireTrainingGrokWritebackLock } from ${JSON.stringify(module)};
     await acquireTrainingGrokWritebackLock(process.argv[1]);

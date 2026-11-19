@@ -133,3 +133,10 @@ cache storage live under `src/compiler/training/trial/`.
 
 - `judgmentCache.ts` supplies Daimon's exact judge instructions to shared cache
   hashing, preserving the identity of existing entries.
+- `run.ts` owns the profile lock, caches and judge binding for a live run.
+  `runTraining.ts` launches the training core with a Daimon subject and
+  retains only typed arguments and the moment preparation contract.
+- `trainingCodexAuthority.ts` validates the shared bootstrap inode and
+  `trainingGrokWriteback.ts` verifies the native rotation journal. The
+  public auth package keeps the same signatures and delegates through the
+  adapter's credential hooks.

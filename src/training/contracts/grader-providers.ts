@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { InferenceProvider } from './execution.js';
 
 export interface GraderTeacher { id: string; provider: string; model: string; effort?: string }
@@ -27,21 +28,34 @@ export interface GraderProviderRegistry {
   council: CouncilProviderPolicy;
 }
 let configured: GraderProviderRegistry | undefined;
-/** Composition supplies provider data before loading authored grader files. */
-export function configureGraderProviders(registry: GraderProviderRegistry): void {
+const scoped = new AsyncLocalStorage<GraderProviderRegistry>();
+
+function checked(registry: GraderProviderRegistry): GraderProviderRegistry {
   const ids = registry.providers.map(provider => provider.id);
   if (new Set(ids).size !== ids.length) throw new Error('Duplicate grader provider');
-  if (configured && configured !== registry) throw new Error('Grader provider registry is already configured');
   registry.providers.forEach(Object.freeze);
   Object.freeze(registry.providers);
   Object.freeze(registry.council.requiredProviders);
   Object.freeze(registry.council.defaultWindow);
   Object.freeze(registry.council);
-  configured = Object.freeze(registry);
+  return Object.freeze(registry);
 }
+
+/** Standalone composition can install one immutable global grader registry. */
+export function configureGraderProviders(registry: GraderProviderRegistry): void {
+  if (configured && configured !== registry) throw new Error('Grader provider registry is already configured');
+  configured = checked(registry);
+}
+
+/** Keep an embedded command's adapter policies local to that invocation. */
+export function withGraderProviders<T>(registry: GraderProviderRegistry, run: () => T): T {
+  return scoped.run(checked(registry), run);
+}
+
 export function graderProviderRegistry(): GraderProviderRegistry {
-  if (!configured) throw new Error('Grader provider registry is not configured');
-  return configured;
+  const registry = scoped.getStore() ?? configured;
+  if (!registry) throw new Error('Grader provider registry is not configured');
+  return registry;
 }
 export function graderProvider(id: string): GraderProviderDescriptor {
   const provider = graderProviderRegistry().providers.find(provider => provider.id === id);
