@@ -10,10 +10,10 @@ type Material = {
   directoryMode: number; fileMode: number;
 };
 const readJson = (file: string): unknown => JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8"));
-const vendored = readJson("../src/runtime/daimon/contract-manifest.json") as Record<string, unknown>;
+const vendored = readJson("../contract-manifest.json") as Record<string, unknown>;
 const { engines: _engines, ...legacy } = vendored;
 const v5 = { ...legacy, version: "noopolis.daimon.runtime-contract-manifest.v5" };
-const mirror = readJson("../src/runtime/daimon/engine-descriptors.json") as {
+const mirror = readJson("../engine-descriptors.json") as {
   engines: Record<string, { id: string; auth: { staging: string; realm?: unknown }; credentialMaterial: Material | null }>;
 };
 const v6 = (portableCount: 1 | 2) => {
@@ -37,7 +37,7 @@ const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.m
 
 // Execute the actual image check, so its acceptance criteria cannot drift behind a test helper.
 const checkImageContract = (value: unknown): number | null => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   const code = /node -e '([^']*const raw=fs.readFileSync[^']*)'/u.exec(dockerfile)?.[1];
   assert.ok(code, "missing Dockerfile manifest check");
   const root = mkdtempSync(path.join(os.tmpdir(), "daimon-image-contract-"));

@@ -14,12 +14,12 @@ import {
   resolvePublishedRepository,
   resolvePublishedTag,
   resolvePublishManifestSha256
-} from "../src/runtime/daimon/image/publishInputs.ts";
-import { createDaimonImageBuildArgs, tagExists } from "../src/runtime/daimon/image/publishRuntime.ts";
+} from "./publishInputs.ts";
+import { createDaimonImageBuildArgs, tagExists } from "./publishRuntime.ts";
 
 const digest = (character: string, length = 64): string => character.repeat(length);
 const checkedIn = (): Record<string, unknown> =>
-  JSON.parse(readFileSync("src/runtime/daimon/image/publish-inputs.json", "utf8")) as Record<string, unknown>;
+  JSON.parse(readFileSync(new URL("./publish-inputs.json", import.meta.url), "utf8")) as Record<string, unknown>;
 
 test("checked-in publish inputs pin a full Daimon commit, both architectures, and explicit CLI digests", () => {
   const inputs = parseDaimonPublishInputs(checkedIn());
@@ -45,19 +45,19 @@ test("publication uses its explicit manifest pin before the runtime re-pin", () 
 });
 
 test("Daimon Dockerfile manifest literals accept the vendored contract", () => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   const validators = [...dockerfile.matchAll(/node -e '([^'\n]+)' \$\{RUNTIME_ROOT\}\/contract-manifest\.json/gu)];
   assert.equal(validators.length, 1, "expected the Dockerfile's manifest validator");
-  const manifestPath = fileURLToPath(new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url));
+  const manifestPath = fileURLToPath(new URL("../contract-manifest.json", import.meta.url));
   // Run the actual image-build guard: its version and every other literal must match the vendored bytes.
   execFileSync(process.execPath, ["--input-type=commonjs", "-e", validators[0]![1]!, manifestPath], { timeout: 5_000 });
 });
 
 test("Daimon Dockerfile accepts v7 descriptors and rejects inventory, broker or version drift", () => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   const validator = [...dockerfile.matchAll(/node -e '([^'\n]+)' \$\{RUNTIME_ROOT\}\/contract-manifest\.json/gu)][0]![1]!;
-  const raw = JSON.parse(readFileSync(new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url), "utf8"));
-  const engines = JSON.parse(readFileSync(new URL("../src/runtime/daimon/engine-descriptors.json", import.meta.url), "utf8")).engines;
+  const raw = JSON.parse(readFileSync(new URL("../contract-manifest.json", import.meta.url), "utf8"));
+  const engines = JSON.parse(readFileSync(new URL("../engine-descriptors.json", import.meta.url), "utf8")).engines;
   const canonical = (value: unknown): string => Array.isArray(value) ? `[${value.map(canonical).join(",")}]`
     : value && typeof value === "object" ? `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`).join(",")}}` : JSON.stringify(value);
   const directory = mkdtempSync(path.join(tmpdir(), "spawnfile-image-manifest-"));
@@ -133,7 +133,7 @@ test("published receipt keeps the verified shape but records CI provenance, not 
   assert.equal(named.get("CODEX_CLI_VERSION"), inputs.codex.version);
   assert.equal(named.get("DAIMON_CAPABILITY_RECEIPT_BASE64"), Buffer.from("{}\n").toString("base64"));
   // Every ARG the runtime Dockerfile requires must be supplied.
-  const dockerfile = readFileSync("src/runtime/daimon/image/Dockerfile", "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   for (const required of [...dockerfile.matchAll(/test -n "\$\{([A-Z0-9_]+)\}"/gu)].map((match) => match[1])) {
     if (required === "TARGETARCH") continue;
     assert.ok(named.has(required ?? ""), `missing build arg ${required}`);

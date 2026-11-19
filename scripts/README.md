@@ -25,6 +25,8 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | `source-provenance-bundle.integration.test.ts` | `npm run test:source-provenance-docker` | PR/main and publish workflows: real offline Daimon archive build and tamper rejection; Docker, Daimon checkout (`SPAWNFILE_TEST_DAIMON_SOURCE`), pinned Linux Grok CLI (`SPAWNFILE_GROK_CLI_FILE`) |
 | `moltnet-source-provenance.integration.test.ts` | `npm run test:moltnet-source-provenance-docker` | Test the real offline Moltnet archive build |
 
+Daimon-native tooling and its script tests live in `src/runtime/daimon/image/`.
+The command names above remain available through wrappers in this directory.
 `source-provenance-bundle.ts` and `native-helper-artifacts.ts` are shared modules. Daimon publish-input validation and identity shaping live beside the publisher in `src/runtime/daimon/image/publishInputs.ts`.
 Adjacent unit tests run through `npm run test:scripts`; native artifact and
 syscall integration tests also run explicitly in CI.

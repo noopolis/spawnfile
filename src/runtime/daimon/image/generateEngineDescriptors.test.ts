@@ -12,9 +12,9 @@ import {
   readStaticEngineDescriptors,
   renderEngineDescriptorArtifacts,
   verifyEngineDescriptorArtifacts
-} from "./generate-daimon-engine-descriptors.ts";
+} from "./generateEngineDescriptors.ts";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
+const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const mirrorDirectory = path.join(root, "src/runtime/daimon");
 const pin = readPinnedDaimonCommit(readFileSync(path.join(root, "runtimes.yaml"), "utf8"));
 const descriptor = 'export const ENGINE_DESCRIPTORS = { sample: { id: "sample", broker: null, homeEnvironment: "SAMPLE_HOME" } } as const;';

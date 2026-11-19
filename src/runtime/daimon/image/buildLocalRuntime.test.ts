@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-
 import {
   assertPinnedGrokCli,
   createLocalDaimonCapabilityReceipt,
@@ -15,14 +14,13 @@ import {
   resolveLocalBuildArchitecture,
   resolveLocalImageTag,
   resolvePushedImageReference
-} from "../src/runtime/daimon/image/buildLocalRuntime.ts";
-import { collectSourceManifest, createSourceBundle, validateSourceBundle } from "./source-provenance-bundle.ts";
+} from "./buildLocalRuntime.ts";
+import { collectSourceManifest, createSourceBundle, validateSourceBundle } from "../../../../scripts/source-provenance-bundle.ts";
 
 type DockerfileStage = {
   body: string;
   parent: string;
 };
-
 const digest = (character: string, length = 64): string => character.repeat(length);
 const artifactEnvironment = (): Record<string, string> => ({
   AGY_CLI_SHA256: digest("a"),
@@ -230,7 +228,7 @@ test("dependency lock truth rejects near-empty graphs and a fake Codex version",
 });
 
 test("Daimon Dockerfile verifies the AGY archive before extracting antigravity and verifies every installed executable", () => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   assert.match(dockerfile, /^ARG NODE_BASE_IMAGE=node:24-bookworm-slim@sha256:[a-f0-9]{64}\nFROM daimon_package AS daimon_package/mu);
   assert.match(dockerfile, /FROM base_\$\{DAIMON_DEPENDENCY_MODE\} AS base/u);
   assert.match(dockerfile, /FROM grok_source_\$\{DAIMON_DEPENDENCY_MODE\} AS grok_cli/u);
@@ -282,7 +280,7 @@ test("Daimon Dockerfile verifies the AGY archive before extracting antigravity a
 });
 
 test("Daimon source-bundle Dockerfile uses public package scripts for native artifacts", () => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/SourceBundle.Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./SourceBundle.Dockerfile", import.meta.url), "utf8");
   const archAssertion = dockerfile.indexOf("const expected={amd64:\"x64\",arm64:\"arm64\"}");
   const packageBuild = dockerfile.indexOf("DAIMON_REQUIRE_ENGINE_BROKER=1 npm run build");
   const executableCheck = dockerfile.indexOf("test -x dist/runtime/native/daimon-engine-broker");
@@ -298,7 +296,7 @@ test("Daimon source-bundle Dockerfile uses public package scripts for native art
 });
 
 test("Daimon Dockerfile stage graph preserves cache and offline-network boundaries", () => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   const stages = new Map<string, DockerfileStage>();
   const fromPattern = /^FROM\s+(\S+)\s+AS\s+(\S+)\s*$/gimu;
   const declarations = [...dockerfile.matchAll(fromPattern)];
@@ -374,17 +372,17 @@ test("local Daimon builds accept only the Grok CLI build the vendored contract m
 });
 
 test("the runtime image derives broker and Grok pins from the attested Daimon manifest instead of literals", () => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   assert.doesNotMatch(dockerfile, /broker_sha=[a-f0-9]{64}/u);
   assert.match(dockerfile, /grokCliArtifacts\?\.\[process\.argv\[2\]\]/u);
   assert.match(dockerfile, /m\.grokCliVersion!==process\.argv\[3\]/u);
 });
 
 test("Dockerfile contract validation accepts the vendored manifest and labels each check", () => {
-  const dockerfile = readFileSync(new URL("../src/runtime/daimon/image/Dockerfile", import.meta.url), "utf8");
+  const dockerfile = readFileSync(new URL("./Dockerfile", import.meta.url), "utf8");
   const code = /node -e '([^']*const raw=fs.readFileSync[^']*)'/u.exec(dockerfile)?.[1];
   assert.ok(code, "missing contract validator");
-  const manifest = new URL("../src/runtime/daimon/contract-manifest.json", import.meta.url);
+  const manifest = new URL("../contract-manifest.json", import.meta.url);
   const root = mkdtempSync(path.join(os.tmpdir(), "daimon-contract-check-"));
   try {
     const run = (file: string): number | null => spawnSync(process.execPath, ["-e", code, file]).status;

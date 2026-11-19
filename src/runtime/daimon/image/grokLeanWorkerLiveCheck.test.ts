@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { requireLiveCheckEnvironment } from "./grok-lean-worker-live-check.ts";
+import { requireLiveCheckEnvironment } from "./grokLeanWorkerLiveCheck.ts";
 
 test("the Grok lean-worker live check is explicit opt-in and refuses the desktop Grok login", () => {
   const env = { SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY: "/tmp/identity.json", SPAWNFILE_DAIMON_SOURCE_GROK_AUTH: "/tmp/grok-training/auth.json", SPAWNFILE_GROK_LIVE_CHECK: "1" };

@@ -1,0 +1,126 @@
+// Vendors Daimon's Grok broker contract into Spawnfile from a Daimon checkout:
+// the canonical runtime contract manifest (+ digest sidecar) and the exact
+// worker `config.toml` bytes Daimon's single renderer produces for every
+// declared model x reasoning effort, plus sandbox-profile samples that pin
+// Spawnfile's profile mirror to Daimon's renderer. Run with
+// `node --import tsx scripts/vendor-daimon-grok-contract.ts [--check]`;
+// SPAWNFILE_DAIMON_SOURCE_DIR selects the checkout (default ../daimon).
+// Reads Daimon source as data; never builds, writes, or commits in Daimon.
+
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const vendorDirectory = path.join(repoRoot, "src", "runtime", "daimon");
+const models = ["grok-4.6", "grok-4.5", "grok-build"] as const;
+const efforts = ["low", "medium", "high"] as const;
+
+/** Deny sets whose rendered bytes the Spawnfile mirror must reproduce exactly. */
+export const PROFILE_SAMPLE_DENY_PATHS: readonly (readonly string[])[] = [
+  [],
+  ["/var/lib/spawnfile/daimon/usage", "/run/daimon-engine-broker", "/run/daimon-engine-broker", "/var/lib/daimon-workers/2201"]
+];
+
+/** Skill sets whose digest and rendered `$GROK_HOME/skills` tree the Spawnfile mirror must reproduce exactly. */
+export const SKILLS_SAMPLES: readonly (readonly { name: string; files: readonly { path: string; content: string }[] }[])[] = [
+  [],
+  [{ name: "review", files: [{ path: "SKILL.md", content: "---\nname: review\ndescription: Review a diff.\n---\n\nRead the diff first.\n" }] }],
+  [
+    { name: "zeta_notes", files: [{ path: "SKILL.md", content: "# Zeta \u00e9t\u00e9 \ud83d\ude80\n" }, { path: "references/deep/guide.md", content: "nested\n" }, { path: "references/a.md", content: "" }] },
+    { name: "alpha-1", files: [{ path: "SKILL.md", content: "alpha\r\n" }] }
+  ]
+];
+
+type AgentSkills = (typeof SKILLS_SAMPLES)[number];
+type DaimonModules = {
+  contractManifestArtifacts: () => { digest: Buffer; manifest: Buffer };
+  grokWorkerSkillsSha256: (skills: AgentSkills) => string;
+  renderGrokWorkerSkillsTree: (skills: AgentSkills) => readonly unknown[];
+  /** Daimon's `AGENT_SKILLS_BOUNDS` and the source of its private skill name/path component rule. */
+  skillsRules: { bounds: Readonly<Record<string, number>>; componentPattern: string };
+  renderGrokBrokerWorkerConfig: (policy: { model: string; reasoningEffort: string }, variant?: "unclocked" | "clocked", slot?: number) => string;
+  renderGrokWorkerSandboxProfile: (denyPaths: readonly string[]) => string;
+};
+
+/** `COMPONENT` is not exported, so its pattern is read from the source it is defined in; a missing definition fails vendoring. */
+const skillComponentPattern = (daimonDirectory: string): string => {
+  const match = /^const COMPONENT = \/(.+)\/u;$/mu.exec(readFileSync(path.join(daimonDirectory, "src/engines/grok/broker/grokWorkerSkills.ts"), "utf8"));
+  if (!match) throw new Error("Daimon grokWorkerSkills.ts no longer defines its COMPONENT rule as a /.../u literal");
+  return match[1]!;
+};
+
+const loadDaimon = async (daimonDirectory: string): Promise<DaimonModules> => {
+  const load = (relative: string): Promise<Record<string, unknown>> => import(pathToFileURL(path.join(daimonDirectory, relative)).href);
+  const [emitter, config, profile, skills] = await Promise.all([
+    load("scripts/emitRuntimeContractManifest.ts"),
+    load("src/engines/grok/broker/grokBrokerWorkerConfig.ts"),
+    load("src/engines/grok/broker/grokWorkerSandboxProfile.ts"),
+    load("src/engines/grok/broker/grokWorkerSkills.ts")
+  ]);
+  return {
+    contractManifestArtifacts: emitter.contractManifestArtifacts as DaimonModules["contractManifestArtifacts"],
+    grokWorkerSkillsSha256: skills.grokWorkerSkillsSha256 as DaimonModules["grokWorkerSkillsSha256"],
+    renderGrokWorkerSkillsTree: skills.renderGrokWorkerSkillsTree as DaimonModules["renderGrokWorkerSkillsTree"],
+    skillsRules: { bounds: skills.AGENT_SKILLS_BOUNDS as Readonly<Record<string, number>>, componentPattern: skillComponentPattern(daimonDirectory) },
+    renderGrokBrokerWorkerConfig: config.renderGrokBrokerWorkerConfig as DaimonModules["renderGrokBrokerWorkerConfig"],
+    renderGrokWorkerSandboxProfile: profile.renderGrokWorkerSandboxProfile as DaimonModules["renderGrokWorkerSandboxProfile"]
+  };
+};
+
+export const renderVendoredWorkerModule = (daimon: Omit<DaimonModules, "contractManifestArtifacts">): string => {
+  const configs = Object.fromEntries(models.map((model) => [model, Object.fromEntries(efforts.map((reasoningEffort) =>
+    [reasoningEffort, daimon.renderGrokBrokerWorkerConfig({ model, reasoningEffort })]))]));
+  const clocked = Object.fromEntries(models.map((model) => [model, Object.fromEntries(efforts.map((reasoningEffort) =>
+    [reasoningEffort, daimon.renderGrokBrokerWorkerConfig({ model, reasoningEffort }, "clocked", 0)]))]));
+  const samples = PROFILE_SAMPLE_DENY_PATHS.map((denyPaths) => ({ bytes: daimon.renderGrokWorkerSandboxProfile(denyPaths), denyPaths }));
+  const skills = SKILLS_SAMPLES.map((sample) => ({ sha256: daimon.grokWorkerSkillsSha256(sample), skills: sample, tree: daimon.renderGrokWorkerSkillsTree(sample) }));
+  return [
+    "/* v8 ignore file -- generated data module */",
+    "// Generated by scripts/vendor-daimon-grok-contract.ts from Daimon's own renderers. Do not edit by hand.",
+    "",
+    "/** Daimon `renderGrokBrokerWorkerConfig({ model, reasoningEffort })` bytes, verified against the manifest pins on use. */",
+    `export const DAIMON_GROK_WORKER_CONFIG_BYTES = ${JSON.stringify(configs, null, 2)} as const;`,
+    "",
+    `export const DAIMON_GROK_CLOCKED_WORKER_CONFIG_BYTES = ${JSON.stringify(clocked, null, 2)} as const;`,
+    "",
+    "/** Daimon `renderGrokWorkerSandboxProfile(denyPaths)` samples; the Spawnfile mirror must reproduce them byte for byte. */",
+    `export const DAIMON_GROK_WORKER_PROFILE_SAMPLES = ${JSON.stringify(samples, null, 2)} as const;`,
+    "",
+    "/** Daimon `grokWorkerSkillsSha256` / `renderGrokWorkerSkillsTree` samples; the Spawnfile mirror must reproduce them exactly. */",
+    `export const DAIMON_GROK_WORKER_SKILLS_SAMPLES = ${JSON.stringify(skills, null, 2)} as const;`,
+    "",
+    "/** Daimon's skills parser limits and name/path component rule; the Spawnfile mirror must use exactly these. */",
+    `export const DAIMON_AGENT_SKILLS_RULES = ${JSON.stringify(daimon.skillsRules, null, 2)} as const;`,
+    ""
+  ].join("\n");
+};
+
+export const vendorDaimonGrokContract = async (): Promise<void> => {
+  const args = process.argv.slice(2);
+  if (args.length > 1 || (args.length === 1 && args[0] !== "--check")) throw new Error("usage: vendor-daimon-grok-contract.ts [--check]");
+  const configured = process.env.SPAWNFILE_DAIMON_SOURCE_DIR?.trim();
+  if (configured && !path.isAbsolute(configured)) throw new Error("SPAWNFILE_DAIMON_SOURCE_DIR must be absolute");
+  const daimon = await loadDaimon(configured || path.resolve(repoRoot, "..", "daimon"));
+  const artifacts = daimon.contractManifestArtifacts();
+  const outputs: Array<[string, Buffer | string]> = [
+    [path.join(vendorDirectory, "contract-manifest.json"), artifacts.manifest],
+    [path.join(vendorDirectory, "contract-manifest.sha256"), artifacts.digest],
+    [path.join(vendorDirectory, "grokWorkerConfigBytes.ts"), renderVendoredWorkerModule(daimon)]
+  ];
+  if (args[0] === "--check") {
+    const drifted = outputs.filter(([file, bytes]) => !readFileSync(file).equals(Buffer.from(bytes)));
+    if (drifted.length > 0) throw new Error(`vendored Daimon contract drifted: ${drifted.map(([file]) => path.relative(repoRoot, file)).join(", ")}`);
+    process.stdout.write("vendored Daimon Grok contract matches the checkout\n");
+    return;
+  }
+  for (const [file, bytes] of outputs) writeFileSync(file, bytes);
+  process.stdout.write(`vendored Daimon Grok contract ${artifacts.digest.toString("ascii").trim()}\n`);
+};
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  vendorDaimonGrokContract().catch((error: unknown) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
+}
