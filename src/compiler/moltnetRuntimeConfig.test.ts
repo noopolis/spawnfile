@@ -32,6 +32,8 @@ vi.mock("../runtime/registry.js", async (importOriginal) => {
           args: ["acp", "--label", "argument with spaces", "$(literal)"],
           workspace: { ...createMoltnetWorkspace("codex", ["workspace/.agents/skills"]), installSkill: false }
         }),
+        // A hand-written adapter need only declare the wire protocol.
+        releaseCapability: undefined,
         actorTokenScopes: ["attach", "observe", "write"]
       },
       memory: (bank) => ({ transport: "direct", mountPath: `/mnt/fixture/${bank.id}` }),
@@ -102,7 +104,7 @@ describe("runtime adapter wiring", () => {
       dms: { enabled: true, wake: "all" }
     });
     expect(JSON.parse(config.content).moltnet.token_env).toBe("WRITER_TOKEN");
-    expect(nodePlan).toMatchObject({ releaseCapability: "acp-bridge", credentialId: "writer" });
+    expect(nodePlan.credentialId).toBe("writer");
 
     const bridge = createMoltnetBridgeConfigContent({
       agentNode,
@@ -134,6 +136,11 @@ describe("runtime adapter wiring", () => {
     const authority = await readTrustedMoltnetReleaseAuthority();
     const published = { ...authority, ...authority.assets[0]!, version: "spawnfile.moltnet-release-identity.v1" } as const;
     expect(() => assertMoltnetBridgeCapabilities(artifacts.nodePlans, published)).toThrow(/acp-bridge capability \(network\)/u);
+    expect(() => assertMoltnetBridgeCapabilities([{ ...nodePlan, releaseCapability: "pi-bridge" }], published))
+      .toThrow(/acp-bridge capability \(network\)/u);
+    expect(() => assertMoltnetBridgeCapabilities([{ ...nodePlan, releaseCapability: "fixture-extra" }], {
+      ...published, capabilities: ["acp-bridge", "daimon-bridge", "pi-bridge"]
+    })).toThrow(/fixture-extra capability \(network\)/u);
     expect(() => assertMoltnetBridgeCapabilities(artifacts.nodePlans, {
       ...published, capabilities: ["acp-bridge", "daimon-bridge", "pi-bridge"]
     })).not.toThrow();

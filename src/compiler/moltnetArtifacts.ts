@@ -264,6 +264,7 @@ export const generateMoltnetArtifacts = async (
       });
 
       nodePlans.push({
+        bridgeKind: runtime.kind,
         sourceNodeId: node.id,
         configPath: toContainerRootfsPath(configPath),
         ...(clientAuth.credentialAgentId
