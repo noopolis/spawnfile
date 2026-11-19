@@ -3,14 +3,13 @@ import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } f
 import type { CapabilityReport } from "../../report/index.js";
 import { SpawnfileError } from "../../shared/index.js";
 import {
-  CLI_ENGINE_SKILL_BASE_DIRECTORIES,
   createAgentCapabilities,
   createDiagnostic,
   createDocumentFiles,
   createSkillFiles
 } from "../common.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
-import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
+import { DAIMON_SKILL_ROOTS, daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
 
 import {
@@ -97,7 +96,7 @@ const daimonWorkspaceRestrictionWarning = (node: ResolvedAgentNode): string | un
  * as user-scoped skills, and the broker attests it against `skillsSha256`
  * before every turn (`containerDaimonGrokWorkerProvisioning.ts`).
  */
-export const daimonSkillBaseDirectories = (_node: ResolvedAgentNode): readonly string[] => CLI_ENGINE_SKILL_BASE_DIRECTORIES;
+export const daimonSkillBaseDirectories = (_node: ResolvedAgentNode): readonly string[] => DAIMON_SKILL_ROOTS;
 
 const daimonCodexPolicyError = (node: ResolvedAgentNode): string | undefined => {
   if (node.runtime.options.codex_policy === undefined) return undefined;

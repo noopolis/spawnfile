@@ -39,8 +39,13 @@ export interface RuntimeRecordingFacts {
   mountId: string;
 }
 
+/** Test authorities are keyed by the selected adapter. Runtime packages may augment legacy options here. */
+export interface RuntimeRecordingOptions {
+  runtimeRecordingAuthorities?: Readonly<Record<string, unknown>>;
+}
+
 export interface RuntimeRecordingOperations {
-  assertSupported(authorityOverride?: unknown): Promise<void>;
+  assertSupported(options: RuntimeRecordingOptions): Promise<void>;
   facts(node: Pick<CompilePlanNode, "id" | "slug">): RuntimeRecordingFacts;
 }
 

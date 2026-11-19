@@ -1,5 +1,5 @@
 import { SpawnfileError } from "../../shared/index.js";
-import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
+import { DAIMON_SKILL_ROOTS } from "./grokSkillsSupport.js";
 import { createMoltnetWorkspace } from "../portableMoltnetWiring.js";
 import type { RuntimeWiring } from "../wiringTypes.js";
 import { resolveDaimonMemoryWiring } from "./memory.js";
@@ -23,7 +23,7 @@ export const daimonWiring: RuntimeWiring = {
     releaseCapability: "daimon-bridge",
     actorTokenScopes: ["attach", "observe", "write"],
     // Native tools read the client config and handle chat directly.
-    workspace: { ...createMoltnetWorkspace("codex", CLI_ENGINE_SKILL_BASE_DIRECTORIES), installSkill: false },
+    workspace: { ...createMoltnetWorkspace("codex", DAIMON_SKILL_ROOTS), installSkill: false },
     bridge({ agentId, agentName, basePort, memberId, networkId, networkStateDirectory }) {
       if (!basePort) {
         throw new SpawnfileError("compile_error", `Unable to resolve Daimon control port for Moltnet agent ${agentName}`);

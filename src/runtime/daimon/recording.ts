@@ -15,6 +15,13 @@ import {
 } from "./contractManifest.js";
 import { DAIMON_WAKE_MOMENTS } from "./wakeMoments.js";
 
+declare module "../operations.js" {
+  interface RuntimeRecordingOptions {
+    /** Historical compile-time override for the pinned recording manifest. */
+    daimonContractManifest?: DaimonContractManifest;
+  }
+}
+
 export interface DaimonAgentRecording {
   directory: string;
   keepMs: number;
@@ -72,8 +79,8 @@ export const assertDaimonRecordingIsolation = (
 };
 
 export const daimonRecording: RuntimeRecordingOperations = {
-  async assertSupported(authorityOverride) {
-    let manifest = authorityOverride as DaimonContractManifest | undefined;
+  async assertSupported(options) {
+    let manifest = (options.runtimeRecordingAuthorities?.daimon ?? options.daimonContractManifest) as DaimonContractManifest | undefined;
     if (manifest === undefined) {
       const verified = await readVerifiedDaimonContractManifest(fileURLToPath(new URL("./", import.meta.url)));
       if (verified.digest !== DAIMON_CONTRACT_MANIFEST_SHA256) throw new SpawnfileError("validation_error",

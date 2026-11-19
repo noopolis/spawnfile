@@ -1,5 +1,5 @@
 import path from "node:path";
-import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
+import { DAIMON_SKILL_ROOTS } from "./grokSkillsSupport.js";
 import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
 import { daimonGatewayedSubscriptionRealms, daimonSubscriptionRealmMountId } from "./subscriptionRealms.js";
@@ -329,7 +329,7 @@ export const createDaimonContainerTargets = async (
   return [{
     agentPathsByNodeId: Object.fromEntries(configAgents.map((agent) => [agent.id, {
       workspacePath: agent.workspacePath, homePath: agent.runtimeHomePath,
-      skillRoots: CLI_ENGINE_SKILL_BASE_DIRECTORIES.map(
+      skillRoots: DAIMON_SKILL_ROOTS.map(
         (root) => path.posix.join(agent.workspacePath, path.posix.relative("workspace", root)))
     }])),
     engineByNodeId,

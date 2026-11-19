@@ -20,7 +20,7 @@ import {
   createRuntimeLifecycleDiagnostics,
   getRuntimeAdapter,
   resolveNoopolisRunId,
-  type DaimonContractManifest
+  type RuntimeRecordingOptions
 } from "../runtime/index.js";
 
 import { buildCompilePlan, type BuildCompilePlanOptions } from "./buildCompilePlan.js";
@@ -66,9 +66,7 @@ export type {
   OrganizationReadinessEvidence
 } from "./organizationReadyEvidence.js";
 
-export interface CompileProjectOptions {
-  /** Test seam for the receipt-bound manifest; normal compilation uses the verified vendored bytes. */
-  daimonContractManifest?: DaimonContractManifest;
+export interface CompileProjectOptions extends RuntimeRecordingOptions {
   /** Docker CLI for dependency installs and image-run generated bundle steps; defaults to `docker`. */
   bundleDockerCommand?: string;
   /** Cache for built workspace bundles; defaults to `$SPAWNFILE_HOME/cache/workspace-bundles`. */
@@ -279,7 +277,7 @@ export const compileProject = async (
   options: CompileProjectOptions = {}
 ): Promise<CompileProjectResult> => {
   const plan = await buildCompilePlan(inputPath, options.manifestOverrides ? { manifestOverrides: options.manifestOverrides } : {});
-  await assertRecordingCapability(plan, options.daimonContractManifest);
+  await assertRecordingCapability(plan, options);
   const worldBindings = options.worldBindingsPath === undefined
     ? undefined
     : await loadWorldBindingsForCompile(

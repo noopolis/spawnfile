@@ -1,5 +1,5 @@
 import { getRuntimeOperations } from "../runtime/registry.js";
-import type { RuntimeRecordingOperations } from "../runtime/operations.js";
+import type { RuntimeRecordingOperations, RuntimeRecordingOptions } from "../runtime/operations.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { CompilePlan, CompilePlanNode } from "./types.js";
 
@@ -14,10 +14,10 @@ export const recordingOperationFor = (node: CompilePlanNode): RuntimeRecordingOp
 
 /** No runtime lookup or manifest I/O when recording is absent. */
 export const assertRecordingCapability = async (
-  plan: CompilePlan, authorityOverride?: unknown
+  plan: CompilePlan, options: RuntimeRecordingOptions = {}
 ): Promise<void> => {
   const operations = new Set(plan.nodes
     .filter((node) => node.kind === "agent" && node.value.training?.record !== undefined)
     .map(recordingOperationFor));
-  for (const recording of operations) await recording.assertSupported(authorityOverride);
+  for (const recording of operations) await recording.assertSupported(options);
 };
