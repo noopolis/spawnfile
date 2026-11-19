@@ -58,7 +58,7 @@ adapters:
 runtime: { name: echo-harness }
 ```
 
-Use a local module inside the project or the name of an installed package. Run `spawnfile adapters trust .` after reviewing the plugins, then `spawnfile compile .`. Plugins execute JavaScript on your machine. Changing the declared map requires a new approval.
+Use a local module inside the project or the name of an installed package. Run `spawnfile compile .`. Spawnfile loads the declared modules automatically. They run as JavaScript with your account's permissions.
 
 ## workspace
 

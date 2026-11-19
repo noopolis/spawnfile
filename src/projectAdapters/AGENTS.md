@@ -1,28 +1,15 @@
 # Project Adapters Guide
 
-This folder owns runtime adapter modules that a root Spawnfile declares in its
-`adapters` map, and the operator approval that gates loading them.
+This folder loads the runtime adapters declared in the root Spawnfile.
 
 ## Structure
 
-```text
-src/projectAdapters/
-├── index.ts               # Barrel
-├── declarations.ts        # Read the root `adapters` map as data (realpath manifest, sorted entries)
-├── trustStore.ts          # Operator approvals under SPAWNFILE_HOME/trust/runtime-adapters, one record per canonical manifest path
-└── loadProjectAdapters.ts # Trust gate, confined module resolution, import and name checks
-```
+- `declarations.ts` reads the root manifest and sorts its `adapters` entries by runtime name.
+- `loadProjectAdapters.ts` resolves and imports those modules and checks their exported names.
+- `index.ts` exports the declaration reader and loaders.
 
 ## Rules
 
-- Declarations are data. Reading or approving them never imports module code.
-- Every refusal that does not depend on the module itself (built-in names, missing or
-  stale approval, escaping or unresolvable paths) happens before any declared module is
-  evaluated.
-- Approval covers one canonical manifest path and its exact sorted name/specifier list.
-  It does not pin module content: editing an approved module or its dependencies is
-  trusted, changing the declaration is not.
-- Trust records must be operator-owned regular files outside the project. Project files,
-  compile outputs and deployment reports never grant trust.
-- Only the CLI project-command hook and explicit programmatic callers load declarations;
-  nothing here auto-imports globally or reads paths named by reports.
+- Each source project command loads the current root declarations. An explicit `--adapter` takes precedence for its runtime name.
+- Resolve local modules inside the project and package names from the project's installed dependencies. Check bundled names and resolve the module paths before evaluating any declared module.
+- Keep registration scoped to the invocation. Reports and compile outputs describe the selected runtimes. Module entrypoints come from the source project or CLI.

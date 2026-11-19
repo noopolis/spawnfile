@@ -9,7 +9,7 @@ src/runtime/
 ├── index.ts               # Barrel for adapter registry exports
 ├── scaffoldAssets.ts      # Shared loader for runtime-owned init template assets
 ├── copyScaffoldAssets.ts  # Copies each adapter's declared package-assets.json inputs
-├── adapterPublic.ts      # Versioned SDK for trusted adapter modules
+├── adapterPublic.ts      # Versioned SDK for external adapter modules
 ├── adapterBase.ts        # Base class with standard pinned install recipes
 ├── types.ts               # Shared adapter contract types
 ├── wiringTypes.ts          # Optional Moltnet, memory, and readiness capabilities
@@ -84,9 +84,10 @@ The build generates static imports from those declarations and preserves histori
 exports from each registered adapter's `legacyExports.json`. Removing a
 registration also removes its compatibility exports from the generated files.
 When no recording codec is bundled, `legacyRecordingUnavailable.ts` keeps the
-historical consumer APIs typed and refuses to read retained history. External code is
-loaded only from an explicit operator specifier, and each invocation sees its
-own registrations. Manifest runtime names select adapters within that scope.
+historical consumer APIs typed and refuses to read retained history. Project commands load external adapters from the root Spawnfile's
+`adapters` map. The repeatable `--adapter` flag can also load modules for one
+invocation and takes precedence for the same runtime name. Each invocation has
+its own registry.
 
 ## Rules
 

@@ -346,7 +346,7 @@ In v0.1, generated Dockerfiles must not clone runtime repositories or rebuild ru
 
 ### Adding A New Runtime
 
-An independently maintained runtime can supply a local module or installed package through the public adapter SDK. Register its entrypoint in the root Spawnfile's `adapters` map and select its name with `runtime.name`. The operator approves the project with `spawnfile adapters trust .`. The repeatable `--adapter` flag also supports explicit, per-command registration. [Writing a runtime adapter](RUNTIME_ADAPTERS.md)
+An independently maintained runtime can supply a local module or installed package through the public adapter SDK. Register its entrypoint in the root Spawnfile's `adapters` map and select its name with `runtime.name`. Project commands load those modules automatically. The repeatable `--adapter` flag also supports explicit, per-command registration. [Writing a runtime adapter](RUNTIME_ADAPTERS.md)
 
 For a bundled runtime, add its pin to `runtimes.yaml`, implement it under `src/runtime/<name>/` and export the adapter as `adapter` from that folder's `registration.ts`. The build generates the registration list from those folders. Native build recipes, workspace templates, credentials, optional features and tests belong with that adapter.
 

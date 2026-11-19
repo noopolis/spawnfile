@@ -68,13 +68,13 @@ members:
     workspace: { docs: { system: AGENTS.md } }
 ```
 
-Install any named package in the project, then review its code and dependencies. From the project directory, run `spawnfile adapters trust .` to approve the declarations for this checkout. Subsequent project commands such as `spawnfile validate .` and `spawnfile compile .` load the declared adapters. A change to the declared name-to-module mapping requires approval again. Plugins run with the operator's permissions. Approval covers the implementation and its dependencies as project code.
+Install any named packages in the project, then run `spawnfile compile .`. Project commands, including `spawnfile validate .`, load the adapters from the current root Spawnfile. Adapters run as JavaScript with your account's permissions. You are responsible for the code you run.
 
 Paths beginning with `./` resolve inside the directory containing the root Spawnfile. Bare package names resolve through the project's installed dependencies. The declarations apply throughout the project graph. Keep the map at the root and select adapters by runtime name in child agents. Built-in adapters are always available. The registry rejects duplicate module registrations and attempts to replace an active built-in.
 
-For ad hoc modules or an image without a source project, pass `--adapter ./adapter.mjs` or `--adapter @example/adapter`. The repeatable flag resolves from the invocation's working directory. An explicit module takes precedence for its runtime name. Every remaining project-declared module still requires approval. Image startup and release need the adapter's launch settings. Artifact export, including `down --export-to`, needs its file list. A missing adapter stops the operation. An adapter with no export hook can legitimately contribute zero runtime files. A required file that fails to copy makes export exit with an error and leaves the deployment eligible for a retry. Direct JSON export includes the missing required files in `failed_files`.
+For ad hoc modules or an image without a source project, pass `--adapter ./adapter.mjs` or `--adapter @example/adapter`. The repeatable flag resolves from the invocation's working directory. An explicit module takes precedence for its runtime name. Image startup and release need the adapter's launch settings. Artifact export, including `down --export-to`, needs its file list. A missing adapter stops the operation. An adapter with no export hook can legitimately contribute zero runtime files. A required file that fails to copy makes export exit with an error and leaves the deployment eligible for a retry. Direct JSON export includes the missing required files in `failed_files`.
 
-Programmatic callers can load a trusted Spawnfile's declarations with `loadProjectRuntimeAdapterPlugins(projectPath)`, or pass explicit module names to `loadRuntimeAdapterPlugins(specifiers, { cwd })`. Pass the result and a callback to `withRuntimeAdapterPlugins(plugins, callback)`. Registration lasts for the callback and its asynchronous work. The integration test compiles Echo and Word Count in one project, then runs Word Count on its generated input. [Test Spawnfile](../fixtures/external-runtime-adapter/Spawnfile) and [complete local adapter](../fixtures/external-runtime-adapter/word-count/adapter.mjs).
+Programmatic callers can load a Spawnfile's declarations with `loadProjectRuntimeAdapterPlugins(projectPath)`, or pass explicit module names to `loadRuntimeAdapterPlugins(specifiers, { cwd })`. Pass the result and a callback to `withRuntimeAdapterPlugins(plugins, callback)`. Registration lasts for the callback and its asynchronous work. The integration test compiles Echo and Word Count in one project, then runs Word Count on its generated input. [Test Spawnfile](../fixtures/external-runtime-adapter/Spawnfile) and [complete local adapter](../fixtures/external-runtime-adapter/word-count/adapter.mjs).
 
 Packages that imported implementation files directly from `spawnfile/dist/` may need to migrate when native files move into their adapter folders. Import adapter contracts from `spawnfile/adapter`. Training integrations can obtain the composed providers with `await trainingDependencies()` from `spawnfile/training/cli`. [Training integration entry points](TRAINING.md#interim-public-integration-entry-points)
 
@@ -92,7 +92,7 @@ For an ACP agent, use `createAcpStdioWiring({ command, args, workspace })` for `
 
 ## Run the custom harness tests
 
-To try the two-harness case from a fresh Spawnfile checkout with Node 22.19 or newer, run the source CLI regression. It creates a temporary consumer, approves its adapter map, compiles the team and checks Word Count's output.
+To try the two-harness case from a fresh Spawnfile checkout with Node 22.19 or newer, run the source CLI regression. It compiles the team on the first invocation in a fresh project and checks Word Count's output.
 
 ```bash
 npm ci
