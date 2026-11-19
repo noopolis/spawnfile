@@ -44,6 +44,7 @@ src/deployment/
 ├── activation.ts    # Clock boundary strictly after old stop and before image start
 ├── recordedMemoryRetention.ts # Refuse deletion of recording agents' durable memory mounts
 ├── dockerManager.ts # Docker deployment record assembly
+├── artifactExportPublication.ts # Validates destination paths and restores files after a failed export retry
 ├── artifactsExportTypes.ts # `spawnfile.export-index.v1` zod schema/type + parser
 ├── artifactsExportPlan.ts  # Pure planning: which durable files to export from a compile report (no Docker/IO)
 ├── artifactsExportDocker.ts # Low-level `docker cp`/volume-read Docker calls for artifacts export

@@ -9,6 +9,7 @@ import { exportRunArtifacts } from "./artifactsExport.js";
 import { requireCompileReportAdapters } from "./artifactsExportPlan.js";
 import {
   assertDeploymentLifecycleCorrelation,
+  createDeploymentLifecycleCorrelation,
   type DeploymentLifecycleCorrelation,
 } from "./deploymentLifecycleCorrelation.js";
 import {
@@ -193,6 +194,7 @@ const ensureExported = async (
     compiledOutputDirectory: options.compiledOutputDirectory,
     deploymentName: options.deploymentName,
     destinationDirectory: exportTo,
+    expectedLifecycleCorrelation: createDeploymentLifecycleCorrelation(record),
     dockerCommand: options.dockerCommand,
     // Structurally identical exec-call shape as DockerArtifactExecFile (see
     // artifactsExportDocker.ts) — forwarded so an injected fake/override execFile covers
@@ -292,7 +294,7 @@ export const downDeployment = async (
   }, report);
   assertDeploymentLifecycleCorrelation(
     record,
-    options.expectedLifecycleCorrelation,
+    createDeploymentLifecycleCorrelation(initialRecord),
   );
   await closeOrganizationHandoff(record);
 

@@ -3,20 +3,25 @@ import { lstat, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 import { ensureDirectory } from "../filesystem/index.js";
+import { resolveOutputFilePaths } from "../filesystem/outputPaths.js";
 import type { CompileReport } from "../report/index.js";
+import type { RuntimePrivateExportDirectory } from "../runtime/operations.js";
 import { getRuntimeOperations } from "../runtime/registry.js";
 
 import {
   copyContainerFileToHost,
   type DockerArtifactExecFile,
 } from "./artifactsExportDocker.js";
+import { resolveArtifactOutputPaths } from "./artifactExportPublication.js";
 import { requireCompileReportAdapters } from "./artifactsExportPlan.js";
 import type { ExportIndexFile } from "./artifactsExportTypes.js";
 import type { DeploymentRecord } from "./record.js";
 
-const plans = (report: CompileReport) =>
-  (report.container?.runtime_instances ?? []).flatMap((instance) =>
+export const planPrivateArtifactExports = (report: CompileReport) => {
+  requireCompileReportAdapters(report, "export private runtime artifacts");
+  return (report.container?.runtime_instances ?? []).flatMap((instance) =>
     getRuntimeOperations(instance.runtime)?.privateExportDirectories?.(instance) ?? []);
+};
 
 const filesUnder = async (root: string): Promise<readonly string[]> => {
   if (!(await lstat(root)).isDirectory()) {
@@ -55,15 +60,12 @@ export const exportPrivateRuntimeArtifacts = async (input: Readonly<{
   report: CompileReport;
   target: DeploymentRecord["target"];
   timeoutMs: number;
-}>): Promise<PrivateArtifactsExportResult> => {
-  requireCompileReportAdapters(input.report, "export private runtime artifacts");
+}>, directories: readonly RuntimePrivateExportDirectory[] = planPrivateArtifactExports(input.report)): Promise<PrivateArtifactsExportResult> => {
+  const destinations = await resolveArtifactOutputPaths(input.destinationDirectory, directories.map((entry) => entry.relativePath));
   const output: ExportIndexFile[] = [];
   const missing: string[] = [];
-  for (const plan of plans(input.report)) {
-    const destination = path.join(
-      input.destinationDirectory,
-      ...plan.relativePath.split("/"),
-    );
+  for (const [i, plan] of directories.entries()) {
+    const destination = destinations[i]!;
     await ensureDirectory(path.dirname(destination));
     const copied = await copyContainerFileToHost({
       containerPath: plan.containerPath,
@@ -79,8 +81,10 @@ export const exportPrivateRuntimeArtifacts = async (input: Readonly<{
       missing.push(plan.relativePath);
       continue;
     }
-    for (const relative of await filesUnder(destination)) {
-      const bytes = await readFile(path.join(destination, ...relative.split("/")));
+    const relatives = await filesUnder(destination);
+    const checked = await resolveOutputFilePaths(destination, relatives);
+    for (const [i, relative] of relatives.entries()) {
+      const bytes = await readFile(checked[i]!);
       output.push({
         bytes: bytes.byteLength,
         path: `${plan.relativePath}/${relative}`,

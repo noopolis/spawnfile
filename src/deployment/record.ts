@@ -7,6 +7,8 @@ import {
   ensureDirectory, readUtf8File
 } from "../filesystem/index.js";
 import { deployResourcesSchema } from "./resourceLog.js";
+import { acquirePidLock } from "./pidLock.js";
+import { assertDeploymentLifecycleCorrelation, createDeploymentLifecycleCorrelation } from "./deploymentLifecycleCorrelation.js";
 import { publishDeploymentRecord } from "./recordPublication.js";
 import { compatibleIsoDateTimeSchema, SpawnfileError } from "../shared/index.js";
 import { recordingReportSchema } from "../report/index.js";
@@ -296,11 +298,22 @@ export const listDeploymentRecords = async (
 export const writeDeploymentRecord = async (
   outputDirectory: string,
   record: DeploymentRecord,
-  previous?: DeploymentRecord | null
+  previous?: DeploymentRecord | null,
+  publishExportFiles?: () => Promise<void>
 ): Promise<string> => {
   const parsed = parseDeploymentRecord(record);
   const recordPath = resolveDeploymentRecordPath(outputDirectory, parsed.name);
   await ensureDirectory(path.dirname(recordPath));
-  await publishDeploymentRecord(recordPath, parsed, undefined, previous);
-  return recordPath;
+  const release = await acquirePidLock(`${recordPath}.lock`);
+  try {
+    if (publishExportFiles) {
+      const current = await readDeploymentRecord(recordPath);
+      assertDeploymentLifecycleCorrelation(current, createDeploymentLifecycleCorrelation(parsed));
+      await publishExportFiles();
+    }
+    await publishDeploymentRecord(recordPath, parsed, undefined, previous);
+    return recordPath;
+  } finally {
+    await release();
+  }
 };

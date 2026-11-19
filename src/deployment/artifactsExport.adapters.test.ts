@@ -108,6 +108,45 @@ describe("artifacts export adapter requirements", () => {
     expect(await recordBytes()).toBe(before);
   });
 
+  it("rejects a compile report from a different deployment before reading files", async () => {
+    const { compiled, destination, recordBytes } = await setup(RUNTIME);
+    await writeUtf8File(path.join(compiled, REPORT_FILENAME), JSON.stringify({ ...report(RUNTIME), compile_fingerprint: "sf1:different" }));
+    const before = await recordBytes();
+    const docker = fakeDocker();
+    await expect(withSyntheticAdapter(RUNTIME, () => exportRunArtifacts({
+      compiledOutputDirectory: compiled, deploymentName: "default", destinationDirectory: destination, execFile: docker.execFile
+    }), { operations })).rejects.toThrow(/compile report does not match/u);
+    expect(docker.calls).toEqual([]);
+    expect(await recordBytes()).toBe(before);
+  });
+
+  it("keeps a replacement deployment when the run changes during an export", async () => {
+    const { compiled, destination, recordBytes } = await setup(RUNTIME);
+    const docker = fakeDocker();
+    const execFile: typeof docker.execFile = async (file, args) => {
+      if (args.includes("cp")) await writeDeploymentRecord(compiled, { ...record, run_id: "replacement" });
+      return docker.execFile(file, args);
+    };
+    await expect(withSyntheticAdapter(RUNTIME, () => exportRunArtifacts({
+      compiledOutputDirectory: compiled, deploymentName: "default", destinationDirectory: destination, execFile
+    }), { operations })).rejects.toThrow(/Deployment changed/u);
+    expect(JSON.parse(await recordBytes())).toMatchObject({ run_id: "replacement" });
+    expect(JSON.parse(await recordBytes())).not.toHaveProperty("export_index");
+    expect(await readdir(destination)).toEqual([]);
+  });
+
+  it("checks file and private directory declarations together before consulting Docker", async () => {
+    const { compiled, destination } = await setup(RUNTIME);
+    const docker = fakeDocker();
+    await expect(withSyntheticAdapter(RUNTIME, () => exportRunArtifacts({
+      compiledOutputDirectory: compiled, deploymentName: "default", destinationDirectory: destination,
+      execFile: docker.execFile, includePrivate: true
+    }), { operations: { ...operations, privateExportDirectories: () => [{ containerPath: "/sample", relativePath: LEDGER }] } }))
+      .rejects.toThrow(/unique/u);
+    expect(docker.calls).toEqual([]);
+    expect(await readdir(destination)).toEqual([]);
+  });
+
   it("exports a loaded adapter that legitimately has no export hooks", async () => {
     const { compiled, destination } = await setup(RUNTIME);
     const result = await withSyntheticAdapter(RUNTIME, () =>
