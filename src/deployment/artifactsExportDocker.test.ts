@@ -171,19 +171,23 @@ describe("copyVolumeFileToHost", () => {
     });
 
     expect(result).toBe(true);
-    expect(calls).toHaveLength(3);
-    // Every call carries the recorded deployment target's "--context default" prefix
-    // (withDockerTarget), same as every other deployment Docker helper in this folder.
-    expect(calls[0].slice(0, 2)).toEqual(["--context", "default"]);
-    expect(calls[0].slice(2)).toEqual(
-      expect.arrayContaining(["create", "-v", "spawnfile-project-moltnet-causal-abc123:/spawnfile-export-src:ro", "spawnfile-org:latest"])
-    );
-    expect(calls[1].slice(0, 2)).toEqual(["--context", "default"]);
-    expect(calls[1][2]).toBe("cp");
-    expect(calls[1][3]).toMatch(/^spawnfile-artifacts-export-.+:\/spawnfile-export-src\/causal\.jsonl$/);
-    expect(calls[1][4]).toBe("/tmp/out/causal.jsonl");
-    const readerContainerName = calls[0][calls[0].indexOf("--name") + 1];
-    expect(calls[2]).toEqual(["--context", "default", "rm", "-f", readerContainerName]);
+    expect(calls).toHaveLength(4);
+    const [inspect, create, copy, remove] = calls;
+    expect(inspect).toEqual(["--context", "default", "volume", "inspect", "--", "spawnfile-project-moltnet-causal-abc123"]);
+    expect(create).toEqual(expect.arrayContaining([
+      "--context", "default", "create", "--pull=never", "-v", "spawnfile-project-moltnet-causal-abc123:/spawnfile-export-src:ro",
+      "spawnfile-org:latest"
+    ]));
+    const reader = create![create!.indexOf("--name") + 1]!;
+    expect(copy).toEqual(["--context", "default", "cp", `${reader}:/spawnfile-export-src/causal.jsonl`, "/tmp/out/causal.jsonl"]);
+    expect(remove).toEqual(["--context", "default", "rm", "-f", reader]);
+  });
+
+  it("keeps a missing named volume missing", async () => {
+    const execFile = vi.fn(async () => { throw { stderr: "no such volume" }; });
+    await expect(copyVolumeFileToHost({ ...volumeCopy, execFile })).rejects.toThrow(/Unable to inspect source volume/u);
+    expect(execFile).toHaveBeenCalledTimes(1);
+    expect(execFile).toHaveBeenCalledWith("docker", ["--context", "default", "volume", "inspect", "--", "vol"], { timeout: 1_000 });
   });
 
   it.each([
@@ -199,9 +203,9 @@ describe("copyVolumeFileToHost", () => {
 
     await expect(copyVolumeFileToHost({ ...volumeCopy, execFile })).rejects.toThrow(/Unable to create a reader for volume "vol"/);
     const calledCommands = execFile.mock.calls.map(([, args]: [string, string[]]) =>
-      args.find((arg) => ["create", "cp", "rm"].includes(arg))
+      args.find((arg) => ["inspect", "create", "cp", "rm"].includes(arg))
     );
-    expect(calledCommands).toEqual(["create", "rm"]);
+    expect(calledCommands).toEqual(["inspect", "create", "rm"]);
   });
 
   it("returns false for a confirmed absent volume file and still removes the reader", async () => {
@@ -217,7 +221,7 @@ describe("copyVolumeFileToHost", () => {
     const calledCommands = execFile.mock.calls.map(([, args]: [string, string[]]) =>
       args.find((arg) => ["create", "cp", "inspect", "rm"].includes(arg))
     );
-    expect(calledCommands).toEqual(["create", "cp", "inspect", "rm"]);
+    expect(calledCommands).toEqual(["inspect", "create", "cp", "inspect", "rm"]);
   });
 
   it("throws on a non-absence cp failure and still removes the reader", async () => {
@@ -230,6 +234,6 @@ describe("copyVolumeFileToHost", () => {
     const calledCommands = execFile.mock.calls.map(([, args]: [string, string[]]) =>
       args.find((arg) => ["create", "cp", "inspect", "rm"].includes(arg))
     );
-    expect(calledCommands).toEqual(["create", "cp", "rm"]);
+    expect(calledCommands).toEqual(["inspect", "create", "cp", "rm"]);
   });
 });

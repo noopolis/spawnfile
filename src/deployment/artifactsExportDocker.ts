@@ -87,8 +87,8 @@ const wasInterrupted = (error: unknown): boolean => {
  * `Could not find the file <path> in container <ref>` (older daemons). Anything else
  * (daemon unreachable, host write failure, permission, unrelated path) does not match. */
 const reportsAbsentSource = (message: string, containerRef: string, containerPath: string): boolean =>
-  message.includes(`No such container:path: ${containerRef}:${containerPath}`)
-  || message.includes(`Could not find the file ${containerPath} in container ${containerRef}`);
+  message.trim().endsWith(`No such container:path: ${containerRef}:${containerPath}`)
+  || message.trim().endsWith(`Could not find the file ${containerPath} in container ${containerRef}`);
 
 /**
  * `docker cp <containerRef>:<sourcePath> <hostPath>`. Resolves true on success and false
@@ -167,11 +167,19 @@ export const copyVolumeFileToHost = async (input: {
   const mountPoint = "/spawnfile-export-src";
   const readerContainerName = `spawnfile-artifacts-export-${randomUUID()}`;
 
+  // Docker creates a missing named volume on mount. Check the recorded source first.
+  try {
+    await input.execFile(input.dockerCommand,
+      withDockerTarget(input.target, ["volume", "inspect", "--", input.volumeName]), { timeout: input.timeoutMs });
+  } catch (error) {
+    throw new SpawnfileError("runtime_error", `Unable to inspect source volume "${input.volumeName}": ${toErrorMessage(error)}`);
+  }
+
   try {
     await input.execFile(
       input.dockerCommand,
       withDockerTarget(input.target, [
-        "create",
+        "create", "--pull=never",
         "--name", readerContainerName,
         "-v", `${input.volumeName}:${mountPoint}:ro`,
         input.readerImage

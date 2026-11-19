@@ -134,7 +134,7 @@ const createFakeExecFile = (options: { containerAlive?: boolean; missingSourcePa
   const missing = options.missingSourcePaths ?? [];
   return async (_file: string, args: string[]): Promise<{ stderr: string; stdout: string }> => {
     if (args.includes("inspect")) {
-      if (!containerAlive) {
+      if (!containerAlive && args.includes("container")) {
         throw { stderr: "Error: No such container: spawnfile-project" };
       }
       return { stderr: "", stdout: "[]" };
