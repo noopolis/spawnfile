@@ -153,10 +153,7 @@ export const renderEntrypoint = (
   const lines = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
-    ...(entrypoint?.prelude ?? [
-      "volume_bootstrap_uid=1001",
-      "volume_bootstrap_gid=1001"
-    ]),
+    ...(entrypoint?.prelude ?? []),
     "",
     ...createBackedMountGuard(options.persistentMounts ?? [], (id) =>
       hosts.map(({ host }) => host.externalMountEnvironment?.(id)).find((env) => env !== undefined)),
@@ -188,7 +185,7 @@ export const renderEntrypoint = (
     "",
     ...createConfigEnvMaterializationFunction(),
     "",
-    ...createWorkspaceResourceShellFunctions()
+    ...createWorkspaceResourceShellFunctions(entrypoint !== undefined)
   ];
 
   lines.push(...hosts.flatMap(({ host }) => host.environmentPrelude ?? []));

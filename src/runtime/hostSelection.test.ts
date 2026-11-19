@@ -32,7 +32,6 @@ const plan: RuntimeTargetPlan = {
 it("uses the ordinary entrypoint and no native bootstrap for a runtime with no host integration", () => {
   expect(createRootfsFiles([plan])).toEqual([{ content: "{}\n", path: "container/rootfs/state/agent.json" }]);
   const entrypoint = renderEntrypoint([plan], []);
-  expect(entrypoint).toContain("volume_bootstrap_uid=1001");
   expect(entrypoint).toContain("exec '/bin/agent' '/state/agent.json'");
   expect(entrypoint).not.toContain("--spawnfile-runtime-identity");
 });
