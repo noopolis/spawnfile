@@ -7,6 +7,7 @@ import {
   isAgentManifest,
   type LoadedManifest
 } from "../manifest/index.js";
+import { assertRootOnlyAdapters } from "./projectManifestGraph.js";
 import { assertRuntimeSupportsAgentWiring } from "../runtime/index.js";
 import { assignStableNodeIds } from "./helpers.js";
 import { resolvePlanMcpPlaceholders } from "./mcpPlaceholders.js";
@@ -47,7 +48,8 @@ export const buildCompilePlan = async (inputPath: string, options: BuildCompileP
     }
 
     const override = options.manifestOverrides?.get(canonicalPath);
-    const promise = override ? Promise.resolve({ manifest: override, manifestPath: canonicalPath }) : loadManifest(canonicalPath);
+    const promise = (override ? Promise.resolve({ manifest: override, manifestPath: canonicalPath }) : loadManifest(canonicalPath))
+      .then((loaded) => assertRootOnlyAdapters(loaded, rootManifestPath));
     loadCache.set(canonicalPath, promise);
     return promise;
   };

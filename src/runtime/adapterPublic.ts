@@ -7,6 +7,7 @@ export {
 } from "./pluginDefinition.js";
 export { loadRuntimeAdapterPlugins } from "./loadAdapterPlugins.js";
 export { withRuntimeAdapterPlugins } from "./registry.js";
+export { loadProjectRuntimeAdapterPlugins } from "../projectAdapters/loadProjectAdapters.js";
 export type { RuntimeCapabilityReceipts, RuntimeRegistryInstall } from "./registry.js";
 export type { NativeInstallHintProfile, NativeInstallRecipeInput, RuntimeInstallCapability } from "./containerRecipe.js";
 export type { RuntimeInstallSelection } from "./install.js";

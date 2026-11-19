@@ -21,8 +21,11 @@ export async function verifyDeclaredAdapterTeam(executable: string, consumer: st
   const compile = () => run(executable, ["compile", project, "--out", output], path.dirname(consumer), env);
   await assert.rejects(compile, /adapters trust/u);
   await assert.rejects(stat(output), { code: "ENOENT" });
+  await assert.rejects(run(executable, ["run", "--image", "."], project, env), /Image-mode run is not supported/u);
   await run(executable, ["adapters", "trust", "."], project, env);
   await run(executable, ["validate", "."], project, env);
+  const view = await run(executable, ["view"], project, env);
+  assert.match(view.stdout, /counter/u);
   await compile();
 
   const config = await readFile(path.join(output, "runtimes/echo-harness/agents/echo/agent.json"), "utf8");

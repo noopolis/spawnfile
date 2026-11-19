@@ -12,6 +12,7 @@ src/
 ├── evidenceExportHelper/ # Package-owned local evidence helper recipe and authority
 ├── filesystem/   # File IO and path utilities
 ├── manifest/     # Spawnfile schema parsing and validation
+├── projectAdapters/ # Root-declared runtime adapter modules and their operator trust gate
 ├── recording/    # Deployed wake evidence, moment composition and immutable local sync
 ├── release/      # Drained release: identity no-op, drain/resume, ledger, image pruning, failure notifier
 ├── report/       # Diagnostics and compile report generation

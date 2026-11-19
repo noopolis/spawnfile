@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RUNTIME_ADAPTER_NAME_PATTERN } from "../manifest/adapterSchemas.js";
 import { parseImageReference } from "../distribution/imageRef.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { RuntimeRegistryInstall } from "./registry.js";
@@ -156,7 +157,7 @@ export const validateRuntimeAdapterPlugin = (value: unknown, source: string): Ru
     return fail(`unsupported apiVersion ${String(value.apiVersion)} (expected ${RUNTIME_ADAPTER_API_VERSION})`);
   }
   const adapter = value.adapter;
-  if (!record(adapter) || typeof adapter.name !== "string" || !/^[a-z][a-z0-9-]*$/u.test(adapter.name)) {
+  if (!record(adapter) || typeof adapter.name !== "string" || !RUNTIME_ADAPTER_NAME_PATTERN.test(adapter.name)) {
     return fail("expected a lowercase adapter name (letters, digits, hyphens)");
   }
   if (typeof adapter.assertSupportedModelTarget !== "function" || typeof adapter.compileAgent !== "function"

@@ -10,6 +10,7 @@ src/cli/
 ├── runCli.ts       # Dedicated command routing and per-invocation adapter loading
 ├── cliProgram.ts   # Commander setup and command handlers
 ├── adapterOptions.ts # Explicit global --adapter parsing
+├── projectAdapterCommands.ts # `adapters trust` and the preAction hook loading trusted root-declared adapters for project commands
 ├── capabilitiesCommand.ts # Read-only public capability command registration
 ├── capabilitiesReceipt.ts # Strict Spawnfile capability receipt
 ├── composedLifecycleContractSet.ts # Closed machine command/contract inventory

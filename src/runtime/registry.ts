@@ -22,7 +22,7 @@ export const resolveImageCredentialUid = (name: string, options: ImageCredential
   return options.containerCredentialUid ?? (legacy === undefined ? undefined : options[legacy]);
 };
 
-type AdapterScope = ReadonlyMap<string, { adapter: RuntimeAdapter; entry: RuntimeRegistryEntry }>;
+type AdapterScope = Map<string, { adapter: RuntimeAdapter; entry: RuntimeRegistryEntry }>;
 const adapterScope = new AsyncLocalStorage<AdapterScope>();
 
 const selectedRuntimeAdapter = (name: string): RuntimeAdapter | undefined =>
@@ -213,30 +213,51 @@ export const loadRuntimeRegistry = async (): Promise<RuntimeRegistryEntry[]> => 
   }));
 };
 
-export const withRuntimeAdapterPlugins = async <T>(
-  plugins: readonly RuntimeAdapterPlugin[],
-  run: () => T | Promise<T>
-): Promise<T> => {
-  const scope = new Map<string, { adapter: RuntimeAdapter; entry: RuntimeRegistryEntry }>();
+const registerScopedPlugins = async (scope: AdapterScope, plugins: readonly RuntimeAdapterPlugin[]): Promise<void> => {
   const catalog = plugins.length ? await loadBuiltinCatalog() : [];
+  const offset = scope.size;
+  const additions: AdapterScope = new Map();
   for (const [index, plugin] of plugins.entries()) {
-    const { adapter, catalog: metadata } = validateRuntimeAdapterPlugin(plugin, `#${index + 1}`);
+    const { adapter, catalog: metadata } = validateRuntimeAdapterPlugin(plugin, `#${offset + index + 1}`);
     const name = adapter.name;
-    if (scope.has(name)) {
+    if (scope.has(name) || additions.has(name)) {
       throw new SpawnfileError("validation_error", `Duplicate runtime adapter: ${name}`);
     }
     const existing = catalog.find((entry) => entry.name === name);
     if (runtimeAdapters.has(name) || (existing && existing.status !== "exploratory")) {
       throw new SpawnfileError("validation_error", `Runtime adapter ${name} cannot shadow a bundled adapter or active catalog entry`);
     }
-    scope.set(name, { adapter, entry: { ...metadata, ...trainingFor(adapter), name, status: metadata.status ?? "active" } });
+    additions.set(name, { adapter, entry: { ...metadata, ...trainingFor(adapter), name, status: metadata.status ?? "active" } });
   }
+  for (const [name, registration] of additions) scope.set(name, registration);
+};
+
+export const withRuntimeAdapterPlugins = async <T>(
+  plugins: readonly RuntimeAdapterPlugin[],
+  run: () => T | Promise<T>
+): Promise<T> => {
+  const scope: AdapterScope = new Map();
+  await registerScopedPlugins(scope, plugins);
   try {
     return await adapterScope.run(scope, run);
   } finally {
     scope.clear();
   }
 };
+
+/**
+ * Adds plugins to the innermost scope opened by `withRuntimeAdapterPlugins`, with the same
+ * duplicate and shadowing refusals. Validation completes before any plugin becomes visible.
+ */
+export const addRuntimeAdapterPlugins = async (plugins: readonly RuntimeAdapterPlugin[]): Promise<void> => {
+  const scope = adapterScope.getStore();
+  if (!scope) throw new SpawnfileError("runtime_error", "Runtime adapters can only be added inside withRuntimeAdapterPlugins");
+  await registerScopedPlugins(scope, plugins);
+};
+
+/** The adapter object an external plugin registered in this scope, never a bundled one. */
+export const getScopedRuntimeAdapter = (runtimeName: string): RuntimeAdapter | undefined =>
+  adapterScope.getStore()?.get(runtimeName)?.adapter;
 
 export const getRegisteredRuntime = async (
   runtimeName: string
@@ -269,7 +290,7 @@ export const requireRuntimeAdapters = (
   throw new SpawnfileError(
     "runtime_error",
     `Cannot ${operation}: no runtime adapter is loaded for ${listed}. ` +
-      "Re-run with --adapter <module> for each external runtime adapter; " +
+      "Run it from the trusted source project that declares the adapter, or re-run with --adapter <module>; " +
       "Spawnfile never loads an adapter named by report data."
   );
 };

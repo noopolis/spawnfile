@@ -70,6 +70,7 @@ import { registerUsageCommand } from "./usageCommand.js";
 import { registerRecordCommands } from "./recordCommands.js";
 import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
+import { registerAdaptersCommands, registerProjectAdapterHook } from "./projectAdapterCommands.js";
 import { registerVolumeCommands } from "./volumeCommands.js";
 import { registerTrainCommand } from "./trainCommand.js";
 import { runTraining } from "./trainingExecution.js";
@@ -183,6 +184,8 @@ export const createCliProgram = (
     writeOut: (message) => writeCommanderOutput(streams.stdout, message)
   });
 
+  registerProjectAdapterHook(program);
+  registerAdaptersCommands(program, streams);
   registerLifecycleCommands(program, handlers, streams, cliOptions.stdin, (code) => { commandExitCode = code; });
   registerDevCommands(program, handlers, streams);
   registerArtifactsCommands(program, handlers, streams);

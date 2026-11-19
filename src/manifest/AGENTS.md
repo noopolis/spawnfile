@@ -8,6 +8,7 @@ This folder owns Spawnfile parsing and validation of user-authored schema.
 src/manifest/
 ├── index.ts                  # Barrel for manifest APIs
 ├── schemas.ts                # Zod schema and manifest type exports
+├── adapterSchemas.ts         # Root-only `adapters` map grammar (confined ./ paths or installed package names)
 ├── trainingSchemas.ts        # Strict manifest training declarations and target paths
 ├── trainingSchemas.test.ts   # Training declarations and manifest placement tests
 ├── trainingDataSchemas.ts    # Dataset schema; reuse authored override declarations

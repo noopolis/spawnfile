@@ -26,7 +26,8 @@ src/runtime/
 ├── containerRecipe.ts     # Shared recipe input and image copy helpers
 ├── install.ts             # Registry install selection normalization
 ├── containerPackageOverrides.ts # Runtime install npm package override contract consumed by container.ts
-├── registry.ts            # Bundled adapter registration and lookup
+├── registry.ts            # Bundled adapter registration, invocation-scoped plugins and lookup
+├── loadAdapterPlugins.ts  # Resolve-then-import of explicit or declared adapter ESM modules
 ├── usageTypes.ts          # Normalized usage row types
 ├── usageLedger.ts         # Usage aggregation and historical parser exports
 ├── usageLedgerRead.ts     # Shared artifact `cat` reader distinguishes absent/unreadable; usage merges two generations

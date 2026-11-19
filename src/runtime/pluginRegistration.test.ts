@@ -8,7 +8,7 @@ import { RuntimeAdapterBase } from "./adapterBase.js";
 import { createRuntimeInstallRecipe } from "./container.js";
 import { loadRuntimeAdapterPlugins } from "./loadAdapterPlugins.js";
 import { defineRuntimeAdapterPlugin } from "./pluginDefinition.js";
-import { assertRuntimeCanCompile, getRuntimeAdapter, getRuntimeOperations, listRuntimeAdapters, listRuntimeOperations, withRuntimeAdapterPlugins } from "./registry.js";
+import { addRuntimeAdapterPlugins, assertRuntimeCanCompile, getRuntimeAdapter, getRuntimeOperations, listRuntimeAdapters, listRuntimeOperations, withRuntimeAdapterPlugins } from "./registry.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -40,6 +40,18 @@ const plugin = (name: string) => defineRuntimeAdapterPlugin({
     defaultBranch: "main", ref: "v1", remote: "https://example.invalid/plugin.git",
     install: { kind: "npm", package: "fixture-runtime", version: "1.0.0" }
   }
+});
+
+it("admits each batch atomically when concurrent registrations share a scope", async () => {
+  await withRuntimeAdapterPlugins([], async () => {
+    const results = await Promise.allSettled([
+      addRuntimeAdapterPlugins([plugin("overlap")]),
+      addRuntimeAdapterPlugins([plugin("overlap")])
+    ]);
+    expect(results.map(({ status }) => status).sort()).toEqual(["fulfilled", "rejected"]);
+    await expect(addRuntimeAdapterPlugins([plugin("partial"), plugin("overlap")])).rejects.toThrow(/Duplicate/u);
+    expect(listRuntimeAdapters()).not.toContain("partial");
+  });
 });
 
 it("projects scoped catalog metadata, preserves the adapter receiver, and resolves standard recipes", async () => {
