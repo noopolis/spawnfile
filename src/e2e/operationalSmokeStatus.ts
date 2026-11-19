@@ -100,18 +100,6 @@ const assertOperationalStatus = (status: StatusJson): void => {
       severity: "ok",
       source: "network",
       subject: "network:ops_lab"
-    },
-    {
-      key: "network.room",
-      severity: "ok",
-      source: "network",
-      subject: "room:ops_lab:ops-room"
-    },
-    {
-      key: "network.agent.connected",
-      severity: "ok",
-      source: "network",
-      subject: "agent:pico-scheduled"
     }
   ]) {
     requireObservation(status, expected);

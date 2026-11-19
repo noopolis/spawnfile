@@ -12,6 +12,7 @@ import { runCli } from "../cli/runCli.js";
 import { assertRecordedMemoryRetention } from "../deployment/index.js";
 import { removeDirectory } from "../filesystem/index.js";
 import { isSpawnfileError, SpawnfileError } from "../shared/index.js";
+import type { MoltnetAgentSummary } from "./moltnetWireTypes.js";
 import {
   assertPicoClawWorkspace,
   PICOCLAW_PORT,
@@ -193,12 +194,12 @@ const waitForOperationalState = async (
       containerName,
       `http://127.0.0.1:${MOLTNET_PORT}/v1/agents`
     );
-    const { agents } = parseJson<{ agents?: Array<{ id: string; rooms?: string[] }> }>(
+    const { agents } = parseJson<{ agents?: MoltnetAgentSummary[] }>(
       rawAgents,
       "Moltnet agents"
     );
     return agents?.some(
-      (agent) => agent.id === "pico-scheduled" && (agent.rooms ?? []).includes("ops-room")
+      (agent) => agent.id === "pico-scheduled" && agent.connected === true && agent.rooms?.includes("ops-room")
     )
       ? true
       : null;
