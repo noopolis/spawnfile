@@ -32,7 +32,8 @@ const loadRenderModule = async (
     }
   >
 ) => {
-  vi.doMock("../runtime/index.js", () => ({
+  vi.doMock("../runtime/index.js", async (importOriginal) => ({
+    ...await importOriginal<typeof import("../runtime/index.js")>(),
     createRuntimeInstallRecipe: vi.fn(async (runtimeName: string) => {
       const recipe = recipeByRuntime[runtimeName];
       if (!recipe) {
