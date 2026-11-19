@@ -36,7 +36,7 @@ import {
   rollbackCandidateContainer
 } from "./consumeImageLifecycle.js";
 import { createConsumerDockerRunner } from "./dockerRunner.js";
-import { prepareImageHostLaunch } from "./imageHost.js";
+import { prepareImageHostLaunch, requireImageRuntimeAdapters } from "./imageHost.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
 import { parseImageReference } from "./imageRef.js";
@@ -194,6 +194,7 @@ const consumeImageUpLocked = async (
     runDocker: options.runDocker
   });
   const report = inspection.report;
+  requireImageRuntimeAdapters(report, `start image ${imageRef}`);
 
   // Resolve the full environment first (auth profile, env file, process-env
   // overrides, and generated runtime tokens), then preflight against it so

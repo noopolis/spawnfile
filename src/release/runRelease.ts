@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 
-import { normalizeDeploymentName } from "../deployment/index.js";
+import { normalizeDeploymentName, requireCompileReportAdapters } from "../deployment/index.js";
 
 import { recoverInterruptedDrain, requestForTarget, resumeTargets } from "./drainPhase.js";
 import { drainTargetsFor } from "./drainTargets.js";
@@ -83,6 +83,13 @@ const releaseLocked = async (
     await clearDeferral(paths.pending);
     request.log(`release: ${compiled.identity.slice(0, 19)} is already running as ${ledger!.image_tag}; nothing to do`);
     return { identity: compiled.identity, imageTag: ledger!.image_tag, kind: "unchanged" };
+  }
+  // The release starts this compiled image; refuse before pruning, building or draining
+  // when an adapter it names is absent from this invocation.
+  try {
+    requireCompileReportAdapters(compiled.compileResult.report, `release ${request.deployment}`);
+  } catch (error) {
+    throw new ReleaseError("blocked", (error as Error).message);
   }
   const prepared = request.drain && running?.running ? {
     containerRef: running.id,

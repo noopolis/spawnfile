@@ -1,5 +1,5 @@
 import type { CompileReport, ContainerPersistentMountReport } from "../report/index.js";
-import { getRuntimeOperations, listRuntimeOperations } from "../runtime/registry.js";
+import { getRuntimeOperations, listRuntimeOperations, requireRuntimeAdapters } from "../runtime/registry.js";
 import type { RuntimeExportFile, RuntimeUsageOperations } from "../runtime/operations.js";
 
 export type PlannedExportFile = RuntimeExportFile;
@@ -94,10 +94,21 @@ const planUsageFiles = (
   }));
 };
 
+/** Every runtime a compile report names; an absent adapter would silently plan zero files. */
+export const compileReportRuntimeNames = (report: CompileReport): string[] => [
+  ...(report.container?.runtime_instances ?? []).map((instance) => instance.runtime),
+  ...(report.container?.runtimes_installed ?? []),
+  ...(report.nodes ?? []).flatMap((node) => node.runtime ? [node.runtime] : [])
+];
+
+export const requireCompileReportAdapters = (report: CompileReport, operation: string): void =>
+  requireRuntimeAdapters(compileReportRuntimeNames(report), operation);
+
 /** Resolves every durable artifact file this run's compile report declares, and where each
  * one is read from. Pure function of the compile report alone (no deployment record, no
  * Docker) — `artifactsExport.ts` supplies the live container name at execution time. */
 export const planArtifactExports = (report: CompileReport): PlannedExportFile[] => {
+  requireCompileReportAdapters(report, "export this deployment's artifacts");
   const mounts = mountById(report.container?.persistent_mounts);
   return [
     ...planMoltnetFiles(report, mounts),

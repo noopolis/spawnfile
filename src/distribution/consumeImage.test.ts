@@ -4,8 +4,11 @@ import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { downDeployment, readHomeDeploymentRecord, readHomeDeploymentReport } from "../deployment/index.js";
+import {
+  downDeployment, readHomeDeploymentRecord, readHomeDeploymentReport, resolveHomeRecordPath, resolveHomeReportPath
+} from "../deployment/index.js";
 import { removeDirectory } from "../filesystem/index.js";
+import { withSyntheticAdapter } from "../deployment/syntheticRuntimeAdapter.test-helper.js";
 
 import { daimonImageContractFiles } from "../runtime/daimon/host/imageContract.test-fixtures.js";
 import { buildDistributionReport } from "./buildDistributionReport.js";
@@ -733,5 +736,45 @@ describe("consumeImageUp", () => {
         runDocker: createFakeDocker({ calls: [] })
       })
     ).rejects.toThrow(/already exists/);
+  });
+});
+
+const syntheticReport = (runtime: string) => buildDistributionReport({
+  envVariables: [], generatedAt: "2026-06-13T00:00:00.000Z", internalPorts: [], modelAuthMethods: {}, moltnetNetworks: [],
+  organization: { agents: [{ id: "agent:s", name: "s", runtime, teams: [] }], project: "distribution-org", teams: [] },
+  persistentMounts: [], portMappings: [], publishedPorts: [], resources: [],
+  runtimeInstances: [{
+    config_path: "/c", home_path: null, id: "synthetic-s", internal_port: null, model_auth_methods: {},
+    model_secrets_required: [], node_ids: ["agent:s"], published_port: null, runtime, workspace_path: "/w"
+  }]
+});
+
+describe("consumeImageUp adapter requirements", () => {
+  const mutations = (calls: string[][]) => calls.filter((args) =>
+    ["rename", "stop", "run", "start"].includes(args[0]!) || (args[0] === "container" && args[1] === "create")
+      || (args[0] === "rm" && !args.some((arg) => arg.startsWith("spawnfile-inspect-"))));
+
+  it("refuses an image naming an absent adapter before touching the running deployment", async () => {
+    await consumeImageUp("you/org:v1", {
+      authValues: { ANTHROPIC_API_KEY: "sk" }, deploymentName: "guarded", runDocker: createFakeDocker({ calls: [] })
+    });
+    const stored = () => Promise.all([resolveHomeRecordPath("guarded"), resolveHomeReportPath("guarded")].map((file) => readFile(file, "utf8")));
+    const before = await stored();
+    const state: FakeDockerState = { calls: [] };
+    await expect(consumeImageUp("you/org:v2", {
+      deploymentName: "guarded", runDocker: createFakeDocker(state, syntheticReport("absent-runtime"), { liveExists: true })
+    })).rejects.toThrow(/start image you\/org:v2.*"absent-runtime".*--adapter <module>/u);
+    expect(mutations(state.calls)).toEqual([]);
+    expect(await stored()).toEqual(before);
+  });
+
+  it("applies a loaded adapter's host security arguments to the started image", async () => {
+    const state: FakeDockerState = { calls: [] };
+    const host = { prepareImageLaunch: async () => ({ securityArgs: ["--security-opt", "no-new-privileges"] }) };
+    await withSyntheticAdapter("synthetic-runtime", () => consumeImageUp("you/org:v1", {
+      deploymentName: "synthetic", runDocker: createFakeDocker(state, syntheticReport("synthetic-runtime"))
+    }), { host });
+    expect(state.calls.find((args) => args[0] === "run")).toEqual(expect.arrayContaining(["--security-opt", "no-new-privileges"]));
+    expect((await readHomeDeploymentRecord("synthetic")).units[0]?.container_id).toBe(candidateContainerId);
   });
 });

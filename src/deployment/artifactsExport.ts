@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { readFile, rm } from "node:fs/promises";
+import { readFile, rename, rm } from "node:fs/promises";
 
 import { ensureDirectory, fileExists, readUtf8File, writeUtf8File } from "../filesystem/index.js";
 import type { CompileReport } from "../report/index.js";
@@ -47,9 +47,12 @@ export interface ExportRunArtifactsOptions {
 export interface ExportRunArtifactsResult {
   deploymentName: string;
   /** Planned files that failed to copy despite the container/volume being reachable
-   * (a real per-file problem, worth surfacing — as opposed to `missingOptionalFiles`). */
+   * (a real per-file problem, worth surfacing, as opposed to `missingOptionalFiles`).
+   * When non-empty, nothing is promoted into the destination: no file, no index and no
+   * deployment-record marker is written, so an earlier successful export stays intact. */
   failedFiles: string[];
   index: ExportIndex;
+  /** Written only when `failedFiles` is empty. */
   indexPath: string;
   /** Planned files that were legitimately absent (e.g. no recall yet) — not failures. */
   missingOptionalFiles: string[];
@@ -272,21 +275,41 @@ export const exportRunArtifacts = async (
 
   const readerImage = options.readerImage ?? unit.image_tag;
 
+  const indexPath = path.join(destinationDirectory, "spawnfile", "export-index.json");
+  // Copies land in a private staging directory first: a failed copy must never remove a
+  // file an earlier successful export already indexed at the same destination.
+  const stagingDirectory = path.join(destinationDirectory, `.spawnfile-export-${randomUUID()}`);
+  await ensureDirectory(stagingDirectory);
+  try {
+    const staged = await stageExport({
+      containerRef, dockerCommand, execFile: execFileImpl, includePrivate: options.includePrivate === true,
+      planned, readerImage, report, stagingDirectory, target: record.target, timeoutMs
+    });
+    return await publishExport({
+      ...staged, compiledOutputDirectory, destinationDirectory, indexPath, record, runId, stagingDirectory
+    });
+  } finally {
+    await rm(stagingDirectory, { force: true, recursive: true });
+  }
+};
+
+const stageExport = async (input: {
+  containerRef: string;
+  dockerCommand: string;
+  execFile: DockerArtifactExecFile;
+  includePrivate: boolean;
+  planned: readonly PlannedExportFile[];
+  readerImage: string;
+  report: CompileReport;
+  stagingDirectory: string;
+  target: DeploymentRecord["target"];
+  timeoutMs: number;
+}): Promise<{ failedFiles: string[]; files: ExportIndexFile[]; missingOptionalFiles: string[] }> => {
   const files: ExportIndexFile[] = [];
   const missingOptionalFiles: string[] = [];
   const failedFiles: string[] = [];
-
-  for (const plan of planned) {
-    const entry = await exportOnePlannedFile({
-      containerRef,
-      destinationDirectory,
-      dockerCommand,
-      execFile: execFileImpl,
-      plan,
-      readerImage,
-      target: record.target,
-      timeoutMs
-    });
+  for (const plan of input.planned) {
+    const entry = await exportOnePlannedFile({ ...input, destinationDirectory: input.stagingDirectory, plan });
     if (entry) {
       files.push(entry);
     } else if (plan.optional) {
@@ -295,36 +318,60 @@ export const exportRunArtifacts = async (
       failedFiles.push(plan.relativePath);
     }
   }
-  if (options.includePrivate === true) {
+  if (input.includePrivate) {
     const privateResult = await exportPrivateRuntimeArtifacts({
-      containerRef,
-      destinationDirectory,
-      dockerCommand,
-      execFile: execFileImpl,
-      report,
-      target: record.target,
-      timeoutMs,
+      containerRef: input.containerRef,
+      destinationDirectory: input.stagingDirectory,
+      dockerCommand: input.dockerCommand,
+      execFile: input.execFile,
+      report: input.report,
+      target: input.target,
+      timeoutMs: input.timeoutMs,
     });
     files.push(...privateResult.files);
+    // A requested private directory that cannot be read is a required-file failure.
     failedFiles.push(...privateResult.missing);
   }
+  return { failedFiles, files, missingOptionalFiles };
+};
 
+const publishExport = async (input: {
+  compiledOutputDirectory: string;
+  destinationDirectory: string;
+  failedFiles: string[];
+  files: ExportIndexFile[];
+  indexPath: string;
+  missingOptionalFiles: string[];
+  record: DeploymentRecord;
+  runId: string;
+  stagingDirectory: string;
+}): Promise<ExportRunArtifactsResult> => {
+  const { failedFiles, indexPath, missingOptionalFiles, record, runId } = input;
   const index: ExportIndex = {
     deployment: record.name,
     exported_at: new Date().toISOString(),
-    files: files.sort((left, right) => left.path.localeCompare(right.path)),
+    files: input.files.sort((left, right) => left.path.localeCompare(right.path)),
     run_id: runId,
     version: EXPORT_INDEX_VERSION
   };
 
-  const indexPath = path.join(destinationDirectory, "spawnfile", "export-index.json");
+  // A required file that failed to copy is not a successful export: leave the
+  // destination, its index and the deployment record exactly as they were.
+  if (failedFiles.length > 0) {
+    return { deploymentName: record.name, failedFiles, index, indexPath, missingOptionalFiles };
+  }
+  for (const file of index.files) {
+    const finalPath = hostPathFor(input.destinationDirectory, file.path);
+    await ensureDirectory(path.dirname(finalPath));
+    await rename(hostPathFor(input.stagingDirectory, file.path), finalPath);
+  }
   await ensureDirectory(path.dirname(indexPath));
   await writeUtf8File(indexPath, `${JSON.stringify(index, null, 2)}\n`);
 
   // Stamp the export-before-teardown marker onto the SAME deployment record `spawnfile
   // down` resolves (record.ts's `export_index`), so down never needs a second, out-of-band
   // way to learn that this run's artifacts are already safe to discard the container for.
-  await writeDeploymentRecord(compiledOutputDirectory, {
+  await writeDeploymentRecord(input.compiledOutputDirectory, {
     ...record,
     export_index: { exported_at: index.exported_at, path: indexPath, run_id: runId }
   });

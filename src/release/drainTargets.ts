@@ -1,5 +1,5 @@
 import type { RuntimeDrainTarget } from "../runtime/operations.js";
-import { getRuntimeOperations } from "../runtime/registry.js";
+import { getRuntimeOperations, requireRuntimeAdapters } from "../runtime/registry.js";
 
 import { createRuntimeDrainTarget } from "./drainSupport.js";
 import type { RunningUnit } from "./releaseDocker.js";
@@ -15,6 +15,13 @@ export const drainTargetsFor = async (
   const selected = runtimes ?? await deps.runtimesOf(request, unit.imageId).catch((error: unknown) => {
     throw new ReleaseError("blocked", `cannot read which runtimes the running image holds, so it cannot be shown drainable: ${(error as Error).message}`);
   });
+  // An absent adapter is not "no drain contract": skipping it would leave its turns
+  // running, or report a resume that never happened and clear the drain marker.
+  try {
+    requireRuntimeAdapters(selected, "drain or resume the running deployment");
+  } catch (error) {
+    throw new ReleaseError("blocked", (error as Error).message);
+  }
   const operations = [...new Set(selected)].map((runtime) => ({ runtime, drain: getRuntimeOperations(runtime)?.drain }));
   const undrainable = operations.flatMap(({ runtime, drain }) => drain ? [] : [runtime]);
   if (requireAll && (selected.length === 0 || undrainable.length > 0)) {

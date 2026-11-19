@@ -10,6 +10,7 @@ import {
   copyContainerFileToHost,
   type DockerArtifactExecFile,
 } from "./artifactsExportDocker.js";
+import { requireCompileReportAdapters } from "./artifactsExportPlan.js";
 import type { ExportIndexFile } from "./artifactsExportTypes.js";
 import type { DeploymentRecord } from "./record.js";
 
@@ -55,6 +56,7 @@ export const exportPrivateRuntimeArtifacts = async (input: Readonly<{
   target: DeploymentRecord["target"];
   timeoutMs: number;
 }>): Promise<PrivateArtifactsExportResult> => {
+  requireCompileReportAdapters(input.report, "export private runtime artifacts");
   const output: ExportIndexFile[] = [];
   const missing: string[] = [];
   for (const plan of plans(input.report)) {

@@ -248,6 +248,32 @@ export const isBundledRuntimeAdapter = (runtimeName: string): boolean => runtime
 export const hasRuntimeAdapter = (runtimeName: string): boolean =>
   selectedRuntimeAdapter(runtimeName) !== undefined;
 
+/** Runtime names a saved report refers to that this invocation has no adapter for. */
+export const missingRuntimeAdapters = (runtimeNames: Iterable<string | null | undefined>): string[] =>
+  [...new Set([...runtimeNames].filter((name): name is string => typeof name === "string" && name.length > 0))]
+    .filter((name) => !hasRuntimeAdapter(name))
+    .sort();
+
+/**
+ * Refuses an operation on report data naming a runtime with no adapter in this
+ * invocation. A known adapter may have no hooks; only an absent one is refused.
+ * Report data never selects a module to load, so the operator must pass it.
+ */
+export const requireRuntimeAdapters = (
+  runtimeNames: Iterable<string | null | undefined>,
+  operation: string
+): void => {
+  const missing = missingRuntimeAdapters(runtimeNames);
+  if (missing.length === 0) return;
+  const listed = missing.map((name) => JSON.stringify(name)).join(", ");
+  throw new SpawnfileError(
+    "runtime_error",
+    `Cannot ${operation}: no runtime adapter is loaded for ${listed}. ` +
+      "Re-run with --adapter <module> for each external runtime adapter; " +
+      "Spawnfile never loads an adapter named by report data."
+  );
+};
+
 export const assertRuntimeCanCompile = async (
   runtimeName: string
 ): Promise<RuntimeRegistryEntry> => {
