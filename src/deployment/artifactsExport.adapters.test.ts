@@ -73,7 +73,7 @@ const fakeDocker = (fail: string[] = [], content = "fresh") => {
     if (args.includes("cp")) {
       const source = args[args.indexOf("cp") + 1]!;
       const destination = args[args.indexOf("cp") + 2]!;
-      if (fail.some((needle) => source.includes(needle))) throw new Error("no such file");
+      if (fail.some((needle) => source.includes(needle))) throw { stderr: `Error: No such container:path: ${source}` };
       if (source.endsWith("/synthetic/private")) {
         await mkdir(destination, { recursive: true });
         await writeFile(path.join(destination, "trace.json"), `${content}\n`);
@@ -84,6 +84,33 @@ const fakeDocker = (fail: string[] = [], content = "fresh") => {
     return { stderr: "", stdout: "" };
   };
   return { calls, execFile };
+};
+
+const optionalOperations: RuntimeOperations = {
+  exportFiles: () => [{ optional: true, relativePath: LEDGER, source: { kind: "volume", volumeName: "synthetic-volume", volumePath: "ledger.jsonl" } }]
+};
+
+/** Ordinary Docker service failures, keyed by the Docker subcommand that fails. None of
+ * them names the planned source as absent, so none may count as an optional miss. */
+const serviceFailures: ReadonlyArray<readonly [string, string, unknown]> = [
+  ["daemon unavailable during cp", "cp", { stderr: "Cannot connect to the Docker daemon at unix:///var/run/docker.sock" }],
+  ["local disk full during cp", "cp", { stderr: "Error: open /tmp/ledger.jsonl: no space left on device" }],
+  ["cp timeout", "cp", Object.assign(new Error("Command failed"), { killed: true, signal: "SIGTERM" })],
+  ["reader image missing", "create", { stderr: "Unable to find image 'spawnfile-synthetic:latest' locally" }],
+  ["volume create failure", "create", { stderr: "Error response from daemon: create synthetic-volume: error while creating volume" }]
+];
+
+/** fakeDocker, except the first matching subcommand throws `failure`. */
+const failingDocker = (subcommand: string, failure: unknown) => {
+  const inner = fakeDocker([], "second");
+  const execFile = async (file: string, args: string[]) => {
+    if (args.includes(subcommand)) {
+      inner.calls.push(args);
+      throw failure;
+    }
+    return inner.execFile(file, args);
+  };
+  return { calls: inner.calls, execFile };
 };
 
 const setup = async (runtime: string, overrides: Partial<DeploymentRecord> = {}) => {
@@ -186,6 +213,33 @@ describe("artifacts export adapter requirements", () => {
     expect((await readdir(destination)).sort()).toEqual(["raw", "spawnfile"]);
   });
 
+  it("records a confirmed absent optional volume file as missing, not failed, and stamps the marker", async () => {
+    const { compiled, destination, recordBytes } = await setup(RUNTIME);
+    const result = await withSyntheticAdapter(RUNTIME, () => exportRunArtifacts({
+      compiledOutputDirectory: compiled, deploymentName: "default", destinationDirectory: destination,
+      execFile: fakeDocker(["ledger.jsonl"]).execFile
+    }), { operations: optionalOperations });
+    expect(result).toMatchObject({ failedFiles: [], missingOptionalFiles: [LEDGER] });
+    await expect(recordBytes()).resolves.toContain(result.indexPath);
+  });
+
+  it.each(serviceFailures)("aborts on %s for an optional file and leaves the earlier export intact", async (_label, subcommand, failure) => {
+    const { compiled, destination, recordBytes } = await setup(RUNTIME);
+    const first = await withSyntheticAdapter(RUNTIME, () => exportRunArtifacts({
+      compiledOutputDirectory: compiled, deploymentName: "default", destinationDirectory: destination, execFile: fakeDocker([], "first").execFile
+    }), { operations: optionalOperations });
+    const marked = await recordBytes();
+    const firstIndex = await readFile(first.indexPath, "utf8");
+    await expect(withSyntheticAdapter(RUNTIME, () => exportRunArtifacts({
+      compiledOutputDirectory: compiled, deploymentName: "default", destinationDirectory: destination,
+      execFile: failingDocker(subcommand, failure).execFile
+    }), { operations: optionalOperations })).rejects.toThrow(/Unable to (?:copy|create a reader)/u);
+    expect(await recordBytes()).toBe(marked);
+    await expect(readFile(first.indexPath, "utf8")).resolves.toBe(firstIndex);
+    await expect(readFile(path.join(destination, ...LEDGER.split("/")), "utf8")).resolves.toBe("first\n");
+    expect((await readdir(destination)).sort()).toEqual(["raw", "spawnfile"]);
+  });
+
   it("does not mark a requested private directory that cannot be read as exported", async () => {
     const { compiled, destination, recordBytes } = await setup(RUNTIME);
     const before = await recordBytes();
@@ -222,6 +276,19 @@ describe("down --export-to adapter requirements", () => {
     }), { operations })).rejects.toThrow(/was not torn down.*ledger\.jsonl.*container was kept/u);
     expect(removals(docker.calls)).toEqual([]);
     expect(await recordBytes()).toBe(before);
+  });
+
+  it.each(serviceFailures)("--volumes neither marks nor removes anything on %s", async (_label, subcommand, failure) => {
+    const { compiled, destination, recordBytes } = await setup(RUNTIME);
+    const before = await recordBytes();
+    const docker = failingDocker(subcommand, failure);
+    await expect(withSyntheticAdapter(RUNTIME, () => downDeployment({
+      compiledOutputDirectory: compiled, deploymentName: "default", execFile: docker.execFile, exportTo: destination, removeVolumes: true
+    }), { operations: optionalOperations })).rejects.toThrow(/Unable to (?:copy|create a reader)/u);
+    expect(removals(docker.calls)).toEqual([]);
+    expect(docker.calls.filter((args) => args.includes("volume") && args.includes("rm"))).toEqual([]);
+    expect(await recordBytes()).toBe(before);
+    expect(await readdir(destination)).toEqual([]);
   });
 
   it("exports and then tears down when the adapter is loaded", async () => {
