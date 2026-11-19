@@ -1,5 +1,6 @@
 import type { Stats } from "node:fs";
-import { lstat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { SpawnfileError } from "../shared/errors.js";
@@ -21,11 +22,26 @@ const readEntry = async (filename: string): Promise<Stats | undefined> => {
   }
 };
 
+const refuseDirectory = (directory: string): never => {
+  throw new SpawnfileError("validation_error", `Output directory must be a real directory: ${directory}`);
+};
+
+/** Descendants of an output root must be real directories, never links. */
+const assertRealDirectory = async (directory: string): Promise<void> => {
+  const entry = await readEntry(directory);
+  if (entry && !entry.isDirectory()) refuseDirectory(directory);
+};
+
+/**
+ * The operator-selected output root may be missing, a directory, or a link to
+ * an existing directory. Anything else, including a dangling link, is refused.
+ */
 export const assertOutputDirectory = async (directory: string): Promise<void> => {
   const entry = await readEntry(directory);
-  if (entry && !entry.isDirectory()) {
-    throw new SpawnfileError("validation_error", `Output directory must be a real directory: ${directory}`);
-  }
+  if (!entry || entry.isDirectory()) return;
+  if (!entry.isSymbolicLink()) refuseDirectory(directory);
+  const target = await stat(directory).catch(() => undefined);
+  if (!target?.isDirectory()) refuseDirectory(directory);
 };
 
 /** Checks the complete batch and resolves destinations before the caller writes it. */
@@ -59,7 +75,7 @@ export const resolveOutputFilePaths = async (
   await assertOutputDirectory(root);
   // Check each containing directory before inspecting its children.
   for (const relative of [...directories].sort()) {
-    await assertOutputDirectory(path.join(root, relative));
+    await assertRealDirectory(path.join(root, relative));
   }
   const targets = parts.map((relative) => path.join(root, relative));
   await Promise.all(targets.map(async (target) => {
@@ -69,4 +85,46 @@ export const resolveOutputFilePaths = async (
     }
   }));
   return targets;
+};
+
+const MAX_STAGED_FILE_BYTES = 1024 * 1024;
+
+const refuseStagedFile = (filename: string, reason: string): never => {
+  throw new SpawnfileError("compile_error", `Staged file ${JSON.stringify(filename)} ${reason}`);
+};
+
+/**
+ * Reads expected files from a private staging directory. Every directory
+ * between the staging root and the file must be real, and the file must be a
+ * single-link regular file that is still the same entry when opened.
+ */
+export const readStagedRegularFiles = async (
+  directory: string, paths: readonly string[]
+): Promise<string[]> => {
+  const root = path.resolve(directory);
+  if (!(await stat(root)).isDirectory()) refuseDirectory(root);
+  return Promise.all(paths.map(async (filename) => {
+    assertOutputRelativePath(filename);
+    const segments = filename.split("/");
+    for (let index = 1; index < segments.length; index += 1) {
+      const parent = await readEntry(path.join(root, ...segments.slice(0, index)));
+      if (!parent) return refuseStagedFile(filename, "was not produced");
+      if (!parent.isDirectory()) refuseStagedFile(filename, "is not inside real directories");
+    }
+    const target = path.join(root, ...segments);
+    const entry = await readEntry(target);
+    if (!entry) return refuseStagedFile(filename, "was not produced");
+    if (!entry.isFile() || entry.nlink !== 1) refuseStagedFile(filename, "is not a regular file with one link");
+    if (entry.size > MAX_STAGED_FILE_BYTES) refuseStagedFile(filename, "is too large");
+    const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const opened = await handle.stat();
+      if (opened.ino !== entry.ino || opened.dev !== entry.dev || !opened.isFile()) {
+        refuseStagedFile(filename, "changed while it was read");
+      }
+      return await handle.readFile("utf8");
+    } finally {
+      await handle.close();
+    }
+  }));
 };

@@ -1,10 +1,10 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, expect, it } from "vitest";
 
-import { assertOutputRelativePath, resolveOutputFilePaths } from "./outputPaths.js";
+import { assertOutputDirectory, assertOutputRelativePath, readStagedRegularFiles, resolveOutputFilePaths } from "./outputPaths.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -41,4 +41,39 @@ it("refuses to replace an existing non-file destination or a non-directory paren
   await writeFile(path.join(root, "config.json"), "{}\n");
   await expect(resolveOutputFilePaths(root, ["workspace"])).rejects.toThrow(/regular file with one link/u);
   await expect(resolveOutputFilePaths(root, ["config.json/details.md"])).rejects.toThrow(/real directory/u);
+});
+
+it("follows an operator-selected output root link to a real directory but not links below it", async () => {
+  const root = await newRoot();
+  await mkdir(path.join(root, "real/nested"), { recursive: true });
+  await symlink(path.join(root, "real"), path.join(root, "out"));
+  await expect(assertOutputDirectory(path.join(root, "out"))).resolves.toBeUndefined();
+  await expect(resolveOutputFilePaths(path.join(root, "out"), ["config.json"], "runtimes/example"))
+    .resolves.toEqual([path.join(root, "out/runtimes/example/config.json")]);
+  await symlink(path.join(root, "real/nested"), path.join(root, "real/linked"));
+  await expect(resolveOutputFilePaths(path.join(root, "out"), ["linked/config.json"])).rejects.toThrow(/real directory/u);
+});
+
+it("refuses unusable output roots", async () => {
+  const root = await newRoot();
+  await writeFile(path.join(root, "file"), "{}\n");
+  await symlink(path.join(root, "file"), path.join(root, "file-link"));
+  await symlink(path.join(root, "missing"), path.join(root, "dangling"));
+  for (const target of ["file", "file-link", "dangling"]) {
+    await expect(assertOutputDirectory(path.join(root, target))).rejects.toThrow(/real directory/u);
+  }
+  await expect(assertOutputDirectory(path.join(root, "absent"))).resolves.toBeUndefined();
+});
+
+it("reads expected staged regular files and refuses links", async () => {
+  const root = await newRoot();
+  await mkdir(path.join(root, "skills/moltnet"), { recursive: true });
+  await writeFile(path.join(root, "skills/moltnet/SKILL.md"), "skill\n");
+  await expect(readStagedRegularFiles(root, ["skills/moltnet/SKILL.md"])).resolves.toEqual(["skill\n"]);
+  await symlink(path.join(root, "skills/moltnet/SKILL.md"), path.join(root, "linked.md"));
+  await link(path.join(root, "skills/moltnet/SKILL.md"), path.join(root, "hard.md"));
+  await expect(readStagedRegularFiles(root, ["linked.md"])).rejects.toThrow(/one link/u);
+  await expect(readStagedRegularFiles(root, ["hard.md"])).rejects.toThrow(/one link/u);
+  await expect(readStagedRegularFiles(root, ["absent.md"])).rejects.toThrow(/was not produced/u);
+  await expect(readStagedRegularFiles(root, ["../escape.md"])).rejects.toThrow(/canonical relative file path/u);
 });

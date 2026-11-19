@@ -1,7 +1,5 @@
-import { execFile as execFileCallback } from "node:child_process";
-import { chmod, readFile } from "node:fs/promises";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import { assertOutputRelativePath, ensureDirectory, resolveOutputFilePaths, writeUtf8File } from "../filesystem/index.js";
 import { getRuntimeAdapter, type EmittedFile } from "../runtime/index.js";
@@ -13,13 +11,12 @@ import {
   createMoltnetClientConfigFiles,
   resolveMoltnetWorkspaceLayout
 } from "./moltnetClientConfig.js";
+import { assertMoltnetSkillLayout, installMoltnetSkillFiles } from "./moltnetSkillInstall.js";
 import type { TeamCompileSupport } from "./teamContextSupport.js";
 import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
 export { prepareTeamCompileSupport } from "./teamContextSupport.js";
 export type { TeamCompileSupport } from "./teamContextSupport.js";
-
-const execFile = promisify(execFileCallback);
 
 export interface CompiledNodeOutput {
   emittedFiles: EmittedFile[];
@@ -164,7 +161,6 @@ export const injectMoltnetWorkspaceFiles = async (
       continue;
     }
 
-    const runtimeOutputDirectory = path.join(outputDirectory, compiled.report.output_dir);
     const moltnetClientConfigFiles = createMoltnetClientConfigFiles(
       compiled.value,
       artifacts,
@@ -175,7 +171,7 @@ export const injectMoltnetWorkspaceFiles = async (
     }
 
     const layout = resolveMoltnetWorkspaceLayout(compiled.value.runtime.name, compiled.value.name);
-    const workspacePath = path.join(runtimeOutputDirectory, layout.workspaceRootPath);
+    assertMoltnetSkillLayout(layout, compiled.value.name);
 
     for (const file of moltnetClientConfigFiles) {
       upsertEmittedFile(compiled.emittedFiles, file);
@@ -190,39 +186,13 @@ export const injectMoltnetWorkspaceFiles = async (
       moltnetCliCommand = await resolveMoltnetCliCommand();
     }
 
-    try {
-      await execFile(moltnetCliCommand, [
-        "skill",
-        "install",
-        "--runtime",
-        layout.cliRuntime,
-        "--workspace",
-        workspacePath
-      ]);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new SpawnfileError(
-        "compile_error",
-        `Unable to install the Moltnet skill into ${compiled.value.name}: ${reason}`
-      );
-    }
-
-    const moltnetSkillFiles = await Promise.all(
-      layout.skillPaths.map(async (filePath) => {
-        try {
-          return {
-            content: await readFile(path.join(runtimeOutputDirectory, filePath), "utf8"),
-            path: filePath
-          };
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          throw new SpawnfileError(
-            "compile_error",
-            `Moltnet skill install for ${compiled.value.name} did not produce ${filePath}: ${reason}`
-          );
-        }
-      })
-    );
+    const moltnetSkillFiles = await installMoltnetSkillFiles({
+      agentName: compiled.value.name,
+      cliCommand: moltnetCliCommand,
+      clientConfigFiles: moltnetClientConfigFiles,
+      layout
+    });
+    await writeEmittedFiles(outputDirectory, moltnetSkillFiles, compiled.report.output_dir);
 
     for (const file of moltnetSkillFiles) {
       upsertEmittedFile(compiled.emittedFiles, file);

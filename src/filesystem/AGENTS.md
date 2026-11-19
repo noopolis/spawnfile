@@ -9,7 +9,7 @@ src/filesystem/
 ├── index.ts         # Barrel for filesystem helpers
 ├── io.ts            # Read/write/remove/ensure directory helpers
 ├── paths.ts         # Path validation and Spawnfile path resolution
-├── outputPaths.ts   # Preflight complete batches of generated file destinations
+├── outputPaths.ts   # Output root checks, generated destination preflight, confined staged-file reads
 ├── retainedJsonl.ts # Locked append/fsync and atomic retention for recording logs; tolerant reads
 ├── durableWrite.ts  # Private file fsync, atomic rename, then parent-directory fsync
 ├── io.test.ts       # IO helper tests

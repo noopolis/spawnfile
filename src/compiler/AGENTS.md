@@ -30,6 +30,7 @@ src/compiler/
 ├── recordingCapability.ts      # Receipt-bound Daimon wake-moment capability gate, before output writes
 ├── recordingAgentFacts.ts      # Portable per-agent recording facts carried into deployment reports
 ├── compileProjectSupport.ts    # Shared compile-time artifact injection and file writing helpers
+├── moltnetSkillInstall.ts      # Confined adapter skill layout and private staging of the native Moltnet skill installer
 ├── dockerBuildContext.ts       # Emitted Docker ignore policy, surviving-file inventory/digest, and COPY/ADD safety checks
 ├── dockerBuildSkip.ts          # Bounded image inspection and ordered context-cache skip decision
 ├── containerArtifactSummaries.ts # Container report summaries for distribution/Moltnet output
