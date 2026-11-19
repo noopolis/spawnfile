@@ -78,6 +78,7 @@ src/deployment/
   deployment remains live. Callers must not roll back its container behind the persisted record.
   Publication takes predecessor metadata from existing lifecycle reads; recording-off
   without a recorded predecessor uses the original write/rename sequence with no extra I/O.
+  Project lifecycle operations coordinate publication of a tracked run and its export under a separate lock.
   Matching history tails must still fsync file and directory before reconciliation succeeds.
   `candidateRecording.ts` records rolled-back startup intervals as inexact; lookup excludes
   their published snapshots after rollback, and retention keeps the restored predecessor.

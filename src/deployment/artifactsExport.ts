@@ -25,7 +25,7 @@ import {
   createDeploymentLifecycleCorrelation,
   type DeploymentLifecycleCorrelation,
 } from "./deploymentLifecycleCorrelation.js";
-import { listDeploymentRecords, readDeploymentRecordFromOutput, writeDeploymentRecord } from "./record.js";
+import { listDeploymentRecords, readDeploymentRecordFromOutput, publishProjectDeploymentRecord } from "./record.js";
 import type { DeploymentRecord } from "./record.js";
 
 export interface ExportRunArtifactsOptions {
@@ -337,7 +337,7 @@ const publishExport = async (input: {
   if (failedFiles.length > 0) {
     return { deploymentName: record.name, failedFiles, index, indexPath, missingOptionalFiles };
   }
-  await writeDeploymentRecord(input.compiledOutputDirectory, {
+  await publishProjectDeploymentRecord(input.compiledOutputDirectory, {
     ...record,
     export_index: { exported_at: index.exported_at, path: indexPath, run_id: runId }
   }, record, () => publishArtifactFiles(input.destinationDirectory, input.stagingDirectory, index));

@@ -298,9 +298,26 @@ export const listDeploymentRecords = async (
 export const writeDeploymentRecord = async (
   outputDirectory: string,
   record: DeploymentRecord,
+  previous?: DeploymentRecord | null
+): Promise<string> => {
+  const parsed = parseDeploymentRecord(record);
+  const recordPath = resolveDeploymentRecordPath(outputDirectory, parsed.name);
+  await ensureDirectory(path.dirname(recordPath));
+  await publishDeploymentRecord(recordPath, parsed, undefined, previous);
+  return recordPath;
+};
+
+/** A project run and its export share a lifecycle lock while they publish.
+ * Ordinary record storage retains its existing write and rename sequence. */
+export const publishProjectDeploymentRecord = async (
+  outputDirectory: string,
+  record: DeploymentRecord,
   previous?: DeploymentRecord | null,
   publishExportFiles?: () => Promise<void>
 ): Promise<string> => {
+  if (!record.run_id && !previous?.run_id && !publishExportFiles) {
+    return writeDeploymentRecord(outputDirectory, record, previous);
+  }
   const parsed = parseDeploymentRecord(record);
   const recordPath = resolveDeploymentRecordPath(outputDirectory, parsed.name);
   await ensureDirectory(path.dirname(recordPath));

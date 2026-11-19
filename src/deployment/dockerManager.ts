@@ -23,7 +23,7 @@ import {
   type DockerDeploymentTarget,
   type DockerTargetExecFile
 } from "./target.js";
-import { writeDeploymentRecord, type DeploymentRecord } from "./record.js";
+import { publishProjectDeploymentRecord, type DeploymentRecord } from "./record.js";
 import {
   createOrganizationHandoff,
   type OrganizationHandoff,
@@ -197,7 +197,7 @@ const requireCompileFingerprint = (fingerprint: string | undefined): string => {
 export const writeDockerDeploymentRecord = async (
   input: WriteDockerDeploymentRecordInput
 ): Promise<string> =>
-  writeDeploymentRecord(input.outputDirectory, createDockerDeploymentRecord(input));
+  publishProjectDeploymentRecord(input.outputDirectory, createDockerDeploymentRecord(input));
 
 export const writeDockerDeploymentRecordForRun = async (input: DeploymentActivation & {
   previousRecord?: DeploymentRecord;
@@ -253,7 +253,7 @@ export const writeDockerDeploymentRecordForRun = async (input: DeploymentActivat
   const bound = input.report.recording
     ? bindDeploymentRecording(recordPath, record, input.report, await readUtf8File(path.join(input.outputDirectory, REPORT_FILENAME)))
     : record;
-  return writeDeploymentRecord(input.outputDirectory, bound, input.previousRecord);
+  return publishProjectDeploymentRecord(input.outputDirectory, bound, input.previousRecord);
 };
 
 export interface ProbeDockerOrganizationReadinessInput {

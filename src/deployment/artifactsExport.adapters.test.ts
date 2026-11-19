@@ -13,7 +13,7 @@ import { exportRunArtifacts } from "./artifactsExport.js";
 import { planArtifactExports } from "./artifactsExportPlan.js";
 import { downDeployment } from "./downDeployment.js";
 import { resolveDeploymentRecordPath } from "./names.js";
-import { writeDeploymentRecord, type DeploymentRecord } from "./record.js";
+import { publishProjectDeploymentRecord, writeDeploymentRecord, type DeploymentRecord } from "./record.js";
 import { withSyntheticAdapter } from "./syntheticRuntimeAdapter.test-helper.js";
 
 const RUNTIME = "synthetic-runtime";
@@ -151,7 +151,7 @@ describe("artifacts export adapter requirements", () => {
     const { compiled, destination, recordBytes } = await setup(RUNTIME);
     const docker = fakeDocker();
     const execFile: typeof docker.execFile = async (file, args) => {
-      if (args.includes("cp")) await writeDeploymentRecord(compiled, { ...record, run_id: "replacement" });
+      if (args.includes("cp")) await publishProjectDeploymentRecord(compiled, { ...record, run_id: "replacement" });
       return docker.execFile(file, args);
     };
     await expect(withSyntheticAdapter(RUNTIME, () => exportRunArtifacts({
