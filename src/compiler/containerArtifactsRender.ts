@@ -136,6 +136,10 @@ export const renderDockerfile = async (
         && plan.configPath !== null
         && plan.secretPatches.length > 0
     );
+  const checksManagedServer = options.moltnet?.serverPlans.some((plan) =>
+    plan.mode === "managed" && plan.configPath && plan.port);
+  const baseIncludesCurl = runtimePlans.some((plan) =>
+    recipeByRuntimeName.get(plan.runtimeName)?.baseImage === baseImage && plan.meta.systemDeps.includes("curl"));
   const needsGit = runtimePlans.some((plan) =>
     (plan.resources ?? []).some((resource) => resource.kind === "git")
   );
@@ -149,6 +153,7 @@ export const renderDockerfile = async (
             )
           : plan.meta.systemDeps
       ),
+      ...(checksManagedServer && !baseIncludesCurl ? ["curl"] : []),
       ...(needsGit ? ["git"] : []),
       ...(needsBundle ? ["tar"] : []),
       ...(needsJsonEnvWriter ? ["python3"] : [])

@@ -27,12 +27,16 @@ if (mode === "serve") {
       case "session/prompt": {
         if (!sessions.has(params.sessionId)) throw new Error("unknown session");
         const body = params.prompt.map(block => block.text ?? "").join(" ");
-        if (body.includes("SPAWNFILE_EXTERNAL_PING")) {
+        const exchange = [
+          ["SPAWNFILE_EXTERNAL_PING", "room:adapter-proof", "SPAWNFILE_EXTERNAL_PONG"],
+          ["SPAWNFILE_EXTERNAL_DM_PING", "dm:adapter-proof-dm", "SPAWNFILE_EXTERNAL_DM_PONG"]
+        ].find(([request]) => body.includes(request));
+        if (exchange) {
           const config = JSON.parse(await readFile(process.env.MOLTNET_CLIENT_CONFIG, "utf8"));
           if (!config.attachments?.length || !config.attachments.every(a => new URL(a.base_url).hostname === "127.0.0.1")) {
             throw new Error("fixture requires a disposable loopback network");
           }
-          const send = spawnSync("moltnet", ["send", "--target", "room:adapter-proof", "--text", "SPAWNFILE_EXTERNAL_PONG"], { encoding: "utf8" });
+          const send = spawnSync("moltnet", ["send", "--target", exchange[1], "--text", exchange[2]], { encoding: "utf8" });
           if (send.status !== 0) throw new Error("fixture reply failed: " + send.stderr);
         }
         result = { stopReason: "end_turn" };
