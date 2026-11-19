@@ -46,12 +46,11 @@ import { normalizeProjectLabelSlug } from "./projectName.js";
 import type { DistributionReport } from "./types.js";
 import type { ResolvedAuthProfile } from "../auth/index.js";
 
-export interface ConsumeImageUpOptions {
+import type { ImageCredentialUidOptions } from "../runtime/registry.js";
+
+export interface ConsumeImageUpOptions extends ImageCredentialUidOptions {
   authProfile?: ResolvedAuthProfile | null;
   authValues?: Record<string, string>;
-  containerCredentialUid?: number;
-  /** Historical caller alias. */
-  daimonContainerCredentialUid?: number;
   authProfileName?: string | null;
   deploymentName?: string;
   /** Caller owns the home lock across drain and swap; never set this without holding it. */
@@ -243,11 +242,10 @@ const consumeImageUpLocked = async (
     const authMountArgs = (
       await prepareImageRuntimeAuthMounts({
         authProfile: options.authProfile ?? null,
-        containerCredentialUid: options.containerCredentialUid ?? options.daimonContainerCredentialUid,
         report,
         runtimePreparations,
         tempRoot: workDir
-      })
+      }, options)
     ).mountArgs;
 
     volumeReservation = await acquireExclusiveVolumeReservations(

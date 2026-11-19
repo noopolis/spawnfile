@@ -8,11 +8,20 @@ import type { DiagnosticReport } from "../report/index.js";
 import type { RuntimeLifecycleStatus } from "../shared/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import { builtinRuntimeRegistrations } from "./builtinAdapters.generated.js";
+import { builtinRuntimeRegistrations, type LegacyCredentialUidOption } from "./builtinAdapters.generated.js";
 import { type RuntimeAdapterPlugin, validateRuntimeAdapterPlugin } from "./pluginDefinition.js";
 import type { RuntimeAdapter } from "./types.js";
 
 const runtimeAdapters = new Map(builtinRuntimeRegistrations.map(({ adapter }) => [adapter.name, adapter]));
+export type ImageCredentialUidOptions = Partial<Record<LegacyCredentialUidOption, number>> & {
+  containerCredentialUid?: number;
+};
+
+export const resolveImageCredentialUid = (name: string, options: ImageCredentialUidOptions): number | undefined => {
+  const legacy = builtinRuntimeRegistrations.find(({ adapter }) => adapter.name === name)?.legacyCredentialUidOption;
+  return options.containerCredentialUid ?? (legacy === undefined ? undefined : options[legacy]);
+};
+
 type AdapterScope = ReadonlyMap<string, { adapter: RuntimeAdapter; entry: RuntimeRegistryEntry }>;
 const adapterScope = new AsyncLocalStorage<AdapterScope>();
 

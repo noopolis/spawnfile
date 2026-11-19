@@ -4,7 +4,7 @@ import {
   loadImportedCodexCredential
 } from "../auth/index.js";
 import { fileExists } from "../filesystem/index.js";
-import { getRuntimeAdapter } from "../runtime/index.js";
+import { getRuntimeAdapter, resolveImageCredentialUid, type ImageCredentialUidOptions } from "../runtime/index.js";
 import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
 import { runtimeHost } from "../runtime/hostSelection.js";
 import type { RuntimePreparedImageLaunch } from "../runtime/hostTypes.js";
@@ -12,12 +12,8 @@ import { SpawnfileError } from "../shared/index.js";
 
 import type { DistributionReport } from "./types.js";
 
-export interface ImageRuntimeAuthInput {
+export interface ImageRuntimeAuthInput extends ImageCredentialUidOptions {
   authProfile: ResolvedAuthProfile | null;
-  /** Deployment credential leaves must be owned by the UID that reads them. */
-  containerCredentialUid?: number;
-  /** Historical caller alias. */
-  daimonContainerCredentialUid?: number;
   runtimePreparations?: ReadonlyMap<string, RuntimePreparedImageLaunch>;
   report: DistributionReport;
   sourceEnvironment?: Record<string, string | undefined>;
@@ -31,7 +27,8 @@ export interface ImageRuntimeAuthResult {
 
 /** Prepares adapter credentials and declared raw auth imports for a prebuilt image. */
 export const prepareImageRuntimeAuthMounts = async (
-  input: ImageRuntimeAuthInput
+  input: ImageRuntimeAuthInput,
+  credentialOptions: ImageCredentialUidOptions = input
 ): Promise<ImageRuntimeAuthResult> => {
   const coveredModelSecrets = new Set<string>();
   const mountArgs: string[] = [];
@@ -44,7 +41,7 @@ export const prepareImageRuntimeAuthMounts = async (
     if (prepareAuth) {
       mountArgs.push(...await prepareAuth(instance, {
         authProfile: input.authProfile,
-        containerCredentialUid: input.containerCredentialUid ?? input.daimonContainerCredentialUid,
+        containerCredentialUid: resolveImageCredentialUid(instance.runtime, credentialOptions),
         sourceEnvironment: input.sourceEnvironment ?? process.env,
         tempRoot: input.tempRoot
       }));

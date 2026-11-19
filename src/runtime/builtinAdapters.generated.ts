@@ -4,4 +4,11 @@ import * as adapter0 from "./daimon/registration.js";
 import * as adapter1 from "./openclaw/registration.js";
 import * as adapter2 from "./picoclaw/registration.js";
 
-export const builtinRuntimeRegistrations: readonly { adapter: RuntimeAdapter; defaultScaffoldRuntime?: boolean }[] = [adapter0, adapter1, adapter2];
+type Registration = typeof adapter0 | typeof adapter1 | typeof adapter2;
+export type LegacyCredentialUidOption = Extract<Registration, { legacyCredentialUidOption: string }>["legacyCredentialUidOption"];
+
+export const builtinRuntimeRegistrations: readonly {
+  adapter: RuntimeAdapter;
+  defaultScaffoldRuntime?: boolean;
+  legacyCredentialUidOption?: LegacyCredentialUidOption;
+}[] = [adapter0, adapter1, adapter2];

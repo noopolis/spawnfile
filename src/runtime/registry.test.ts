@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { listInstallSelectionRuntimes } from "./install.js";
 import {
   createRuntimeLifecycleDiagnostics,
+  resolveImageCredentialUid,
   getRegisteredRuntime,
   getRuntimeAdapter,
   listRuntimeAdapters,
@@ -97,4 +98,11 @@ it('training entry declares its adapter and the runtime engine vocabulary', () =
   const [entry] = parseRuntimeRegistry('runtimes:\n  daimon:\n    default_branch: main\n    ref: v1\n    remote: local\n    status: active\n');
   expect(entry!.training?.adapterId).toBe('daimon-native');
   expect(entry!.training?.engines).toEqual(['agy', 'codex', 'grok']);
+});
+
+it("uses a historical credential UID only for its owning adapter", () => {
+  const legacy = { daimonContainerCredentialUid: 501 };
+  expect(resolveImageCredentialUid("daimon", legacy)).toBe(501);
+  expect(resolveImageCredentialUid("echo-harness", legacy)).toBeUndefined();
+  expect(resolveImageCredentialUid("daimon", { ...legacy, containerCredentialUid: 502 })).toBe(502);
 });
