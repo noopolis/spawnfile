@@ -13,7 +13,7 @@ import type { ContainerRuntimeInstanceReport } from "../report/index.js";
 import type { DeploymentRecord, DockerUnitInspection } from "../deployment/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
 import type { RuntimeInstallCapability } from "./containerRecipe.js";
-import type { SubjectAdapterRegistration } from "../training/subjects/index.js";
+import type { RuntimeTrainingCapability } from "./trainingTypes.js";
 import type { RuntimeWiring } from "./wiringTypes.js";
 
 export type { RuntimeWiring } from "./wiringTypes.js";
@@ -225,12 +225,6 @@ export interface AdapterCompileResult {
   files: EmittedFile[];
 }
 
-export interface RuntimeAdapterTraining {
-  adapterId?: string;
-  engines?: readonly string[];
-  subject(): Promise<SubjectAdapterRegistration>;
-}
-
 export interface RuntimeAdapter {
   assertSupportedModelTarget(target: EffectiveModelTarget): void;
   assertSupportedSurfaces?(surfaces: ResolvedAgentSurfaces | undefined): void;
@@ -250,7 +244,7 @@ export interface RuntimeAdapter {
   scaffoldAgentProject?(): RuntimeAgentScaffold;
   statusProbes?: RuntimeStatusProbe[];
   systemInstructionSurface?: RuntimeSystemInstructionSurface;
-  training?: RuntimeAdapterTraining;
+  training?: RuntimeTrainingCapability;
   validateRuntimeOptions?(options: Record<string, unknown>): DiagnosticReport[];
   wiring?: RuntimeWiring;
 }

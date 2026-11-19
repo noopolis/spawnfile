@@ -83,8 +83,18 @@ const invalidOptionalHook = (adapter: Record<string, unknown>): string | undefin
     "prepareRuntimeAuth", "scaffoldAgentProject", "validateRuntimeOptions"
   ]);
   if (adapterHook) return adapterHook;
+  if (record(adapter.training)) {
+    const { login, credentials } = adapter.training;
+    if (login !== undefined) {
+      const badLogin = invalidHooks(login, "training.login", ["supportsEngine", "run"], []);
+      if (badLogin) return badLogin;
+    }
+    if (credentials !== undefined && (!record(credentials) || Object.values(credentials).some((load) => typeof load !== "function"))) {
+      return "training.credentials";
+    }
+  }
   const capabilities = [
-    { name: "training", required: ["subject"], optional: [] },
+    { name: "training", required: [], optional: ["subject", "run", "openJudges", "loadInferenceProviders", "loadGraderProviders"] },
     { name: "host", required: [], optional: [
       "handlesImageModelAuth", "externalMountEnvironment", "profileVolumeName", "projectSecurityArgs",
       "prepareCredentialDocker", "prepareImageLaunch", "prepareImageAuth"

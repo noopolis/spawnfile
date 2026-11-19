@@ -22,3 +22,6 @@ export type {
   RuntimeMoltnetBridgeConfig, RuntimeMoltnetWiring, RuntimeMoltnetWorkspace,
   RuntimeOperatorWakeArtifact
 } from "./wiringTypes.js";
+export type { RuntimeHostIntegration } from "./hostTypes.js";
+export type { RuntimeTrainingCapability, RuntimeTrainingRunOptions, RuntimeTrainingJudgeOptions } from "./trainingTypes.js";
+export type { RuntimeOperations } from "./operations.js";

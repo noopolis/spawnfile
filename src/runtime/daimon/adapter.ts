@@ -2,7 +2,7 @@ import { daimonHostIntegration } from "./host/integration.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import { createDaimonInstallRecipe, daimonInstallHints } from "./install.js";
 import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
-import { daimonTrainingDeclaration } from "./engines.js";
+import { daimonTraining } from "./trainingCapability.js";
 import { daimonWiring, DAIMON_CONTROL_TOKEN_ENV } from "./wiring.js";
 import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
 import type { CapabilityReport } from "../../report/index.js";
@@ -284,7 +284,7 @@ class DaimonRuntimeAdapter extends RuntimeAdapterBase {
     catch (error) { diagnostics.push(createDiagnostic("error", error instanceof Error ? error.message : "Daimon attention is invalid")); }
     return diagnostics;
   };
-  readonly training = { ...daimonTrainingDeclaration, subject: async () => (await import("./training/index.js")).daimonTrainingSubject };
+  readonly training = daimonTraining;
   override readonly install = { hints: daimonInstallHints, createRecipe: createDaimonInstallRecipe };
 }
 
