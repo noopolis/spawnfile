@@ -1,90 +1,10 @@
-import { readFileSync } from "node:fs";
-
-import { withRuntimeAdapterPlugins } from "../runtime/registry.js";
-import { loadRuntimeAdapterPlugins } from "../runtime/loadAdapterPlugins.js";
+import { errorExitCode } from "../shared/errors.js";
+import { skipAdapterOptions, splitAdapterOptions } from "./adapterOptions.js";
 import { formatCliErrorMessage, isCommanderError } from "./cliErrors.js";
-import { splitAdapterOptions } from "./adapterOptions.js";
+import { isTargetLookupInvocation, targetLookupOperandIndex, targetLookupValueOptions } from "./targetCliRoute.js";
+import type { CliHandlers } from "./cliProgram.js";
 
-import { loginSubscriptionRealm } from "../runtime/trainingSelection.js";
-
-import { Command } from "commander";
-
-import {
-  importClaudeCodeAuth,
-  importCodexAuth,
-  importGrokAuth,
-  importEnvFile,
-  initializeTargetSecretSourceLifecycle,
-  provisionCredentials,
-  requireAuthProfile
-} from "../auth/index.js";
-import {
-  addAgentProject,
-  addProjectSurface,
-  addProjectModelFallback,
-  addSubagentProject,
-  addTeamProject,
-  buildOrganizationView,
-  buildCompilePlan,
-  buildProject,
-  buildUpReceipt,
-  clearProjectModelFallbacks,
-  compileProject,
-  createTrainingContext,
-  createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, lowerTrainingMoments, allocateTrainingOutputParent,
-  initProject,
-  listInitTemplates,
-  preflightCompilePlan,
-  publishProject,
-  upProject,
-  removeProjectSurface,
-  runProject,
-  setProjectPrimaryModel,
-  setProjectRuntime,
-  setProjectSurfaceAccess,
-  showProjectSurfaces,
-  syncProjectAuth
-} from "../compiler/index.js";
-import {
-  devStopProject,
-  devUpProject
-} from "../dev/index.js";
-import { consumeImageUp } from "../distribution/index.js";
-import {
-  createDockerProbeGateway,
-  downDeployment,
-  exportRunArtifacts,
-  inspectDockerDeployment,
-  listDeploymentRecords,
-  listHomeDeploymentRecords
-} from "../deployment/index.js";
-import { errorExitCode } from "../shared/index.js";
-import { listRuntimeAdapters } from "../runtime/index.js";
-import { registerArtifactsCommands } from "./artifactsCommands.js";
-import { registerAuthCommands } from "./authCommands.js";
-import { registerCapabilitiesCommand } from "./capabilitiesCommand.js";
-import { registerDevCommands } from "./devCommands.js";
-import { registerEvidenceExportHelperCommand } from "./evidenceExportHelperCommand.js";
-import { registerLifecycleCommands } from "./lifecycleCommands.js";
-import { registerModelCommands } from "./modelCommands.js";
-import { registerRuntimeCommands } from "./runtimeCommands.js";
-import { registerSurfaceCommands } from "./surfaceCommands.js";
-import { registerStatusCommand } from "./statusCommand.js";
-import { registerUsageCommand } from "./usageCommand.js";
-import { registerRecordCommands } from "./recordCommands.js";
-import { registerProductionTargetCommands } from "./targetProductionCommands.js";
-import { registerViewCommand } from "./viewCommand.js";
-import { registerVolumeCommands } from "./volumeCommands.js";
-import { registerTrainCommand } from "./trainCommand.js";
-import { runTraining } from "./trainingExecution.js";
-import { runTrainingRegrade } from "./trainingRegrade.js";
-
-const packageJsonPath = new URL("../../package.json", import.meta.url);
-
-const readPackageVersion = (): string => {
-  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
-  return typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
-};
+export type { CliHandlers } from "./cliProgram.js";
 
 export interface CliStreams { stderr: (message: string) => void; stdout: (message: string) => void; }
 
@@ -104,57 +24,6 @@ const createDefaultRenderEnvironment = (): CliRenderEnvironment => ({
   stdoutIsTty: process.stdout.isTTY === true
 });
 
-export interface CliHandlers {
-  createTrainingContext: typeof createTrainingContext;
-  createTrainingPlan: typeof createTrainingPlan;
-  lowerTrainingExecution: typeof lowerTrainingExecution; lowerTrainingMoments: typeof lowerTrainingMoments; allocateTrainingOutputParent: typeof allocateTrainingOutputParent;
-  loadTrainingProject: typeof loadTrainingProject; resolveTrainingPlan: typeof resolveTrainingPlan;
-  materializeTrainingMoment: typeof materializeTrainingMoment;
-  runTraining: typeof runTraining;
-  runTrainingRegrade: typeof runTrainingRegrade;
-  buildCompilePlan: typeof buildCompilePlan; buildOrganizationView: typeof buildOrganizationView;
-  buildProject: typeof buildProject; compileProject: typeof compileProject;
-  publishProject: typeof publishProject;
-  addAgentProject: typeof addAgentProject; addProjectModelFallback: typeof addProjectModelFallback;
-  addProjectSurface: typeof addProjectSurface; addSubagentProject: typeof addSubagentProject;
-  addTeamProject: typeof addTeamProject; clearProjectModelFallbacks: typeof clearProjectModelFallbacks;
-  importClaudeCodeAuth: typeof importClaudeCodeAuth; importCodexAuth: typeof importCodexAuth;
-  importGrokAuth: typeof importGrokAuth; loginSubscriptionRealm: typeof loginSubscriptionRealm;
-  importEnvFile: typeof importEnvFile; initProject: typeof initProject;
-  listInitTemplates: typeof listInitTemplates;
-  initializeTargetSecretSourceLifecycle: typeof initializeTargetSecretSourceLifecycle;
-  provisionCredentials: typeof provisionCredentials;
-  exportRunArtifacts: typeof exportRunArtifacts;
-  downDeployment: typeof downDeployment;
-  createDockerProbeGateway: typeof createDockerProbeGateway;
-  inspectDockerDeployment: typeof inspectDockerDeployment;
-  listDeploymentRecords: typeof listDeploymentRecords;
-  listHomeDeploymentRecords: typeof listHomeDeploymentRecords;
-  listRuntimeAdapters: typeof listRuntimeAdapters; removeProjectSurface: typeof removeProjectSurface;
-  requireAuthProfile: typeof requireAuthProfile; runProject: typeof runProject;
-  upProject: typeof upProject; buildUpReceipt: typeof buildUpReceipt;
-  consumeImageUp: typeof consumeImageUp;
-  devStopProject: typeof devStopProject;
-  devUpProject: typeof devUpProject;
-  setProjectPrimaryModel: typeof setProjectPrimaryModel; setProjectRuntime: typeof setProjectRuntime;
-  setProjectSurfaceAccess: typeof setProjectSurfaceAccess; showProjectSurfaces: typeof showProjectSurfaces;
-  syncProjectAuth: typeof syncProjectAuth;
-}
-const createDefaultHandlers = (): CliHandlers => ({
-  createTrainingContext, createTrainingPlan, loadTrainingProject, resolveTrainingPlan, materializeTrainingMoment, lowerTrainingExecution, lowerTrainingMoments, allocateTrainingOutputParent, runTraining, runTrainingRegrade,
-  buildCompilePlan, buildOrganizationView, buildProject, compileProject, publishProject,
-  addAgentProject, addProjectModelFallback, addProjectSurface,
-  addSubagentProject, addTeamProject, clearProjectModelFallbacks,
-  importClaudeCodeAuth, importCodexAuth, importGrokAuth, importEnvFile, initializeTargetSecretSourceLifecycle,
-  loginSubscriptionRealm, provisionCredentials,
-  createDockerProbeGateway, exportRunArtifacts, downDeployment, inspectDockerDeployment,
-  listDeploymentRecords, listHomeDeploymentRecords,
-  initProject, listInitTemplates, listRuntimeAdapters, removeProjectSurface, requireAuthProfile,
-  runProject, setProjectPrimaryModel, setProjectRuntime, upProject, buildUpReceipt, consumeImageUp,
-  devStopProject, devUpProject,
-  setProjectSurfaceAccess, showProjectSurfaces, syncProjectAuth
-});
-
 export interface RunCliOptions {
   adapterCwd?: string;
   handlers?: Partial<CliHandlers>; renderEnvironment?: CliRenderEnvironment; stdin?: AsyncIterable<unknown>; streams?: CliStreams; signal?: AbortSignal;
@@ -165,10 +34,13 @@ const isCliStreams = (value: CliStreams | RunCliOptions | undefined): value is C
   return typeof candidate?.stderr === "function" && typeof candidate.stdout === "function";
 };
 
+export type NormalizedRunCliOptions = Required<Omit<RunCliOptions, "signal" | "adapterCwd">>
+  & Pick<RunCliOptions, "signal" | "adapterCwd">;
+
 const normalizeRunCliOptions = (
   optionsOrStreams?: CliStreams | RunCliOptions,
   handlerOverrides: Partial<CliHandlers> = {}
-): Required<Omit<RunCliOptions, "signal" | "adapterCwd">> & Pick<RunCliOptions, "signal" | "adapterCwd"> => isCliStreams(optionsOrStreams)
+): NormalizedRunCliOptions => isCliStreams(optionsOrStreams)
   ? {
       handlers: handlerOverrides,
       renderEnvironment: createDefaultRenderEnvironment(),
@@ -184,31 +56,6 @@ const normalizeRunCliOptions = (
       signal: optionsOrStreams?.signal
     };
 
-const writeCommanderOutput = (
-  write: (message: string) => void,
-  message: string
-): void => {
-  const normalized = message.replace(/\n$/, "");
-  if (normalized.length > 0) {
-    write(normalized);
-  }
-};
-
-const TARGET_CLI_USAGE_ERROR = "error: Invalid target command";
-
-const formatPlanSummary = (plan: Awaited<ReturnType<typeof buildCompilePlan>>): string =>
-  [
-    `root: ${plan.root}`,
-    `nodes: ${plan.nodes.length}`,
-    `runtimes: ${Object.keys(plan.runtimes).sort().join(", ") || "none"}`
-  ].join("\n");
-
-const emitLines = (streams: CliStreams, lines: string[]): void =>
-  lines.forEach((line) => streams.stdout(line));
-
-const emitFileLines = (streams: CliStreams, label: string, filePaths: string[]): void =>
-  emitLines(streams, filePaths.map((filePath) => `${label} ${filePath}`));
-
 type RunCli = {
   (argv: string[], options?: RunCliOptions): Promise<number>;
   (
@@ -222,164 +69,75 @@ export const runCli: RunCli = async (
   handlerOverrides: Partial<CliHandlers> = {}
 ): Promise<number> => {
   const cliOptions = normalizeRunCliOptions(optionsOrStreams, handlerOverrides);
-  const streams = cliOptions.streams;
-  const handlers = { ...createDefaultHandlers(), ...cliOptions.handlers };
-  let isTargetInvocation = argv[0] === "target";
-  let commandExitCode = 0;
-  const program = new Command();
-  program.name("spawnfile").description("Spawnfile v0.1 compiler").version(readPackageVersion());
-  program.option("--adapter <module>", "Load a trusted local ESM adapter or installed package (repeatable)");
-  program.exitOverride();
-  program.configureOutput({
-    outputError: (message, write) => write(message),
-    writeErr: (message) => {
-      if (!isTargetInvocation) writeCommanderOutput(streams.stderr, message);
-    },
-    writeOut: (message) => writeCommanderOutput(streams.stdout, message)
-  });
-
-  registerLifecycleCommands(program, handlers, streams, cliOptions.stdin, (code) => { commandExitCode = code; });
-  registerDevCommands(program, handlers, streams);
-  registerArtifactsCommands(program, handlers, streams);
-  registerCapabilitiesCommand(program, streams, readPackageVersion());
-  registerEvidenceExportHelperCommand(program, streams, (exitCode) => {
-    commandExitCode = exitCode;
-  });
-
-  program
-    .command("init")
-    .description("Scaffold a new Spawnfile project or team in a directory")
-    .argument("[path]", "Directory to initialize", process.cwd())
-    .option("--team", "Initialize a team project")
-    .option("--runtime <name>", "Runtime for agent scaffolds")
-    .option("--template <name>", "Scaffold from a bundled example template")
-    .option("--list-templates", "List available example templates and exit")
-    .action(async (
-      inputPath: string,
-      options: { runtime?: string; team?: boolean; template?: string; listTemplates?: boolean }
-    ) => {
-      if (options.listTemplates) {
-        const templates = await handlers.listInitTemplates();
-        for (const template of templates) {
-          streams.stdout(template);
-        }
-        return;
-      }
-      const result = await handlers.initProject({
-        directory: inputPath,
-        runtime: options.runtime,
-        team: options.team,
-        template: options.template
-      });
-      streams.stdout(`initialized ${result.directory}`);
-      emitFileLines(streams, "created", result.createdFiles);
-    });
-
-  const addCommand = program.command("add").description("Add children to an existing Spawnfile project");
-
-  addCommand
-    .command("agent")
-    .description("Add an agent member to a team project")
-    .argument("<id>", "Agent member id")
-    .argument("[path]", "Team project directory or Spawnfile path", process.cwd())
-    .option("--runtime <name>", "Runtime for the new agent member")
-    .action(async (id: string, inputPath: string, options: { runtime?: string }) => {
-      const result = await handlers.addAgentProject({
-        id,
-        path: inputPath,
-        runtime: options.runtime
-      });
-      emitFileLines(streams, "updated", result.updatedFiles);
-      emitFileLines(streams, "created", result.createdFiles);
-    });
-
-  addCommand
-    .command("subagent")
-    .description("Add a subagent to an agent project")
-    .argument("<id>", "Subagent id")
-    .argument("[path]", "Agent project directory or Spawnfile path", process.cwd())
-    .action(async (id: string, inputPath: string) => {
-      const result = await handlers.addSubagentProject({
-        id,
-        path: inputPath
-      });
-      emitFileLines(streams, "updated", result.updatedFiles);
-      emitFileLines(streams, "created", result.createdFiles);
-    });
-
-  addCommand
-    .command("team")
-    .description("Add a nested team to a team project")
-    .argument("<id>", "Nested team id")
-    .argument("[path]", "Team project directory or Spawnfile path", process.cwd())
-    .action(async (id: string, inputPath: string) => {
-      const result = await handlers.addTeamProject({
-        id,
-        path: inputPath
-      });
-      emitFileLines(streams, "updated", result.updatedFiles);
-      emitFileLines(streams, "created", result.createdFiles);
-    });
-
-  registerModelCommands(program, handlers, streams);
-  registerRuntimeCommands(program, handlers, streams);
-  registerSurfaceCommands(program, handlers, streams);
-  registerStatusCommand(program, handlers, streams, (exitCode) => {
-    commandExitCode = exitCode;
-  });
-  registerUsageCommand(program, streams, (exitCode) => { commandExitCode = exitCode; }, handlers);
-  registerRecordCommands(program, streams, (exitCode) => { commandExitCode = exitCode; }, handlers);
-  registerViewCommand(program, handlers, streams, cliOptions.renderEnvironment);
-  registerTrainCommand(program, handlers, streams, readPackageVersion(), (code) => {
-    commandExitCode = code;
-  }, cliOptions.signal);
-  registerProductionTargetCommands(program, streams, cliOptions.stdin, (exitCode) => {
-    commandExitCode = exitCode;
-  });
-  registerVolumeCommands(program, streams, (exitCode) => {
-    commandExitCode = exitCode;
-  });
-
-  program
-    .command("validate")
-    .description("Validate a Spawnfile and report the resolved compile plan")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .action(async (inputPath: string) => {
-      const plan = await handlers.buildCompilePlan(inputPath);
-      preflightCompilePlan(plan);
-      streams.stdout("validation succeeded");
-      streams.stdout(formatPlanSummary(plan));
-    });
-
-  program
-    .command("runtimes")
-    .description("List available runtime adapters")
-    .action(() => {
-      for (const runtimeName of handlers.listRuntimeAdapters()) {
-        streams.stdout(runtimeName);
-      }
-    });
-
-  registerAuthCommands(program, handlers, streams, cliOptions.stdin);
+  const { streams } = cliOptions;
+  const first = skipAdapterOptions(argv, 0);
+  const command = argv[first];
+  const isTarget = command === "target";
 
   try {
-    const { args, adapters } = splitAdapterOptions(argv);
-    isTargetInvocation = args[0] === "target";
+    const dedicated = await findDedicatedHandler(argv, first, cliOptions);
+    const cli = dedicated ? undefined : await createProgram(cliOptions, isTarget);
+    const { args, adapters } = splitAdapterOptions(argv, cli?.program ?? dedicated?.valueOptions);
+    const useDedicated = dedicated && (!isTarget || isTargetLookupInvocation(args));
+    const run = async () => {
+      if (useDedicated) return dedicated.handle(args);
+      const selected = cli ?? await createProgram(cliOptions, isTarget);
+      await selected.program.parseAsync(args, { from: "user" });
+      return selected.exitCode();
+    };
+    if (useDedicated && adapters.length === 0) return await run();
+
+    const { loadRuntimeAdapterPlugins } = await import("../runtime/loadAdapterPlugins.js");
+    const { withRuntimeAdapterPlugins } = await import("../runtime/registry.js");
     const plugins = await loadRuntimeAdapterPlugins(adapters, { cwd: cliOptions.adapterCwd });
-    await withRuntimeAdapterPlugins(plugins, () => program.parseAsync(args, { from: "user" }));
-    return commandExitCode;
+    return await withRuntimeAdapterPlugins(plugins, run);
   } catch (error: unknown) {
     if (isCommanderError(error)) {
-      if (isTargetInvocation && error.exitCode !== 0) {
-        streams.stderr(TARGET_CLI_USAGE_ERROR);
-      }
-      // Commander prints its own usage message; usage errors exit 2.
+      if (isTarget && error.exitCode !== 0) streams.stderr("error: Invalid target command");
       return error.exitCode === 0 ? 0 : 2;
     }
-
     streams.stderr(`error: ${formatCliErrorMessage(error)}`);
-    // Usage/input errors exit 2; runtime failures exit 1, matching the
-    // documented status exit-code contract across all commands.
     return errorExitCode(error);
   }
+};
+
+const createProgram = async (options: NormalizedRunCliOptions, isTarget: boolean) =>
+  (await import("./cliProgram.js")).createCliProgram(options, isTarget);
+
+interface DedicatedHandler {
+  handle(args: string[]): Promise<number>;
+  valueOptions?: ReadonlySet<string>;
+}
+
+const findDedicatedHandler = async (
+  argv: string[],
+  first: number,
+  { stdin, streams }: NormalizedRunCliOptions
+): Promise<DedicatedHandler | undefined> => {
+  const second = skipAdapterOptions(argv, first + 1);
+  const command = argv[first];
+  const prefix = argv[second] === undefined ? [] : [command!, argv[second]];
+
+  if (command === "canary") {
+    const route = await import("./canaryCutoverCommand.js");
+    if (route.isCanaryCutoverInvocation(prefix)) return { handle: route.runCanaryCutoverCommand };
+  }
+  if (command === "product-state") {
+    const route = await import("./productStateCloneCommand.js");
+    if (route.isProductStateCloneInvocation(prefix)) return { handle: route.runProductStateCloneCommand };
+  }
+  if (command === "workspace-resource") {
+    const route = await import("./workspaceResourceMigrationCommand.js");
+    if (route.isWorkspaceResourceMigrationInvocation(prefix)) return {
+      handle: (args) => route.runWorkspaceResourceMigrationCommand(args, streams),
+      valueOptions: route.workspaceResourceValueOptions
+    };
+  }
+  if (command === "target" && argv[targetLookupOperandIndex(argv, first + 1)] === "lookup_operation") {
+    return {
+      handle: async (args) => (await import("./targetLookupCli.js")).runTargetLookupCli(args, stdin, streams),
+      valueOptions: targetLookupValueOptions
+    };
+  }
+  return undefined;
 };
