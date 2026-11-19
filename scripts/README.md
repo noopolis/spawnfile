@@ -17,7 +17,7 @@ in the npm package. Scripts run as native TypeScript on Node 22.19+.
 | `create-linux-amd64-dependency-closure.ts` | `npm run prepare:linux-amd64-closure` | Prepare reviewed npm dependencies/cache in the pinned build container |
 | `create-linux-amd64-go-closure.ts` | `npm run prepare:linux-amd64-go-closure` | Prepare the pinned Go module-cache closure |
 | `compile-explicit-test-mcp.ts` | `npm run compile:explicit-test-mcp` | Lower bounded test MCP declarations against a compiled report; build the CLI first |
-| `verify-package-closure.ts` | `npm run verify:package-closure` | Verify the packed CLI and runtime closure |
+| `verify-package-closure.ts` | `npm run verify:package-closure` | Verify the packed CLI and runtime closure. Set `SPAWNFILE_VERIFY_ACP_RELEASE_DIR` to also exercise the external ACP adapter in local Docker |
 | `verify-external-adapter.ts` | Packed CLI closure check | Install an out-of-tree adapter and compile an agent through the public CLI |
 | `training-public-exports.test.ts` | `npm run test:scripts`, CI | Pack and install the production package; verify integration values, declarations and a missing-export mutation |
 | `test-training-python.ts` | `npm run test:training-python`, CI | Run the real DSPy bridge pytest suite and enforce 90% lines and branches for every module and the total; install `src/training/dspy/requirements.lock` and the editable bridge in `src/training/dspy/.venv` first |

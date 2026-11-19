@@ -60,3 +60,23 @@ For programmatic callers, load the explicit module specifiers with `loadRuntimeA
 Declare the features the harness actually supports. A memory hook, credential preparation, health check, training provider, or Moltnet connection can be supplied independently. Native code, schemas, install assets, credentials, and compatibility readers belong to the adapter folder.
 
 For an ACP agent, use `createAcpStdioWiring({ command, args, workspace })` for `wiring.moltnet`. Moltnet starts that executable in the agent workspace. Arguments retain their boundaries. The adapter should use the emitted client config when its agent explicitly sends a reply. The fixture demonstrates this with a local Node process. ACP messaging requires a verified Moltnet release advertising `acp-bridge`. The bundled v0.1.19 pin advertises the earlier bridges. The local-development build can verify an ACP-capable Moltnet archive. [Runtime registry](RUNTIMES.md)
+
+## Verify the packed ACP fixture in local Docker
+
+Use a clean Moltnet checkout that supports ACP and a local Docker daemon.
+Run from the Spawnfile checkout with its dependencies installed.
+
+```bash
+release_dir="$(mktemp -d)"
+SPAWNFILE_MOLTNET_SOURCE_DIR=/absolute/path/to/moltnet \
+  SPAWNFILE_MOLTNET_ENABLE_ACP=1 \
+  SPAWNFILE_MOLTNET_LOCAL_RELEASE_OUTPUT="$release_dir" npm run build:local-moltnet
+SPAWNFILE_VERIFY_ACP_RELEASE_DIR="$release_dir" npm run verify:package-closure
+```
+
+The check installs both tarballs into a temporary consumer, builds fresh fixture
+images, and verifies native startup and explicit room and DM replies on a
+published loopback port. It restarts the container, checks both old reply IDs
+and new replies, and removes its containers, tags, and named volumes. The
+opt-in release must match the daemon architecture. Without the opt-in, the
+closure check keeps using the normal published pin.

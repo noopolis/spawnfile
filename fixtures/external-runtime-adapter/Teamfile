@@ -1,0 +1,26 @@
+spawnfile_version: "0.1"
+kind: team
+name: adapter-proof
+members:
+  - id: echo
+    ref: ./echo
+mode: swarm
+networks:
+  - id: adapter_net
+    name: Adapter Proof
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19986
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/adapter_net/adapter.sqlite
+      auth:
+        mode: none
+      direct_messages: true
+      human_ingress: true
+    rooms:
+      - id: adapter-proof
+        members: [echo]

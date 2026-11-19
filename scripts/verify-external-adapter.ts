@@ -3,9 +3,7 @@ import { copyFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-type RunCommand = (
-  command: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv
-) => Promise<{ stdout: string; stderr: string }>;
+import { verifyExternalAcpDocker, type RunCommand } from "./verify-external-acp-docker.ts";
 
 /** Exercise the packed SDK, installed plugin and public CLI from outside the source checkout. */
 export async function verifyExternalAdapter(executable: string, consumer: string, run: RunCommand): Promise<void> {
@@ -26,4 +24,8 @@ export async function verifyExternalAdapter(executable: string, consumer: string
   const config = await readFile(path.join(output, "runtimes/echo-harness/agents/echo/agent.json"), "utf8");
   assert.deepEqual(JSON.parse(config), { agent: "echo" });
   assert.match(await readFile(path.join(output, "Dockerfile"), "utf8"), /COPY --from=spawnfile-fixture\/echo-harness:1\.0\.0/u);
+  const releaseDirectory = process.env.SPAWNFILE_VERIFY_ACP_RELEASE_DIR;
+  if (releaseDirectory !== undefined) {
+    await verifyExternalAcpDocker(executable, consumer, fixture, releaseDirectory, run);
+  }
 }

@@ -37,6 +37,6 @@ export const spawnfileAdapter = defineRuntimeAdapterPlugin({
   adapter: new EchoAdapter(),
   catalog: {
     defaultBranch: "main", ref: "v1.0.0", remote: "https://example.invalid/echo-harness",
-    install: { kind: "container_image", image: "spawnfile-fixture/echo-harness", tag: "1.0.0" }
+    install: { kind: "container_image", image: "spawnfile-fixture/echo-harness", tag: process.env.SPAWNFILE_ACP_FIXTURE_TAG ?? "1.0.0" }
   }
 });
