@@ -469,6 +469,8 @@ Memory access policy and output judgment are separate. The memory system enforce
 
 ### 2.4 Runtime Binding
 
+The root agent or team manifest may declare an `adapters` map. Each key names a runtime and each value names an installed package or a `./` module inside the project. Child agents select those runtimes by name. Before the CLI loads a project's modules, the operator approves the declarations with `spawnfile adapters trust .`. [Custom runtimes](/guides/writing-a-spawnfile/#custom-runtimes)
+
 For `kind: agent`, the `runtime` field declares which runtime adapter should compile the agent manifest. Team manifests MUST NOT declare `runtime`; each referenced agent declares its own runtime.
 
 ```yaml

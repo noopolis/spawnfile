@@ -93,7 +93,8 @@ Portability is capability-specific: the compiler reports each feature as **suppo
 |---|---|
 | Understand the source format | [Spawnfile specification](specs/SPEC.md) |
 | Explore complete projects | [Examples](examples/) |
-| Add an adapter or contribute | [Contributing](CONTRIBUTING.md) |
+| Bring your own harness | [Writing a runtime adapter](specs/RUNTIME_ADAPTERS.md) and [two-harness test team](fixtures/external-runtime-adapter/Spawnfile) |
+| Contribute to Spawnfile | [Contributing](CONTRIBUTING.md) |
 | Integrate with deployment tooling | [Target and lifecycle contracts](specs/TARGETS.md) |
 | Plan isolated agent training | [Agent training](specs/TRAINING.md) |
 | Find a detailed contract | [Specification index](specs/INDEX.md) |

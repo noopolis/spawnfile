@@ -49,13 +49,32 @@ The base class installs a named npm package at an exact version or copies the ru
 
 ## Select and load it
 
-An agent selects `runtime: { name: echo-harness }` in its Spawnfile. Its optional `runtime.options` become `agent.runtime.options`. The operator installs a trusted package and passes its name to commands that use it, for example `spawnfile --adapter @spawnfile-fixtures/echo-adapter compile .`. A local module works the same way with `--adapter ./adapter.mjs`. The flag is repeatable and resolves from the invocation's working directory.
+Declare external adapter entrypoints once in the root agent or team Spawnfile. Each key matches the name its module exports. Each team member selects its runtime independently. The optional `runtime.options` map becomes `agent.runtime.options` inside the selected adapter.
 
-Loading a plugin executes its module with the operator's local permissions. The runtime name in a Spawnfile only selects a registered adapter. Installing an adapter and loading it are explicit operator actions. Built-ins remain available automatically. Duplicate registrations and attempts to replace an active built-in fail. An external package can supply an implementation for a catalog-only exploratory name.
+```yaml
+spawnfile_version: "0.1"
+kind: team
+name: harness-workshop
+adapters:
+  echo-harness: "@spawnfile-fixtures/echo-adapter"
+  word-count: ./word-count/adapter.mjs
+mode: swarm
+members:
+  - id: echo
+    runtime: { name: echo-harness }
+    workspace: { docs: { system: AGENTS.md } }
+  - id: counter
+    runtime: { name: word-count, options: { text: "one small custom harness" } }
+    workspace: { docs: { system: AGENTS.md } }
+```
 
-Pass the same `--adapter` to commands that consume the resulting reports. Image startup and release need the adapter's launch settings. Artifact export, including `down --export-to`, needs the adapter's file list. A missing adapter stops the operation. An adapter with no export hook can legitimately contribute zero runtime files. A required file that fails to copy makes export exit with an error and leaves the deployment eligible for a retry. Direct JSON export includes the missing required files in `failed_files`.
+Install any named package in the project, then review its code and dependencies. From the project directory, run `spawnfile adapters trust .` to approve the declarations for this checkout. Subsequent project commands such as `spawnfile validate .` and `spawnfile compile .` load the declared adapters. A change to the declared name-to-module mapping requires approval again. Plugins run with the operator's permissions. Approval covers the implementation and its dependencies as project code.
 
-For programmatic callers, load the explicit module specifiers with `loadRuntimeAdapterPlugins(specifiers, { cwd })`. Pass that result and a callback to `withRuntimeAdapterPlugins(plugins, callback)`. The registration lasts for the callback and its asynchronous work. A new scope selects its own plugins. The package closure check exercises the installed CLI with both a local file and a separately packed adapter. [Runnable example package](../fixtures/external-runtime-adapter)
+Paths beginning with `./` resolve inside the directory containing the root Spawnfile. Bare package names resolve through the project's installed dependencies. The declarations apply throughout the project graph. Keep the map at the root and select adapters by runtime name in child agents. Built-in adapters are always available. The registry rejects duplicate module registrations and attempts to replace an active built-in.
+
+For ad hoc modules or an image without a source project, pass `--adapter ./adapter.mjs` or `--adapter @example/adapter`. The repeatable flag resolves from the invocation's working directory. An explicit module takes precedence for its runtime name. Every remaining project-declared module still requires approval. Image startup and release need the adapter's launch settings. Artifact export, including `down --export-to`, needs its file list. A missing adapter stops the operation. An adapter with no export hook can legitimately contribute zero runtime files. A required file that fails to copy makes export exit with an error and leaves the deployment eligible for a retry. Direct JSON export includes the missing required files in `failed_files`.
+
+Programmatic callers can load a trusted Spawnfile's declarations with `loadProjectRuntimeAdapterPlugins(projectPath)`, or pass explicit module names to `loadRuntimeAdapterPlugins(specifiers, { cwd })`. Pass the result and a callback to `withRuntimeAdapterPlugins(plugins, callback)`. Registration lasts for the callback and its asynchronous work. The integration test compiles Echo and Word Count in one project, then runs Word Count on its generated input. [Test Spawnfile](../fixtures/external-runtime-adapter/Spawnfile) and [complete local adapter](../fixtures/external-runtime-adapter/word-count/adapter.mjs).
 
 Packages that imported implementation files directly from `spawnfile/dist/` may need to migrate when native files move into their adapter folders. Import adapter contracts from `spawnfile/adapter`. Training integrations can obtain the composed providers with `await trainingDependencies()` from `spawnfile/training/cli`. [Training integration entry points](TRAINING.md#interim-public-integration-entry-points)
 
@@ -71,7 +90,14 @@ Runtime export hooks return canonical relative paths. Each file and private dire
 
 For an ACP agent, use `createAcpStdioWiring({ command, args, workspace })` for `wiring.moltnet`. Moltnet starts that executable in the agent workspace. Arguments retain their boundaries. The adapter should use the emitted client config when its agent explicitly sends a reply. The fixture demonstrates this with a local Node process. Emitting the ACP protocol requires a verified Moltnet release advertising `acp-bridge`, including for handwritten wiring. An adapter can declare additional requirements with `releaseCapability`. The bundled v0.1.19 pin advertises the earlier bridges. The local-development build can verify an ACP-capable Moltnet archive. [Runtime registry](RUNTIMES.md)
 
-## Verify the packed ACP fixture in local Docker
+## Run the custom harness tests
+
+To try the two-harness case from a fresh Spawnfile checkout with Node 22.19 or newer, run the source CLI regression. It creates a temporary consumer, approves its adapter map, compiles the team and checks Word Count's output.
+
+```bash
+npm ci
+node --experimental-strip-types --test scripts/verify-external-adapter.test.ts
+```
 
 Use a clean Moltnet checkout that supports ACP and a local Docker daemon.
 Run from the Spawnfile checkout with its dependencies installed.
@@ -84,8 +110,8 @@ SPAWNFILE_MOLTNET_SOURCE_DIR=/absolute/path/to/moltnet \
 SPAWNFILE_VERIFY_ACP_RELEASE_DIR="$release_dir" npm run verify:package-closure
 ```
 
-The check installs both tarballs into a temporary consumer, builds fresh fixture
-images, and verifies native startup and explicit room and DM replies on a
+The check installs both tarballs into a temporary consumer, builds a separate
+image for each harness, and verifies both start and Echo answers room and direct messages on a
 published loopback port. It restarts the container, checks both old reply IDs
 and new replies, and removes its containers, tags, and named volumes. The
 opt-in release must match the daemon architecture. Without the opt-in, the

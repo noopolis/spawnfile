@@ -45,6 +45,21 @@ The short form is equivalent to the long form with an empty `options` map. The `
 
 For agents with subagents, the parent's runtime is inherited. Subagents must not declare a different runtime than their parent.
 
+### Custom runtimes
+
+An agent or team's root Spawnfile can register any number of external adapters. Each agent selects one with its usual `runtime` field.
+
+```yaml
+spawnfile_version: "0.1"
+kind: agent
+name: echo
+adapters:
+  echo-harness: ./adapters/echo/adapter.mjs
+runtime: { name: echo-harness }
+```
+
+Use a local module inside the project or the name of an installed package. Run `spawnfile adapters trust .` after reviewing the plugins, then `spawnfile compile .`. Plugins execute JavaScript on your machine. Changing the declared map requires a new approval.
+
 ## workspace
 
 The `workspace` block declares portable markdown surfaces, attached working resources, and local skills for an agent. `workspace.docs` defines the agent's identity, behavior, and operating context. All doc fields are optional.
