@@ -42,7 +42,10 @@ export const createContainerArtifacts = async (
 ): Promise<GeneratedContainerArtifacts> => {
   assertMoltnetBridgeCapabilities(options.moltnet?.nodePlans ?? [], options.moltnetRelease);
   const hosts = selectedRuntimeHosts(Object.keys(plan.runtimes).sort());
-  const localImageReports = await Promise.all(hosts.map(({ host }) => host.localImageReport?.()));
+  const localImageReports = await Promise.all(hosts.map(async ({ name, host }) => {
+    const identity = await host.localImageReport?.();
+    return identity ? [[`local_${name}_runtime`, identity] as const] : [];
+  }));
   const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings, options.deploymentLineage);
   const envVariableMap = createEnvVariableMap(compiledNodes, runtimePlans, options.moltnet);
   const projectedWorldTokenEnvNames = [...new Set(
@@ -346,7 +349,7 @@ export const createContainerArtifacts = async (
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
       internal_ports: internalPorts,
-      ...Object.assign({}, ...localImageReports),
+      ...Object.fromEntries(localImageReports.flat()),
       model_secrets_required: modelSecretsRequired,
       ...(moltnetSummary ? { moltnet: moltnetSummary } : {}),
       port_mappings: portMappings,

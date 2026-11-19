@@ -269,16 +269,18 @@ export interface NodeReport {
   source: string;
 }
 
+export interface ContainerLocalRuntimeIdentity {
+  capability_receipt_sha256: string;
+  image_reference: string;
+  registry_authority: string;
+}
+
 export interface ContainerReport {
   dockerfile: string;
   entrypoint: string;
   env_example: string;
   internal_ports?: number[];
-  local_daimon_runtime?: {
-    capability_receipt_sha256: string;
-    image_reference: string;
-    registry_authority: string;
-  };
+  [key: `local_${string}_runtime`]: ContainerLocalRuntimeIdentity | undefined;
   model_secrets_required: string[];
   moltnet?: ContainerMoltnetPlanSummary;
   memory?: ContainerMemoryReport[];

@@ -5,7 +5,26 @@ import * as ts from "typescript";
 import { expect, test } from "vitest";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const registration = "src/runtime/registry.ts";
+const registration = "src/runtime/builtinAdapters.generated.ts";
+const sharedContracts = new Set([
+  "src/runtime/types.ts", "src/runtime/hostTypes.ts", "src/compiler/containerArtifactsTypes.ts"
+]);
+
+async function historicalExports(names: ReadonlySet<string>): Promise<Set<string>> {
+  const edges = new Set<string>();
+  for (const name of names) {
+    const file = path.join(root, "src/runtime", name, "legacyExports.json");
+    let raw: string;
+    try { raw = await readFile(file, "utf8"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") continue; throw error; }
+    for (const entry of JSON.parse(raw) as Array<{ surfaces: string[]; from: string }>) {
+      for (const surface of entry.surfaces) {
+        edges.add(`src/runtime/legacy${surface}.generated.ts:src/runtime/${name}/${entry.from}.js`);
+      }
+    }
+  }
+  return edges;
+}
 
 function isShippedSource(file: string): boolean {
   return /\.[cm]?[jt]sx?$/u.test(file)
@@ -67,7 +86,9 @@ function isCausalProducerCheck(file: string, literal: ts.StringLiteralLike, sour
     && comparison.left.getText(source) === "event.emitter.system";
 }
 
-function violations(file: string, body: string, names: ReadonlySet<string>): string[] {
+function violations(
+  file: string, body: string, names: ReadonlySet<string>, historical: ReadonlySet<string> = new Set()
+): string[] {
   const source = ts.createSourceFile(file, body, ts.ScriptTarget.Latest, true);
   const current = owner(file, names);
   const findings: string[] = [];
@@ -86,8 +107,17 @@ function violations(file: string, body: string, names: ReadonlySet<string>): str
         ? path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier.text))
         : specifier.text.replace(/^spawnfile\/(?:src|dist)\//u, "src/");
       const imported = owner(target, names);
-      if (imported && imported !== current && file !== registration) {
+      const bundledEntry = file === registration && ts.isImportDeclaration(node)
+        && target === `src/runtime/${imported}/registration.js`;
+      const legacyEntry = ts.isExportDeclaration(node) && historical.has(`${file}:${target}`);
+      if (imported && imported !== current && !bundledEntry && !legacyEntry) {
         report(specifier, `imports ${imported} implementation ${specifier.text}`);
+      }
+    }
+    if (sharedContracts.has(file) && ts.isPropertySignature(node) && ts.isIdentifier(node.name)) {
+      const field = node.name.text.toLowerCase();
+      if ([...names, "grok", "codex"].some((name) => field.includes(name))) {
+        report(node.name, `shared contract exposes a native property "${node.name.text}"`);
       }
     }
     if (ts.isStringLiteralLike(node) && names.has(node.text) && node.text !== current
@@ -107,8 +137,9 @@ test("only adapter registration imports native implementations, and core dispatc
     return match ? [match[1]!] : [];
   }));
   expect(names.size).toBeGreaterThan(0);
+  const historical = await historicalExports(names);
   const results = await Promise.all(files.map(async (file) => (
-    violations(file, await readFile(path.join(root, file), "utf8"), names)
+    violations(file, await readFile(path.join(root, file), "utf8"), names, historical)
   )));
   expect(results.flat()).toEqual([]);
 });
@@ -131,5 +162,8 @@ test("the boundary catches static, dynamic and type imports and name dispatch fo
   expect(violations("src/compiler/exampleStartup.ts", "", names)).toHaveLength(1);
   expect(violations("src/compiler/file.ts", 'getRuntimeAdapter(runtime.name);', names)).toEqual([]);
   expect(violations("src/runtime/example/adapter.ts", 'import { start } from "./native.js";', names)).toEqual([]);
-  expect(violations(registration, 'import { adapter } from "./example/adapter.js";', names)).toEqual([]);
+  expect(violations(registration, 'import { adapter } from "./example/registration.js";', names)).toEqual([]);
+  expect(violations(registration, 'import { native } from "./example/private.js";', names)).toHaveLength(1);
+  expect(violations("src/runtime/types.ts", "interface Target { exampleSetting: number }", names)).toHaveLength(1);
+  expect(violations("src/runtime/types.ts", "interface Target { grokModelByNodeId: string }", names)).toHaveLength(1);
 });

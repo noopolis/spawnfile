@@ -7,7 +7,7 @@ import type { DockerRunInvocation } from "../compiler/runProjectDocker.js";
 import type { DockerCommandRunner } from "../distribution/dockerRunner.js";
 import type { DistributionRuntimeInstance } from "../distribution/types.js";
 import type { ModelAuthMethod } from "../shared/types.js";
-import type { ContainerReport } from "../report/types.js";
+import type { ContainerLocalRuntimeIdentity } from "../report/types.js";
 import type { EmittedFile } from "./types.js";
 
 export interface RuntimeHostBuildInput {
@@ -75,5 +75,5 @@ export interface RuntimeHostIntegration {
   prepareImageLaunch?(input: RuntimeImageLaunchInput): Promise<RuntimePreparedImageLaunch>;
   prepareImageAuth?: RuntimeImageAuthPreparer;
   /** Compatibility output for the existing host-local image receipt. */
-  localImageReport?(): Promise<Pick<ContainerReport, "local_daimon_runtime">>;
+  localImageReport?(): Promise<ContainerLocalRuntimeIdentity | undefined>;
 }

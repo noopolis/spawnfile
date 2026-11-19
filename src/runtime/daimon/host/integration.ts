@@ -44,12 +44,12 @@ export const daimonHostIntegration: RuntimeHostIntegration = {
   prepareImageAuth: createDaimonImageAuthPreparer(),
   async localImageReport() {
     const input = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
-    if (!input) return {};
+    if (!input) return undefined;
     const identity = await loadLocalDaimonRuntimeIdentity(input);
-    return { local_daimon_runtime: {
+    return {
       capability_receipt_sha256: identity.capabilityReceipt,
       image_reference: identity.imageReference,
       registry_authority: identity.registryAuthority
-    } };
+    };
   }
 };
