@@ -13,9 +13,10 @@ const profile: ResolvedAuthProfile = {
   }
 };
 
-const instance = (runtime: string, method?: string, homePath: string | null = `/state/${runtime}/home`) => ({
-  home_path: homePath, id: runtime, runtime, model_auth_methods: method ? { provider: method } : {}
-});
+const instance = (runtime: string, method?: string, homePath: string | null = `/state/${runtime}/home`) => {
+  const model_auth_methods: Record<string, string> = method ? { provider: method } : {};
+  return { home_path: homePath, id: runtime, runtime, model_auth_methods };
+};
 
 afterEach(() => vi.restoreAllMocks());
 
