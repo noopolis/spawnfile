@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { z } from "zod";
 
-const surfaces = ["Runtime", "Registry", "UsageLedger", "UsageRequests", "DrainControl", "DrainPhase", "ReleaseTypes", "Recording"] as const;
+const surfaces = ["Common", "Runtime", "Registry", "UsageLedger", "UsageRequests", "DrainControl", "DrainPhase", "ReleaseTypes", "Recording"] as const;
 const identifier = z.string().regex(/^[A-Za-z_$][\w$]*$/u);
 const declarationSchema = z.strictObject({
   from: z.string().regex(/^[a-zA-Z][a-zA-Z0-9-]*$/u),

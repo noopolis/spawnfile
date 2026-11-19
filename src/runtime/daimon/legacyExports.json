@@ -1,4 +1,5 @@
 [
+  { "from": "grokSkillsSupport", "surfaces": ["Common"], "values": ["CLI_ENGINE_SKILL_BASE_DIRECTORIES"] },
   { "from": "localDaimonAuthority", "surfaces": ["Runtime"] },
   { "from": "daimonInstall", "surfaces": ["Runtime"] },
   { "from": "daimonInstall", "surfaces": ["Registry"], "types": ["DaimonCapabilityReceipts"] },

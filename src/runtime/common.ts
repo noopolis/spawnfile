@@ -5,6 +5,8 @@ import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 
 import { EmittedFile } from "./types.js";
 
+export * from "./legacyCommon.generated.js";
+
 const ROLE_FILE_NAMES: Record<string, string> = {
   heartbeat: "HEARTBEAT.md",
   identity: "IDENTITY.md",

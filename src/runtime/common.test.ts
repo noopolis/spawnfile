@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ResolvedAgentNode } from "../compiler/types.js";
 
 import {
+  CLI_ENGINE_SKILL_BASE_DIRECTORIES,
   createAgentCapabilities,
   createDocumentFiles,
   createSkillFiles,
@@ -48,6 +49,11 @@ const baseAgent: ResolvedAgentNode = {
 };
 
 describe("runtime common helpers", () => {
+  it("keeps the published native CLI skill directories in their discovery order", async () => {
+    expect(CLI_ENGINE_SKILL_BASE_DIRECTORIES).toEqual(["workspace/.agents/skills", "workspace/.codex/skills"]);
+    expect((await import("./index.js")).CLI_ENGINE_SKILL_BASE_DIRECTORIES).toBe(CLI_ENGINE_SKILL_BASE_DIRECTORIES);
+  });
+
   it("maps built-in and extra documents to files", () => {
     expect(createDocumentFiles("workspace", baseAgent.docs)).toEqual([
       { content: "# System", path: "workspace/AGENTS.md" },

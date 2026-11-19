@@ -10,6 +10,7 @@ import { daimonAgentSkillsFromResolved, parseDaimonAgentSkills } from "./grokWor
 
 /** Native CLI engines discover skills at both roots in each agent workspace. */
 export const DAIMON_SKILL_ROOTS = ["workspace/.agents/skills", "workspace/.codex/skills"] as const;
+export { DAIMON_SKILL_ROOTS as CLI_ENGINE_SKILL_BASE_DIRECTORIES };
 
 /** The first Daimon whose broker accepts `skillsSha256` and renders `$GROK_HOME/skills` (noopolis/daimon-harness#55). */
 export const DAIMON_GROK_SKILLS_MIN_VERSION = "0.2.2";
