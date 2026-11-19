@@ -81,7 +81,9 @@ or receipt environment overrides fail closed. With no identity path,
 Bundled adapters export `adapter` through their folder's `registration.ts`.
 The build generates static imports from those declarations and preserves historical
 exports from each registered adapter's `legacyExports.json`. Removing a
-registration also removes its compatibility exports from the generated files. External code is
+registration also removes its compatibility exports from the generated files.
+When no recording codec is bundled, `legacyRecordingUnavailable.ts` keeps the
+historical consumer APIs typed and refuses to read retained history. External code is
 loaded only from an explicit operator specifier, and each invocation sees its
 own registrations. Manifest runtime names select adapters within that scope.
 
