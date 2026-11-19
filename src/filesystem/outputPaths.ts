@@ -1,6 +1,6 @@
 import type { Stats } from "node:fs";
 import { constants } from "node:fs";
-import { lstat, open, stat } from "node:fs/promises";
+import { lstat, open, realpath } from "node:fs/promises";
 import path from "node:path";
 
 import { SpawnfileError } from "../shared/errors.js";
@@ -27,7 +27,7 @@ const refuseDirectory = (directory: string): never => {
 };
 
 /** Descendants of an output root must be real directories, never links. */
-const assertRealDirectory = async (directory: string): Promise<void> => {
+export const assertOutputDirectory = async (directory: string): Promise<void> => {
   const entry = await readEntry(directory);
   if (entry && !entry.isDirectory()) refuseDirectory(directory);
 };
@@ -36,12 +36,13 @@ const assertRealDirectory = async (directory: string): Promise<void> => {
  * The operator-selected output root may be missing, a directory, or a link to
  * an existing directory. Anything else, including a dangling link, is refused.
  */
-export const assertOutputDirectory = async (directory: string): Promise<void> => {
+export const resolveOutputRoot = async (directory: string): Promise<string> => {
   const entry = await readEntry(directory);
-  if (!entry || entry.isDirectory()) return;
-  if (!entry.isSymbolicLink()) refuseDirectory(directory);
-  const target = await stat(directory).catch(() => undefined);
-  if (!target?.isDirectory()) refuseDirectory(directory);
+  if (!entry || entry.isDirectory()) return directory;
+  if (!entry.isSymbolicLink()) return refuseDirectory(directory);
+  const target = await realpath(directory).catch(() => undefined);
+  if (!target || !(await readEntry(target))?.isDirectory()) return refuseDirectory(directory);
+  return target;
 };
 
 /** Checks the complete batch and resolves destinations before the caller writes it. */
@@ -50,7 +51,6 @@ export const resolveOutputFilePaths = async (
 ): Promise<string[]> => {
   const prefix = relativeDirectory === undefined ? undefined : toPosixPath(relativeDirectory);
   if (prefix !== undefined) assertOutputRelativePath(prefix);
-  const root = path.resolve(directory);
   const parts = paths.map((filename) => {
     assertOutputRelativePath(filename);
     return prefix === undefined ? filename : `${prefix}/${filename}`;
@@ -72,10 +72,10 @@ export const resolveOutputFilePaths = async (
     }
   }
 
-  await assertOutputDirectory(root);
+  const root = await resolveOutputRoot(path.resolve(directory));
   // Check each containing directory before inspecting its children.
   for (const relative of [...directories].sort()) {
-    await assertRealDirectory(path.join(root, relative));
+    await assertOutputDirectory(path.join(root, relative));
   }
   const targets = parts.map((relative) => path.join(root, relative));
   await Promise.all(targets.map(async (target) => {
@@ -86,8 +86,6 @@ export const resolveOutputFilePaths = async (
   }));
   return targets;
 };
-
-const MAX_STAGED_FILE_BYTES = 1024 * 1024;
 
 const refuseStagedFile = (filename: string, reason: string): never => {
   throw new SpawnfileError("compile_error", `Staged file ${JSON.stringify(filename)} ${reason}`);
@@ -102,7 +100,7 @@ export const readStagedRegularFiles = async (
   directory: string, paths: readonly string[]
 ): Promise<string[]> => {
   const root = path.resolve(directory);
-  if (!(await stat(root)).isDirectory()) refuseDirectory(root);
+  if (!(await lstat(root)).isDirectory()) refuseDirectory(root);
   return Promise.all(paths.map(async (filename) => {
     assertOutputRelativePath(filename);
     const segments = filename.split("/");
@@ -115,7 +113,6 @@ export const readStagedRegularFiles = async (
     const entry = await readEntry(target);
     if (!entry) return refuseStagedFile(filename, "was not produced");
     if (!entry.isFile() || entry.nlink !== 1) refuseStagedFile(filename, "is not a regular file with one link");
-    if (entry.size > MAX_STAGED_FILE_BYTES) refuseStagedFile(filename, "is too large");
     const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const opened = await handle.stat();

@@ -4,7 +4,7 @@ import { assertRecordingCapability } from "./recordingCapability.js";
 import path from "node:path";
 import { chmod } from "node:fs/promises";
 
-import { assertOutputDirectory, ensureDirectory, removeDirectory } from "../filesystem/index.js";
+import { ensureDirectory, removeDirectory, resolveOutputRoot } from "../filesystem/index.js";
 import {
   createCompileReport,
   createDiagnostic,
@@ -286,11 +286,11 @@ export const compileProject = async (
         resolveNoopolisRunId(process.env)
       );
   // `spawnfile compile ./org` defaults to ./org/.spawn.
-  const outputDirectory = options.outputDirectory
+  const requestedOutputDirectory = options.outputDirectory
     ? path.resolve(options.outputDirectory)
     : path.join(path.dirname(plan.root), DEFAULT_OUTPUT_DIRECTORY);
 
-  await assertOutputDirectory(outputDirectory);
+  const outputDirectory = await resolveOutputRoot(requestedOutputDirectory);
   if (options.clean ?? true) {
     await cleanCompileOutput(outputDirectory);
   }
@@ -378,13 +378,14 @@ export const compileProject = async (
   const report = createCompileReport(plan.root, nodeReports, [], containerArtifacts.report, {
     compileFingerprint: containerArtifacts.distribution.fingerprint,
     generatedAt,
-    outputDirectory,
+    outputDirectory: requestedOutputDirectory,
     projectName: containerArtifacts.distribution.report.organization.project
   });
   if (workspaceBundles.report.length > 0) report.workspace_bundles = workspaceBundles.report;
   if (workspaceGitPins.report.length > 0) report.workspace_git_resources = workspaceGitPins.report;
   if (containerArtifacts.distribution.report.recording) report.recording = containerArtifacts.distribution.report.recording;
-  const reportPath = await writeCompileReport(outputDirectory, report);
+  const writtenReport = await writeCompileReport(outputDirectory, report);
+  const reportPath = path.join(requestedOutputDirectory, path.basename(writtenReport));
   const organizationReadinessEvidence = createOrganizationReadinessEvidence({
     compileVersion: report.spawnfile_version,
     containerArtifacts,
@@ -393,5 +394,5 @@ export const compileProject = async (
     ...(worldBindings ? { worldBindings } : {})
   });
 
-  return { organizationReadinessEvidence, outputDirectory, report, reportPath };
+  return { organizationReadinessEvidence, outputDirectory: requestedOutputDirectory, report, reportPath };
 };

@@ -189,7 +189,7 @@ export const injectMoltnetWorkspaceFiles = async (
     const moltnetSkillFiles = await installMoltnetSkillFiles({
       agentName: compiled.value.name,
       cliCommand: moltnetCliCommand,
-      clientConfigFiles: moltnetClientConfigFiles,
+      emittedFiles: compiled.emittedFiles,
       layout
     });
     await writeEmittedFiles(outputDirectory, moltnetSkillFiles, compiled.report.output_dir);

@@ -34,7 +34,8 @@ const createInstaller = async (): Promise<{ cli: string; log: string }> => {
     "const runtime = args[args.indexOf('--runtime') + 1];",
     "const workspace = args[args.indexOf('--workspace') + 1];",
     `fs.appendFileSync(${JSON.stringify(log)}, workspace + '\\n');`,
-    "const config = fs.readFileSync(path.join(workspace, '.moltnet', 'config.json'), 'utf8');",
+    "const configPath = runtime === 'separate' ? path.join(path.dirname(workspace), 'state/config.json') : path.join(workspace, '.moltnet/config.json');",
+    "const config = fs.readFileSync(configPath, 'utf8');",
     "const put = (relative, content) => {",
     "  fs.mkdirSync(path.dirname(path.join(workspace, relative)), { recursive: true });",
     "  fs.writeFileSync(path.join(workspace, relative), content);",
@@ -42,7 +43,8 @@ const createInstaller = async (): Promise<{ cli: string; log: string }> => {
     `const skill = ${JSON.stringify(SKILL)} + config;`,
     "if (runtime === 'fail') { process.stderr.write('installer refused\\n'); process.exit(3); }",
     "if (runtime === 'multi') { put('.agents/skills/moltnet/SKILL.md', skill); put('.codex/skills/moltnet/SKILL.md', skill); }",
-    "if (runtime === 'plain' || runtime === 'extra') put('skills/moltnet/SKILL.md', skill);",
+    "if (['plain', 'extra', 'separate'].includes(runtime)) put('skills/moltnet/SKILL.md', skill);",
+    "if (runtime === 'merge') put('GEMINI.md', fs.readFileSync(path.join(workspace, 'GEMINI.md'), 'utf8') + skill);",
     "if (runtime === 'extra') put('skills/other/NOTES.md', 'unexpected\\n');",
     "if (runtime === 'link') {",
     "  put('elsewhere.md', 'linked\\n');",
@@ -60,7 +62,7 @@ const createInstaller = async (): Promise<{ cli: string; log: string }> => {
 
 const config = { content: "{\"fixture\":true}\n", path: "workspace/.moltnet/config.json" };
 const install = (cli: string, layout: RuntimeMoltnetWorkspace) =>
-  installMoltnetSkillFiles({ agentName: "fixture", cliCommand: cli, clientConfigFiles: [config], layout });
+  installMoltnetSkillFiles({ agentName: "fixture", cliCommand: cli, emittedFiles: [config], layout });
 
 it("returns only expected skill files from a private stage and removes the stage", async () => {
   const { cli, log } = await createInstaller();
@@ -80,12 +82,29 @@ it("preserves native layouts with several skill destinations", async () => {
   ]);
 });
 
+it("lets the native installer extend an author's declared instruction file", async () => {
+  const { cli } = await createInstaller();
+  const instruction = { path: "workspace/GEMINI.md", content: "# Existing instructions\n" };
+  const layout = { ...createMoltnetWorkspace("merge", []), skillPaths: [instruction.path] };
+  const files = await installMoltnetSkillFiles({ agentName: "fixture", cliCommand: cli, emittedFiles: [instruction, config], layout });
+  expect(files).toEqual([{ ...instruction, content: instruction.content + SKILL + config.content }]);
+});
+
+it("supports a client config next to the workspace inside the runtime output", async () => {
+  const { cli } = await createInstaller();
+  const layout = { ...createMoltnetWorkspace("separate", ["workspace/skills"]), clientConfigPath: "state/config.json" };
+  const files = await installMoltnetSkillFiles({
+    agentName: "fixture", cliCommand: cli, emittedFiles: [{ ...config, path: layout.clientConfigPath }], layout
+  });
+  expect(files).toEqual([{ path: layout.skillPaths[0], content: SKILL + config.content }]);
+});
+
 it.each([
   [{ workspaceRootPath: "../outside" }, /canonical relative file path/u],
   [{ skillPaths: ["/absolute/SKILL.md"] }, /canonical relative file path/u],
   [{ skillPaths: ["workspace/../SKILL.md"] }, /canonical relative file path/u],
   [{ skillPaths: ["config/SKILL.md"] }, /outside workspace/u],
-  [{ clientConfigPath: "state/config.json" }, /outside workspace/u]
+  [{ clientConfigPath: "/state/config.json" }, /canonical relative file path/u]
 ])("refuses adapter layout %j before running the installer", async (override, message) => {
   const { cli, log } = await createInstaller();
   const layout = { ...createMoltnetWorkspace("plain", ["workspace/skills"]), ...override };

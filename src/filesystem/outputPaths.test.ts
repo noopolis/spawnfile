@@ -1,10 +1,10 @@
-import { link, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, expect, it } from "vitest";
 
-import { assertOutputDirectory, assertOutputRelativePath, readStagedRegularFiles, resolveOutputFilePaths } from "./outputPaths.js";
+import { assertOutputRelativePath, readStagedRegularFiles, resolveOutputFilePaths, resolveOutputRoot } from "./outputPaths.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -47,9 +47,10 @@ it("follows an operator-selected output root link to a real directory but not li
   const root = await newRoot();
   await mkdir(path.join(root, "real/nested"), { recursive: true });
   await symlink(path.join(root, "real"), path.join(root, "out"));
-  await expect(assertOutputDirectory(path.join(root, "out"))).resolves.toBeUndefined();
+  const target = await realpath(path.join(root, "real"));
+  await expect(resolveOutputRoot(path.join(root, "out"))).resolves.toBe(target);
   await expect(resolveOutputFilePaths(path.join(root, "out"), ["config.json"], "runtimes/example"))
-    .resolves.toEqual([path.join(root, "out/runtimes/example/config.json")]);
+    .resolves.toEqual([path.join(target, "runtimes/example/config.json")]);
   await symlink(path.join(root, "real/nested"), path.join(root, "real/linked"));
   await expect(resolveOutputFilePaths(path.join(root, "out"), ["linked/config.json"])).rejects.toThrow(/real directory/u);
 });
@@ -60,9 +61,9 @@ it("refuses unusable output roots", async () => {
   await symlink(path.join(root, "file"), path.join(root, "file-link"));
   await symlink(path.join(root, "missing"), path.join(root, "dangling"));
   for (const target of ["file", "file-link", "dangling"]) {
-    await expect(assertOutputDirectory(path.join(root, target))).rejects.toThrow(/real directory/u);
+    await expect(resolveOutputRoot(path.join(root, target))).rejects.toThrow(/real directory/u);
   }
-  await expect(assertOutputDirectory(path.join(root, "absent"))).resolves.toBeUndefined();
+  await expect(resolveOutputRoot(path.join(root, "absent"))).resolves.toBe(path.join(root, "absent"));
 });
 
 it("reads expected staged regular files and refuses links", async () => {

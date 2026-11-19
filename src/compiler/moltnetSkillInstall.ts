@@ -16,15 +16,13 @@ import { SpawnfileError } from "../shared/index.js";
 
 const execFile = promisify(execFileCallback);
 
-const stripWorkspaceRoot = (workspaceRootPath: string, filePath: string): string | undefined =>
-  filePath.startsWith(`${workspaceRootPath}/`) ? filePath.slice(workspaceRootPath.length + 1) : undefined;
-
 /** Adapter layouts are confined to the agent output before any installer or readback I/O. */
 export const assertMoltnetSkillLayout = (layout: RuntimeMoltnetWorkspace, agentName: string): void => {
   assertOutputRelativePath(layout.workspaceRootPath);
-  for (const filePath of [layout.clientConfigPath, ...layout.skillPaths]) {
+  assertOutputRelativePath(layout.clientConfigPath);
+  for (const filePath of layout.skillPaths) {
     assertOutputRelativePath(filePath);
-    if (stripWorkspaceRoot(layout.workspaceRootPath, filePath) === undefined) {
+    if (!filePath.startsWith(`${layout.workspaceRootPath}/`)) {
       throw new SpawnfileError(
         "compile_error",
         `Moltnet workspace path ${JSON.stringify(filePath)} for ${agentName} is outside ${layout.workspaceRootPath}`
@@ -37,7 +35,7 @@ export interface InstallMoltnetSkillOptions {
   agentName: string;
   cliCommand: string;
   /** Files already emitted for the workspace, seeded into the private stage. */
-  clientConfigFiles: readonly EmittedFile[];
+  emittedFiles: readonly EmittedFile[];
   layout: RuntimeMoltnetWorkspace;
 }
 
@@ -51,13 +49,11 @@ export const installMoltnetSkillFiles = async (options: InstallMoltnetSkillOptio
   assertMoltnetSkillLayout(layout, agentName);
   const stage = await mkdtemp(path.join(os.tmpdir(), "spawnfile-moltnet-skill-"));
   try {
-    const seeds = options.clientConfigFiles.flatMap((file) => {
-      const relative = stripWorkspaceRoot(layout.workspaceRootPath, file.path);
-      return relative === undefined ? [] : [{ ...file, path: relative }];
-    });
-    const workspace = path.join(stage, "workspace");
+    const inputs = new Set([layout.clientConfigPath, ...layout.skillPaths]);
+    const seeds = options.emittedFiles.filter((file) => inputs.has(file.path));
+    const workspace = path.join(stage, layout.workspaceRootPath);
     await ensureDirectory(workspace);
-    const seedTargets = await resolveOutputFilePaths(workspace, seeds.map((file) => file.path));
+    const seedTargets = await resolveOutputFilePaths(stage, seeds.map((file) => file.path));
     for (const [index, file] of seeds.entries()) {
       await ensureDirectory(path.dirname(seedTargets[index]!));
       await writeUtf8File(seedTargets[index]!, file.content);
@@ -68,10 +64,9 @@ export const installMoltnetSkillFiles = async (options: InstallMoltnetSkillOptio
       const reason = error instanceof Error ? error.message : String(error);
       throw new SpawnfileError("compile_error", `Unable to install the Moltnet skill into ${agentName}: ${reason}`);
     }
-    const relativePaths = layout.skillPaths.map((filePath) => stripWorkspaceRoot(layout.workspaceRootPath, filePath)!);
     let contents: string[];
     try {
-      contents = await readStagedRegularFiles(workspace, relativePaths);
+      contents = await readStagedRegularFiles(stage, layout.skillPaths);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new SpawnfileError("compile_error", `Moltnet skill install for ${agentName} did not produce its expected files: ${reason}`);
