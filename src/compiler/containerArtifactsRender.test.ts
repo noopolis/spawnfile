@@ -373,7 +373,7 @@ describe("renderDockerfile", () => {
     );
   });
 
-  it("installs python3 when Moltnet node endpoints can be rebound at runtime", async () => {
+  it("prepares config updates and private node receipts for the unprivileged Moltnet user", async () => {
     const { renderDockerfile } = await loadRenderModule({
       openclaw: {
         commands: [],
@@ -399,6 +399,7 @@ describe("renderDockerfile", () => {
     );
 
     expect(dockerfile).toContain("python3");
+    expect(dockerfile).toContain("install -d -o spawnfile -g spawnfile -m 700 '/run/spawnfile/moltnet-readiness'");
   });
 
   it("installs the managed Moltnet readiness client even when the adapter needs no system packages", async () => {

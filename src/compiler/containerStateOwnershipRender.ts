@@ -3,6 +3,7 @@ import path from "node:path";
 import { selectRuntimeEntrypoint } from "../runtime/hostSelection.js";
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
+import { MOLTNET_READINESS_DIRECTORY } from "./containerReadinessPaths.js";
 import { VOLUME_BOOTSTRAP_MARKER,VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
 export { VOLUME_BOOTSTRAP_MARKER,VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
 
@@ -30,6 +31,9 @@ export const createStateOwnershipCommand = (
   return [
     `mkdir -p ${mkdirPaths.map(shellQuote).join(" ")}`,
     ...markerCommands,
+    ...(!wrapper && moltnet?.nodePlans.length
+      ? [`install -d -o spawnfile -g spawnfile -m 700 ${shellQuote(MOLTNET_READINESS_DIRECTORY)}`]
+      : []),
     ...(chownPaths.length > 0
       ? [`chown -R spawnfile:spawnfile ${chownPaths.map(shellQuote).join(" ")}`]
       : []),
