@@ -11,6 +11,7 @@ import {
 import type { ContainerReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
+import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
 import { selectRuntimeGeneratedSecrets } from "../runtime/hostSelection.js";
 import type { RuntimeAuthPreparationResult } from "../runtime/types.js";
 import {
@@ -183,10 +184,6 @@ export const assertDeclaredModelAuthSatisfied = (
   }
 };
 
-const RUNTIME_HOME_IMPORT_KINDS = ["claude-code", "codex"] as const;
-const getImportMountTargetName = (kind: (typeof RUNTIME_HOME_IMPORT_KINDS)[number]): string =>
-  kind === "claude-code" ? ".claude" : ".codex";
-
 const hasEnvValue = (env: Record<string, string>, name: string): boolean =>
   typeof env[name] === "string" && env[name]!.length > 0;
 
@@ -346,28 +343,12 @@ export const resolveAuthMountArgs = async (
   containerReport: ContainerReport,
   authProfile: ResolvedAuthProfile | null
 ): Promise<string[]> => {
-  if (!authProfile || containerReport.runtime_homes.length === 0) {
-    return [];
-  }
-
   const args: string[] = [];
-  // Only supported runtime-home logins are bind-mounted here.
-  for (const kind of RUNTIME_HOME_IMPORT_KINDS) {
-    const entry = authProfile.imports[kind];
-    if (!entry) {
-      continue;
+  for (const { method, source, targets } of resolveRuntimeHomeImports(containerReport.runtime_instances, authProfile)) {
+    if (!(await fileExists(source))) {
+      throw new SpawnfileError("validation_error", `Imported auth path for ${method} does not exist: ${source}`);
     }
-    if (!(await fileExists(entry.path))) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Imported auth path for ${kind} does not exist: ${entry.path}`
-      );
-    }
-
-    for (const runtimeHome of containerReport.runtime_homes) {
-      args.push("-v", `${entry.path}:${path.posix.join(runtimeHome, getImportMountTargetName(kind))}`);
-    }
+    for (const target of targets) args.push("-v", `${source}:${target}`);
   }
-
   return args;
 };

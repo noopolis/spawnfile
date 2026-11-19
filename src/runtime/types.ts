@@ -93,7 +93,11 @@ export interface RuntimeContainerConfigEnvBinding {
   transform?: RuntimeContainerConfigValueTransform;
 }
 
+export type RuntimeHomeAuthMethod = "claude-code" | "codex";
+
 export interface RuntimeContainerMeta {
+  /** Supported profile imports mounted into a home only for an explicit matching method. */
+  rawHomeAuthImports?: readonly RuntimeHomeAuthMethod[];
   configFileName: string;
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
   configPathEnv?: string;

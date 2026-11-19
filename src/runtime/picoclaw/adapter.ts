@@ -274,6 +274,7 @@ class PicoClawRuntimeAdapter extends RuntimeAdapterBase {
     assertSupportedPicoClawSurfaces(surfaces);
   };
   readonly container: RuntimeContainerMeta = {
+    rawHomeAuthImports: ["claude-code", "codex"],
     configFileName: "config.json",
     configPathEnv: "PICOCLAW_CONFIG",
     globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex", PICOCLAW_MNEME_PACKAGE],

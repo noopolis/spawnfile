@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import type { ResolvedAuthProfile } from "../auth/index.js";
 import {
   loadImportedClaudeCodeCredential,
@@ -7,6 +5,7 @@ import {
 } from "../auth/index.js";
 import { fileExists } from "../filesystem/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
+import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
 import { runtimeHost } from "../runtime/hostSelection.js";
 import type { RuntimePreparedImageLaunch } from "../runtime/hostTypes.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -30,26 +29,18 @@ export interface ImageRuntimeAuthResult {
   mountArgs: string[];
 }
 
-const importMountTargetName = (kind: "claude-code" | "codex"): string =>
-  kind === "claude-code" ? ".claude" : ".codex";
-
-/**
- * Builds the credential mounts for a sourceless image deployment that uses
- * import-based model auth. The OAuth-mode config is already baked into the
- * image, so this only mounts the consumer's credential tokens (per-adapter) and
- * their raw import directories into each runtime home — the same material a
- * project deployment provides, without needing the project source.
- */
+/** Prepares adapter credentials and declared raw auth imports for a prebuilt image. */
 export const prepareImageRuntimeAuthMounts = async (
   input: ImageRuntimeAuthInput
 ): Promise<ImageRuntimeAuthResult> => {
   const coveredModelSecrets = new Set<string>();
   const mountArgs: string[] = [];
-  const runtimeHomes = new Set<string>();
+  const imports = resolveRuntimeHomeImports(input.report.runtime_instances, input.authProfile);
 
   for (const instance of input.report.runtime_instances) {
-    const prepareAuth = input.runtimePreparations?.get(instance.runtime)?.prepareAuth
-      ?? runtimeHost(instance.runtime)?.prepareImageAuth;
+    const image = input.runtimePreparations?.get(instance.runtime);
+    const host = runtimeHost(instance.runtime);
+    const prepareAuth = image?.prepareAuth?.bind(image) ?? host?.prepareImageAuth?.bind(host);
     if (prepareAuth) {
       mountArgs.push(...await prepareAuth(instance, {
         authProfile: input.authProfile,
@@ -59,7 +50,6 @@ export const prepareImageRuntimeAuthMounts = async (
       }));
       continue;
     }
-    if (instance.home_path) runtimeHomes.add(instance.home_path);
     if (!input.authProfile) continue;
     const adapter = getRuntimeAdapter(instance.runtime);
     if (!adapter.prepareRuntimeAuth) {
@@ -85,37 +75,21 @@ export const prepareImageRuntimeAuthMounts = async (
     mountArgs.push(...prepared.mountArgs);
   }
 
-  // Mount the raw credential import directories into each runtime home so the
-  // runtime's OAuth client can read them (e.g. ~/.claude, ~/.codex).
-  for (const kind of ["claude-code", "codex"] as const) {
-    const entry = input.authProfile?.imports[kind];
-    if (!entry) {
-      continue;
+  for (const { method, source, targets } of imports) {
+    if (!(await fileExists(source))) {
+      throw new SpawnfileError("validation_error", `Imported auth path for ${method} does not exist: ${source}`);
     }
-    if (!(await fileExists(entry.path))) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Imported auth path for ${kind} does not exist: ${entry.path}`
-      );
-    }
-    // The directory existing is not enough: a registered import whose credential
-    // file is missing, expired, or malformed would mount cleanly but produce a
-    // container that cannot authenticate. Load it now so the failure surfaces
-    // before the container starts, mirroring the project-deployment path.
-    const credential =
-      kind === "claude-code"
-        ? await loadImportedClaudeCodeCredential(entry.path)
-        : await loadImportedCodexCredential(entry.path);
+    const credential = method === "claude-code"
+      ? await loadImportedClaudeCodeCredential(source)
+      : await loadImportedCodexCredential(source);
     if (!credential) {
       throw new SpawnfileError(
         "validation_error",
-        `Imported ${kind} auth at ${entry.path} has no usable credential. ` +
-          `Re-run the ${kind} login (or re-import) before deploying this image.`
+        `Imported ${method} auth at ${source} has no usable credential. ` +
+          `Re-run the ${method} login (or re-import) before deploying this image.`
       );
     }
-    for (const home of runtimeHomes) {
-      mountArgs.push("-v", `${entry.path}:${path.posix.join(home, importMountTargetName(kind))}`);
-    }
+    for (const target of targets) mountArgs.push("-v", `${source}:${target}`);
   }
 
   return { coveredModelSecrets, mountArgs };

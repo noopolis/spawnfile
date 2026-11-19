@@ -126,6 +126,7 @@ export const createDockerRunInvocation = async (
         ...(options.cliCredential ? { [options.cliCredential.name]: options.cliCredential.value } : {})
       }
     );
+    const importedAuthMounts = await resolveAuthMountArgs(containerReport, options.authProfile ?? null);
     const preparedRuntimeAuth = await prepareRuntimeAuthMounts(
       compileResult.outputDirectory,
       containerReport,
@@ -137,9 +138,10 @@ export const createDockerRunInvocation = async (
     assertRunEnvironmentSatisfied(containerReport, env, preparedRuntimeAuth.coveredModelSecrets);
     assertMoltnetCredentialValuesDistinct(containerReport, env);
     const hosts = selectedRuntimeHosts(containerReport.runtime_instances.map((instance) => instance.runtime));
-    const prepareCredentialDocker = preparedRuntimeAuth.credentialRuntime
-      ? runtimeHost(preparedRuntimeAuth.credentialRuntime)?.prepareCredentialDocker
+    const credentialHost = preparedRuntimeAuth.credentialRuntime
+      ? runtimeHost(preparedRuntimeAuth.credentialRuntime)
       : undefined;
+    const prepareCredentialDocker = credentialHost?.prepareCredentialDocker?.bind(credentialHost);
     if (preparedRuntimeAuth.launchIdentity && !prepareCredentialDocker) {
       throw new SpawnfileError("validation_error", "Runtime credential launch is missing a Docker endpoint guard");
     }
@@ -211,7 +213,7 @@ export const createDockerRunInvocation = async (
     if (deploymentLabels) appendDockerLabelArgs(args, deploymentLabels);
 
     args.push("--env-file", envFilePath);
-    args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
+    args.push(...importedAuthMounts);
     args.push(...preparedRuntimeAuth.mountArgs);
     args.push(imageTag, ...(options.command ?? []));
 

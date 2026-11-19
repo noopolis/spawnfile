@@ -239,6 +239,7 @@ class OpenClawRuntimeAdapter extends RuntimeAdapterBase {
     assertSupportedOpenClawSurfaces(surfaces);
   };
   readonly container: RuntimeContainerMeta = {
+    rawHomeAuthImports: ["claude-code", "codex"],
     configFileName: "openclaw.json",
     configPathEnv: "OPENCLAW_CONFIG_PATH",
     env: [

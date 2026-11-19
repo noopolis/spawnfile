@@ -229,6 +229,8 @@ export const getRegisteredRuntime = async (
 ): Promise<RuntimeRegistryEntry | undefined> =>
   (await loadRuntimeRegistry()).find((entry) => entry.name === runtimeName);
 
+export const isBundledRuntimeAdapter = (runtimeName: string): boolean => runtimeAdapters.has(runtimeName);
+
 export const hasRuntimeAdapter = (runtimeName: string): boolean =>
   selectedRuntimeAdapter(runtimeName) !== undefined;
 
