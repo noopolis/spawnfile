@@ -1,6 +1,9 @@
 spawnfile_version: "0.1"
 kind: team
 name: adapter-proof
+adapters:
+  echo-harness: "@spawnfile-fixtures/echo-adapter"
+  word-count: ./word-count/adapter.mjs
 members:
   - id: echo
     runtime:
@@ -27,6 +30,9 @@ members:
           dms:
             enabled: true
             wake: all
+  - id: counter
+    runtime: { name: word-count, options: { text: "one small custom harness" } }
+    workspace: { docs: { system: AGENTS.md } }
 mode: swarm
 networks:
   - id: adapter_net

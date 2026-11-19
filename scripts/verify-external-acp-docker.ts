@@ -9,7 +9,6 @@ export type RunCommand = (
 ) => Promise<{ stdout: string; stderr: string }>;
 
 const portInContainer = "19986";
-const plugin = "@spawnfile-fixtures/echo-adapter";
 const ownerLabel = "org.spawnfile.packed-acp-proof";
 const conversations = [
   {
@@ -80,6 +79,7 @@ export const verifyExternalAcpDocker = async (
   const root = await mkdtemp(path.join(consumer, "acp-docker-"));
   const id = `packed-acp-${randomUUID()}`;
   const emitterImage = `spawnfile-fixture/echo-harness:${id}`;
+  const counterImage = `spawnfile-fixture/word-count:${id}`;
   const teamImage = `spawnfile-fixture/echo-team:${id}`;
   const label = `${ownerLabel}=${id}`;
   const docker = async (...args: string[]): Promise<string> => (await run("docker", args, root)).stdout.trim();
@@ -127,20 +127,25 @@ export const verifyExternalAcpDocker = async (
   try {
     const project = path.join(root, "team");
     const compiled = path.join(root, "compiled");
-    await mkdir(project);
+    await mkdir(path.join(project, "word-count"), { recursive: true });
     await copyFile(path.join(fixture, "Teamfile"), path.join(project, "Spawnfile"));
     await copyFile(path.join(fixture, "AGENTS.md"), path.join(project, "AGENTS.md"));
+    await copyFile(path.join(fixture, "word-count/adapter.mjs"), path.join(project, "word-count/adapter.mjs"));
     await build(emitterImage, fixture);
-    await run(executable, ["--adapter", plugin, "compile", project, "--out", compiled], root, {
+    await build(counterImage, path.join(fixture, "word-count"));
+    const env = {
       ...process.env,
       SPAWNFILE_HOME: path.join(root, "spawnfile-home"),
       SPAWNFILE_ACP_FIXTURE_TAG: id,
       SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR: releaseDirectory,
       SPAWNFILE_ALLOW_LOCAL_E2E: "1",
       SPAWNFILE_MOLTNET_TARGET_ARCH: arch
-    });
+    };
+    await run(executable, ["adapters", "trust", project], root, env);
+    await run(executable, ["compile", project, "--out", compiled], root, env);
     const dockerfile = await readFile(path.join(compiled, "Dockerfile"), "utf8");
     assert.ok(dockerfile.includes(`COPY --from=${emitterImage} `), "packed plugin did not select the isolated fixture image");
+    assert.ok(dockerfile.includes(`COPY --from=${counterImage} `), "local plugin did not select its own fixture image");
     await build(teamImage, compiled);
 
     const report = JSON.parse(await readFile(path.join(compiled, "spawnfile-report.json"), "utf8")) as {
@@ -173,7 +178,8 @@ export const verifyExternalAcpDocker = async (
       assert.ok(address, "expected exactly one published loopback port");
       const url = `http://127.0.0.1:${address[1]}`;
       await waitFor("native startup and node readiness", async () => {
-        if (!(await docker("logs", "--since", started, created)).includes("external harness ready for echo")) return;
+        const log = await docker("logs", "--since", started, created);
+        if (!log.includes("external harness ready for echo") || !log.split(/\r?\n/u).includes("word-count: 4")) return;
         await docker("exec", created, "test", "-s", "/run/spawnfile/moltnet-readiness/adapter_net-echo.json");
         if ((await get<Agents>(url, "/v1/agents")).agents?.some(({ id, connected }) => id === "echo" && connected === true)) return true;
       });
@@ -205,5 +211,5 @@ export const verifyExternalAcpDocker = async (
     if (errors.length && !failed) throw new AggregateError(errors, "Could not clean up packed ACP fixture resources");
     if (errors.length) process.stderr.write(`Packed ACP fixture cleanup had ${errors.length} error(s)\n`);
   }
-  process.stderr.write("Packed ACP Docker proof passed: native startup, room and DM replies, persistence, and fresh replies after restart\n");
+  process.stderr.write("Packed ACP Docker proof passed: both declared harnesses started, room and DM replies persisted, and both restarted\n");
 };

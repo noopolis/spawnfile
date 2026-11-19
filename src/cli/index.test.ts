@@ -158,7 +158,7 @@ describe("global adapter routing", () => {
     await writeFile(path.join(packageDir, "errors.mjs"), transpileModule(source, {
       compilerOptions: { module: ModuleKind.ESNext, target: ScriptTarget.ES2022 }
     }).outputText);
-    await copyFile(new URL("../../fixtures/external-runtime-adapter/Spawnfile", import.meta.url), path.join(root, "Spawnfile"));
+    await copyFile(new URL("../../fixtures/external-runtime-adapter/Agentfile", import.meta.url), path.join(root, "Spawnfile"));
 
     const args = ["validate", root, "--adapter", adapter];
     expect(invoke(args)).toMatchObject({ code: 0, stderr: "", stdout: expect.stringContaining("validation succeeded") });
