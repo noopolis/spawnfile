@@ -3,7 +3,30 @@ kind: team
 name: adapter-proof
 members:
   - id: echo
-    ref: ./echo
+    runtime:
+      name: echo-harness
+    workspace:
+      docs:
+        system: AGENTS.md
+    execution:
+      model:
+        primary:
+          provider: local
+          name: echo
+          endpoint:
+            base_url: http://127.0.0.1:9/v1
+            compatibility: openai
+          auth:
+            method: none
+    surfaces:
+      moltnet:
+        - network: adapter_net
+          rooms:
+            adapter-proof:
+              wake: mentions
+          dms:
+            enabled: true
+            wake: all
 mode: swarm
 networks:
   - id: adapter_net

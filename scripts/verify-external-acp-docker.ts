@@ -127,9 +127,9 @@ export const verifyExternalAcpDocker = async (
   try {
     const project = path.join(root, "team");
     const compiled = path.join(root, "compiled");
-    await mkdir(path.join(project, "echo"), { recursive: true });
+    await mkdir(project);
     await copyFile(path.join(fixture, "Teamfile"), path.join(project, "Spawnfile"));
-    await copyFile(path.join(fixture, "Spawnfile"), path.join(project, "echo", "Spawnfile"));
+    await copyFile(path.join(fixture, "AGENTS.md"), path.join(project, "AGENTS.md"));
     await build(emitterImage, fixture);
     await run(executable, ["--adapter", plugin, "compile", project, "--out", compiled], root, {
       ...process.env,
