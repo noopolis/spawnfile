@@ -5,7 +5,7 @@ import { Command } from "commander";
 
 import { listDeploymentRecords, parseExportIndex } from "../deployment/index.js";
 import { resolveProjectOutputDirectory } from "../filesystem/index.js";
-import { readUsageLedgerViaExec, type UsageLedgerExec } from "../runtime/usageLedgerRead.js";
+import type { UsageLedgerExec } from "../runtime/usageLedgerRead.js";
 import { DEFAULT_OUTPUT_DIRECTORY, errorExitCode } from "../shared/index.js";
 import {
   computeUsageCoverage,
@@ -22,7 +22,7 @@ import {
 } from "../runtime/usageLedger.js";
 
 import type { CliStreams } from "./runCli.js";
-import { registeredUsage, usageByDeploymentUnit } from "./usageRuntime.js";
+import { readUsageGenerations, registeredUsage, usageByDeploymentUnit } from "./usageRuntime.js";
 import { resolveUsageDeploymentSource } from "./usageDeploymentSource.js";
 import {
   collectOrganizationUsage,
@@ -96,10 +96,14 @@ const formatShare = (value: number, total: number): string =>
 
 /** An unreadable unit is UNKNOWN usage, never zero usage, so it always gets
  * its own line and always forces the window's coverage to PARTIAL. */
-const renderUnreadableUnit = (unit: UsageUnitReadFailure): string =>
-  unit.reason === "ledger_read_failed"
-    ? `UNREADABLE ${unit.unitId} (${unit.containerRef}): ledger read failed (${unit.detail ?? "no detail"}); its usage is unknown, not zero.`
-    : `UNREADABLE ${unit.unitId} (${unit.containerRef}): container ${unit.reason}; its ledger is not included.`;
+const renderUnreadableUnit = (unit: UsageUnitReadFailure): string => {
+  const label = `UNREADABLE ${unit.unitId} (${unit.containerRef})`;
+  if (unit.reason === "ledger_read_failed") {
+    return `${label}: ledger read failed (${unit.detail ?? "no detail"}); usage is unknown.`;
+  }
+  if (unit.reason === "meter_unavailable") return `${label}: usage meter unavailable; usage is unknown.`;
+  return `${label}: container ${unit.reason}; its ledger is not included.`;
+};
 
 const pad = (value: string, width: number): string => value.padEnd(width);
 const padStart = (value: string, width: number): string => value.padStart(width);
@@ -162,21 +166,11 @@ const renderTable = (
   return lines.join("\n");
 };
 
-/**
- * Reads exported ledger bytes through the SAME reader the live path uses.
- *
- * `readUsageLedgerViaExec` is duck-typed on `exec(["cat", file])`, so feeding it
- * a file-backed exec reuses the rotation ordering, the parse, and the
- * absent-vs-unreadable classification verbatim rather than growing a second
- * copy that could drift. A missing file is re-shaped into the failure a real
- * `cat` produces — numeric exit code plus "No such file or directory" — because
- * that is the exact shape the shared reader recognises as a legitimately absent
- * generation. Every other filesystem error keeps its own `code`, which that
- * reader treats as UNKNOWN rather than empty.
- */
+/** Adapt a missing export file to the ledger reader's missing-generation signal. */
 const exportedLedgerExec: UsageLedgerExec = async (command) => {
   const filePath = command[command.length - 1]!;
   try {
+    if (!(await stat(filePath)).isFile()) throw new Error("Ledger path is not a regular file");
     return { stderr: "", stdout: await readFile(filePath, "utf8") };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -184,16 +178,6 @@ const exportedLedgerExec: UsageLedgerExec = async (command) => {
       throw Object.assign(new Error(message), { code: 1, stderr: message });
     }
     throw error;
-  }
-};
-
-/** `stat`, not a read: a rotated generation is at least 64 MiB, so probing for
- * presence must not pull the bytes in only to throw them away. */
-const fileExists = async (filePath: string): Promise<boolean> => {
-  try {
-    return (await stat(filePath)).isFile();
-  } catch {
-    return false;
   }
 };
 
@@ -234,19 +218,23 @@ const collectExportedUsage = async (
       unitId: `export:${index.run_id}`
     });
   };
-  for (const usage of registeredUsage()) {
+  let hasLedger = false;
+  for (const usage of new Set([...registeredUsage(), ...declared])) {
     const paths = {
       filePath: path.join(exportedDirectory, usage.exportedPaths.filePath),
       rotatedFilePath: path.join(exportedDirectory, usage.exportedPaths.rotatedFilePath)
     };
-    const present = await Promise.all([fileExists(paths.filePath), fileExists(paths.rotatedFilePath)]);
-    if (!present.some(Boolean)) {
+    const read = await readUsageGenerations(exportedLedgerExec, paths, usage);
+    if (read.missing) {
       if (declared.has(usage)) missing(`${usage.exportedPaths.filePath} is not in this export`);
       continue;
     }
-    const read = await readUsageLedgerViaExec(exportedLedgerExec, paths, (text) => usage.parse(text));
+    hasLedger = true;
     records.push(...read.records);
     for (const failure of read.unreadable) missing(`${failure.filePath}: ${failure.reason}`);
+  }
+  if (!hasLedger && unreadableUnits.length === 0) {
+    missing("No usage ledger is present in this export");
   }
   return {
     deploymentName: selected.name, records, roster: rosterForRecord(selected),

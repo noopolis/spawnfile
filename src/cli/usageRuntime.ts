@@ -1,5 +1,6 @@
 import { readHomeDeploymentReport, type DeploymentRecord } from "../deployment/index.js";
 import { parseDistributionReport } from "../distribution/distributionReportSchema.js";
+import { readUsageLedgerViaExec, type UsageLedgerExec, type UsageLedgerPaths } from "../runtime/usageLedgerRead.js";
 import type { RuntimeUsageOperations } from "../runtime/operations.js";
 import { getRuntimeOperations, listRuntimeOperations } from "../runtime/registry.js";
 import { loadCompileReport } from "../status/compileReport.js";
@@ -46,4 +47,19 @@ export const usageByDeploymentUnit = async (
     }
     return [unit.id, [...usage]];
   }));
+};
+
+/** An empty read establishes that a ledger exists. An absent generation does not. */
+export const readUsageGenerations = async (
+  exec: UsageLedgerExec,
+  paths: UsageLedgerPaths,
+  usage: RuntimeUsageOperations
+) => {
+  let hasLedger = false;
+  const read = await readUsageLedgerViaExec(async (command) => {
+    const result = await exec(command);
+    hasLedger = true;
+    return result;
+  }, paths, (text) => usage.parse(text));
+  return { ...read, missing: !hasLedger && read.unreadable.length === 0 };
 };

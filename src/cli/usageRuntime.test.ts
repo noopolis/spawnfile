@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,6 +8,7 @@ import type { DeploymentRecord } from "../deployment/index.js";
 import type { RuntimeUsageOperations } from "../runtime/operations.js";
 import * as registry from "../runtime/registry.js";
 import { REPORT_FILENAME } from "../shared/index.js";
+import { executeUsageCommand } from "./usageCommand.js";
 import { collectOrganizationUsage } from "./usageCommandLive.js";
 
 const roots: string[] = [];
@@ -77,9 +78,67 @@ it("reads the runtime selected by the matching report with its own parser and bu
   expect(exec.mock.calls).toEqual([[["cat", "/state/older"]], [["cat", "/state/tokens"]]]);
   expect(parse.mock.calls).toEqual([["native:/state/older"], ["native:/state/tokens"]]);
 
+  const absent = () => Object.assign(new Error("No such file or directory"), { code: 1 });
+  exec.mockImplementation(async () => { throw absent(); });
+  const missing = await executeUsageCommand(root, { out: root }, handlers);
+  expect(missing.exitCode).toBe(0);
+  expect(missing.output).toContain("coverage PARTIAL");
+  expect(missing.output).toContain("no ledger generation is present");
+  expect(missing.output).not.toMatch(/\$\d/u);
+
+  exec.mockImplementation(async ([, file]) => {
+    if (file === "/state/older") throw absent();
+    return { stderr: "", stdout: "" };
+  });
+  const empty = await executeUsageCommand(root, { json: true, out: root }, handlers);
+  expect(empty.exitCode).toBe(0);
+  expect(JSON.parse(empty.output!)).toMatchObject({ byEngine: [], unreadableUnits: [] });
+
   exec.mockClear();
-  expect(await collectOrganizationUsage({ outputDirectory: root }, {
-    ...handlers, listDeploymentRecords: async () => [{ path: "", record: { ...record, compile_fingerprint: "sf1:stale" } }]
-  })).toMatchObject({ records: [], unreadableUnits: [] });
+  const unmetered = {
+    ...handlers,
+    listDeploymentRecords: async () => [{ path: "", record: { ...record, compile_fingerprint: "sf1:stale" } }]
+  };
+  const unknown = await executeUsageCommand(root, { json: true, out: root }, unmetered);
+  expect(unknown.exitCode).toBe(0);
+  expect(JSON.parse(unknown.output!)).toMatchObject({
+    coverage: { partial: true, unreadableUnitCount: 1 },
+    unreadableUnits: [{ reason: "meter_unavailable", unitId: "unit-1" }]
+  });
+  expect(exec).not.toHaveBeenCalled();
+});
+
+it("reports a missing export for an unmetered deployment and accepts a readable empty generation", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-usage-export-meter-"));
+  roots.push(root);
+  const indexDir = path.join(root, "spawnfile");
+  await mkdir(indexDir);
+  await writeFile(path.join(indexDir, "export-index.json"), JSON.stringify({
+    deployment: "sample",
+    exported_at: new Date().toISOString(),
+    files: [],
+    run_id: "run-empty",
+    version: "spawnfile.export-index.v1"
+  }));
+  const exec = vi.fn();
+  const handlers = {
+    createDockerProbeGateway: exec,
+    listDeploymentRecords: async () => [{ path: "", record: deployment(root) }]
+  };
+  const options = { exported: root, json: true, out: root };
+  const missing = await executeUsageCommand(root, options, handlers);
+  expect(missing.exitCode).toBe(0);
+  expect(JSON.parse(missing.output!)).toMatchObject({
+    coverage: { partial: true, unreadableUnitCount: 1 },
+    unreadableUnits: [{ detail: "No usage ledger is present in this export" }]
+  });
+
+  const daimonUsage = registry.getRuntimeOperations("daimon")!.usage!;
+  const rotated = path.join(root, daimonUsage.exportedPaths.rotatedFilePath);
+  await mkdir(path.dirname(rotated), { recursive: true });
+  await writeFile(rotated, "");
+  const empty = await executeUsageCommand(root, options, handlers);
+  expect(empty.exitCode).toBe(0);
+  expect(JSON.parse(empty.output!)).toMatchObject({ byEngine: [], unreadableUnits: [] });
   expect(exec).not.toHaveBeenCalled();
 });

@@ -7,8 +7,7 @@ import {
   type DockerInspectionResult
 } from "../deployment/index.js";
 import type { UsageRecord, UsageRosterEntry } from "../runtime/usageLedger.js";
-import { readUsageLedgerViaExec } from "../runtime/usageLedgerRead.js";
-import { usageByDeploymentUnit } from "./usageRuntime.js";
+import { readUsageGenerations, usageByDeploymentUnit } from "./usageRuntime.js";
 
 /**
  * Why a unit's usage is missing.
@@ -21,7 +20,7 @@ import { usageByDeploymentUnit } from "./usageRuntime.js";
 export interface UsageUnitReadFailure {
   containerRef: string;
   detail?: string;
-  reason: "ledger_read_failed" | "stopped" | "unreachable";
+  reason: "ledger_read_failed" | "meter_unavailable" | "stopped" | "unreachable";
   unitId: string;
 }
 
@@ -85,17 +84,7 @@ export const selectUsageDeployment = (
   return records[0]!.record;
 };
 
-/**
- * Read every unit's ledger and merge the results.
- *
- * A unit that is not running is recorded as unreadable rather than read as
- * empty. A running unit whose ledger does not exist yet — the case before the
- * first turn ever completes — reads as empty, never as an error, because
- * `readUsageLedgerViaExec` treats an absent file (and only an absent file) as
- * no content. Any other read failure comes back in that reader's `unreadable`
- * list and is recorded here as a `ledger_read_failed` unit, so an unknown
- * quantity of turns is never merged into the report as zero.
- */
+/** Collect usage from metered units and account for missing meter information. */
 export const collectOrganizationUsage = async (
   options: CollectOrganizationUsageOptions,
   handlers: UsageCommandLiveHandlers = {}
@@ -109,8 +98,11 @@ export const collectOrganizationUsage = async (
 
   const runtimeUsage = await usageByDeploymentUnit(selected);
   const metered = selected.units.filter((unit) => runtimeUsage.get(unit.id)?.length);
+  const unreadableUnits: UsageUnitReadFailure[] = selected.units
+    .filter((unit) => !runtimeUsage.get(unit.id)?.length)
+    .map((unit) => ({ containerRef: containerRefForUnit(unit), reason: "meter_unavailable", unitId: unit.id }));
   if (metered.length === 0) {
-    return { deploymentName: selected.name, records: [], roster: rosterForRecord(selected), unreadableUnits: [] };
+    return { deploymentName: selected.name, records: [], roster: rosterForRecord(selected), unreadableUnits };
   }
 
   let inspections: DockerInspectionResult;
@@ -121,7 +113,6 @@ export const collectOrganizationUsage = async (
   }
 
   const records: UsageRecord[] = [];
-  const unreadableUnits: UsageUnitReadFailure[] = [];
   for (const unit of metered) {
     const inspection = inspections.get(unit.id);
     if (inspection?.running !== true) {
@@ -139,7 +130,15 @@ export const collectOrganizationUsage = async (
         maxBufferBytes: usage.maxReadBytes,
         timeoutMs: options.timeoutMs
       });
-      const read = await readUsageLedgerViaExec((command) => gateway.exec(command), usage.livePaths, (text) => usage.parse(text));
+      const read = await readUsageGenerations((command) => gateway.exec(command), usage.livePaths, usage);
+      if (read.missing) {
+        unreadableUnits.push({
+          containerRef: containerRefForUnit(unit),
+          detail: `${usage.livePaths.filePath}: no ledger generation is present`,
+          reason: "ledger_read_failed",
+          unitId: unit.id
+        });
+      }
       records.push(...read.records);
       for (const failure of read.unreadable) {
         unreadableUnits.push({
