@@ -106,3 +106,15 @@ it("uses a historical credential UID only for its owning adapter", () => {
   expect(resolveImageCredentialUid("echo-harness", legacy)).toBeUndefined();
   expect(resolveImageCredentialUid("daimon", { ...legacy, containerCredentialUid: 502 })).toBe(502);
 });
+
+it("keeps the cached install pins independent of a caller's catalog edits", async () => {
+  const catalog = await loadRuntimeRegistry();
+  const native = catalog.find(({ name }) => name === "daimon")!;
+  expect(native.install?.kind).toBe("container_image");
+  if (native.install?.kind !== "container_image") throw new Error("missing image fixture");
+  const originalTag = native.install.tag;
+  native.install.tag = "local-display-only";
+  catalog.length = 0;
+  const fresh = await getRegisteredRuntime("daimon");
+  expect(fresh?.install).toMatchObject({ kind: "container_image", tag: originalTag });
+});

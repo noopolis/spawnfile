@@ -203,9 +203,14 @@ const loadBuiltinCatalog = (): Promise<RuntimeRegistryEntry[]> =>
 export const loadRuntimeRegistry = async (): Promise<RuntimeRegistryEntry[]> => {
   const catalog = await loadBuiltinCatalog();
   const scope = adapterScope.getStore();
-  if (!scope?.size) return catalog;
-  return [...catalog.filter((entry) => !scope.has(entry.name)), ...[...scope.values()].map(({ entry }) => entry)]
-    .sort((left, right) => left.name.localeCompare(right.name));
+  const selected = scope?.size
+    ? [...catalog.filter((entry) => !scope.has(entry.name)), ...[...scope.values()].map(({ entry }) => entry)]
+      .sort((left, right) => left.name.localeCompare(right.name))
+    : catalog;
+  return selected.map((entry) => ({
+    ...entry,
+    ...(entry.install ? { install: structuredClone(entry.install) } : {})
+  }));
 };
 
 export const withRuntimeAdapterPlugins = async <T>(
