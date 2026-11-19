@@ -76,6 +76,24 @@ it("isolates overlapping and nested library invocations", async () => {
   expect(listRuntimeAdapters()).not.toContain("second");
 });
 
+it("releases a completed invocation's registrations for delayed work", async () => {
+  let resume!: () => void;
+  const gate = new Promise<void>((resolve) => { resume = resolve; });
+  let later!: Promise<string[]>;
+  await withRuntimeAdapterPlugins([plugin("scoped-adapter")], () => {
+    later = gate.then(listRuntimeAdapters);
+    expect(listRuntimeAdapters()).toContain("scoped-adapter");
+  });
+  resume();
+  expect(await later).not.toContain("scoped-adapter");
+});
+
+it("rejects malformed raw credential import declarations", async () => {
+  const definition = plugin("invalid-auth");
+  Object.assign(definition.adapter.container, { rawHomeAuthImports: "codex" });
+  await expect(withRuntimeAdapterPlugins([definition], () => undefined)).rejects.toThrow(/invalid adapter implementation/u);
+});
+
 it("selects a registered external lifecycle capability only inside its invocation", async () => {
   const definition = plugin("external-lifecycle");
   const operations = {

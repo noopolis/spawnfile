@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "import-meta-resolve";
 
 import { SpawnfileError } from "../shared/index.js";
+import { withRuntimeAdapterPlugins } from "./registry.js";
 import { type RuntimeAdapterPlugin, validateRuntimeAdapterPlugin } from "./pluginDefinition.js";
 
 const pathSpecifier = /^(?:\.\.?[\\/]|file:)/u;
@@ -19,10 +20,7 @@ const resolveModule = (specifier: string, cwd: string): string => {
   return url;
 };
 
-export const loadRuntimeAdapterPlugins = async (
-  specifiers: readonly string[],
-  { cwd = process.cwd() }: { cwd?: string } = {}
-): Promise<RuntimeAdapterPlugin[]> => {
+const loadModules = async (specifiers: readonly string[], cwd: string): Promise<RuntimeAdapterPlugin[]> => {
   const plugins: RuntimeAdapterPlugin[] = [];
   for (const specifier of specifiers) {
     let exported: unknown;
@@ -38,3 +36,8 @@ export const loadRuntimeAdapterPlugins = async (
   }
   return plugins;
 };
+
+/** Module initialization sees the bundled catalog, even within another invocation. */
+export const loadRuntimeAdapterPlugins = (
+  specifiers: readonly string[], { cwd = process.cwd() }: { cwd?: string } = {}
+): Promise<RuntimeAdapterPlugin[]> => withRuntimeAdapterPlugins([], () => loadModules(specifiers, cwd));

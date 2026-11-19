@@ -217,7 +217,11 @@ export const withRuntimeAdapterPlugins = async <T>(
     }
     scope.set(name, { adapter, entry: { ...metadata, ...trainingFor(adapter), name, status: metadata.status ?? "active" } });
   }
-  return adapterScope.run(scope, run);
+  try {
+    return await adapterScope.run(scope, run);
+  } finally {
+    scope.clear();
+  }
 };
 
 export const getRegisteredRuntime = async (

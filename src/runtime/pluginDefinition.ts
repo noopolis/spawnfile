@@ -47,6 +47,7 @@ const catalogSchema = z.strictObject({
 
 const containerSchema = z.object({
   configFileName: text,
+  rawHomeAuthImports: z.array(z.enum(["claude-code", "codex"])).optional(),
   standaloneBaseImage: text,
   instancePaths: z.object({
     configPathTemplate: text,
@@ -97,7 +98,7 @@ const invalidOptionalHook = (adapter: Record<string, unknown>): string | undefin
     { name: "training", required: [], optional: ["subject", "run", "openJudges", "loadInferenceProviders", "loadGraderProviders"] },
     { name: "host", required: [], optional: [
       "handlesImageModelAuth", "externalMountEnvironment", "profileVolumeName", "projectSecurityArgs",
-      "prepareCredentialDocker", "prepareImageLaunch", "prepareImageAuth"
+      "prepareCredentialDocker", "prepareImageLaunch", "prepareImageAuth", "localImageReport"
     ] },
     { name: "wiring", required: [], optional: ["memory"] },
     { name: "operations", required: [], optional: ["exportFiles", "privateExportDirectories"] },
