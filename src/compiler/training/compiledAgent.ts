@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { WORKSPACE_SKILL_BASE_DIRECTORY } from "../../runtime/common.js";
+
+import { findRuntimeWiring } from "../../runtime/wiringSelection.js";
 
 const text = z.string().min(1);
 const absolute = text.refine((value) => value.startsWith("/") && value !== "/"
@@ -49,14 +50,15 @@ export const resolveCompiledAgent = async (compileOut: string, agentName: string
   if (instances.length !== 1) throw new Error(`Expected one compiled runtime instance for ${agentId}`);
   const instance = instances[0]!;
   let paths = instance.agent_paths?.[agentId];
-  if (!paths) {
-    // Single-agent runtime adapters already report their exact workspace and home.
-    if (!["openclaw", "picoclaw"].includes(instance.runtime) || instance.node_ids.length !== 1) {
-      throw new Error(`Compile report lacks per-agent paths for ${agentId}; recompile with a current compiler`);
-    }
-    paths = { workspace_path: instance.workspace_path, home_path: instance.home_path,
-      skill_roots: [path.posix.join(instance.workspace_path, path.posix.relative("workspace", WORKSPACE_SKILL_BASE_DIRECTORY))] };
+  if (!paths && instance.node_ids.length === 1) {
+    const roots = findRuntimeWiring(instance.runtime)?.legacyAgentSkillRoots;
+    if (roots) paths = {
+      workspace_path: instance.workspace_path,
+      home_path: instance.home_path,
+      skill_roots: roots.map((root) => path.posix.join(instance.workspace_path, root))
+    };
   }
+  if (!paths) throw new Error(`Compile report lacks per-agent paths for ${agentId}; recompile with a current compiler`);
   const moltnet = report.container.moltnet;
   const attachments = (moltnet?.node_plans ?? []).filter((node) => node.node_id === agentId).map((node) => {
     const servers = moltnet!.server_plans.filter((server) => server.network_id === node.network_id);

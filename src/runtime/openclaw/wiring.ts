@@ -5,6 +5,7 @@ import { createMoltnetWorkspace } from "../portableMoltnetWiring.js";
 import type { RuntimeWiring } from "../wiringTypes.js";
 
 export const openClawWiring: RuntimeWiring = {
+  legacyAgentSkillRoots: ["skills"],
   memory: resolveMnemeMcpMemoryWiring,
   moltnet: {
     kind: "openclaw",

@@ -57,6 +57,8 @@ export interface RuntimeOperatorWakeArtifact {
 }
 
 export interface RuntimeWiring {
+  /** Skill roots relative to the workspace in reports predating agent_paths. */
+  legacyAgentSkillRoots?: readonly string[];
   moltnet?: RuntimeMoltnetWiring;
   memory?(bank: ResolvedMemoryBank): RuntimeMemoryWiring;
   operatorWakeArtifact?: RuntimeOperatorWakeArtifact;
