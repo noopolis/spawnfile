@@ -9,6 +9,7 @@ import { assertMoltnetBridgeCapabilities } from "./moltnetBridgeCapabilities.js"
 import { createMoltnetClientConfigFiles, resolveMoltnetWorkspaceLayout } from "./moltnetClientConfig.js";
 import { createMoltnetBridgeConfigContent } from "./moltnetNodeConfig.js";
 import { readTrustedMoltnetReleaseAuthority } from "./moltnetReleaseAuthority.js";
+import { getRuntimeAdapter } from "../runtime/registry.js";
 import { cleanTrainingProjects, trainingProject } from "./training/plan/fixtures.test-helper.js";
 import type { ResolvedAgentNode } from "./types.js";
 import { collectMoltnetWiringProbeObservations } from "../status/moltnetWiringProbes.js";
@@ -85,6 +86,17 @@ const makeNetworkProject = (runtime: string) => trainingProject({
 });
 
 describe("runtime adapter wiring", () => {
+  it.each(["data/journal", "/data/journal,old", "/"])("rejects invalid memory mount target %s", async (mountPath) => {
+    const plan = await buildCompilePlan(await makeNetworkProject("fixture-fourth"));
+    const wiring = getRuntimeAdapter("fixture-fourth").wiring!;
+    const memory = vi.spyOn(wiring, "memory").mockReturnValue({ mountPath, transport: "direct" });
+    try {
+      expect(() => createMemoryArtifactBundle(plan)).toThrow(/fixture-fourth.*invalid.*mount.*journal/u);
+    } finally {
+      memory.mockRestore();
+    }
+  });
+
   it("emits workspace, node and bridge configs for a fourth name with literal ACP arguments", async () => {
     const plan = await buildCompilePlan(await makeNetworkProject("fixture-fourth"));
     const artifacts = (await generateMoltnetArtifacts(plan))!;

@@ -1,5 +1,5 @@
 import { findRuntimeWiring } from "../runtime/index.js";
-import { createExclusiveReattachVolumeName, SpawnfileError } from "../shared/index.js";
+import { createExclusiveReattachVolumeName, isContainerMountTarget, SpawnfileError } from "../shared/index.js";
 
 import { slugify } from "./helpers.js";
 import type {
@@ -183,7 +183,12 @@ export const createMemoryArtifactBundle = (
         const runtimeName = agentNode.runtimeName ?? agentNode.value.runtime.name;
         const memory = findRuntimeWiring(runtimeName)?.memory?.(entry.bank);
         transportByNodeId[agentNode.id] = memory?.transport ?? "unsupported";
-        if (memory?.mountPath) mountPaths.add(memory.mountPath);
+        if (memory && memory.mountPath !== null) {
+          if (!isContainerMountTarget(memory.mountPath)) {
+            throw new SpawnfileError("validation_error", `Runtime ${runtimeName} returned an invalid memory mount target for bank ${entry.bank.id}`);
+          }
+          mountPaths.add(memory.mountPath);
+        }
         accessibleNodeIds.add(agentNode.id);
       }
 

@@ -8,6 +8,7 @@ This folder owns small cross-cutting helpers and shared value types.
 src/shared/
 ├── index.ts         # Barrel for shared exports
 ├── constants.ts     # Small shared constants
+├── containerMountTarget.ts # Portable Docker volume target validation
 ├── bridgeCapabilities.ts # Canonical capability tuples for Moltnet release identities
 ├── recording.ts     # Opt-in recording retention parsing (default 30 days)
 ├── errors.ts        # Typed error helpers and guards

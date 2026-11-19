@@ -85,10 +85,10 @@ describe("parseDistributionReport", () => {
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);
   });
 
-  it("rejects a mount target with a colon (mount-spec injection)", () => {
+  it.each(["/data:ro,z", "/data,old", "relative/store"])("rejects an invalid volume target %s", (target) => {
     const report = validReport();
     report.persistent_mounts = [
-      { durability: "persistent", id: "store", kind: "volume", target: "/data:ro,z" }
+      { durability: "persistent", id: "store", kind: "volume", target }
     ];
     expect(() => parseDistributionReport(report)).toThrow(/Invalid distribution report/);
   });
