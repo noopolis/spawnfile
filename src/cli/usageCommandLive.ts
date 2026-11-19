@@ -139,7 +139,7 @@ export const collectOrganizationUsage = async (
         maxBufferBytes: usage.maxReadBytes,
         timeoutMs: options.timeoutMs
       });
-      const read = await readUsageLedgerViaExec((command) => gateway.exec(command), usage.livePaths, usage.parse);
+      const read = await readUsageLedgerViaExec((command) => gateway.exec(command), usage.livePaths, (text) => usage.parse(text));
       records.push(...read.records);
       for (const failure of read.unreadable) {
         unreadableUnits.push({

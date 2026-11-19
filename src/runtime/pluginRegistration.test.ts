@@ -3,11 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 
+import { requireDrainOperations } from "../release/drainControl.js";
 import { RuntimeAdapterBase } from "./adapterBase.js";
 import { createRuntimeInstallRecipe } from "./container.js";
 import { loadRuntimeAdapterPlugins } from "./loadAdapterPlugins.js";
 import { defineRuntimeAdapterPlugin } from "./pluginDefinition.js";
-import { assertRuntimeCanCompile, getRuntimeAdapter, listRuntimeAdapters, withRuntimeAdapterPlugins } from "./registry.js";
+import { assertRuntimeCanCompile, getRuntimeAdapter, getRuntimeOperations, listRuntimeAdapters, listRuntimeOperations, withRuntimeAdapterPlugins } from "./registry.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -73,6 +74,29 @@ it("isolates overlapping and nested library invocations", async () => {
   });
   await Promise.all([first, second]);
   expect(listRuntimeAdapters()).not.toContain("second");
+});
+
+it("selects a registered external lifecycle capability only inside its invocation", async () => {
+  const definition = plugin("external-lifecycle");
+  const operations = {
+    drain: {
+      async drain() { return { drain: "draining" as const, state: "ready" }; },
+      async resume() { return { drain: null, state: "ready" }; },
+      async availability() { return { drain: "drained" as const, state: "ready" }; }
+    }
+  };
+  definition.adapter.operations = operations;
+  const target = {
+    runtime: definition.adapter.name, containerRef: "unit", imageRef: "fixture", dockerArgs: [],
+    dockerCommand: "docker", token: "synthetic"
+  };
+  await withRuntimeAdapterPlugins([definition], async () => {
+    expect(listRuntimeOperations()).toContain(operations);
+    expect(getRuntimeOperations(target.runtime)).toBe(operations);
+    await expect(requireDrainOperations(target).drain(target)).resolves.toEqual({ drain: "draining", state: "ready" });
+  });
+  expect(getRuntimeOperations(target.runtime)).toBeUndefined();
+  expect(() => requireDrainOperations(target)).toThrow(/no registered drain contract/u);
 });
 
 it("allows implementing an exploratory catalog name and rejects shadowing or duplicates", async () => {

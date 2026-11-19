@@ -4,11 +4,7 @@ import type {
 import { getRuntimeOperations } from "../runtime/registry.js";
 import { ReleaseError } from "./types.js";
 
-export {
-  CONTROL_CALL_TIMEOUT_MS, controlHelperArgs, helperControlCall, parseAvailability, parseHelperOutput,
-  requestDrain, requestResume, waitForDrained
-} from "../runtime/registry.js";
-export type { ControlCall, ControlResponse } from "../runtime/registry.js";
+export * from "../runtime/legacyDrainControl.generated.js";
 export { waitForRuntimeDrain } from "./drainSupport.js";
 export type { DrainWait, WaitForDrainedOptions } from "./drainSupport.js";
 

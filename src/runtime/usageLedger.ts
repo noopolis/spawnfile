@@ -1,5 +1,5 @@
 /** Common usage rows and aggregation. Native parsers normalize raw ledger lines. */
-export { parseUsageLedger, parseUsageLedgerLine, USAGE_TURN_RECORD_VERSION } from "./registry.js";
+export * from "./legacyUsageLedger.generated.js";
 
 import type { UsageRecord } from "./usageTypes.js";
 export { USAGE_LIMIT_REASONS } from "./usageTypes.js";

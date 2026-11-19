@@ -79,7 +79,9 @@ or receipt environment overrides fail closed. With no identity path,
 ## Registration
 
 Bundled adapters export `adapter` through their folder's `registration.ts`.
-The build generates static imports from those declarations. External code is
+The build generates static imports from those declarations and preserves historical
+exports from each registered adapter's `legacyExports.json`. Removing a
+registration also removes its compatibility exports from the generated files. External code is
 loaded only from an explicit operator specifier, and each invocation sees its
 own registrations. Manifest runtime names select adapters within that scope.
 

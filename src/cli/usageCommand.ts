@@ -244,7 +244,7 @@ const collectExportedUsage = async (
       if (declared.has(usage)) missing(`${usage.exportedPaths.filePath} is not in this export`);
       continue;
     }
-    const read = await readUsageLedgerViaExec(exportedLedgerExec, paths, usage.parse);
+    const read = await readUsageLedgerViaExec(exportedLedgerExec, paths, (text) => usage.parse(text));
     records.push(...read.records);
     for (const failure of read.unreadable) missing(`${failure.filePath}: ${failure.reason}`);
   }

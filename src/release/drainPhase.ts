@@ -20,7 +20,7 @@ interface DrainMarker {
   version: typeof RELEASE_DRAIN_MARKER_VERSION;
 }
 
-export { controlTargetFor, resolveControlToken } from "../runtime/registry.js";
+export * from "../runtime/legacyDrainPhase.generated.js";
 
 export const resumeTargets = async (deps: ReleaseDependencies, targets: readonly RuntimeControlTarget[]): Promise<void> => {
   const results = await Promise.allSettled(targets.map((target) => deps.requestResume(target)));

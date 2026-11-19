@@ -1,5 +1,15 @@
 /** Read a runtime's two ledger generations through an injected container or file transport. */
-import { parseUsageLedger, type UsageRecord } from "./usageLedger.js";
+import { SpawnfileError } from "../shared/index.js";
+import * as legacyUsage from "./legacyUsageLedger.generated.js";
+import type { UsageRecord } from "./usageTypes.js";
+
+type LedgerParser = (text: string) => UsageRecord[];
+
+const historicalParser = "parseUsageLedger" in legacyUsage ? legacyUsage.parseUsageLedger as LedgerParser : undefined;
+const requireHistoricalParser = (): LedgerParser => {
+  if (historicalParser) return historicalParser;
+  throw new SpawnfileError("runtime_error", "No parser for the historical usage ledger is bundled; pass the runtime ledger parser explicitly");
+};
 
 /** The exec shape this module needs to read a ledger — structurally the same
  * as `RuntimeProbeGateway.exec` (`./types.ts`), duck-typed here rather than
@@ -112,7 +122,7 @@ export const readRuntimeFileViaExec = async (
 export const readUsageLedgerViaExec = async (
   exec: UsageLedgerExec,
   paths: UsageLedgerPaths,
-  parse: (text: string) => UsageRecord[] = parseUsageLedger
+  parse: LedgerParser = requireHistoricalParser()
 ): Promise<UsageLedgerRead> => {
   const [rotated, primary] = await Promise.all([
     readRuntimeFileViaExec(exec, paths.rotatedFilePath),
