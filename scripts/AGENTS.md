@@ -33,6 +33,7 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
   edits `runtimes.yaml`. Clean-source builds select the native Docker
   architecture unless an explicit supported architecture is supplied.
 - `runtime-image-catalog.ts` reads static metadata under each adapter without loading runtime code.
+  Discovery sends only runtime IDs to matrix jobs. Each build job reads its own build metadata.
 - `publish-daimon-runtime.ts` delegates to the same adapter-owned publisher as CI. The publisher reads the
   checked-in `src/runtime/daimon/image/publish-inputs.json` (full Daimon commit,
   per-architecture AGY pins, Codex pin; Grok comes from the vendored manifest),

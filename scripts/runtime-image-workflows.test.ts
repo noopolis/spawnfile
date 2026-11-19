@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -17,7 +17,13 @@ type Workflow = {
     push: { paths: string[] };
     workflow_dispatch: { inputs: { runtime: { type: string; default: string } } };
   };
-  jobs: Record<string, { if?: string; steps: Step[]; concurrency?: { group: string } }>;
+  jobs: Record<string, {
+    if?: string;
+    steps: Step[];
+    outputs?: Record<string, string>;
+    strategy?: { matrix: Record<string, string> };
+    concurrency?: { group: string };
+  }>;
 };
 const source = readFileSync(".github/workflows/runtime-images.yml", "utf8");
 const workflow = parseYaml(source) as Workflow;
@@ -32,10 +38,15 @@ test("CI discovers repository images and gates both build lanes on the same publ
       assert.ok(event.paths.includes(trigger), `missing ${trigger}`);
     }
   }
-  assert.equal(workflow.jobs.build?.if, "needs.catalog.outputs.dockerfiles != '[]'");
-  assert.equal(workflow.jobs.scripted?.if, "needs.catalog.outputs.scripted != '[]'");
-  assert.match(source, /fromJSON\(needs.catalog.outputs.dockerfiles\)/u);
-  assert.match(source, /fromJSON\(needs.catalog.outputs.scripted\)/u);
+  assert.deepEqual(Object.keys(workflow.jobs.catalog?.outputs ?? {}).sort(), ["dockerfiles", "latest", "push", "scripted"]);
+  for (const [job, lane] of [["build", "dockerfiles"], ["scripted", "scripted"]] as const) {
+    const output = `needs.catalog.outputs.${lane}`;
+    assert.equal(workflow.jobs[job]?.if, `${output} != '' && ${output} != '[]'`);
+    assert.deepEqual(workflow.jobs[job]?.strategy?.matrix, { runtime: `\${{ fromJSON(${output}) }}` });
+    assert.equal(step(job, "Resolve adapter build metadata")?.id, "image");
+    assert.equal(workflow.jobs[job]?.outputs, undefined);
+  }
+  assert.doesNotMatch(source, /matrix\.(?:context|image|version|build_args|publisher)/u);
   assert.equal(workflow.jobs.scripted?.concurrency?.group, "runtime-images-${{ matrix.runtime }}-publish");
   assert.equal(step("catalog", "Check Docker Hub credentials")?.if, "steps.publish.outputs.push == 'true'");
   for (const job of ["build", "scripted"]) {
@@ -60,6 +71,13 @@ test("Daimon dispatch selects just its scripted publisher and all retains both D
     scripted: [{runtime: "daimon", publisher, local_builder: "src/runtime/daimon/image/buildLocalRuntime.ts"}]
   });
   assert.throws(() => discoverRuntimeImages(repositoryRoot, "missing"), /Unknown repository runtime image/u);
+});
+
+test("catalog CLI still prints full metadata for operators outside GitHub Actions", () => {
+  const stdout = execFileSync(process.execPath, [
+    "--experimental-strip-types", "scripts/runtime-image-catalog.ts", "picoclaw"
+  ], { encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: "" } });
+  assert.deepEqual(JSON.parse(stdout), discoverRuntimeImages(repositoryRoot, "picoclaw"));
 });
 
 test("a new repository image is discovered from static metadata alone", () => {
@@ -97,8 +115,50 @@ test("release-image action builds with --release, pushes to the named registry, 
 
 const runWorkflowScript = (script: string | undefined, environment: NodeJS.ProcessEnv): void => {
   assert.ok(script);
-  execFileSync("bash", ["-c", script], { env: { ...process.env, ...environment } });
+  execFileSync("bash", ["-c", script], { env: { ...process.env, ...environment }, stdio: "pipe" });
 };
+
+test("the discovery workflow passes only runtime IDs and keeps empty lanes explicit", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "runtime-image-ids-"));
+  try {
+    const cases = [
+      { selection: "all", dockerfiles: ["openclaw", "picoclaw"], scripted: ["daimon"] },
+      { selection: "openclaw", dockerfiles: ["openclaw"], scripted: [] },
+      { selection: "daimon", dockerfiles: [], scripted: ["daimon"] }
+    ];
+    for (const { selection, dockerfiles, scripted } of cases) {
+      const output = path.join(directory, selection);
+      runWorkflowScript(step("catalog", "Read adapter image metadata")?.run, { GITHUB_OUTPUT: output, RUNTIME_SELECTION: selection });
+      assert.equal(readFileSync(output, "utf8"), `dockerfiles=${JSON.stringify(dockerfiles)}\nscripted=${JSON.stringify(scripted)}\n`);
+    }
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("each build lane reads checked metadata from its own checkout", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "runtime-image-metadata-"));
+  try {
+    for (const { runtime, context, image, version, build_args } of discoverRuntimeImages(repositoryRoot).dockerfiles) {
+      const output = path.join(directory, runtime);
+      runWorkflowScript(step("build", "Resolve adapter build metadata")?.run, { GITHUB_OUTPUT: output, RUNTIME_NAME: runtime });
+      assert.equal(readFileSync(output, "utf8"), [
+        `context=${context}`, `image=${image}`, `version=${version}`, "build_args<<EOF", ...build_args, "EOF", ""
+      ].join("\n"));
+    }
+    const output = path.join(directory, "daimon");
+    runWorkflowScript(step("scripted", "Resolve adapter build metadata")?.run, { GITHUB_OUTPUT: output, RUNTIME_NAME: "daimon" });
+    assert.equal(readFileSync(output, "utf8"), `publisher=${publisher}\n`);
+
+    const wrongLane = path.join(directory, "wrong-lane");
+    assert.throws(() => runWorkflowScript(step("build", "Resolve adapter build metadata")?.run, {
+      GITHUB_OUTPUT: wrongLane, RUNTIME_NAME: "daimon"
+    }), /daimon does not supply a dockerfile image build/u);
+    assert.equal(existsSync(wrongLane), false);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
 
 const resolveMode = (event: { name: string; ref: string; push?: boolean; latest?: boolean }): Record<string, string> => {
   const directory = mkdtempSync(path.join(os.tmpdir(), "runtime-images-mode-"));

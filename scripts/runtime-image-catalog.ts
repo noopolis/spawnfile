@@ -65,12 +65,39 @@ export const discoverRuntimeImages = (root: string, selection = "all"): RuntimeI
   return catalog;
 };
 
+const imageStepOutputs = (catalog: RuntimeImageCatalog, selection: string, lane: string): string => {
+  if (selection === "all") throw new Error("Image build steps must select one runtime");
+  if (lane === "dockerfile" && catalog.dockerfiles.length === 1) {
+    const { context, image, version, build_args } = catalog.dockerfiles[0]!;
+    return [
+      `context=${context}`,
+      `image=${image}`,
+      `version=${version}`,
+      "build_args<<EOF",
+      ...build_args,
+      "EOF",
+      ""
+    ].join("\n");
+  }
+  if (lane === "scripted" && catalog.scripted.length === 1) {
+    return `publisher=${catalog.scripted[0]!.publisher}\n`;
+  }
+  throw new Error(`Runtime ${selection} does not supply a ${lane} image build`);
+};
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  const catalog = discoverRuntimeImages(repositoryRoot, process.argv[2]);
+  const [selection = "all", option, lane, ...extra] = process.argv.slice(2);
+  const catalog = discoverRuntimeImages(repositoryRoot, selection);
   const output = process.env.GITHUB_OUTPUT;
-  if (output) {
-    const dockerfiles = catalog.dockerfiles.map(({ build_args, ...item }) => ({ ...item, build_args: build_args.join("\n") }));
-    appendFileSync(output, `dockerfiles=${JSON.stringify(dockerfiles)}\nscripted=${JSON.stringify(catalog.scripted)}\n`);
+  if (option !== undefined) {
+    if (option !== "--job-metadata" || (lane !== "dockerfile" && lane !== "scripted") || extra.length > 0 || !output) {
+      throw new Error("Usage: runtime-image-catalog.ts <runtime> --job-metadata <dockerfile|scripted> (requires GITHUB_OUTPUT)");
+    }
+    appendFileSync(output, imageStepOutputs(catalog, selection, lane));
+  } else if (output) {
+    const dockerfiles = catalog.dockerfiles.map(({ runtime }) => runtime);
+    const scripted = catalog.scripted.map(({ runtime }) => runtime);
+    appendFileSync(output, `dockerfiles=${JSON.stringify(dockerfiles)}\nscripted=${JSON.stringify(scripted)}\n`);
   } else {
     process.stdout.write(`${JSON.stringify(catalog)}\n`);
   }

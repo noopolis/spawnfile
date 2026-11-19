@@ -72,6 +72,7 @@ jobs:
     name: Discover runtime images
     runs-on: ubuntu-latest
     outputs:
+      # Job outputs carry runtime IDs only. Build settings are read in each build job.
       dockerfiles: ${{ steps.images.outputs.dockerfiles }}
       scripted: ${{ steps.images.outputs.scripted }}
       push: ${{ steps.publish.outputs.push }}
@@ -135,16 +136,27 @@ jobs:
   build:
     name: ${{ matrix.runtime }} runtime image
     needs: catalog
-    if: needs.catalog.outputs.dockerfiles != '[]'
+    if: needs.catalog.outputs.dockerfiles != '' && needs.catalog.outputs.dockerfiles != '[]'
     timeout-minutes: 30
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.catalog.outputs.dockerfiles) }}
+        runtime: ${{ fromJSON(needs.catalog.outputs.dockerfiles) }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve adapter build metadata
+        id: image
+        env:
+          RUNTIME_NAME: ${{ matrix.runtime }}
+        run: node --experimental-strip-types scripts/runtime-image-catalog.ts "${RUNTIME_NAME}" --job-metadata dockerfile
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -156,8 +168,8 @@ jobs:
         id: tags
         shell: bash
         env:
-          IMAGE: ${{ matrix.image }}
-          VERSION: ${{ matrix.version }}
+          IMAGE: ${{ steps.image.outputs.image }}
+          VERSION: ${{ steps.image.outputs.version }}
           LATEST: ${{ needs.catalog.outputs.latest }}
         run: |
           set -euo pipefail
@@ -180,23 +192,23 @@ jobs:
       - name: Build runtime image
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.context }}/Dockerfile
+          context: ${{ steps.image.outputs.context }}
+          file: ${{ steps.image.outputs.context }}/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ needs.catalog.outputs.push == 'true' }}
           tags: ${{ steps.tags.outputs.tags }}
-          build-args: ${{ matrix.build_args }}
+          build-args: ${{ steps.image.outputs.build_args }}
 
   scripted:
     name: ${{ matrix.runtime }} runtime image
     needs: catalog
-    if: needs.catalog.outputs.scripted != '[]'
+    if: needs.catalog.outputs.scripted != '' && needs.catalog.outputs.scripted != '[]'
     timeout-minutes: 60
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.catalog.outputs.scripted) }}
+        runtime: ${{ fromJSON(needs.catalog.outputs.scripted) }}
     # A pinned tag can be published from multiple refs. Serialize that image's
     # publisher across refs so checking for the tag and writing it cannot race.
     concurrency:
@@ -210,6 +222,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Resolve adapter build metadata
+        id: image
+        env:
+          RUNTIME_NAME: ${{ matrix.runtime }}
+        run: node --experimental-strip-types scripts/runtime-image-catalog.ts "${RUNTIME_NAME}" --job-metadata scripted
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -230,7 +248,7 @@ jobs:
         shell: bash
         env:
           RUNTIME_NAME: ${{ matrix.runtime }}
-          PUBLISHER: ${{ matrix.publisher }}
+          PUBLISHER: ${{ steps.image.outputs.publisher }}
           PUSH: ${{ needs.catalog.outputs.push }}
           LATEST: ${{ needs.catalog.outputs.latest }}
         run: |
