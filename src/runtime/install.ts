@@ -1,12 +1,10 @@
 import { SpawnfileError } from "../shared/index.js";
 
-import type { NativeInstallHintProfile } from "./containerRecipe.js";
-import { daimonInstallHints } from "./daimon/install.js";
-import { openClawInstallHints } from "./openclaw/install.js";
-import { picoClawInstallHints } from "./picoclaw/install.js";
-
 import {
   assertRuntimeCanCompile,
+  getRuntimeAdapter,
+  hasRuntimeAdapter,
+  listRuntimeAdapters,
   loadRuntimeRegistry,
   type DaimonCapabilityReceipts
 } from "./registry.js";
@@ -69,17 +67,11 @@ const convertRemoteToHttps = (remote: string): string => {
   return remote.replace(/^git\+/, "");
 };
 
-const installHints = new Map<string, NativeInstallHintProfile>([
-  ["daimon", daimonInstallHints],
-  ["openclaw", openClawInstallHints],
-  ["picoclaw", picoClawInstallHints]
-]);
-
 export const resolveRuntimeInstallSelection = async (
   runtimeName: string
 ): Promise<RuntimeInstallSelection> => {
   const runtime = await assertRuntimeCanCompile(runtimeName);
-  const installProfile = installHints.get(runtime.name);
+  const installProfile = hasRuntimeAdapter(runtime.name) ? getRuntimeAdapter(runtime.name).install.hints : undefined;
 
   if (!installProfile) {
     throw new SpawnfileError(
@@ -147,7 +139,7 @@ export const resolveRuntimeInstallSelection = async (
 };
 
 export const listInstallSelectionRuntimes = async (): Promise<string[]> =>
-  [...installHints.keys()].sort();
+  listRuntimeAdapters();
 
 export const assertInstallSelectionsCoverCompileableRuntimes = async (): Promise<void> => {
   const compileableRuntimeNames = (await loadRuntimeRegistry())

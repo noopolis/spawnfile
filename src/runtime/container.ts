@@ -2,10 +2,8 @@ import { SpawnfileError } from "../shared/index.js";
 
 import { NOOPOLIS_RUN_ID_ENV, resolveNoopolisRunId } from "./common.js";
 import type { RuntimeContainerPackageOverrides } from "./containerPackageOverrides.js";
-import { createDaimonInstallRecipe } from "./daimon/install.js";
 import { resolveRuntimeInstallSelection } from "./install.js";
-import { createOpenClawInstallRecipe } from "./openclaw/install.js";
-import { createPicoClawInstallRecipe } from "./picoclaw/install.js";
+import { getRuntimeAdapter } from "./registry.js";
 
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 
@@ -66,7 +64,7 @@ export interface RuntimeInstallRecipeOptions {
 
 export const createRuntimeInstallRecipe = async (
   runtimeName: string,
-  _options: RuntimeInstallRecipeOptions = {}
+  options: RuntimeInstallRecipeOptions = {}
 ): Promise<RuntimeInstallRecipe> => {
   const selection = await resolveRuntimeInstallSelection(runtimeName);
   assertArtifactInstallSelection(runtimeName, selection);
@@ -74,19 +72,6 @@ export const createRuntimeInstallRecipe = async (
   const installRoot = `${RUNTIME_INSTALL_ROOT}/${runtimeName}`;
   const containerEnv = createRuntimeContainerEnv();
 
-  const input = { containerEnv, installRoot, runtimeName, selection };
-  switch (runtimeName) {
-    case "openclaw":
-      return createOpenClawInstallRecipe(input);
-    case "picoclaw":
-      return createPicoClawInstallRecipe(input);
-    case "daimon":
-      return createDaimonInstallRecipe(input);
-    /* c8 ignore next 5 -- compileable runtimes are exhaustively covered above */
-    default:
-      throw new SpawnfileError(
-        "runtime_error",
-        `Runtime ${runtimeName} has no container install recipe`
-      );
-  }
+  const { install } = getRuntimeAdapter(runtimeName);
+  return install.createRecipe({ containerEnv, installRoot, runtimeName, selection, ...options });
 };

@@ -1,13 +1,17 @@
+import { RuntimeAdapterBase } from "../adapterBase.js";
+import { createOpenClawInstallRecipe, openClawInstallHints } from "./install.js";
+import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
+import type { EffectiveModelTarget } from "../../compiler/types.js";
+import type { ResolvedAgentSurfaces } from "../../compiler/types.js";
 import { openClawWiring } from "./wiring.js";
 import type {
-  ResolvedAgentNode,
+  ResolvedAgentNode
 } from "../../compiler/types.js";
 import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import type {
   AdapterCompileResult,
   ContainerTarget,
-  ContainerTargetInput,
-  RuntimeAdapter
+  ContainerTargetInput
 } from "../types.js";
 import {
   createAgentCapabilities,
@@ -192,8 +196,8 @@ const createContainerTargets = async (
     };
   });
 
-export const openClawAdapter: RuntimeAdapter = {
-  assertSupportedModelTarget(target) {
+class OpenClawRuntimeAdapter extends RuntimeAdapterBase {
+  readonly assertSupportedModelTarget = (target: EffectiveModelTarget) => {
     if (target.reasoningEffort !== undefined) {
       throw new SpawnfileError(
         "validation_error",
@@ -228,11 +232,11 @@ export const openClawAdapter: RuntimeAdapter = {
       "validation_error",
       `OpenClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
-  },
-  assertSupportedSurfaces(surfaces) {
+  };
+  readonly assertSupportedSurfaces = (surfaces: ResolvedAgentSurfaces | undefined) => {
     assertSupportedOpenClawSurfaces(surfaces);
-  },
-  container: {
+  };
+  readonly container: RuntimeContainerMeta = {
     configFileName: "openclaw.json",
     configPathEnv: "OPENCLAW_CONFIG_PATH",
     env: [
@@ -266,14 +270,14 @@ export const openClawAdapter: RuntimeAdapter = {
       "--verbose"
     ],
     systemDeps: ["bash", "ca-certificates", "curl", "git", "hostname", "openssl", "procps"]
-  },
-  systemInstructionSurface: {
+  };
+  readonly systemInstructionSurface: RuntimeSystemInstructionSurface = {
     placement: "append_pointer",
     resolvePath() {
       return "workspace/AGENTS.md";
     }
-  },
-  async compileAgent(node): Promise<AdapterCompileResult> {
+  };
+  readonly compileAgent = async (node: ResolvedAgentNode): Promise<AdapterCompileResult> => {
     const memoryCapability = openClawMemoryCapabilityFor(node);
     const cronStoreFile = createOpenClawCronStoreFile(node);
     return {
@@ -299,16 +303,16 @@ export const openClawAdapter: RuntimeAdapter = {
         }
       ]
     };
-  },
-  async createContainerTargets(inputs) {
+  };
+  readonly createContainerTargets = async (inputs: ContainerTargetInput[]) => {
     return createContainerTargets(inputs);
-  },
-  name: "openclaw",
-  wiring: openClawWiring,
-  prepareRuntimeAuth: prepareOpenClawRuntimeAuth,
-  scaffoldAgentProject: createOpenClawAgentScaffold,
-  statusProbes: openClawStatusProbes,
-  validateRuntimeOptions(options) {
+  };
+  readonly name = "openclaw";
+  readonly wiring = openClawWiring;
+  readonly prepareRuntimeAuth = prepareOpenClawRuntimeAuth;
+  readonly scaffoldAgentProject = createOpenClawAgentScaffold;
+  readonly statusProbes = openClawStatusProbes;
+  readonly validateRuntimeOptions = (options: Record<string, unknown>) => {
     const diagnostics = validateOpenClawMoltnetRuntimeOptions(options).map((message) =>
       createDiagnostic("error", message)
     );
@@ -320,5 +324,8 @@ export const openClawAdapter: RuntimeAdapter = {
     }
 
     return diagnostics;
-  }
-};
+  };
+  override readonly install = { hints: openClawInstallHints, createRecipe: createOpenClawInstallRecipe };
+}
+
+export const openClawAdapter: RuntimeAdapter = new OpenClawRuntimeAdapter();

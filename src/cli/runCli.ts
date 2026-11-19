@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
 
+import { withRuntimeAdapterPlugins } from "../runtime/registry.js";
+import { loadRuntimeAdapterPlugins } from "../runtime/loadAdapterPlugins.js";
+import { formatCliErrorMessage, isCommanderError } from "./cliErrors.js";
+import { splitAdapterOptions } from "./adapterOptions.js";
+
 import { loginSubscriptionRealm } from "../runtime/daimon/training/trial/index.js";
 
 import { Command } from "commander";
@@ -53,7 +58,7 @@ import {
   listDeploymentRecords,
   listHomeDeploymentRecords
 } from "../deployment/index.js";
-import { errorExitCode, isSpawnfileError } from "../shared/index.js";
+import { errorExitCode } from "../shared/index.js";
 import { listRuntimeAdapters } from "../runtime/index.js";
 import { registerArtifactsCommands } from "./artifactsCommands.js";
 import { registerAuthCommands } from "./authCommands.js";
@@ -151,6 +156,7 @@ const createDefaultHandlers = (): CliHandlers => ({
 });
 
 export interface RunCliOptions {
+  adapterCwd?: string;
   handlers?: Partial<CliHandlers>; renderEnvironment?: CliRenderEnvironment; stdin?: AsyncIterable<unknown>; streams?: CliStreams; signal?: AbortSignal;
 }
 
@@ -162,7 +168,7 @@ const isCliStreams = (value: CliStreams | RunCliOptions | undefined): value is C
 const normalizeRunCliOptions = (
   optionsOrStreams?: CliStreams | RunCliOptions,
   handlerOverrides: Partial<CliHandlers> = {}
-): Required<Omit<RunCliOptions, "signal">> & Pick<RunCliOptions, "signal"> => isCliStreams(optionsOrStreams)
+): Required<Omit<RunCliOptions, "signal" | "adapterCwd">> & Pick<RunCliOptions, "signal" | "adapterCwd"> => isCliStreams(optionsOrStreams)
   ? {
       handlers: handlerOverrides,
       renderEnvironment: createDefaultRenderEnvironment(),
@@ -170,6 +176,7 @@ const normalizeRunCliOptions = (
       streams: optionsOrStreams
     }
   : {
+      adapterCwd: optionsOrStreams?.adapterCwd,
       handlers: optionsOrStreams?.handlers ?? handlerOverrides,
       renderEnvironment: optionsOrStreams?.renderEnvironment ?? createDefaultRenderEnvironment(),
       stdin: optionsOrStreams?.stdin ?? process.stdin,
@@ -188,28 +195,6 @@ const writeCommanderOutput = (
 };
 
 const TARGET_CLI_USAGE_ERROR = "error: Invalid target command";
-
-const isCommanderError = (error: unknown): error is { code: string; exitCode: number } => {
-  if (typeof error !== "object" || error === null) {
-    return false;
-  }
-  const candidate = error as { code?: unknown; exitCode?: unknown };
-  return typeof candidate.code === "string"
-    && candidate.code.startsWith("commander.")
-    && typeof candidate.exitCode === "number";
-};
-
-
-const formatCliErrorMessage = (error: unknown): string => {
-  if (isSpawnfileError(error)) {
-    // Surface the human message only; the internal code is not user-facing.
-    return error.message;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-};
 
 const formatPlanSummary = (plan: Awaited<ReturnType<typeof buildCompilePlan>>): string =>
   [
@@ -239,10 +224,11 @@ export const runCli: RunCli = async (
   const cliOptions = normalizeRunCliOptions(optionsOrStreams, handlerOverrides);
   const streams = cliOptions.streams;
   const handlers = { ...createDefaultHandlers(), ...cliOptions.handlers };
-  const isTargetInvocation = argv[0] === "target";
+  let isTargetInvocation = argv[0] === "target";
   let commandExitCode = 0;
   const program = new Command();
   program.name("spawnfile").description("Spawnfile v0.1 compiler").version(readPackageVersion());
+  program.option("--adapter <module>", "Load a trusted local ESM adapter or installed package (repeatable)");
   program.exitOverride();
   program.configureOutput({
     outputError: (message, write) => write(message),
@@ -367,7 +353,7 @@ export const runCli: RunCli = async (
 
   program
     .command("runtimes")
-    .description("List bundled runtime adapters")
+    .description("List available runtime adapters")
     .action(() => {
       for (const runtimeName of handlers.listRuntimeAdapters()) {
         streams.stdout(runtimeName);
@@ -377,7 +363,10 @@ export const runCli: RunCli = async (
   registerAuthCommands(program, handlers, streams, cliOptions.stdin);
 
   try {
-    await program.parseAsync(argv, { from: "user" });
+    const { args, adapters } = splitAdapterOptions(argv);
+    isTargetInvocation = args[0] === "target";
+    const plugins = await loadRuntimeAdapterPlugins(adapters, { cwd: cliOptions.adapterCwd });
+    await withRuntimeAdapterPlugins(plugins, () => program.parseAsync(args, { from: "user" }));
     return commandExitCode;
   } catch (error: unknown) {
     if (isCommanderError(error)) {

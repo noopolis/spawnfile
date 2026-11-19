@@ -9,6 +9,8 @@ src/runtime/
 ├── index.ts               # Barrel for adapter registry exports
 ├── scaffoldAssets.ts      # Shared loader for runtime-owned init template assets
 ├── copyScaffoldAssets.ts  # Copies each adapter's declared package-assets.json inputs
+├── adapterPublic.ts      # Versioned SDK for trusted adapter modules
+├── adapterBase.ts        # Base class with standard pinned install recipes
 ├── types.ts               # Shared adapter contract types
 ├── wiringTypes.ts          # Optional Moltnet, memory, and readiness capabilities
 ├── wiringSelection.ts      # Adapter capability lookup for shared consumers
@@ -33,7 +35,7 @@ src/runtime/
 └── registry.test.ts       # Adapter registry tests
 ```
 
-Each adapter owns its init scaffold, install hints, native install recipe, static package assets, and image build context. Image builds read each adapter's `image/build.json` without loading runtime code. Keep shared adapter helpers in `common.ts`.
+Each adapter owns its registration, init scaffold, install hints, native install recipe, static package assets, and image build context. Image builds read each adapter's `image/build.json` without loading runtime code. Keep shared adapter helpers in `common.ts`.
 
 Adapters expose native chat and memory wiring through `RuntimeAdapter.wiring`.
 The compiler asks for the selected adapter's Moltnet client layout, bridge
@@ -60,11 +62,18 @@ only by an absolute path in `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`, accepts
 the exact v3 non-production schema, and requires the fixed loopback registry
 repository by OCI manifest digest plus a capability-receipt SHA-256. Raw image
 or receipt environment overrides fail closed. With no identity path,
-`container.ts` uses the checked-in `runtimes.yaml` digest and receipt unchanged.
+`daimon/install.ts` uses the checked-in `runtimes.yaml` digest and receipt unchanged.
 
 `types.ts`'s `ContainerTarget` carries an optional `engineByNodeId?: Record<string, string>` passthrough slot for adapters that disclose a native engine kind per compiled node. The Daimon adapter reports its public `codex`/`grok`/`agy` engine intents. `src/compiler/containerArtifactsPlans.ts`/`containerArtifacts.ts` thread the map unchanged into `ContainerRuntimeInstanceReport.engine_by_node_id` (`src/report/types.ts`). Other adapters omit it.
 
 `RuntimeAuthPreparationInput.authProfile` (`types.ts`) is `ResolvedAuthProfile | null`. Each adapter must treat null as no imported credentials.
+
+## Registration
+
+Bundled adapters export `adapter` through their folder's `registration.ts`.
+The build generates static imports from those declarations. External code is
+loaded only from an explicit operator specifier, and each invocation sees its
+own registrations. Manifest runtime names select adapters within that scope.
 
 ## Rules
 

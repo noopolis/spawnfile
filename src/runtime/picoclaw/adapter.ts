@@ -1,3 +1,8 @@
+import { RuntimeAdapterBase } from "../adapterBase.js";
+import { createPicoClawInstallRecipe, picoClawInstallHints } from "./install.js";
+import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
+import type { EffectiveModelTarget } from "../../compiler/types.js";
+import type { ResolvedAgentSurfaces } from "../../compiler/types.js";
 import { picoClawWiring } from "./wiring.js";
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 
@@ -9,8 +14,7 @@ import {
 import type {
   AdapterCompileResult,
   ContainerTarget,
-  ContainerTargetInput,
-  RuntimeAdapter
+  ContainerTargetInput
 } from "../types.js";
 import { SpawnfileError } from "../../shared/index.js";
 import {
@@ -219,8 +223,8 @@ const createContainerTargets = async (
     };
   });
 
-export const picoClawAdapter: RuntimeAdapter = {
-  assertSupportedModelTarget(target) {
+class PicoClawRuntimeAdapter extends RuntimeAdapterBase {
+  readonly assertSupportedModelTarget = (target: EffectiveModelTarget) => {
     if (target.reasoningEffort !== undefined) {
       throw new SpawnfileError(
         "validation_error",
@@ -265,11 +269,11 @@ export const picoClawAdapter: RuntimeAdapter = {
       "validation_error",
       `PicoClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
-  },
-  assertSupportedSurfaces(surfaces) {
+  };
+  readonly assertSupportedSurfaces = (surfaces: ResolvedAgentSurfaces | undefined) => {
     assertSupportedPicoClawSurfaces(surfaces);
-  },
-  container: {
+  };
+  readonly container: RuntimeContainerMeta = {
     configFileName: "config.json",
     configPathEnv: "PICOCLAW_CONFIG",
     globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex", PICOCLAW_MNEME_PACKAGE],
@@ -288,14 +292,14 @@ export const picoClawAdapter: RuntimeAdapter = {
       PICOCLAW_GATEWAY_HOST: "0.0.0.0"
     },
     systemDeps: ["bash", "ca-certificates", "curl", "nodejs", "npm", "tar"]
-  },
-  systemInstructionSurface: {
+  };
+  readonly systemInstructionSurface: RuntimeSystemInstructionSurface = {
     placement: "append_pointer",
     resolvePath() {
       return "workspace/AGENTS.md";
     }
-  },
-  async compileAgent(node): Promise<AdapterCompileResult> {
+  };
+  readonly compileAgent = async (node: ResolvedAgentNode): Promise<AdapterCompileResult> => {
     const scheduleOutcome = scheduleOutcomeFor(node);
     const cronStoreFile = createPicoClawCronStoreFile(node);
     const memoryCapability = picoClawMemoryCapabilityFor(node);
@@ -317,16 +321,16 @@ export const picoClawAdapter: RuntimeAdapter = {
         }
       ]
     };
-  },
-  async createContainerTargets(inputs): Promise<ContainerTarget[]> {
+  };
+  readonly createContainerTargets = async (inputs: ContainerTargetInput[]): Promise<ContainerTarget[]> => {
     return createContainerTargets(inputs);
-  },
-  name: "picoclaw",
-  wiring: picoClawWiring,
-  prepareRuntimeAuth: preparePicoClawRuntimeAuth,
-  scaffoldAgentProject: createPicoClawAgentScaffold,
-  statusProbes: picoClawStatusProbes,
-  validateRuntimeOptions(options) {
+  };
+  readonly name = "picoclaw";
+  readonly wiring = picoClawWiring;
+  readonly prepareRuntimeAuth = preparePicoClawRuntimeAuth;
+  readonly scaffoldAgentProject = createPicoClawAgentScaffold;
+  readonly statusProbes = picoClawStatusProbes;
+  readonly validateRuntimeOptions = (options: Record<string, unknown>) => {
     if (
       "restrict_to_workspace" in options &&
       typeof options.restrict_to_workspace !== "boolean"
@@ -340,5 +344,8 @@ export const picoClawAdapter: RuntimeAdapter = {
     }
 
     return [];
-  }
-};
+  };
+  override readonly install = { hints: picoClawInstallHints, createRecipe: createPicoClawInstallRecipe };
+}
+
+export const picoClawAdapter: RuntimeAdapter = new PicoClawRuntimeAdapter();

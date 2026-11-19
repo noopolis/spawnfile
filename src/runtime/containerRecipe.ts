@@ -1,3 +1,5 @@
+import type { RuntimeInstallRecipe } from "./container.js";
+import type { RuntimeContainerPackageOverrides } from "./containerPackageOverrides.js";
 import type { RuntimeInstallSelection } from "./install.js";
 
 export type NativeInstallHintProfile = Record<
@@ -8,8 +10,14 @@ export type NativeInstallHintProfile = Record<
 export interface NativeInstallRecipeInput {
   containerEnv: Record<string, string>;
   installRoot: string;
+  packageOverrides?: RuntimeContainerPackageOverrides;
   runtimeName: string;
   selection: RuntimeInstallSelection;
+}
+
+export interface RuntimeInstallCapability {
+  readonly hints: NativeInstallHintProfile;
+  createRecipe(input: NativeInstallRecipeInput): RuntimeInstallRecipe | Promise<RuntimeInstallRecipe>;
 }
 
 export const createRuntimeImageCopyCommand = (

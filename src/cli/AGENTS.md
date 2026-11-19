@@ -8,6 +8,7 @@ This folder owns user-facing command parsing and process exit behavior.
 src/cli/
 ├── index.ts        # Executable Node entrypoint
 ├── runCli.ts       # Top-level Commander setup and shared CLI types
+├── adapterOptions.ts # Explicit global --adapter parsing
 ├── capabilitiesCommand.ts # Read-only public capability command registration
 ├── capabilitiesReceipt.ts # Strict Spawnfile capability receipt
 ├── composedLifecycleContractSet.ts # Closed machine command/contract inventory

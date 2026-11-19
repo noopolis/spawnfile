@@ -65,7 +65,9 @@
     "test:unit": "npm run test:vitest; vitest_status=$?; npm run test:verdict; verdict_status=$?; npm run test:coverage-verdict; coverage_status=$?; failed_lanes=''; if [ \"$verdict_status\" -eq 2 ]; then failed_lanes='vitest test failures'; fi; result_status=0; if [ -n \"$failed_lanes\" ]; then echo \"FAIL(tests): $failed_lanes\"; result_status=1; fi; if [ \"$verdict_status\" -ne 0 ] && [ \"$verdict_status\" -ne 2 ]; then echo 'FAIL(vitest-verdict): could not determine the vitest result'; result_status=1; fi; if [ \"$result_status\" -ne 0 ]; then exit 1; elif [ \"$vitest_status\" -ne 0 ]; then echo \"FAIL(vitest): exited $vitest_status with no test failure\"; exit 1; elif [ \"$coverage_status\" -eq 2 ]; then echo 'FAIL(coverage): thresholds not met (tests all passed)'; exit 2; elif [ \"$coverage_status\" -ne 0 ]; then echo 'FAIL(coverage-verdict): could not evaluate coverage (tests all passed)'; exit 1; else echo 'PASS'; fi",
     "test": "npm run test:unit && npm run test:scripts",
     "test:training-python": "node --experimental-strip-types scripts/test-training-python.ts",
-    "vendor:daimon-engine-descriptors": "node --experimental-strip-types ./scripts/generate-daimon-engine-descriptors.ts"
+    "vendor:daimon-engine-descriptors": "node --experimental-strip-types ./scripts/generate-daimon-engine-descriptors.ts",
+    "prebuild": "node --experimental-strip-types scripts/generate-builtin-adapters.ts",
+    "pretypecheck": "node --experimental-strip-types scripts/generate-builtin-adapters.ts"
   },
   "dependencies": {
     "@huggingface/jinja": "0.5.10",
@@ -73,6 +75,7 @@
     "@noopolis/stele": "0.0.2",
     "ajv": "8.20.0",
     "commander": "^14.0.1",
+    "import-meta-resolve": "4.2.0",
     "mdast-util-from-markdown": "2.0.3",
     "mdast-util-to-string": "4.0.0",
     "undici": "7.30.1",
@@ -85,7 +88,6 @@
     "@types/node": "^24.6.0",
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "10.10.0",
-    "import-meta-resolve": "4.2.0",
     "jiti": "2.7.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
@@ -110,6 +112,10 @@
     "./training/cli": {
       "types": "./dist/runtime/trainingPublic.d.ts",
       "import": "./dist/runtime/trainingPublic.js"
+    },
+    "./adapter": {
+      "types": "./dist/runtime/adapterPublic.d.ts",
+      "import": "./dist/runtime/adapterPublic.js"
     }
   }
 }
