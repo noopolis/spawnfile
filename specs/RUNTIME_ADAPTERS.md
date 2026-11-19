@@ -45,7 +45,7 @@ export const spawnfileAdapter = defineRuntimeAdapterPlugin({
 });
 ```
 
-The base class installs a pinned npm package or copies the runtime root from a container image. An image pin can include a SHA-256 digest. Implement the typed `install` capability for a different artifact layout or install strategy. The adapter emits its native config at `container.configFileName`. Spawnfile expands the path placeholders for each deployed instance.
+The base class installs a named npm package at an exact version or copies the runtime root from a container image with a separate tag. An image pin can include a SHA-256 digest. Implement the typed `install` capability for a different artifact layout or install strategy. The adapter emits its native config at `container.configFileName`. Spawnfile expands the path placeholders for each deployed instance.
 
 ## Select and load it
 
@@ -58,6 +58,8 @@ For programmatic callers, load the explicit module specifiers with `loadRuntimeA
 ## Optional features
 
 Declare the features the harness actually supports. A memory hook, credential preparation, health check, training provider, or Moltnet connection can be supplied independently. Native code, schemas, install assets, credentials, and compatibility readers belong to the adapter folder.
+
+An adapter that consumes raw imported CLI credentials declares the supported methods in `container.rawHomeAuthImports`. All runtimes sharing a container must support a raw credential before Spawnfile stages it there. Adapters that handle their own credentials can implement the host authentication hooks.
 
 For an ACP agent, use `createAcpStdioWiring({ command, args, workspace })` for `wiring.moltnet`. Moltnet starts that executable in the agent workspace. Arguments retain their boundaries. The adapter should use the emitted client config when its agent explicitly sends a reply. The fixture demonstrates this with a local Node process. ACP messaging requires a verified Moltnet release advertising `acp-bridge`. The bundled v0.1.19 pin advertises the earlier bridges. The local-development build can verify an ACP-capable Moltnet archive. [Runtime registry](RUNTIMES.md)
 

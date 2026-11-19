@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseImageReference } from "../distribution/imageRef.js";
 import { SpawnfileError } from "../shared/index.js";
 import type { RuntimeRegistryInstall } from "./registry.js";
 import type { RuntimeAdapter } from "./types.js";
@@ -22,6 +23,8 @@ export interface RuntimeAdapterPlugin {
 export const defineRuntimeAdapterPlugin = (plugin: RuntimeAdapterPlugin): RuntimeAdapterPlugin => plugin;
 
 const text = z.string().trim().min(1);
+const npmPackageName = text.max(214).regex(/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/u);
+const npmVersion = text.regex(/^v?(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?(?:\+[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?$/u);
 const digest = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
 const catalogSchema = z.strictObject({
   defaultBranch: text,
@@ -35,8 +38,10 @@ const catalogSchema = z.strictObject({
       capabilityReceipt: digest.optional(),
       capabilityReceipts: z.strictObject({ amd64: digest.optional(), arm64: digest.optional() })
         .refine((value) => Boolean(value.amd64 || value.arm64)).optional()
-    }).refine((value) => !(value.capabilityReceipt && value.capabilityReceipts)),
-    z.strictObject({ kind: z.literal("npm"), package: text, version: text }),
+    }).refine((value) => !(value.capabilityReceipt && value.capabilityReceipts))
+      .refine(({ image, tag }) => parseImageReference(`${image}:${tag}`)?.tag === tag,
+        { message: "expected an image name and separate tag", path: ["image"] }),
+    z.strictObject({ kind: z.literal("npm"), package: npmPackageName, version: npmVersion }),
     z.strictObject({
       kind: z.literal("github_release_archive"), repository: text, tag: text, binary: text,
       assets: z.record(z.string(), text)
@@ -48,7 +53,7 @@ const catalogSchema = z.strictObject({
 const containerSchema = z.object({
   configFileName: text,
   rawHomeAuthImports: z.array(z.enum(["claude-code", "codex"])).optional(),
-  standaloneBaseImage: text,
+  standaloneBaseImage: text.refine((image) => parseImageReference(image) !== null),
   instancePaths: z.object({
     configPathTemplate: text,
     workspacePathTemplate: text

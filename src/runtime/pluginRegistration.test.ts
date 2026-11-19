@@ -180,3 +180,13 @@ it("loads only explicitly selected local and import-only installed ESM modules f
   await expect(loadRuntimeAdapterPlugins(["./bad.mjs"], { cwd })).rejects.toThrow(/invalid adapter implementation/u);
   await expect(loadRuntimeAdapterPlugins(["not-an-installed-package"], { cwd })).rejects.toThrow(/Unable to load adapter.*not-an-installed-package/u);
 });
+
+it.each([
+  { kind: "npm", package: "fixture runtime", version: "1.0.0" },
+  { kind: "npm", package: "fixture-runtime", version: "^1.0.0" },
+  { kind: "container_image", image: "example/fixture:already-tagged", tag: "v1" }
+] as const)("validates standard registry pins used by external installers", async (install) => {
+  const definition = plugin("fixture-pins");
+  await expect(withRuntimeAdapterPlugins([{ ...definition, catalog: { ...definition.catalog, install } }], () => undefined))
+    .rejects.toThrow(/invalid catalog/u);
+});

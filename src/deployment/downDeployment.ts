@@ -158,7 +158,7 @@ const readCompileReport = async (
 
 const explainRefusal = (deploymentName: string): string =>
   `Deployment "${deploymentName}" has no export-index: its durable artifacts (moltnet ` +
-  "causal log, mneme bank ledgers, daimon telemetry) have not been exported yet, and " +
+  "causal log, mneme bank ledgers, runtime telemetry) have not been exported yet, and " +
   "`spawnfile down` would destroy the container they live in before anyone reads them. " +
   `Run \`spawnfile artifacts export --deployment ${deploymentName} --out <dir>\` first, ` +
   "or pass `--export-to <dir>` to export-then-down in one call, or `--force` to " +
