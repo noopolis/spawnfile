@@ -1,7 +1,7 @@
 import { daimonHostIntegration } from "./host/integration.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import { createDaimonInstallRecipe, daimonInstallHints } from "./install.js";
-import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
+import type { AdapterCompileResult, RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
 import { daimonTraining } from "./trainingCapability.js";
 import { daimonWiring, DAIMON_CONTROL_TOKEN_ENV } from "./wiring.js";
 import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
@@ -15,7 +15,6 @@ import {
 } from "../common.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import { DAIMON_SKILL_ROOTS, daimonGrokSkillsError } from "./grokSkillsSupport.js";
-import type { AdapterCompileResult } from "../types.js";
 
 import {
   assertDaimonAgentOptions,

@@ -6,14 +6,14 @@ import {
   hasRuntimeAdapter,
   listRuntimeAdapters,
   loadRuntimeRegistry,
-  type DaimonCapabilityReceipts
+  type RuntimeCapabilityReceipts
 } from "./registry.js";
 
 export type RuntimeInstallSelection =
   | {
       ecosystem: "go" | "node";
       capabilityReceipt?: string;
-      capabilityReceipts?: DaimonCapabilityReceipts;
+      capabilityReceipts?: RuntimeCapabilityReceipts;
       contractManifestSha256?: string;
       digest?: string;
       image: string;

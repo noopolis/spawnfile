@@ -4,7 +4,7 @@ import type { RuntimeInstallRecipe } from "../container.js";
 import type { NativeInstallRecipeInput, NativeInstallHintProfile } from "../containerRecipe.js";
 import { createRuntimeImageCopyCommand } from "../containerRecipe.js";
 import type { RuntimeInstallSelection } from "../install.js";
-import type { DaimonCapabilityReceipts } from "../registry.js";
+import type { RuntimeCapabilityReceipts } from "../registry.js";
 import { DAIMON_WAKE_FUSE_DIRECTORY, DAIMON_WAKE_FUSE_DIRECTORY_ENV } from "./config.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
 import { createDaimonInstallCommands } from "./daimonInstall.js";
@@ -42,7 +42,7 @@ const LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV =
  */
 const resolveDaimonRuntimeImageRef = async (
   selection: RuntimeInstallSelection
-): Promise<{ capabilityReceipt: string | DaimonCapabilityReceipts; image: string }> => {
+): Promise<{ capabilityReceipt: string | RuntimeCapabilityReceipts; image: string }> => {
   if (
     selection.kind !== "container_image" ||
     !selection.digest ||

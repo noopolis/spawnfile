@@ -1,18 +1,16 @@
 import { openClawHostIntegration } from "./host.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import { createOpenClawInstallRecipe, openClawInstallHints } from "./install.js";
-import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
-import type { EffectiveModelTarget } from "../../compiler/types.js";
-import type { ResolvedAgentSurfaces } from "../../compiler/types.js";
 import { openClawWiring } from "./wiring.js";
-import type {
-  ResolvedAgentNode
-} from "../../compiler/types.js";
+import type { EffectiveModelTarget, ResolvedAgentNode } from "../../compiler/types.js";
 import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import type {
   AdapterCompileResult,
   ContainerTarget,
-  ContainerTargetInput
+  ContainerTargetInput,
+  RuntimeAdapter,
+  RuntimeContainerMeta,
+  RuntimeSystemInstructionSurface
 } from "../types.js";
 import {
   createAgentCapabilities,
@@ -235,9 +233,7 @@ class OpenClawRuntimeAdapter extends RuntimeAdapterBase {
       `OpenClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
   };
-  readonly assertSupportedSurfaces = (surfaces: ResolvedAgentSurfaces | undefined) => {
-    assertSupportedOpenClawSurfaces(surfaces);
-  };
+  readonly assertSupportedSurfaces = assertSupportedOpenClawSurfaces;
   readonly container: RuntimeContainerMeta = {
     rawHomeAuthImports: ["claude-code", "codex"],
     configFileName: "openclaw.json",
@@ -307,9 +303,7 @@ class OpenClawRuntimeAdapter extends RuntimeAdapterBase {
       ]
     };
   };
-  readonly createContainerTargets = async (inputs: ContainerTargetInput[]) => {
-    return createContainerTargets(inputs);
-  };
+  readonly createContainerTargets = createContainerTargets;
   readonly name = "openclaw";
   readonly wiring = openClawWiring;
   readonly prepareRuntimeAuth = prepareOpenClawRuntimeAuth;

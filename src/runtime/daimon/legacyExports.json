@@ -1,6 +1,7 @@
 [
   { "from": "localDaimonAuthority", "surfaces": ["Runtime"] },
   { "from": "daimonInstall", "surfaces": ["Runtime"] },
+  { "from": "daimonInstall", "surfaces": ["Registry"], "types": ["DaimonCapabilityReceipts"] },
   { "from": "contractManifest", "surfaces": ["Registry"], "types": ["DaimonContractManifest"] },
   { "from": "usageLedger", "surfaces": ["Registry", "UsageLedger"], "values": ["parseUsageLedger", "parseUsageLedgerLine", "USAGE_TURN_RECORD_VERSION"] },
   { "from": "usageRequestLedger", "surfaces": ["Registry", "UsageRequests"], "values": ["parseUsageRequestLedger", "parseUsageRequestLedgerLine", "USAGE_REQUEST_RECORD_VERSION", "USAGE_REQUEST_SOURCES"], "types": ["UsageRequestRecord", "UsageRequestSource"] },

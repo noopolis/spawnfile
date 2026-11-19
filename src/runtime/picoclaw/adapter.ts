@@ -1,10 +1,7 @@
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import { createPicoClawInstallRecipe, picoClawInstallHints } from "./install.js";
-import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
-import type { EffectiveModelTarget } from "../../compiler/types.js";
-import type { ResolvedAgentSurfaces } from "../../compiler/types.js";
 import { picoClawWiring } from "./wiring.js";
-import type { ResolvedAgentNode } from "../../compiler/types.js";
+import type { EffectiveModelTarget, ResolvedAgentNode } from "../../compiler/types.js";
 
 import {
   listEffectiveExecutionModelTargets,
@@ -14,7 +11,10 @@ import {
 import type {
   AdapterCompileResult,
   ContainerTarget,
-  ContainerTargetInput
+  ContainerTargetInput,
+  RuntimeAdapter,
+  RuntimeContainerMeta,
+  RuntimeSystemInstructionSurface
 } from "../types.js";
 import { SpawnfileError } from "../../shared/index.js";
 import {
@@ -270,9 +270,7 @@ class PicoClawRuntimeAdapter extends RuntimeAdapterBase {
       `PicoClaw does not support model auth method ${target.auth.method} for provider ${target.provider}`
     );
   };
-  readonly assertSupportedSurfaces = (surfaces: ResolvedAgentSurfaces | undefined) => {
-    assertSupportedPicoClawSurfaces(surfaces);
-  };
+  readonly assertSupportedSurfaces = assertSupportedPicoClawSurfaces;
   readonly container: RuntimeContainerMeta = {
     rawHomeAuthImports: ["claude-code", "codex"],
     configFileName: "config.json",
@@ -323,9 +321,7 @@ class PicoClawRuntimeAdapter extends RuntimeAdapterBase {
       ]
     };
   };
-  readonly createContainerTargets = async (inputs: ContainerTargetInput[]): Promise<ContainerTarget[]> => {
-    return createContainerTargets(inputs);
-  };
+  readonly createContainerTargets = createContainerTargets;
   readonly name = "picoclaw";
   readonly wiring = picoClawWiring;
   readonly prepareRuntimeAuth = preparePicoClawRuntimeAuth;

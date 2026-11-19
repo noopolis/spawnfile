@@ -90,7 +90,7 @@ export type RuntimeRegistryInstall =
   | {
       capabilityReceipt?: string;
       /** Per-architecture receipts embedded in a multi-architecture image index. */
-      capabilityReceipts?: DaimonCapabilityReceipts;
+      capabilityReceipts?: RuntimeCapabilityReceipts;
       contractManifestSha256?: string;
       digest?: string;
       image: string;
@@ -113,7 +113,7 @@ export type RuntimeRegistryInstall =
       kind: "source_repo";
     };
 
-export type DaimonCapabilityReceipts = Partial<Record<"amd64" | "arm64", string>>;
+export type RuntimeCapabilityReceipts = Partial<Record<"amd64" | "arm64", string>>;
 
 export interface RuntimeRegistryEntry {
   training?: RuntimeAdapter["training"];

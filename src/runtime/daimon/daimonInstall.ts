@@ -1,4 +1,5 @@
-import type { DaimonCapabilityReceipts } from "../registry.js";
+import type { RuntimeCapabilityReceipts } from "../registry.js";
+export type { RuntimeCapabilityReceipts as DaimonCapabilityReceipts } from "../registry.js";
 import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER } from "./contractManifest.js";
 
 /**
@@ -6,7 +7,7 @@ import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER } from "./co
  * platform (the packaged broker and pinned CLIs are per-architecture), so the
  * generated image checks the receipt pinned for the architecture it builds.
  */
-const createDaimonReceiptCheck = (receiptPath: string, receipt: string | DaimonCapabilityReceipts): string => {
+const createDaimonReceiptCheck = (receiptPath: string, receipt: string | RuntimeCapabilityReceipts): string => {
   const actual = `test -f ${receiptPath} && actual="$(sha256sum ${receiptPath} | awk '{print "sha256:" $1}')"`;
   if (typeof receipt === "string") return `${actual} && test "$actual" = ${JSON.stringify(receipt)}`;
   const cases = Object.entries(receipt)
@@ -18,7 +19,7 @@ const createDaimonReceiptCheck = (receiptPath: string, receipt: string | DaimonC
 /** Shared install verification and launchers for organization and training images. */
 export const createDaimonInstallCommands = (
   installRoot: string,
-  capabilityReceipt: string | DaimonCapabilityReceipts
+  capabilityReceipt: string | RuntimeCapabilityReceipts
 ): string[] => [
   createDaimonReceiptCheck(`${installRoot}/capability-receipt.json`, capabilityReceipt),
   `test -f ${installRoot}/contract-manifest.json && test -f ${installRoot}/contract-manifest.sha256 && manifest="$(cat ${installRoot}/contract-manifest.sha256)" && test "$manifest" = ${JSON.stringify(DAIMON_CONTRACT_MANIFEST_SHA256)} && test "$(sha256sum ${installRoot}/contract-manifest.json | awk '{print "sha256:" $1}')" = "$manifest" && node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.manifest_sha256!==process.argv[2])process.exit(1)' ${installRoot}/capability-receipt.json "$manifest"`,
