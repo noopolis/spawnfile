@@ -11,7 +11,6 @@ import type { RuntimeAdapterPlugin } from "../runtime/pluginDefinition.js";
 import { isBundledRuntimeAdapter } from "../runtime/registry.js";
 import { SpawnfileError } from "../shared/index.js";
 import { type DeclaredProjectAdapters, readDeclaredProjectAdapters } from "./declarations.js";
-import { isProjectAdapterSetTrusted } from "./trustStore.js";
 
 export interface LoadProjectAdaptersOptions {
   /** Runtime ids already supplied explicitly (for example by `--adapter`); their declarations are not imported. */
@@ -34,19 +33,9 @@ const resolveLocalModule = async (projectRoot: string, specifier: string): Promi
   return pathToFileURL(target).href;
 };
 
-const untrusted = (declared: DeclaredProjectAdapters): SpawnfileError => new SpawnfileError(
-  "validation_error",
-  `Runtime adapters declared in ${declared.manifestPath} are not approved, or changed since approval ` +
-    `(${declared.adapters.map(([name, specifier]) => `${name}: ${specifier}`).join(", ")}). ` +
-    "These modules run with your user's permissions. Review them and their dependencies, then run " +
-    "spawnfile adapters trust with the same project directory or Spawnfile path."
-);
-
 /**
- * Loads the adapters a trusted root declares. Every refusal (built-in shadowing, missing or
- * stale approval, unresolvable or escaping module) happens before any declared module is
- * evaluated. A module whose adapter name differs from its declared runtime id is refused
- * before registration.
+ * Resolves all declared entrypoints before importing them and checks that each module
+ * exports an adapter with the declared runtime name.
  */
 export const loadDeclaredRuntimeAdapters = async (
   declared: DeclaredProjectAdapters,
@@ -62,8 +51,6 @@ export const loadDeclaredRuntimeAdapters = async (
         "bundled runtimes cannot be replaced"
     );
   }
-  if (!(await isProjectAdapterSetTrusted(declared))) throw untrusted(declared);
-
   const plugins = await importRuntimeAdapterModules(
     pending.map(([, specifier]) => ({
       resolveUrl: () => isLocalAdapterSpecifier(specifier)
@@ -86,10 +73,7 @@ export const loadDeclaredRuntimeAdapters = async (
   return plugins;
 };
 
-/**
- * Public composition seam: read a project's root declarations and load them only when the
- * operator approved that exact set. Pass the result to `withRuntimeAdapterPlugins`.
- */
+/** Loads the project's declared adapters for use with `withRuntimeAdapterPlugins`. */
 export const loadProjectRuntimeAdapterPlugins = async (
   projectPath: string,
   options: LoadProjectAdaptersOptions = {}

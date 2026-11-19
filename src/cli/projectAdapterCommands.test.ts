@@ -46,17 +46,8 @@ const twoHarnessTeam = async () => {
   return team;
 };
 
-it("refuses an unapproved team before import, then validates the whole two-harness graph from any cwd once trusted", async () => {
+it("validates the two-harness graph from another working directory on the first invocation", async () => {
   const team = await twoHarnessTeam();
-  const refused = await cli(["validate", team]);
-  expect(refused).toMatchObject({ code: 2, stderr: expect.stringMatching(/not approved.*adapters trust/su) });
-  expect(await sandbox.evaluated()).toEqual([]);
-
-  const trusted = await cli(["adapters", "trust", team]);
-  expect(trusted.code).toBe(0);
-  expect(trusted.stdout).toContain("adapter left-harness ./adapters/left.mjs\nadapter right-harness ./adapters/right.mjs");
-  expect(await sandbox.evaluated()).toEqual([]);
-
   const cwd = vi.spyOn(process, "cwd").mockReturnValue(path.join(team, "left"));
   try {
     const validated = await cli(["validate", team]);
@@ -65,31 +56,30 @@ it("refuses an unapproved team before import, then validates the whole two-harne
     cwd.mockRestore();
   }
   expect(listRuntimeAdapters()).not.toContain("left-harness");
-
-  await writeFile(path.join(team, "Spawnfile"), teamManifest({ "left-harness": "./adapters/right.mjs", "right-harness": "./adapters/left.mjs" }));
-  expect(await cli(["validate", team])).toMatchObject({ code: 2, stderr: expect.stringContaining("changed since approval") });
   expect(await sandbox.evaluated()).toEqual(["left-harness", "right-harness"]);
 });
 
-it("gates compile and report-backed teardown on the operand's trusted declarations", async () => {
+it("loads the project's declarations for compile, teardown and artifact export", async () => {
   const team = await twoHarnessTeam();
   const out = path.join(sandbox.root, "out");
-  const downDeployment = vi.fn(async () => { throw new Error("teardown reached"); });
-  expect((await cli(["down", team, "--deployment", "d"], { downDeployment })).stderr).toContain("not approved");
-  expect((await cli(["artifacts", "export", team, "--out", out])).stderr).toContain("not approved");
-  expect(downDeployment).not.toHaveBeenCalled();
-  expect(await sandbox.evaluated()).toEqual([]);
-  await cli(["adapters", "trust", path.join(team, "Spawnfile")]);
-  const compiled = await cli(["compile", team, "--out", out]);
+  const compiled = await cli(["compile", path.join(team, "Spawnfile"), "--out", out]);
   // The fixture catalog has no install pin, so reaching this adapter-owned refusal proves registration.
   expect(compiled.stderr).toContain("Runtime left-harness must use a compiled artifact install");
+  const scopes: string[][] = [];
+  const inspectAdapters = async () => {
+    scopes.push(listRuntimeAdapters());
+    throw new Error("fixture stopped before deployment");
+  };
+  await cli(["down", team, "--deployment", "d"], { downDeployment: inspectAdapters });
+  await cli(["artifacts", "export", team, "--out", out], { exportRunArtifacts: inspectAdapters });
+  const bothRuntimes = expect.arrayContaining(["left-harness", "right-harness"]);
+  expect(scopes).toEqual([bothRuntimes, bothRuntimes]);
   expect(await sandbox.evaluated()).toEqual(["left-harness", "right-harness"]);
 });
 
 it("rejects a nested member declaration with an actionable error instead of honoring it", async () => {
   const team = await twoHarnessTeam();
   await writeFile(path.join(team, "left", "Spawnfile"), agentManifest("left", "left-harness", { "left-harness": "./x.mjs" }));
-  await cli(["adapters", "trust", team]);
   expect(await cli(["validate", team])).toMatchObject({
     code: 2, stderr: expect.stringMatching(/left\/Spawnfile: adapters may only be declared in the root Spawnfile/u)
   });
@@ -100,7 +90,7 @@ it("rejects a nested member declaration with an actionable error instead of hono
   expect(await cli(["validate", team])).toMatchObject({ code: 2, stderr: expect.stringContaining("adapters may only be declared in the root") });
 });
 
-it("keeps explicit --adapter authoritative, and never loads declarations for nonproject, help, image or trust-only paths", async () => {
+it("honors explicit --adapter precedence and skips project declarations for global, help and image commands", async () => {
   const project = await sandbox.project("p", agentManifest("a", "echo-one", { "echo-one": "./declared.mjs" }), {
     "declared.mjs": "echo-one", "explicit.mjs": "echo-one"
   });
@@ -126,7 +116,6 @@ it("preserves declarations on normal manifest rewrites", async () => {
   const project = await sandbox.project("p", agentManifest("a", "echo-one", { "echo-one": "./e.mjs", alpha: "./a.mjs" }), {
     "a.mjs": "alpha", "e.mjs": "echo-one"
   });
-  await cli(["adapters", "trust", project]);
   expect(await cli(["model", "set", "anthropic", "claude-sonnet-4-5", project])).toMatchObject({ code: 0, stderr: "" });
   const rewritten = await readFile(path.join(project, "Spawnfile"), "utf8");
   expect(rewritten).toMatch(/adapters:\n {2}alpha: \.\/a\.mjs\n {2}echo-one: \.\/e\.mjs\n/u);
@@ -137,8 +126,6 @@ it("preserves declarations on normal manifest rewrites", async () => {
 it("isolates concurrent invocation scopes", async () => {
   const one = await sandbox.project("one", agentManifest("a", "only-one", { "only-one": "./m.mjs" }), { "m.mjs": "only-one" });
   const two = await sandbox.project("two", agentManifest("b", "only-two", { "only-two": "./m.mjs" }), { "m.mjs": "only-two" });
-  await cli(["adapters", "trust", one]);
-  await cli(["adapters", "trust", two]);
   const [first, second] = await Promise.all([cli(["validate", one]), cli(["validate", two])]);
   expect(first.stdout).toContain("runtimes: only-one");
   expect(second.stdout).toContain("runtimes: only-two");
@@ -158,5 +145,5 @@ it("classifies every project-path command and nothing else", () => {
     command.commands.forEach(visit);
   };
   visit(program);
-  expect(projectCommands.filter((name) => name !== "adapters trust").sort()).toEqual([...PROJECT_ADAPTER_COMMANDS].sort());
+  expect(projectCommands.sort()).toEqual([...PROJECT_ADAPTER_COMMANDS].sort());
 });

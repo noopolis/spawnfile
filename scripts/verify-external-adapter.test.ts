@@ -12,7 +12,7 @@ const execute = promisify(execFile);
 const entrypoint = fileURLToPath(new URL("../src/cli/index.ts", import.meta.url));
 const fixture = new URL("../fixtures/external-runtime-adapter/", import.meta.url);
 
-test("a trusted team compiles and runs custom harness input from two declared adapters", { timeout: 90_000 }, async () => {
+test("a fresh project compiles both declared adapters and runs the custom harness input", { timeout: 90_000 }, async () => {
   const sandbox = await mkdtemp(path.join(tmpdir(), "spawnfile-harness-team-"));
   const consumer = path.join(sandbox, "consumer");
   try {

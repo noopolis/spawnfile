@@ -278,7 +278,7 @@ export const missingRuntimeAdapters = (runtimeNames: Iterable<string | null | un
 /**
  * Refuses an operation on report data naming a runtime with no adapter in this
  * invocation. A known adapter may have no hooks; only an absent one is refused.
- * Report data never selects a module to load, so the operator must pass it.
+ * Source project declarations and explicit CLI modules supply the registry for the operation.
  */
 export const requireRuntimeAdapters = (
   runtimeNames: Iterable<string | null | undefined>,
@@ -290,7 +290,7 @@ export const requireRuntimeAdapters = (
   throw new SpawnfileError(
     "runtime_error",
     `Cannot ${operation}: no runtime adapter is loaded for ${listed}. ` +
-      "Run it from the trusted source project that declares the adapter, or re-run with --adapter <module>; " +
+      "Run it from the source project that declares the adapter, or pass --adapter <module>. " +
       "Spawnfile never loads an adapter named by report data."
   );
 };

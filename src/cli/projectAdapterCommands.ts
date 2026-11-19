@@ -1,9 +1,6 @@
 import type { Command } from "commander";
 
-import { getManifestPath } from "../filesystem/index.js";
-import { SpawnfileError } from "../shared/index.js";
 import { resolveCommandInput } from "./resolveCommandInput.js";
-import type { CliStreams } from "./runCli.js";
 
 /**
  * Commands whose `[path]` operand selects a source project. Only these load the adapters that
@@ -50,7 +47,7 @@ export const projectAdapterOperand = (command: Command): string | undefined => {
   return value;
 };
 
-/** Adds trusted root-declared adapters to the invocation scope before a project command acts. */
+/** Adds root-declared adapters to the invocation scope before a project command acts. */
 export const registerProjectAdapterHook = (program: Command): void => {
   program.hook("preAction", async (_program, action) => {
     const operand = projectAdapterOperand(action);
@@ -63,25 +60,4 @@ export const registerProjectAdapterHook = (program: Command): void => {
     const provided = new Set(declared.adapters.map(([name]) => name).filter((name) => getScopedRuntimeAdapter(name)));
     await addRuntimeAdapterPlugins(await loadDeclaredRuntimeAdapters(declared, { provided }));
   });
-};
-
-export const registerAdaptersCommands = (program: Command, streams: CliStreams): void => {
-  program
-    .command("adapters")
-    .description("Manage runtime adapters declared by project Spawnfiles")
-    .command("trust")
-    .description("Approve the adapter modules a root Spawnfile declares, as data, without loading them")
-    .argument("[path]", "Project directory or Spawnfile path", process.cwd())
-    .action(async (inputPath: string) => {
-      const { readDeclaredProjectAdapters, trustProjectAdapterSet } = await import("../projectAdapters/index.js");
-      const declared = await readDeclaredProjectAdapters(inputPath);
-      if (!declared) {
-        throw new SpawnfileError("validation_error", `No adapters are declared by ${getManifestPath(inputPath)}`);
-      }
-      const store = await trustProjectAdapterSet(declared);
-      streams.stdout(`trusted ${declared.manifestPath}`);
-      for (const [name, specifier] of declared.adapters) streams.stdout(`adapter ${name} ${specifier}`);
-      streams.stdout(`recorded ${store}`);
-      streams.stdout("approval covers these exact declarations; module contents and dependencies are not pinned");
-    });
 };

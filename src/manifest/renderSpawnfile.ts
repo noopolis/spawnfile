@@ -165,7 +165,7 @@ const orderMember = (member: ManifestMember): Record<string, unknown> => {
   ]);
 };
 
-/** Stable runtime-id order keeps trust approval and rewrites deterministic. */
+/** Stable runtime-id order keeps rewrites deterministic. */
 const orderAdapters = (adapters: Record<string, string> | undefined): Record<string, string> | undefined =>
   adapters && Object.fromEntries(sortedAdapterEntries(adapters));
 

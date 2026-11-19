@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -6,7 +6,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { type AdapterSandbox, adapterModuleSource, agentManifest, createAdapterSandbox } from "../projectAdapters/adapterSandbox.test-helper.js";
 import { readDeclaredProjectAdapters } from "../projectAdapters/declarations.js";
 import { loadProjectRuntimeAdapterPlugins } from "../projectAdapters/loadProjectAdapters.js";
-import { trustProjectAdapterSet } from "../projectAdapters/trustStore.js";
 import { createCliProgram } from "./cliProgram.js";
 import { projectAdapterOperand } from "./projectAdapterCommands.js";
 import { runCli } from "./runCli.js";
@@ -81,20 +80,14 @@ const twoHarnessTeam = async (): Promise<string> => {
   return team;
 };
 
-it("routes image-mode run to its own handler and default-path view through approved adapters", async () => {
+it("loads the current directory's adapters for view and skips them in image mode", async () => {
   const team = await twoHarnessTeam();
   vi.spyOn(process, "cwd").mockReturnValue(team);
 
   const imageRun = await cli(["run", "--image", "."]);
   expect(imageRun).toMatchObject({ code: 2, stderr: expect.stringContaining("Image-mode run is not supported") });
-  expect(imageRun.stderr).not.toContain("not approved");
   expect(await sandbox.evaluated()).toEqual([]);
 
-  const refused = await cli(["view"]);
-  expect(refused.stderr).toMatch(/not approved.*spawnfile adapters trust with the same project directory or Spawnfile path\./su);
-  expect(refused.stderr).not.toContain(`trust "${team}"`);
-
-  expect((await cli(["adapters", "trust"])).code).toBe(0);
   const viewed = await cli(["view"]);
   expect(viewed).toMatchObject({ code: 0, stderr: "" });
   expect(await sandbox.evaluated()).toEqual(["left-harness", "right-harness"]);
@@ -104,7 +97,6 @@ it("loads a confined module under a directory whose name starts with two dots", 
   const project = await sandbox.project("p", agentManifest("a", "dotted", { dotted: "./..plugins/m.mjs" }), {
     "..plugins/m.mjs": "dotted"
   });
-  await trustProjectAdapterSet((await readDeclaredProjectAdapters(project))!);
   const plugins = await loadProjectRuntimeAdapterPlugins(project);
   expect(plugins.map(({ adapter }) => adapter.name)).toEqual(["dotted"]);
 });
@@ -115,32 +107,9 @@ it("requires an adapters document to be a valid Spawnfile, and leaves documents 
   await writeFile(path.join(foreign, "Spawnfile"), "kind: report\nadapters:\n  x: ./x.mjs\n");
   await writeFile(path.join(foreign, "x.mjs"), adapterModuleSource("x", sandbox.marker));
   await expect(readDeclaredProjectAdapters(foreign)).rejects.toThrow(/Invalid Spawnfile manifest/u);
-  expect((await cli(["adapters", "trust", foreign])).code).toBe(2);
+  expect(await cli(["validate", foreign])).toMatchObject({ code: 2, stderr: expect.stringContaining("Invalid Spawnfile manifest") });
   expect(await sandbox.evaluated()).toEqual([]);
 
   await writeFile(path.join(foreign, "Spawnfile"), "kind: report\nother: true\n");
   await expect(readDeclaredProjectAdapters(foreign)).resolves.toBeUndefined();
-});
-
-it("refuses a redirected trust directory before creating anything inside the redirect", async () => {
-  const declared = (await readDeclaredProjectAdapters(await sandbox.project("p", agentManifest("a", "one", { one: "./m.mjs" }))))!;
-  const elsewhere = path.join(sandbox.root, "elsewhere");
-  await mkdir(elsewhere, { mode: 0o700 });
-  await symlink(elsewhere, path.join(sandbox.home, "trust"));
-  await expect(trustProjectAdapterSet(declared)).rejects.toThrow(/real directory, not a link/u);
-  expect(await readdir(elsewhere)).toEqual([]);
-});
-
-it("checks the real SPAWNFILE_HOME, reached through an operator link, for shared write access", async () => {
-  const declared = (await readDeclaredProjectAdapters(await sandbox.project("p", agentManifest("a", "one", { one: "./m.mjs" }))))!;
-  const alias = path.join(sandbox.root, "alias");
-  await symlink(sandbox.home, alias);
-  vi.stubEnv("SPAWNFILE_HOME", alias);
-  await trustProjectAdapterSet(declared);
-  await chmod(sandbox.home, 0o777);
-  try {
-    await expect(trustProjectAdapterSet(declared)).rejects.toThrow(/SPAWNFILE_HOME is writable by group or others/u);
-  } finally {
-    await chmod(sandbox.home, 0o700);
-  }
 });

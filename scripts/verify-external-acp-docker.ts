@@ -141,7 +141,6 @@ export const verifyExternalAcpDocker = async (
       SPAWNFILE_ALLOW_LOCAL_E2E: "1",
       SPAWNFILE_MOLTNET_TARGET_ARCH: arch
     };
-    await run(executable, ["adapters", "trust", project], root, env);
     await run(executable, ["compile", project, "--out", compiled], root, env);
     const dockerfile = await readFile(path.join(compiled, "Dockerfile"), "utf8");
     assert.ok(dockerfile.includes(`COPY --from=${emitterImage} `), "packed plugin did not select the isolated fixture image");

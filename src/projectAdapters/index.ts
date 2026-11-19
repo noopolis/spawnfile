@@ -4,4 +4,3 @@ export {
   loadProjectRuntimeAdapterPlugins,
   type LoadProjectAdaptersOptions
 } from "./loadProjectAdapters.js";
-export { isProjectAdapterSetTrusted, resolveAdapterTrustPath, trustProjectAdapterSet } from "./trustStore.js";

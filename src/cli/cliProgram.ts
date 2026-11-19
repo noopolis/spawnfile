@@ -70,7 +70,7 @@ import { registerUsageCommand } from "./usageCommand.js";
 import { registerRecordCommands } from "./recordCommands.js";
 import { registerProductionTargetCommands } from "./targetProductionCommands.js";
 import { registerViewCommand } from "./viewCommand.js";
-import { registerAdaptersCommands, registerProjectAdapterHook } from "./projectAdapterCommands.js";
+import { registerProjectAdapterHook } from "./projectAdapterCommands.js";
 import { registerVolumeCommands } from "./volumeCommands.js";
 import { registerTrainCommand } from "./trainCommand.js";
 import { runTraining } from "./trainingExecution.js";
@@ -168,7 +168,7 @@ export const createCliProgram = (
   program.name("spawnfile").description("Spawnfile v0.1 compiler").version(readPackageVersion());
   // The global scanner has already handled this option. Advertise it only in help
   // so Commander leaves tokens such as `--config --adapter` to the owning command.
-  const adapterHelp = new Option("--adapter <module>", "Load a trusted local ESM adapter or installed package (repeatable)");
+  const adapterHelp = new Option("--adapter <module>", "Load a local ESM adapter or installed package (repeatable)");
   program.configureHelp({
     visibleOptions(this: Help, command) {
       const options = Help.prototype.visibleOptions.call(this, command);
@@ -185,7 +185,6 @@ export const createCliProgram = (
   });
 
   registerProjectAdapterHook(program);
-  registerAdaptersCommands(program, streams);
   registerLifecycleCommands(program, handlers, streams, cliOptions.stdin, (code) => { commandExitCode = code; });
   registerDevCommands(program, handlers, streams);
   registerArtifactsCommands(program, handlers, streams);
