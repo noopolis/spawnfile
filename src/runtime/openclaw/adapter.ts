@@ -1,3 +1,4 @@
+import { openClawHostIntegration } from "./host.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import { createOpenClawInstallRecipe, openClawInstallHints } from "./install.js";
 import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
@@ -197,6 +198,7 @@ const createContainerTargets = async (
   });
 
 class OpenClawRuntimeAdapter extends RuntimeAdapterBase {
+  readonly host = openClawHostIntegration;
   readonly assertSupportedModelTarget = (target: EffectiveModelTarget) => {
     if (target.reasoningEffort !== undefined) {
       throw new SpawnfileError(

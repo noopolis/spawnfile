@@ -1,3 +1,4 @@
+import { daimonHostIntegration } from "./host/integration.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import { createDaimonInstallRecipe, daimonInstallHints } from "./install.js";
 import type { RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
@@ -178,6 +179,7 @@ const scheduleCapabilityFor = async (
 };
 
 class DaimonRuntimeAdapter extends RuntimeAdapterBase {
+  readonly host = daimonHostIntegration;
   readonly assertSupportedModelTarget = assertDaimonModel;
   readonly assertSupportedSurfaces = assertDaimonSurfaces;
   readonly container: RuntimeContainerMeta = {
