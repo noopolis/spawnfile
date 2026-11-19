@@ -54,6 +54,7 @@ describe("openClawAdapter", () => {
 
   it("exposes container metadata for gateway boot", () => {
     expect(openClawAdapter.container).toEqual({
+      rawHomeAuthImports: ["claude-code", "codex"],
       configFileName: "openclaw.json",
       configPathEnv: "OPENCLAW_CONFIG_PATH",
       env: [
