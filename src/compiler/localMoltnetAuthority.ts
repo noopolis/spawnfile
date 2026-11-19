@@ -10,6 +10,11 @@ import {
   SpawnfileError,
   type LocalMoltnetBridgeCapabilities
 } from "../shared/index.js";
+import {
+  createLocalMoltnetBridgeProbeConfig, probeReceiptDirectory, PROBE_TOKEN_ENV, releaseProbeKinds,
+  type MoltnetProbeKind
+} from "../runtime/moltnet/releaseProbe.js";
+export { createLocalMoltnetBridgeProbeConfig } from "../runtime/moltnet/releaseProbe.js";
 import type { MoltnetTargetArchitecture } from "./moltnetReleaseAuthority.js";
 
 const execFile = promisify(execFileCallback);
@@ -48,43 +53,19 @@ const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boo
 const assetName = (architecture: MoltnetTargetArchitecture): string =>
   `moltnet_linux_${architecture}.tar.gz`;
 
-type BridgeKind = "acp" | "daimon" | "pi";
-
-/** @internal Complete synthetic bridge contract used by local artifact verification. */
-export const createLocalMoltnetBridgeProbeConfig = (
-  kind: BridgeKind,
-  directory: string
-): string => JSON.stringify({
-  attachments: [{
-    agent: { id: `${kind}-capability-probe`, name: `${kind} capability probe` },
-    runtime: kind === "daimon"
-      ? {
-          control_url: "http://127.0.0.1:9",
-          kind,
-          receipt_store_path: path.join(directory, "daimon-receipts", "daimon-capability-probe.json"),
-          token_env: "SPAWNFILE_DAIMON_CONTROL_TOKEN"
-        }
-      : kind === "acp"
-        ? { command: "true", args: ["literal argument with spaces"], workspace_path: directory, kind }
-        : { control_url: "http://127.0.0.1:9/agents/pi-capability-probe/wake", kind }
-  }],
-  moltnet: { base_url: "http://127.0.0.1:9", network_id: "capability-probe" },
-  version: "moltnet.node.v1"
-});
-
 const assertBridgeCapability = async (
   binaryPath: string,
   directory: string,
-  kind: BridgeKind
+  kind: MoltnetProbeKind
 ): Promise<void> => {
   const configPath = path.join(directory, `${kind}-bridge-probe.json`);
-  const receiptDirectory = path.join(directory, "daimon-receipts");
+  const receiptDirectory = probeReceiptDirectory(directory);
   await ensureDirectory(receiptDirectory);
   await chmod(receiptDirectory, 0o700);
   await writeFile(configPath, createLocalMoltnetBridgeProbeConfig(kind, directory), { mode: 0o600 });
   try {
     await execFile(binaryPath, ["node", configPath], {
-      env: { ...process.env, SPAWNFILE_DAIMON_CONTROL_TOKEN: "capability-probe" },
+      env: { ...process.env, [PROBE_TOKEN_ENV]: "capability-probe" },
       timeout: 1_000
     });
     throw new SpawnfileError("compile_error", `Local Moltnet binary exited before proving its ${kind}-bridge capability`);
@@ -179,7 +160,7 @@ const verifyBuiltMoltnetArchive = async (
   capabilities: LocalMoltnetBridgeCapabilities
 ): Promise<void> => {
   const temporaryDirectory = path.join(path.dirname(releaseAssetPath), `.spawnfile-moltnet-verify-${process.pid}-${Date.now()}`);
-  const kinds: BridgeKind[] = capabilities.length === 3 ? ["pi", "daimon", "acp"] : ["pi", "daimon"];
+  const kinds = releaseProbeKinds(capabilities.some((capability) => capability === "acp-bridge"));
   try {
     await ensureDirectory(temporaryDirectory);
     await execFile("tar", ["-C", temporaryDirectory, "-xzf", releaseAssetPath]);
@@ -194,7 +175,7 @@ const verifyBuiltMoltnetArchive = async (
     } else {
       for (const kind of kinds) {
         const configPath = path.join(temporaryDirectory, `${kind}-docker-probe.json`); await writeFile(configPath, createLocalMoltnetBridgeProbeConfig(kind, kind === "acp" ? "/tmp" : "/receipts"));
-        const { stdout: rawId } = await execFile("docker", ["create", "--platform", `linux/${architecture}`, "--env", "SPAWNFILE_DAIMON_CONTROL_TOKEN=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"]); const id = rawId.trim();
+        const { stdout: rawId } = await execFile("docker", ["create", "--platform", `linux/${architecture}`, "--env", PROBE_TOKEN_ENV + "=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"]); const id = rawId.trim();
         try { await execFile("docker", ["cp", binaryPath, `${id}:/moltnet`]); await execFile("docker", ["cp", configPath, `${id}:/config.json`]); try { await execFile("docker", ["start", "--attach", id]); } catch (error) { const result = error as { code?: unknown; stdout?: unknown; stderr?: unknown }; const output = `${String(result.stdout ?? "")}\n${String(result.stderr ?? "")}`; if (result.code !== 124 && !/connection refused|connect:|dial tcp|network is unreachable/iu.test(output)) throw new SpawnfileError("compile_error", `Local Moltnet cross-host ${kind} capability probe failed`); } }
         finally { await execFile("docker", ["rm", "--force", id]); }
       }
