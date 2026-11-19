@@ -1,5 +1,4 @@
 import { SpawnfileError } from "../shared/index.js";
-import { MOLTNET_ACP_BRIDGE_CAPABILITIES } from "../shared/bridgeCapabilities.js";
 
 import type { MoltnetNodePlan } from "./moltnetArtifactTypes.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
@@ -10,8 +9,7 @@ export const assertMoltnetBridgeCapabilities = (
 ): void => {
   const capabilities: readonly string[] = release?.capabilities ?? [];
   const missing = new Map<string, Set<string>>();
-  for (const { bridgeKind, releaseCapability, networkId } of nodePlans) {
-    const protocolCapability = MOLTNET_ACP_BRIDGE_CAPABILITIES.find((name) => name === `${bridgeKind}-bridge`);
+  for (const { protocolCapability, releaseCapability, networkId } of nodePlans) {
     for (const required of [protocolCapability, releaseCapability]) {
       if (!required || capabilities.includes(required)) continue;
       const networks = missing.get(required) ?? new Set<string>();

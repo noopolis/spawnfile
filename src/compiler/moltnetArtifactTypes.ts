@@ -25,7 +25,7 @@ export interface MoltnetServerPlan {
 }
 
 export interface MoltnetNodePlan {
-  bridgeKind?: string;
+  protocolCapability?: string;
   sourceNodeId?: string;
   configPath: string;
   credentialAgentId?: string;

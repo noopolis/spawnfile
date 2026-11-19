@@ -1,3 +1,4 @@
+import { MOLTNET_ACP_BRIDGE_CAPABILITIES } from "../shared/bridgeCapabilities.js";
 import type { EmittedFile } from "../runtime/index.js";
 import { requireMoltnetWiring, resolveNoopolisRunId } from "../runtime/index.js";
 import { createExclusiveReattachVolumeName, SpawnfileError } from "../shared/index.js";
@@ -263,8 +264,9 @@ export const generateMoltnetArtifacts = async (
         path: configPath
       });
 
+      const protocolCapability = MOLTNET_ACP_BRIDGE_CAPABILITIES.find((name) => name === `${runtime.kind}-bridge`);
       nodePlans.push({
-        bridgeKind: runtime.kind,
+        ...(protocolCapability && protocolCapability !== releaseCapability ? { protocolCapability } : {}),
         sourceNodeId: node.id,
         configPath: toContainerRootfsPath(configPath),
         ...(clientAuth.credentialAgentId
