@@ -7,8 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
+import { verifyExternalAdapter } from "./verify-external-adapter.ts";
 import { verifyNativeHelperArtifacts } from "./native-helper-artifacts.ts";
-
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDirectory, "..");
 const packageManifestPath = path.join(packageRoot, "package.json");
@@ -327,6 +327,7 @@ const assertInstalledClosure = async (
   const executable = path.join(installRoot, "node_modules", ".bin", executableName);
   const executableEnvironment = { ...process.env, PATH: `${path.dirname(executable)}${path.delimiter}${process.env.PATH ?? ""}` };
   await run(executable, ["--help"], installRoot, executableEnvironment);
+  await verifyExternalAdapter(executable, installRoot, run);
   const capabilities = parseCapabilities(
     JSON.parse((await run(executable, ["capabilities", "--json"], installRoot, executableEnvironment)).stdout) as unknown,
   );

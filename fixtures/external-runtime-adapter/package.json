@@ -1,0 +1,8 @@
+{
+  "name": "@spawnfile-fixtures/echo-adapter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": { "import": "./adapter.mjs" } },
+  "peerDependencies": { "spawnfile": "*" }
+}
