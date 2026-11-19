@@ -4,6 +4,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDeployResources } from "../deployment/index.js";
+import { RuntimeAdapterBase } from "../runtime/adapterBase.js";
+import type { RuntimeOperations } from "../runtime/operations.js";
+import { defineRuntimeAdapterPlugin } from "../runtime/pluginDefinition.js";
+import { withRuntimeAdapterPlugins } from "../runtime/registry.js";
 import { agent, chunkExec, execFor, now, startedAt, wake } from "./fixtures.test-helper.js";
 import type { UsageLedgerExec } from "../runtime/usageLedgerRead.js";
 import { deploymentMomentsDirectory, momentFileName } from "./store.js";
@@ -41,6 +45,65 @@ describe("syncMomentRecords", () => {
     expect(await readFile(file, "utf8")).toBe(before);
     expect((await stat(file)).mtimeMs).toBe(metadata.mtimeMs);
     expect((await readdir(directory())).some((name) => name.includes(".tmp") || name.endsWith(".lock"))).toBe(false);
+  });
+
+  it("uses a registered reader for a new recording format and keeps the released reader for historical rows", async () => {
+    const format = "fixture.recording.v1";
+    const newAttempt = wake("2026-10-09T08:30:00.000Z", "current-attempt");
+    class FixtureAdapter extends RuntimeAdapterBase {
+      readonly name = "fixture-recording";
+      readonly container = {
+        configFileName: "config.json", standaloneBaseImage: "node:24-bookworm-slim",
+        instancePaths: { configPathTemplate: "<instance-root>/config.json", workspacePathTemplate: "<instance-root>/workspace" },
+        startCommand: ["fixture-runtime"], systemDeps: []
+      };
+      async compileAgent() { return { capabilities: [], diagnostics: [], files: [] }; }
+      readonly operations: RuntimeOperations = { recording: {
+        async assertSupported() {},
+        facts: () => ({ directory: "/workspace/current/writer", mountId: "fixture" }),
+        reader: {
+          format, wakeRowsPath: (directory) => path.posix.join(directory, "captured-wakes.json"),
+          createWakeMomentsParser() {
+            let payload = "";
+            return {
+              write: (chunk) => { payload += chunk; },
+              finish() {
+                const { began } = JSON.parse(payload) as { began: string };
+                return { entries: [{ ...newAttempt, snapshots: [], version: format, started_at: began }], errors: [] };
+              }
+            };
+          },
+          async readJsonl(exec, file, parser) {
+            parser.write((await exec(["fixture-read", file])).stdout);
+            return parser.finish();
+          }
+        }
+      } };
+    }
+    const plugin = defineRuntimeAdapterPlugin({ apiVersion: 1, adapter: new FixtureAdapter(),
+      catalog: { defaultBranch: "main", ref: "v1", remote: "https://example.invalid/plugin.git" } });
+    const current = { ...agent, directory: "/workspace/current/writer", wake_format: format, memory: [], snapshots: [] };
+    const old = { ...agent, memory: [], snapshots: [] };
+    const attempts = [{ ...wake(), snapshots: [] }, { ...newAttempt, snapshots: [] }];
+    const oldExec = chunkExec(() => JSON.stringify(attempts[0]));
+    const exec = vi.fn<UsageLedgerExec>(async (argv) => argv[0] === "fixture-read"
+      ? { stdout: JSON.stringify({ began: newAttempt.started_at }), stderr: "" } : oldExec(argv));
+    const entries = [old, current].map((facts, index) => createDeployResources(recordPath(), {
+      name: "news", created_at: startedAt, activated_at: index ? newAttempt.started_at : startedAt, activation_exact: true
+    }, { recording: { agents: [facts], keep_ms: facts.keep_ms, memory_mount_ids: [] } }, "report"));
+    const options = { agents: [current], readDeployHistory: () => ({ entries, errors: [] }) };
+    await withRuntimeAdapterPlugins([plugin], async () => {
+      expect(await run(exec, options)).toMatchObject({ written: 2, nonExact: 0, failures: [] });
+    });
+    expect(exec).toHaveBeenCalledWith(["fixture-read", "/workspace/current/writer/captured-wakes.json"]);
+    expect(oldExec).toHaveBeenCalledWith(["node", "-e", expect.any(String),
+      path.posix.join(old.directory, "wake-moments.jsonl"), "0", "262144"]);
+    expect(await readdir(directory())).toEqual(expect.arrayContaining([
+      momentFileName(attempts[0]!), momentFileName({ ...attempts[1]!, version: format })
+    ]));
+    exec.mockClear();
+    expect(await run(exec, options)).toMatchObject({ written: 0, failures: [expect.stringContaining(format)] });
+    expect(exec).not.toHaveBeenCalled();
   });
 
   it("gives replay attempts with one execution id separate filenames", async () => {

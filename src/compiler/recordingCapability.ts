@@ -9,6 +9,10 @@ export const recordingOperationFor = (node: CompilePlanNode): RuntimeRecordingOp
     throw new SpawnfileError("validation_error",
       `Training recording for ${node.id}: runtime ${node.runtimeName ?? "unknown"} does not support wake moments`);
   }
+  if (!recording.reader) {
+    throw new SpawnfileError("validation_error",
+      `Training recording for ${node.id}: runtime ${node.runtimeName} has no wake moment reader`);
+  }
   return recording;
 };
 

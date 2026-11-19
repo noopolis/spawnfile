@@ -24,4 +24,6 @@ export type {
 } from "./wiringTypes.js";
 export type { RuntimeHostIntegration } from "./hostTypes.js";
 export type { RuntimeTrainingCapability, RuntimeTrainingRunOptions, RuntimeTrainingJudgeOptions } from "./trainingTypes.js";
-export type { RuntimeOperations } from "./operations.js";
+export type { RuntimeOperations, RuntimeRecordingOperations, RuntimeRecordingReader } from "./operations.js";
+export type { RecordedWakeMoment } from "../recording/types.js";
+export { createRecordingJsonlParser, type RecordingJsonlParser, type RecordingJsonlRead } from "../recording/jsonl.js";

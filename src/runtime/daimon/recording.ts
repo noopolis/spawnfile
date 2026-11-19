@@ -13,6 +13,7 @@ import {
   DAIMON_CONTRACT_MANIFEST_SHA256, daimonSupportsWakeMoments,
   readVerifiedDaimonContractManifest, type DaimonContractManifest
 } from "./contractManifest.js";
+import { daimonRecordingReader } from "./recordingIo.js";
 import { DAIMON_WAKE_MOMENTS } from "./wakeMoments.js";
 
 declare module "../operations.js" {
@@ -79,6 +80,7 @@ export const assertDaimonRecordingIsolation = (
 };
 
 export const daimonRecording: RuntimeRecordingOperations = {
+  reader: daimonRecordingReader,
   async assertSupported(options) {
     let manifest = (options.runtimeRecordingAuthorities?.daimon ?? options.daimonContractManifest) as DaimonContractManifest | undefined;
     if (manifest === undefined) {

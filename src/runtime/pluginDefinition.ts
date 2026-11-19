@@ -125,6 +125,16 @@ const invalidOptionalHook = (adapter: Record<string, unknown>): string | undefin
     if (invalid) return invalid;
   }
 
+  if (record(adapter.operations) && record(adapter.operations.recording)) {
+    const { reader } = adapter.operations.recording;
+    if (reader !== undefined) {
+      const path = "adapter.operations.recording.reader";
+      const invalid = invalidHooks(reader, path, ["wakeRowsPath", "createWakeMomentsParser", "readJsonl"], []);
+      if (invalid) return invalid;
+      if (!record(reader) || !text.safeParse(reader.format).success) return `${path}.format`;
+    }
+  }
+
   if (adapter.statusProbes !== undefined &&
     (!Array.isArray(adapter.statusProbes) || adapter.statusProbes.some((probe: unknown) => invalidHooks(probe, "statusProbes", ["run"], [])))) {
     return "adapter.statusProbes";

@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { WAKE_MOMENT_VERSION } from "../recording/types.js";
 import type { CompileReportWorkspaceGitResource, RecordingAgentReport } from "../report/index.js";
 import { findRuntimeWiring } from "../runtime/index.js";
 import { recordingOperationFor } from "./recordingCapability.js";
@@ -25,8 +26,11 @@ export const resolveRecordingAgentFacts = (
     });
   }
   const resources = agent.workspaceResources ?? [];
+  const recording = recordingOperationFor(node);
+  const wakeFormat = recording.reader?.format;
   return [{
-    node_id: node.id, slug: node.slug, directory: recordingOperationFor(node).facts(node).directory,
+    node_id: node.id, slug: node.slug, directory: recording.facts(node).directory,
+    ...(wakeFormat && wakeFormat !== WAKE_MOMENT_VERSION ? { wake_format: wakeFormat } : {}),
     keep_ms: recordingKeepMs(agent.training!.record)!,
     networks: [...new Set((agent.surfaces?.moltnet ?? []).map((entry) => entry.network))].sort(),
     memory: [...memory.values()].sort((a, b) => `${a.declared_by}:${a.id}`.localeCompare(`${b.declared_by}:${b.id}`)),

@@ -15,6 +15,10 @@ pi` remains the legacy generated Pi path.
 The `image/` directory owns the generic image context, local builder, and pinned publisher.
 `package-assets.json` lists the contract files copied into the installed CLI.
 
+`recordingIo.ts` owns live Node byte transport and wake ledger decoding.
+`recordingSnapshot.ts` owns the released snapshot history layout and manifest decoder.
+Rewind supplies the contained history reader and verifies copied trees.
+
 `install.ts` owns the registry install hints and builds the native container recipe.
 `daimonInstall.ts` verifies the selected architecture's image receipt, manifest,
 and executables. `localDaimonAuthority.ts` validates the explicit non-production

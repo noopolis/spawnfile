@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { acquirePidLock } from "../deployment/pidLock.js";
 import { syncDirectory, writeDurableFile } from "../filesystem/index.js";
-import type { MomentRecord, WakeMomentRow } from "./types.js";
+import type { MomentRecord, RecordedWakeMoment } from "./types.js";
 
 /** Project records share a directory, so each gets its own state subdirectory. */
 export const deploymentMomentsDirectory = (recordPath: string): string => path.join(
@@ -20,7 +20,7 @@ const canonicalJson = (value: unknown): string => {
   return JSON.stringify(value);
 };
 
-export const momentFileName = (row: WakeMomentRow): string => {
+export const momentFileName = (row: RecordedWakeMoment): string => {
   const { started_at: startedAt, execution_id: executionId } = row;
   const compact = new Date(startedAt).toISOString().replace(/[-:.]/gu, "");
   const safeId = /^[A-Za-z0-9._-]{1,128}$/u.test(executionId)
@@ -46,7 +46,7 @@ export const withMomentStore = async <T>(recordPath: string, slug: string, actio
 };
 
 /** Caller holds the store lock. Existing records are never replaced, including non-exact ones. */
-export const writeMomentRecord = async (directory: string, record: MomentRecord, row: WakeMomentRow): Promise<boolean> => {
+export const writeMomentRecord = async (directory: string, record: MomentRecord, row: RecordedWakeMoment): Promise<boolean> => {
   const file = path.join(directory, momentFileName(row));
   try {
     const stat = await lstat(file);

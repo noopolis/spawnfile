@@ -1,6 +1,8 @@
 import type { ContainerPersistentMountReport, ContainerRuntimeInstanceReport } from "../report/index.js";
 import type { CompilePlanNode } from "../compiler/types.js";
-import type { UsageLedgerPaths } from "./usageLedgerRead.js";
+import type { RecordedWakeMoment } from "../recording/types.js";
+import type { RecordingJsonlParser, RecordingJsonlRead } from "../recording/jsonl.js";
+import type { UsageLedgerExec, UsageLedgerPaths } from "./usageLedgerRead.js";
 import type { UsageRecord } from "./usageTypes.js";
 
 export interface RuntimeDrainTarget {
@@ -44,9 +46,19 @@ export interface RuntimeRecordingOptions {
   runtimeRecordingAuthorities?: Readonly<Record<string, unknown>>;
 }
 
+export interface RuntimeRecordingReader {
+  format: string;
+  wakeRowsPath(directory: string): string;
+  createWakeMomentsParser(): RecordingJsonlParser<RecordedWakeMoment>;
+  readJsonl<T>(
+    exec: UsageLedgerExec, file: string, parser: RecordingJsonlParser<T>, chunkBytes?: number
+  ): Promise<RecordingJsonlRead<T> & { failure?: string; missing?: true }>;
+}
+
 export interface RuntimeRecordingOperations {
   assertSupported(options: RuntimeRecordingOptions): Promise<void>;
   facts(node: Pick<CompilePlanNode, "id" | "slug">): RuntimeRecordingFacts;
+  reader?: RuntimeRecordingReader;
 }
 
 export interface RuntimeExportFile {
