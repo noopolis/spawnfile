@@ -1,6 +1,8 @@
 import { runtimeHost, selectRuntimeEntrypoint } from "../runtime/hostSelection.js";
 import path from "node:path";
 
+import { assertOutputRelativePath } from "../filesystem/index.js";
+
 import {
   DISTRIBUTION_REPORT_IMAGE_PATH,
   WORLD_BINDINGS_IMAGE_PATH
@@ -292,6 +294,7 @@ export const createRootfsFiles = (
 ): EmittedFile[] => {
   const files = runtimePlans.flatMap((plan) =>
     plan.targetFiles.map((file) => {
+      assertOutputRelativePath(file.path);
       const renderedContent = file.content
         .replaceAll("<config-path>", plan.instancePaths.configPath)
         .replaceAll(WORKSPACE_PLACEHOLDER, plan.instancePaths.workspacePath)
@@ -363,7 +366,10 @@ export const createRootfsFiles = (
       persistentMountPaths,
       persistentMounts,
       moltnet
-    }).map((file) => ({ ...file, path: `${CONTAINER_ROOTFS_ROOT}${file.path}` })),
+    }).map((file) => {
+      assertOutputRelativePath(file.path);
+      return { ...file, path: `${CONTAINER_ROOTFS_ROOT}/${file.path}` };
+    }),
     ...files
   ];
 };

@@ -25,11 +25,11 @@ export const daimonHostEntrypoint: RuntimeHostEntrypoint = {
     return [{
       content: renderRuntimeLinkMaterializer(),
       mode: 0o600,
-      path: RUNTIME_LINK_MATERIALIZER_PATH
+      path: RUNTIME_LINK_MATERIALIZER_PATH.slice(1)
     }, {
       content: renderDaimonUidEntrypoint(runtimePlans, persistentMountPaths, moltnet, persistentMounts),
       mode: 0o755,
-      path: DAIMON_UID_ENTRYPOINT_PATH
+      path: DAIMON_UID_ENTRYPOINT_PATH.slice(1)
     }];
   },
   afterRootfsCopy: ["RUN chown root:root /var /var/lib /var/lib/spawnfile && chmod 755 /var /var/lib && chmod 711 /var/lib/spawnfile"],

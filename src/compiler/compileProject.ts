@@ -4,7 +4,7 @@ import { assertRecordingCapability } from "./recordingCapability.js";
 import path from "node:path";
 import { chmod } from "node:fs/promises";
 
-import { ensureDirectory, removeDirectory } from "../filesystem/index.js";
+import { assertOutputDirectory, ensureDirectory, removeDirectory } from "../filesystem/index.js";
 import {
   createCompileReport,
   createDiagnostic,
@@ -149,7 +149,7 @@ const compileAgentNode = async (
 
   const result = await adapter.compileAgent(node.value);
   const outputDirectory = createAgentOutputDirectory(baseDirectory, node);
-  await writeEmittedFiles(outputDirectory, result.files);
+  await writeEmittedFiles(baseDirectory, result.files, path.relative(baseDirectory, outputDirectory));
 
   return {
     emittedFiles: result.files,
@@ -249,7 +249,7 @@ const compileTeamNode = async (
 
   const result = await adapter.compileTeam(node.value);
   const outputDirectory = createTeamOutputDirectory(baseDirectory, runtime.name, node);
-  await writeEmittedFiles(outputDirectory, result.files);
+  await writeEmittedFiles(baseDirectory, result.files, path.relative(baseDirectory, outputDirectory));
 
   return {
     emittedFiles: result.files,
@@ -285,12 +285,12 @@ export const compileProject = async (
         options.worldBindingsPath,
         resolveNoopolisRunId(process.env)
       );
-  // The default output directory lives under the resolved project root, not the
-  // process working directory, so `spawnfile compile ./org` writes ./org/.spawn.
+  // `spawnfile compile ./org` defaults to ./org/.spawn.
   const outputDirectory = options.outputDirectory
     ? path.resolve(options.outputDirectory)
     : path.join(path.dirname(plan.root), DEFAULT_OUTPUT_DIRECTORY);
 
+  await assertOutputDirectory(outputDirectory);
   if (options.clean ?? true) {
     await cleanCompileOutput(outputDirectory);
   }

@@ -22,6 +22,7 @@ export interface RuntimeHostEntrypoint {
   path: string;
   accountUid: number;
   prelude: readonly string[];
+  /** Paths are relative to the generated container filesystem root. */
   rootfsFiles(input: RuntimeHostBuildInput): EmittedFile[];
   afterRootfsCopy?: readonly string[];
   afterEntrypointChmod?: string;

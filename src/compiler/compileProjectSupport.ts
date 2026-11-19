@@ -3,7 +3,7 @@ import { chmod, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { ensureDirectory, writeUtf8File } from "../filesystem/index.js";
+import { assertOutputRelativePath, ensureDirectory, resolveOutputFilePaths, writeUtf8File } from "../filesystem/index.js";
 import { getRuntimeAdapter, type EmittedFile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -45,6 +45,7 @@ const resolveAgentWorkspacePaths = (
   }
 
   const systemInstructionPath = systemInstructionSurface.resolvePath({ node });
+  assertOutputRelativePath(systemInstructionPath);
   const systemInstructionDirectory = path.posix.dirname(systemInstructionPath);
 
   return {
@@ -72,11 +73,13 @@ const upsertEmittedFile = (
 
 export const writeEmittedFiles = async (
   outputDirectory: string,
-  files: EmittedFile[]
+  files: EmittedFile[],
+  relativeDirectory?: string
 ): Promise<void> => {
+  const targets = await resolveOutputFilePaths(outputDirectory, files.map((file) => file.path), relativeDirectory);
   await Promise.all(
-    files.map(async (file) => {
-      const targetPath = path.join(outputDirectory, file.path);
+    files.map(async (file, index) => {
+      const targetPath = targets[index]!;
       await ensureDirectory(path.dirname(targetPath));
       await writeUtf8File(targetPath, file.content);
       if (file.mode !== undefined) {
@@ -138,7 +141,7 @@ export const injectTeamCompileSupportFiles = async (
         })
   );
 
-  await writeEmittedFiles(path.join(outputDirectory, compiled.report.output_dir), filesToWrite);
+  await writeEmittedFiles(outputDirectory, filesToWrite, compiled.report.output_dir);
 };
 
 export const injectMoltnetWorkspaceFiles = async (
@@ -177,7 +180,7 @@ export const injectMoltnetWorkspaceFiles = async (
     for (const file of moltnetClientConfigFiles) {
       upsertEmittedFile(compiled.emittedFiles, file);
     }
-    await writeEmittedFiles(runtimeOutputDirectory, moltnetClientConfigFiles);
+    await writeEmittedFiles(outputDirectory, moltnetClientConfigFiles, compiled.report.output_dir);
 
     if (layout.installSkill === false) {
       continue;

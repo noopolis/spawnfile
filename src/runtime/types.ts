@@ -23,6 +23,7 @@ import type { RuntimeOperations } from "./operations.js";
 export interface EmittedFile {
   content: string;
   mode?: number;
+  /** Canonical slash-separated file path relative to this output scope. */
   path: string;
 }
 
