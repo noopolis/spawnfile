@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails } from "./targetDetails.js";
 import { execFile as execFileCallback } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -88,7 +89,7 @@ describe("Daimon auth gateway placement", () => {
     const instance = "/var/lib/spawnfile/instances/daimon/daimon-organization";
     const mixed = { ...plan({ "agent:writer": "codex", "agent:scout": "grok" }), runtimeRoot: "/opt/daimon",
       instancePaths: { configPath: `${instance}/daimon/config.json`, instanceRoot: instance, workspacePath: `${instance}/workspace` },
-      grokModelByNodeId: { "agent:scout": { model: "grok-4.6", reasoningEffort: "low" } } } as RuntimeTargetPlan;
+      hostDetails: createDaimonWorkerDetails({ modelByNodeId: { "agent:scout": { model: "grok-4.6", reasoningEffort: "low" } } }) } as RuntimeTargetPlan;
     expect(resolveDaimonGatewayRealmPaths([mixed])).toEqual([realm, "/var/lib/spawnfile/daimon/gateway-grok-subscription-realm"]);
     const provisioning = renderDaimonGatewayProvisioning([mixed]).join("\n");
     expect(provisioning).toContain('engines: ["codex","grok"]');

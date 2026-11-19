@@ -2,15 +2,12 @@ import path from "node:path";
 
 import { readUtf8File } from "../../../filesystem/index.js";
 import type { ContainerRuntimeInstanceReport } from "../../../report/index.js";
-import {
-  daimonEngineDockerSecurityArgsForConfigs,
-  materializeDaimonGrokSeccompProfile,
-  SpawnfileError
-} from "../../../shared/index.js";
+import { daimonEngineDockerSecurityArgsForConfigs, materializeDaimonGrokSeccompProfile } from "./codexDocker.js";
+import { SpawnfileError } from "../../../shared/errors.js";
 
 import type { CompileProjectResult } from "../../../compiler/compileProject.js";
 
-export { DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS } from "../../../shared/index.js";
+export { DAIMON_CODEX_NATIVE_SANDBOX_DOCKER_SECURITY_OPTS } from "./codexDocker.js";
 
 const assertContainedPath = (root: string, candidate: string): string => {
   const normalizedRoot = path.resolve(root);

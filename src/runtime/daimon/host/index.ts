@@ -5,3 +5,4 @@ export {
   DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV,
   renderDaimonGatewaySidecarScript
 } from "./gatewayRender.js";
+export { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS } from "./codexDocker.js";

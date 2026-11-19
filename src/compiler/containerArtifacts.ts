@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { buildDistributionReport, createDistributionImageLabels, DISTRIBUTION_REPORT_OUTPUT_FILE, normalizeProjectLabelSlug, WORLD_BINDINGS_IMAGE_PATH } from "../distribution/index.js";
 import type { DistributionReport } from "../distribution/index.js";
 import type { CompileReport, ContainerPersistentMountReport } from "../report/index.js";
-import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity, type EmittedFile, type RuntimeContainerPackageOverrides } from "../runtime/index.js";
+import type { EmittedFile, RuntimeContainerPackageOverrides } from "../runtime/index.js";
+import { selectedRuntimeHosts } from "../runtime/hostSelection.js";
 import { SpawnfileError } from "../shared/index.js";
 import { createMoltnetSummary, createOrganizationSummary } from "./containerArtifactSummaries.js";
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
@@ -40,8 +41,8 @@ export const createContainerArtifacts = async (
   options: ContainerArtifactOptions = {}
 ): Promise<GeneratedContainerArtifacts> => {
   assertMoltnetBridgeCapabilities(options.moltnet?.nodePlans ?? [], options.moltnetRelease);
-  const localDaimonIdentityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
-  const localDaimonIdentity = localDaimonIdentityPath ? await loadLocalDaimonRuntimeIdentity(localDaimonIdentityPath) : undefined;
+  const hosts = selectedRuntimeHosts(Object.keys(plan.runtimes).sort());
+  const localImageReports = await Promise.all(hosts.map(({ host }) => host.localImageReport?.()));
   const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings, options.deploymentLineage);
   const envVariableMap = createEnvVariableMap(compiledNodes, runtimePlans, options.moltnet);
   const projectedWorldTokenEnvNames = [...new Set(
@@ -345,11 +346,7 @@ export const createContainerArtifacts = async (
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
       internal_ports: internalPorts,
-      ...(localDaimonIdentity ? { local_daimon_runtime: {
-        capability_receipt_sha256: localDaimonIdentity.capabilityReceipt,
-        image_reference: localDaimonIdentity.imageReference,
-        registry_authority: localDaimonIdentity.registryAuthority
-      } } : {}),
+      ...Object.assign({}, ...localImageReports),
       model_secrets_required: modelSecretsRequired,
       ...(moltnetSummary ? { moltnet: moltnetSummary } : {}),
       port_mappings: portMappings,

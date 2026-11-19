@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails } from "./targetDetails.js";
 import crypto from "node:crypto";
 import path from "node:path";
 
@@ -89,7 +90,7 @@ export const memoryFs = (seed: Record<string, Partial<Node>>) => {
 
 export const plan = (engines: Record<string, string>): RuntimeTargetPlan => ({
   engineByNodeId: engines,
-  grokModelByNodeId: Object.fromEntries(Object.entries(engines).filter(([, engine]) => engine === "grok").map(([id]) => [id, { model: "grok-4.6", reasoningEffort: "low" }])),
+  hostDetails: createDaimonWorkerDetails({ modelByNodeId: Object.fromEntries(Object.entries(engines).filter(([, engine]) => engine === "grok").map(([id]) => [id, { model: "grok-4.6", reasoningEffort: "low" }])) }),
   instancePaths: { configPath: `${INSTANCE}/daimon/config.json`, instanceRoot: INSTANCE, workspacePath: `${INSTANCE}/workspace` },
   runtimeName: "daimon"
 }) as unknown as RuntimeTargetPlan;

@@ -1,3 +1,4 @@
+import type { RuntimeHostIntegration } from "./hostTypes.js";
 import type {
   EffectiveModelTarget,
   ResolvedAgentNode,
@@ -66,12 +67,8 @@ export interface ContainerTarget {
   /** Adapter-resolved engine kinds by node id, carried into the compile report. */
   engineByNodeId?: Record<string, string>;
   envFiles?: ContainerTargetEnvFile[];
-  /** Daimon only: each brokered Grok agent's declared model and reasoning effort, which select its pinned worker config. */
-  grokModelByNodeId?: Record<string, { model: string; reasoningEffort: string }>;
-  /** Daimon only: each brokered Grok agent's declared per-turn budget, for its broker registration. */
-  grokTurnLimitsByNodeId?: Record<string, { maxRequests?: number; maxTokens?: number; timeoutMs?: number }>;
-  /** Daimon only: each brokered Grok agent's declared skills (absent for none), rendered into its worker `$GROK_HOME/skills`. */
-  grokSkillsByNodeId?: Record<string, { name: string; files: { path: string; content: string }[] }[]>;
+  /** In-memory details interpreted by the adapter that produced this target. */
+  hostDetails?: object;
   files: EmittedFile[];
   id: string;
   opaqueMountTargets?: string[];
@@ -160,7 +157,7 @@ export interface RuntimeAuthPreparationInput {
 export interface RuntimeAuthPreparationResult {
   coveredModelSecrets: string[];
   launchIdentity?: {
-    kind: "daimon";
+    kind: string;
     uid: number;
   };
   mountArgs: string[];
@@ -243,6 +240,7 @@ export interface RuntimeAdapter {
   createContainerTargets?(inputs: ContainerTargetInput[]): Promise<ContainerTarget[]>;
   name: string;
   install: RuntimeInstallCapability;
+  host?: RuntimeHostIntegration;
   operations?: RuntimeOperations;
   /** Throws a SpawnfileError for what compile would refuse for this agent; run by `spawnfile validate`. */
   preflightAgent?(node: ResolvedAgentNode, nodeId: string): void;

@@ -15,6 +15,8 @@ src/runtime/
 ├── wiringTypes.ts          # Optional Moltnet, memory, and readiness capabilities
 ├── wiringSelection.ts      # Adapter capability lookup for shared consumers
 ├── portableMoltnetWiring.ts # ACP stdio and workspace layout helpers
+├── hostTypes.ts            # Optional native host build and launch contracts
+├── hostSelection.ts        # Select registered host capabilities and launch wrapper
 ├── operations.ts          # Optional live drain, readiness, recording, artifact and usage contracts
 ├── common.ts              # Shared lowering helpers used by adapters
 ├── mnemeMcp.ts            # Shared Mneme MCP lowering plus the durable memory mount authority
@@ -36,6 +38,10 @@ src/runtime/
 ```
 
 Each adapter owns its registration, init scaffold, install hints, native install recipe, static package assets, and image build context. Image builds read each adapter's `image/build.json` without loading runtime code. Keep shared adapter helpers in `common.ts`.
+
+Host hooks declare any native image wrapper, privilege boundaries, credential preparation,
+generated secrets and volume binding rules. The compiler and deployment own assembly,
+mount reservations, and activation. A runtime can omit every host hook.
 
 Adapters expose native chat and memory wiring through `RuntimeAdapter.wiring`.
 The compiler asks for the selected adapter's Moltnet client layout, bridge

@@ -1,9 +1,8 @@
 import path from "node:path";
-import { DAIMON_SKILL_ROOTS } from "./grokSkillsSupport.js";
-import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
+import { createDaimonWorkerDetails } from "./host/targetDetails.js";
+import { DAIMON_SKILL_ROOTS, daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
 import { daimonGatewayedSubscriptionRealms, daimonSubscriptionRealmMountId } from "./subscriptionRealms.js";
-
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import { SpawnfileError } from "../../shared/index.js";
@@ -333,9 +332,11 @@ export const createDaimonContainerTargets = async (
         (root) => path.posix.join(agent.workspacePath, path.posix.relative("workspace", root)))
     }])),
     engineByNodeId,
-    ...(hasGrok ? { grokModelByNodeId } : {}),
-    ...(hasGrok && Object.keys(grokTurnLimitsByNodeId).length > 0 ? { grokTurnLimitsByNodeId } : {}),
-    ...(Object.keys(grokSkillsByNodeId).length > 0 ? { grokSkillsByNodeId } : {}),
+    ...(hasGrok ? { hostDetails: createDaimonWorkerDetails({
+      modelByNodeId: grokModelByNodeId,
+      turnLimitsByNodeId: grokTurnLimitsByNodeId,
+      skillsByNodeId: grokSkillsByNodeId
+    }) } : {}),
     files: [
       ...agents.flatMap((input) => input.emittedFiles.map((file) => moveWorkspaceFile(file, input.slug))),
       { content: serializedConfig, path: DAIMON_CONFIG_FILE },

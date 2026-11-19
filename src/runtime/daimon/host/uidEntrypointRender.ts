@@ -1,3 +1,4 @@
+import { daimonExternalMountEnvironment } from "./mountPolicy.js";
 import { DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor } from "../index.js";
 import path from "node:path";
 
@@ -291,7 +292,7 @@ export const renderDaimonUidEntrypoint = (
     // Fail closed BEFORE the ownership guard touches anything: an unbacked
     // durable path would otherwise be bootstrapped, owned and written on the
     // container's own writable layer, and lost on `docker rm`.
-    ...createBackedMountGuard(persistentMounts),
+    ...createBackedMountGuard(persistentMounts, daimonExternalMountEnvironment),
     `state_roots=(${ownershipPlan.stateRoots.map(quote).join(" ")})`,
     "node - \"$uid\" \"${state_roots[@]}\" <<'SPAWNFILE_DAIMON_OWNERSHIP'",
     renderDaimonOwnershipProgram(

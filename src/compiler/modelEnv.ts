@@ -15,11 +15,7 @@ const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
 
 export const CLI_CREDENTIAL_SECRET_NAME = "SPAWNFILE_CLI_AUTH_JSON";
 
-/**
- * Only the host-imported CLI logins travel as `SPAWNFILE_CLI_AUTH_JSON`. `grok`
- * is a Daimon-owned subscription: its credential is the broker's bootstrap
- * slot (`runtime/daimon/runAuth.ts`), never this secret.
- */
+/** Host-imported CLI credentials use the shared credential secret. */
 export const modelAuthMethodNeedsCliCredential = (method: ModelAuthMethod): boolean =>
   method === "claude-code" || method === "codex";
 

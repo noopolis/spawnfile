@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails } from "./targetDetails.js";
 import crypto from "node:crypto";
 import vm from "node:vm";
 
@@ -9,7 +10,7 @@ import { plan } from "./grokWorkerProvisioning.test-helper.js";
 import { resolveDaimonGrokRegistrations, type DaimonGrokRegistration } from "./grokWorkerRender.js";
 
 const registrationFor = (model: string, reasoningEffort: string): DaimonGrokRegistration =>
-  resolveDaimonGrokRegistrations([{ ...plan({ agent: "grok" }), grokModelByNodeId: { agent: { model, reasoningEffort } } }])[0]!;
+  resolveDaimonGrokRegistrations([{ ...plan({ agent: "grok" }), hostDetails: createDaimonWorkerDetails({ modelByNodeId: { agent: { model, reasoningEffort } } }) }])[0]!;
 const registration = () => registrationFor("grok-4.6", "low");
 
 // Run the actual emitted guard, stopping before filesystem provisioning begins.

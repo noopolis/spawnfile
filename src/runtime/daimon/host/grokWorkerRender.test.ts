@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails, daimonWorkerDetails } from "./targetDetails.js";
 import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
@@ -23,7 +24,7 @@ const grokWorkerPlan = (
   )
 ): RuntimeTargetPlan => ({
   engineByNodeId: engines,
-  grokModelByNodeId: models,
+  hostDetails: createDaimonWorkerDetails({ modelByNodeId: models }),
   instancePaths: { configPath: `${INSTANCE}/daimon/daimon-organization-runtime.json`, instanceRoot: INSTANCE, workspacePath: `${INSTANCE}/workspace` },
   runtimeName: "daimon"
 }) as unknown as RuntimeTargetPlan;
@@ -34,10 +35,11 @@ const grokWorkerPlan = (
  * contract defaults exactly, or every existing organization's budget moves without a declaration.
  */
 describe("Daimon Grok registration turn limits", () => {
-  const plan = (limits?: Record<string, { maxRequests?: number; maxTokens?: number; timeoutMs?: number }>): RuntimeTargetPlan => ({
-    ...grokWorkerPlan({ "agent:a": "grok", "agent:b": "grok" }),
-    ...(limits === undefined ? {} : { grokTurnLimitsByNodeId: limits })
-  }) as RuntimeTargetPlan;
+  const plan = (limits?: Record<string, { maxRequests?: number; maxTokens?: number; timeoutMs?: number }>): RuntimeTargetPlan => {
+    const base = grokWorkerPlan({ "agent:a": "grok", "agent:b": "grok" });
+    const details = daimonWorkerDetails(base)!;
+    return { ...base, hostDetails: createDaimonWorkerDetails({ ...details, turnLimitsByNodeId: limits }) };
+  };
 
   it("carries a declared budget into the registration and the service config", () => {
     const declared = { "agent:a": { maxTokens: 1_100_000, timeoutMs: 900_000 } };

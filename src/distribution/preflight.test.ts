@@ -128,4 +128,16 @@ describe("runImagePreflight", () => {
     };
     expect(() => runImagePreflight({ authValues: { DIST_REQUIRED_TOKEN: "y" }, report })).not.toThrow();
   });
+
+  it("rejects runtime-owned auth when the selected adapter has no matching credential slot", () => {
+    const base = importReport();
+    const report = {
+      ...base,
+      runtime_instances: base.runtime_instances.map((instance) => ({
+        ...instance, model_auth_methods: { xai: "grok" as const }
+      }))
+    };
+    expect(() => runImagePreflight({ authValues: { DIST_REQUIRED_TOKEN: "y" }, report }))
+      .toThrow(/openclaw\/agent-coordinator \(xai: grok\)/u);
+  });
 });

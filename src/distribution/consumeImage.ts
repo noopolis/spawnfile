@@ -36,7 +36,7 @@ import {
   rollbackCandidateContainer
 } from "./consumeImageLifecycle.js";
 import { createConsumerDockerRunner } from "./dockerRunner.js";
-import { resolveDaimonRuntimeForImage } from "../runtime/daimon/host/imageDocker.js";
+import { prepareImageHostLaunch } from "./imageHost.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
 import { parseImageReference } from "./imageRef.js";
@@ -49,7 +49,8 @@ import type { ResolvedAuthProfile } from "../auth/index.js";
 export interface ConsumeImageUpOptions {
   authProfile?: ResolvedAuthProfile | null;
   authValues?: Record<string, string>;
-  /** See `ImageRuntimeAuthInput.daimonContainerCredentialUid`. */
+  containerCredentialUid?: number;
+  /** Historical caller alias. */
   daimonContainerCredentialUid?: number;
   authProfileName?: string | null;
   deploymentName?: string;
@@ -236,17 +237,15 @@ const consumeImageUpLocked = async (
     // config is already baked into the image; this only resolves the credential
     // mounts. Doing it first guarantees an unusable import fails while the live
     // container is still untouched, never mid-swap.
-    const daimonRuntime = await resolveDaimonRuntimeForImage(
+    const runtimePreparations = await prepareImageHostLaunch(
       imageRef, report, runDocker, workDir
     );
     const authMountArgs = (
       await prepareImageRuntimeAuthMounts({
         authProfile: options.authProfile ?? null,
-        ...(options.daimonContainerCredentialUid === undefined
-          ? {}
-          : { daimonContainerCredentialUid: options.daimonContainerCredentialUid }),
+        containerCredentialUid: options.containerCredentialUid ?? options.daimonContainerCredentialUid,
         report,
-        daimonEngineDescriptors: daimonRuntime.engineDescriptors,
+        runtimePreparations,
         tempRoot: workDir
       })
     ).mountArgs;
@@ -277,7 +276,7 @@ const consumeImageUpLocked = async (
     }
 
     const runArgs = [
-      "run", "-d", "--name", containerName, ...daimonRuntime.securityArgs, "--env-file", envFilePath
+      "run", "-d", "--name", containerName, ...[...runtimePreparations.values()].flatMap((runtime) => runtime.securityArgs), "--env-file", envFilePath
     ];
     for (const port of report.ports) {
       runArgs.push("-p", `${port}:${port}`);

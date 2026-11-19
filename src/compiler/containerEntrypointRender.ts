@@ -1,3 +1,4 @@
+import { selectedRuntimeHosts, selectRuntimeEntrypoint } from "../runtime/hostSelection.js";
 import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -139,7 +140,9 @@ export const renderEntrypoint = (
   requiredSecrets: string[],
   options: EntrypointOptions = {}
 ): string => {
-  const usesDaimonRuntime = runtimePlans.some((plan) => plan.runtimeName === "daimon");
+  const runtimeNames = runtimePlans.map((plan) => plan.runtimeName);
+  const hosts = selectedRuntimeHosts(runtimeNames);
+  const entrypoint = selectRuntimeEntrypoint(runtimeNames)?.entrypoint;
   const cliCredentialMaterialization = createCliCredentialMaterialization(runtimePlans);
   const renderedRequiredSecrets = [
     ...new Set([
@@ -150,19 +153,13 @@ export const renderEntrypoint = (
   const lines = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
-    ...(usesDaimonRuntime ? [
-      'if [ "$#" -ne 3 ] || [ "$1" != "--spawnfile-runtime-identity" ]; then echo "Missing trusted Daimon runtime identity" >&2; exit 1; fi',
-      'volume_bootstrap_uid="$2"',
-      'volume_bootstrap_gid="$3"',
-      'if ! [[ "$volume_bootstrap_uid" =~ ^[1-9][0-9]{0,9}$ ]] || [ "$volume_bootstrap_uid" -gt 2147483647 ]; then echo "Invalid trusted Daimon runtime UID" >&2; exit 1; fi',
-      'if ! [[ "$volume_bootstrap_gid" =~ ^[1-9][0-9]{0,9}$ ]] || [ "$volume_bootstrap_gid" -gt 2147483647 ]; then echo "Invalid trusted Daimon runtime GID" >&2; exit 1; fi',
-      "shift 3"
-    ] : [
+    ...(entrypoint?.prelude ?? [
       "volume_bootstrap_uid=1001",
       "volume_bootstrap_gid=1001"
     ]),
     "",
-    ...createBackedMountGuard(options.persistentMounts ?? []),
+    ...createBackedMountGuard(options.persistentMounts ?? [], (id) =>
+      hosts.map(({ host }) => host.externalMountEnvironment?.(id)).find((env) => env !== undefined)),
     "require_env() {",
     '  local name=\"$1\"',
     '  if [ -z \"${!name:-}\" ]; then',
@@ -194,12 +191,7 @@ export const renderEntrypoint = (
     ...createWorkspaceResourceShellFunctions()
   ];
 
-  lines.push(
-    'if [ -n "${OPENCLAW_GATEWAY_TOKEN:-}" ] && [ -z "${OPENCLAW_HOOKS_TOKEN:-}" ]; then',
-    '  export OPENCLAW_HOOKS_TOKEN="hooks-${OPENCLAW_GATEWAY_TOKEN}"',
-    "fi",
-    ""
-  );
+  lines.push(...hosts.flatMap(({ host }) => host.environmentPrelude ?? []));
 
   for (const secretName of renderedRequiredSecrets) {
     lines.push(`require_env ${shellQuote(secretName)}`);

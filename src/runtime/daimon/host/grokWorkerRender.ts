@@ -1,3 +1,4 @@
+import { daimonWorkerDetails } from "./targetDetails.js";
 import { DAIMON_GATEWAY_BOOTSTRAP_ROOT, DAIMON_GATEWAY_ETC, DAIMON_GATEWAY_RUN, daimonGatewayRealmPath, isDaimonGatewayedEngine } from "../gateway.js";
 import { daimonEngineHasBroker, getDaimonEngineDescriptor } from "../index.js";
 import path from "node:path";
@@ -141,7 +142,7 @@ const fail = (message: string): never => {
 };
 
 const declaredModel = (plan: RuntimeTargetPlan, agentId: string): { model: DaimonGrokBrokerModel; reasoningEffort: DaimonGrokBrokerReasoningEffort } => {
-  const declared = plan.grokModelByNodeId?.[agentId];
+  const declared = daimonWorkerDetails(plan)?.modelByNodeId?.[agentId];
   if (!declared || !(DAIMON_GROK_BROKER_MODELS as readonly string[]).includes(declared.model)
     || !(DAIMON_GROK_BROKER_REASONING_EFFORTS as readonly string[]).includes(declared.reasoningEffort)) {
     return fail(`Daimon Grok agent ${agentId} has no declared broker model and reasoning effort`);
@@ -290,13 +291,13 @@ export const resolveDaimonGrokRegistrations = (plans: RuntimeTargetPlan[]): Daim
     // The registration's per-turn budget: the contract defaults unless the agent declared its own.
     // A wake may only lower this, so an organization that needs more than four minutes a turn has
     // to declare it here rather than at wake time, where the broker refuses any raise.
-    const limits = resolveDaimonGrokRegistrationLimits(plan.grokTurnLimitsByNodeId?.[agentId]);
+    const limits = resolveDaimonGrokRegistrationLimits(daimonWorkerDetails(plan)?.turnLimitsByNodeId?.[agentId]);
     const profile = renderDaimonGrokWorkerSandboxProfile(denyPaths);
     for (const [label, value] of [["GROK_HOME", grokHome], ["profile", path.posix.join(grokHome, "sandbox.toml")], ["events", path.posix.join(grokHome, DAIMON_GROK_ENGINE_BROKER.worker.home.sandboxEvents.relativePath)], ["private temp", path.posix.join(home, DAIMON_GROK_ENGINE_BROKER.worker.home.privateTmp.relativeToWorkerHome)]] as const) assertCanonicalRegisteredPath(label, value);
     // The launcher derives HOME, GROK_HOME=<home>/.grok and TMPDIR=<home>/tmp from the registered home, and the broker reads the profile from GROK_HOME.
     if (path.posix.dirname(path.posix.dirname(path.posix.join(grokHome, "sandbox.toml"))) !== home) fail(`Grok worker ${agentId} profile is not under its registered home`);
     const backings = new Set(plans.flatMap((candidate) => candidate.resources ?? []).map((resource) => resource.backingPath));
-    const skills = resolveDaimonGrokWorkerSkills(plan.grokSkillsByNodeId?.[agentId]);
+    const skills = resolveDaimonGrokWorkerSkills(daimonWorkerDetails(plan)?.skillsByNodeId?.[agentId]);
     return {
       ...(skills ? { skills } : {}),
       deferredDenyPaths: denyPaths.filter((entry) => backings.has(entry)),

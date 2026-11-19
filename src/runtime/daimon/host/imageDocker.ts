@@ -11,12 +11,9 @@ import { readDaimonImageContract } from "./imageContract.js";
 import type { DaimonEngineDescriptors } from "../engineDescriptorSchema.js";
 import type { DockerCommandRunner } from "../../../distribution/dockerRunner.js";
 import { extractSingleFileFromTar } from "../../../distribution/tarReader.js";
-import type { DistributionReport, DistributionRuntimeInstance } from "../../../distribution/types.js";
+import type { DistributionRuntimeInstance } from "../../../distribution/types.js";
 
 const DAIMON_CONFIG_SIZE_CAP_BYTES = 4 * 1024 * 1024;
-
-const daimonInstancesFrom = (report: DistributionReport): DistributionRuntimeInstance[] =>
-  report.runtime_instances.filter((instance) => instance.runtime === "daimon");
 
 const assertAbsoluteConfigPath = (instance: DistributionRuntimeInstance): string => {
   if (!instance.config_path.startsWith("/")) {
@@ -30,7 +27,7 @@ const assertAbsoluteConfigPath = (instance: DistributionRuntimeInstance): string
 
 const readDaimonConfigSourcesFromImage = async (
   imageRef: string,
-  instances: DistributionRuntimeInstance[],
+  instances: readonly DistributionRuntimeInstance[],
   runDocker: DockerCommandRunner,
   securityDirectory: string
 ): Promise<{ sources: string[]; engineDescriptors: DaimonEngineDescriptors }> => {
@@ -59,11 +56,10 @@ const readDaimonConfigSourcesFromImage = async (
 
 export const resolveDaimonRuntimeForImage = async (
   imageRef: string,
-  report: DistributionReport,
+  daimonInstances: readonly DistributionRuntimeInstance[],
   runDocker: DockerCommandRunner,
   securityDirectory: string
 ): Promise<{ securityArgs: string[]; engineDescriptors?: DaimonEngineDescriptors }> => {
-  const daimonInstances = daimonInstancesFrom(report);
   if (daimonInstances.length === 0) return { securityArgs: [] };
   const { sources, engineDescriptors } = await readDaimonConfigSourcesFromImage(imageRef, daimonInstances, runDocker, securityDirectory);
   return { engineDescriptors, securityArgs: [

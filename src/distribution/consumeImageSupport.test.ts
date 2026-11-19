@@ -30,7 +30,11 @@ const reportWithSecrets = (): DistributionReport => ({
   port_mappings: [],
   ports: [],
   resources: [],
-  runtime_instances: [],
+  runtime_instances: [{
+    id: "agent-openclaw", runtime: "openclaw", config_path: "/workspace/openclaw.json",
+    workspace_path: "/workspace", home_path: null, internal_port: null, published_port: null,
+    model_auth_methods: {}, model_secrets_required: [], node_ids: []
+  }],
   secrets: {
     model: [{ generated: false, name: "ANTHROPIC_API_KEY", required: true }],
     project: [],

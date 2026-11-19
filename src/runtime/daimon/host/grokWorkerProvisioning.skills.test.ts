@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails, daimonWorkerDetails } from "./targetDetails.js";
 import { createHash } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
@@ -13,7 +14,9 @@ import { renderDaimonGrokServiceConfig, resolveDaimonGrokRegistrations } from ".
 const SAMPLE = DAIMON_GROK_WORKER_SKILLS_SAMPLES[2]!;
 const sampleSkills = () => SAMPLE.skills.map((skill) => ({ name: skill.name, files: skill.files.map((file) => ({ ...file })) }));
 const sha256 = (value: unknown) => createHash("sha256").update(typeof value === "string" ? value : JSON.stringify(value)).digest("hex");
-const withSkills = (base: RuntimeTargetPlan): RuntimeTargetPlan => ({ ...base, grokSkillsByNodeId: { "agent:a": sampleSkills() } });
+const withSkills = (base: RuntimeTargetPlan, skillsByNodeId: Record<string, ReturnType<typeof sampleSkills>> = { "agent:a": sampleSkills() }): RuntimeTargetPlan => ({
+  ...base, hostDetails: createDaimonWorkerDetails({ ...daimonWorkerDetails(base)!, skillsByNodeId })
+});
 
 /** Production digests include the shared Codex subscription authority deny paths. */
 const SKILL_LESS_GOLDEN = {
@@ -34,7 +37,7 @@ describe("Grok worker skills provisioning", () => {
       registrations: sha256(registrations), program: sha256(renderDaimonGrokWorkerProvisioning(registrations).join("\n")),
       serviceV2: sha256(renderDaimonGrokServiceConfig(registrations))
     }).toEqual(SKILL_LESS_GOLDEN);
-    expect(resolveDaimonGrokRegistrations([{ ...base, grokSkillsByNodeId: {} }])).toEqual(registrations);
+    expect(resolveDaimonGrokRegistrations([withSkills(base, {})])).toEqual(registrations);
   });
 
   it("binds Daimon's skills digest into the v2 registration of only the skill-declaring agent", () => {

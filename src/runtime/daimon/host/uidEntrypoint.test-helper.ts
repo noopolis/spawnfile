@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails } from "./targetDetails.js";
 import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
 import type { EntrypointOptions } from "../../../compiler/containerEntrypointRender.js";
 
@@ -5,7 +6,7 @@ export const authorizedUid = 2000;
 
 export const daimonPlan: RuntimeTargetPlan = {
   engineByNodeId: { "agent:AGY": "agy", "agent:Codex One": "codex", "agent:Grok Two": "grok" },
-  grokModelByNodeId: { "agent:Grok Two": { model: "grok-4.6", reasoningEffort: "low" } },
+  hostDetails: createDaimonWorkerDetails({ modelByNodeId: { "agent:Grok Two": { model: "grok-4.6", reasoningEffort: "low" } } }),
   envFiles: [], id: "daimon-organization",
   instancePaths: {
     configPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/config.json",

@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails } from "./targetDetails.js";
 import { execFile as execFileCallback } from "node:child_process";
 import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -19,7 +20,7 @@ type Plan = Parameters<typeof renderDaimonBrokerProvisioning>[0][number];
 const grokPlan = (agentIds: string[], extra: Record<string, string> = {}, model = { model: "grok-4.6", reasoningEffort: "low" }): Plan => ({
   runtimeName: "daimon",
   engineByNodeId: { ...Object.fromEntries(agentIds.map((agentId) => [agentId, "grok"])), ...extra },
-  grokModelByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, model])),
+  hostDetails: createDaimonWorkerDetails({ modelByNodeId: Object.fromEntries(agentIds.map((agentId) => [agentId, model])) }),
   instancePaths: { configPath: "/var/lib/spawnfile/instances/daimon/daimon-organization/daimon/config.json", instanceRoot: "/var/lib/spawnfile/instances/daimon/daimon-organization", workspacePath: "/var/lib/spawnfile/instances/daimon/daimon-organization/workspace" }
 }) as unknown as Plan;
 const uid = process.getuid?.() ?? 501;

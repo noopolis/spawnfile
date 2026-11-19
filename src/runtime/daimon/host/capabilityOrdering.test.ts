@@ -1,3 +1,4 @@
+import { createDaimonWorkerDetails } from "./targetDetails.js";
 import { describe, expect, it } from "vitest";
 
 import type { RuntimeTargetPlan } from "../../../compiler/containerArtifactsTypes.js";
@@ -6,7 +7,7 @@ import { createStateOwnershipCommand } from "../../../compiler/containerStateOwn
 
 const daimonPlan = {
   engineByNodeId: { "agent:grok": "grok" },
-  grokModelByNodeId: { "agent:grok": { model: "grok-4.6", reasoningEffort: "low" } },
+  hostDetails: createDaimonWorkerDetails({ modelByNodeId: { "agent:grok": { model: "grok-4.6", reasoningEffort: "low" } } }),
   instancePaths: {
     configPath: "/var/lib/spawnfile/instances/daimon/organization/daimon/config.json",
     instanceRoot: "/var/lib/spawnfile/instances/daimon/organization",

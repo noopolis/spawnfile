@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createDetachedContainerInspectArgs, parseDetachedContainerInspect } from "./runProjectDocker.js";
+import { createDetachedContainerInspectArgs, parseDetachedContainerInspect, runDockerContainer } from "./runProjectDocker.js";
 
 const id = "a".repeat(64);
 const imageId = `sha256:${"b".repeat(64)}`;
@@ -37,4 +37,17 @@ describe("detached Docker inspection", () => {
     expect(createDetachedContainerInspectArgs({ ...base, dockerContext: "remote" }, id)).toEqual(["--context", "remote", "inspect", "--format", "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}", id]);
     expect(createDetachedContainerInspectArgs({ ...base, dockerHost: "ssh://host" }, id)).toEqual(["--host", "ssh://host", "inspect", "--format", "{{json .Id}}\n{{json .Name}}\n{{json .Image}}\n{{json .Config.Labels}}", id]);
   });
+});
+
+it("rejects a host credential guard failure before the container runner starts", async () => {
+  const refusal = new Error("credential Docker endpoint refused");
+  const prepareCredentialDocker = vi.fn(async () => { throw refusal; });
+  const invocation = {
+    args: ["run"], command: "unavailable-docker", containerName: null, cwd: "/tmp",
+    detach: false, envFilePath: "/tmp/unused-env", imageTag: "sample:local",
+    supportDirectory: "/tmp/unused-support", prepareCredentialDocker
+  };
+
+  await expect(runDockerContainer(invocation)).rejects.toBe(refusal);
+  expect(prepareCredentialDocker).toHaveBeenCalledWith(invocation);
 });

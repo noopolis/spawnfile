@@ -5,14 +5,14 @@ import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../../../../auth/index.js";
 import {
-  DAIMON_GATEWAY_SIDECAR_ALIAS, DAIMON_GATEWAY_SIDECAR_KEY_ENV, DAIMON_GATEWAY_SIDECAR_URL,
+  DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, DAIMON_GATEWAY_SIDECAR_ALIAS, DAIMON_GATEWAY_SIDECAR_KEY_ENV, DAIMON_GATEWAY_SIDECAR_URL,
   DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV, renderDaimonGatewaySidecarScript
 } from "../../host/index.js";
 import { slugify } from "../../../../compiler/index.js";
 import {
   captureTrialEvidence, createTrialDocker, waitFor, type TrialDocker, type TrialEvidenceCaptureCall
 } from "../../../../compiler/training/trial/index.js";
-import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, SpawnfileError } from "../../../../shared/index.js";
+import { SpawnfileError } from "../../../../shared/index.js";
 import { parseOpaqueTargetHandle } from "../../../../target/index.js";
 import {
   createDockerResourceSpec, createDockerTargetExecutors, executeDockerResource,

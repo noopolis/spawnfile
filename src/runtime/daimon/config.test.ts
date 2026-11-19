@@ -1,3 +1,4 @@
+import { daimonWorkerDetails } from "./host/targetDetails.js";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -212,9 +213,9 @@ describe("Daimon memory lowering", () => {
     const [target] = await createDaimonContainerTargets([grok("grok"), grok("bare", []),
       { emittedFiles: [], id: "agent:codex", kind: "agent", slug: "codex", value: createDaimonNode() }]);
     const note = createDaimonTestNode().skills[0]!;
-    expect(target!.grokSkillsByNodeId).toEqual({ "agent:grok": [{ name: note.name, files: [{ path: "SKILL.md", content: note.content }] }] });
+    expect(daimonWorkerDetails(target!)?.skillsByNodeId).toEqual({ "agent:grok": [{ name: note.name, files: [{ path: "SKILL.md", content: note.content }] }] });
     const [unskilled] = await createDaimonContainerTargets([grok("bare", [])]);
-    expect(unskilled).not.toHaveProperty("grokSkillsByNodeId");
+    expect(Object.keys(daimonWorkerDetails(unskilled!)?.skillsByNodeId ?? {})).toEqual([]);
   });
 
   it("omits Daimon's engine model selector when no execution model is declared", async () => {

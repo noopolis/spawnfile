@@ -3,10 +3,6 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { SpawnfileError } from "../shared/index.js";
-import {
-  assertOpaqueDaimonCredentialsHaveNoUserNamespace,
-  pinOpaqueDaimonDockerEndpoint
-} from "../runtime/daimon/host/dockerGuards.js";
 import { withExclusiveVolumeReservations } from "./runProjectDockerReservation.js";
 
 const execFile = promisify(execFileCallback);
@@ -27,7 +23,7 @@ export interface DockerRunInvocation {
   imageTag: string;
   onDetachedStarted?: (result: DockerRunResult) => Promise<void>;
   /** Ephemeral guard; never serialized into reports, records, or labels. */
-  opaqueDaimonCredentials?: boolean;
+  prepareCredentialDocker?(invocation: DockerRunInvocation): Promise<DockerRunInvocation>;
   supportDirectory: string;
 }
 
@@ -49,10 +45,6 @@ interface SshDockerContext {
 interface PreparedRunInvocation {
   cleanup(): Promise<void>;
   invocation: DockerRunInvocation;
-}
-
-interface PinnedOpaqueDaimonInvocation extends DockerRunInvocation {
-  dockerEndpointPinned?: boolean;
 }
 
 const parseDockerContextHost = (stdout: string): string | null => {
@@ -336,17 +328,10 @@ const runPreparedDockerContainer = (
   });
 
 const runDockerContainerPrepared = async (
-  invocation: PinnedOpaqueDaimonInvocation
+  invocation: DockerRunInvocation
 ): Promise<DockerRunResult | void> => {
   const run = async (): Promise<DockerRunResult | void> => {
     if (!invocation.dockerContext || collectBindMountSources(invocation.args).length === 0) {
-      if (invocation.opaqueDaimonCredentials && !invocation.dockerEndpointPinned) {
-        await assertOpaqueDaimonCredentialsHaveNoUserNamespace(invocation);
-        return await runPreparedDockerContainer({
-            cleanup: async () => undefined,
-            invocation
-          });
-      }
       return await runPreparedDockerContainer({
         cleanup: async () => undefined,
         invocation
@@ -357,12 +342,9 @@ const runDockerContainerPrepared = async (
   return withExclusiveVolumeReservations(invocation, run);
 };
 
-export const runDockerContainer: DockerRunRunner = (invocation) =>
-  invocation.opaqueDaimonCredentials
-    ? pinOpaqueDaimonDockerEndpoint(invocation)
-      .then(async (pinned) => {
-        await assertOpaqueDaimonCredentialsHaveNoUserNamespace(pinned);
-        return pinned;
-      })
-      .then((pinned) => runDockerContainerPrepared({ ...pinned, dockerEndpointPinned: true }))
-    : runDockerContainerPrepared(invocation);
+export const runDockerContainer: DockerRunRunner = async (invocation) => {
+  const guarded = invocation.prepareCredentialDocker
+    ? await invocation.prepareCredentialDocker(invocation)
+    : invocation;
+  return runDockerContainerPrepared(guarded);
+};
