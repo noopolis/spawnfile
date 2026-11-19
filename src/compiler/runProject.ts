@@ -21,7 +21,7 @@ import {
   writeDockerDeploymentRecordForRun
 } from "../deployment/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
-import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
+import { ensureNoopolisRunId, isBundledRuntimeAdapter, listRuntimeAdapters, resolveNoopolisRunId } from "../runtime/index.js";
 import { runtimeHost, selectedRuntimeHosts } from "../runtime/hostSelection.js";
 
 import { compileProject, type CompileProjectOptions, type CompileProjectResult } from "./compileProject.js";
@@ -186,8 +186,13 @@ export const createDockerRunInvocation = async (
     // volumes, leaving reattached state intact.
     // (Target/secrets volumes under src/target/* keep `volume-nocopy`: no
     // image content backs those paths and they must stay opaque.)
+    // Older reports can identify a credential realm only by its declared mount.
+    const installed = containerReport.runtimes_installed;
+    const mountHosts = containerReport.runtime_instances.length ? hosts : selectedRuntimeHosts(
+      installed?.length ? installed : listRuntimeAdapters().filter(isBundledRuntimeAdapter)
+    );
     const persistentMounts = (containerReport.persistent_mounts ?? []).flatMap((mount) => {
-      for (const { host } of hosts) {
+      for (const { host } of mountHosts) {
         const externalEnv = host.externalMountEnvironment?.(mount.id);
         if (externalEnv && env[externalEnv]) return [];
         const volumeName = host.profileVolumeName?.(mount.id, options.authProfile ?? null);

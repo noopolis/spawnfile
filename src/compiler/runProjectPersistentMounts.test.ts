@@ -51,6 +51,9 @@ describe("createDockerRunInvocation persistent volume mounts",()=>{
     const local = await createDockerRunInvocation(compiled, "spawnfile-test");
     expect(local.args).toContain("type=volume,source=spawnfile-realm,target=/var/lib/spawnfile/daimon/codex-subscription-realm");
     expect(local.args).not.toContain("--network");
+    const differentRuntime = { ...withRealm, container: { ...withRealm.container, runtimes_installed: ["openclaw"] } };
+    const explicit = await createDockerRunInvocation({ ...compiled, report: differentRuntime }, "spawnfile-test", { envFilePath });
+    expect(explicit.args).toContain("type=volume,source=spawnfile-realm,target=/var/lib/spawnfile/daimon/codex-subscription-realm");
   });
   it("reattaches a profile-held realm volume and runs the image's own command on the operator's terminal",async()=>{
     const realm = { id: "daimon-agy-subscription-realm", lifecycle: "exclusive-reattach" as const, mount_path: "/var/lib/spawnfile/daimon/agy-subscription-realm", reason: "realm", volume_name: "lineage-agy-realm" };
