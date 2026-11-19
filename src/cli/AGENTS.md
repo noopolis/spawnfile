@@ -7,7 +7,8 @@ This folder owns user-facing command parsing and process exit behavior.
 ```text
 src/cli/
 ├── index.ts        # Executable Node entrypoint
-├── runCli.ts       # Top-level Commander setup and shared CLI types
+├── runCli.ts       # Dedicated command routing and per-invocation adapter loading
+├── cliProgram.ts   # Commander setup and command handlers
 ├── adapterOptions.ts # Explicit global --adapter parsing
 ├── capabilitiesCommand.ts # Read-only public capability command registration
 ├── capabilitiesReceipt.ts # Strict Spawnfile capability receipt
@@ -58,7 +59,7 @@ src/cli/
 └── runCli.test.ts  # General CLI behavior tests
 ```
 
-`index.ts` should stay minimal. `runCli.ts` owns command wiring, while real work stays in compiler modules.
+`index.ts` should stay minimal. `runCli.ts` dispatches commands and `cliProgram.ts` builds the Commander program. Compiler modules own compilation.
 
 ## Rules
 

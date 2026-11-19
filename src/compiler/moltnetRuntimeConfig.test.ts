@@ -89,11 +89,12 @@ describe("runtime adapter wiring", () => {
   it.each(["data/journal", "/data/journal,old", "/"])("rejects invalid memory mount target %s", async (mountPath) => {
     const plan = await buildCompilePlan(await makeNetworkProject("fixture-fourth"));
     const wiring = getRuntimeAdapter("fixture-fourth").wiring!;
-    const memory = vi.spyOn(wiring, "memory").mockReturnValue({ mountPath, transport: "direct" });
+    const original = wiring.memory;
+    wiring.memory = () => ({ mountPath, transport: "direct" });
     try {
       expect(() => createMemoryArtifactBundle(plan)).toThrow(/fixture-fourth.*invalid.*mount.*journal/u);
     } finally {
-      memory.mockRestore();
+      wiring.memory = original;
     }
   });
 
