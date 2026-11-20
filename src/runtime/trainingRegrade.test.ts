@@ -1,9 +1,13 @@
-import { mkdtemp, readFile, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { testBankYaml, testJudge, testMaterial, testReplies } from "../training/questionnaire/index.js";
 import { regradeTraining } from "./trainingRegrade.js";
+
+import { runCli } from "../cli/runCli.js";
+import { contentDigest, openExperimentStore, readTrialEval, runStoredTrial, snapshotCandidate, storedJsonDigest } from "../training/index.js";
+import { complete, setup } from "../training/experiments/trials/fixture.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -94,4 +98,70 @@ describe("training regrade", () => {
     await writeFile(manifest, JSON.stringify({ ...raw, outputs: [{ ...raw.outputs[0], output: "gone.json" }] }));
     await expect(regradeTraining({ manifest, out, streams: streams(), provider: () => testJudge([]).provider })).rejects.toThrow(/does not exist: gone.json/u);
   });
+});
+
+it('moves a private multi-turn eval out of the store and regrades its trace offline', async () => {
+  const task = await setup(async (subject, turn) => {
+    await writeFile(path.join(subject.workspacePath, 'file.txt'), turn.text);
+    await writeFile(path.join(subject.runtimeHomePath, 'credentials.json'), 'PRIVATE-CREDENTIAL');
+    await subject.onObservation({ id: turn.id, trialId: subject.trialId, wakeId: turn.id, source: turn.id,
+      seq: 1, timestamp: '2026-01-01T00:00:00Z', type: 'tool.dispatch', tool: 'file', callId: turn.id,
+      args: { path: 'file.txt' }, native: { transcript: 'PRIVATE-TRANSCRIPT' } });
+    await subject.onObservation({ id: turn.id + '-log', trialId: subject.trialId, wakeId: turn.id, source: turn.id,
+      seq: 2, timestamp: '2026-01-01T00:00:00Z', type: 'diagnostic', text: 'PRIVATE-DIAGNOSTIC' });
+    return complete;
+  });
+  const root = task.options.root;
+  await writeFile(path.join(root, 'instructions'), 'Write a file');
+  const candidate = await snapshotCandidate({ sourceRoot: root, resources: [{ id: 'instructions', sourcePath: 'instructions',
+    destinations: [{ kind: 'instructions', path: 'AGENTS.md' }], edit: 'locked' }] });
+  const storeRoot = path.join(root, 'out');
+  const record = task.options.record;
+  delete record.input;
+  record.outputs = { article: 'file.txt' };
+  record.turns = ['first', 'second'].map(id => ({ id, input: { prompt: id }, checks: [{ id: 'text', eval: 'equals', input: 'output.text', value: 'DONE' }] }));
+  await writeFile(path.join(root, 'brief.txt'), 'original input bytes');
+  record.turns[0]!.input.files = [{ resource: 'packet', path: 'brief.txt', sha256: contentDigest('original input bytes') }];
+  record.effectiveStages = [{ id: 'terminal', checks: [{ id: 'filed', eval: 'tool-count', tool: 'file', phase: 'dispatch', exactly: 2 },
+    { id: 'words', eval: 'word-count', input: 'output.text', min: 1 },
+    { id: 'shape', eval: 'json-schema', input: 'output.text', schema: 'shape.json' }] }];
+  task.options.evaluation.readText = async name => {
+    expect(name).toBe('shape.json');
+    return '{"type":"string"}';
+  };
+  const report = await runStoredTrial({ ...task.options, record, resources: { packet: root }, storeRoot, root: path.join(storeRoot, 'trials'),
+    store: await openExperimentStore(storeRoot), candidate, datasetId: 'suite' });
+  expect(report.status).toBe('pass');
+  const file = path.join(storeRoot, 'evals', 'trial.eval');
+  expect(report.evalFile).toBe('evals/trial.eval');
+  expect((await stat(file)).mode & 0o777).toBe(0o600);
+  const moved = path.join(root, 'moved.eval');
+  await rename(file, moved);
+  await rm(path.join(root, 'brief.txt'));
+  await rm(storeRoot, { recursive: true });
+  const bytes = await readFile(moved, 'utf8');
+  expect(bytes).not.toMatch(/PRIVATE-|credentials\.json/);
+  const envelope = JSON.parse(bytes);
+  expect(envelope.payload.inputs).toEqual([{ id: 'first', input: 'first\n\nInput files:\ninputs/packet/brief.txt' }, { id: 'second', input: 'second' }]);
+  const frozen = await readTrialEval(moved);
+  expect(frozen.report.snapshot.inputFiles).toEqual({ 'inputs/packet/brief.txt': 'original input bytes' });
+  expect(frozen.task.turns).toEqual(record.turns);
+  expect(frozen.report.snapshot.artifacts.article.bytes).toBe('second');
+  expect(frozen.report.turns.map(turn => turn.native.text)).toEqual(['DONE', 'DONE']);
+  expect(frozen.report.evaluation.checks.words?.mechanicalEvidence).toEqual({ count: 1 });
+  expect(frozen.report.turns.map(turn => turn.checks[0]?.status)).toEqual(['pass', 'pass']);
+  const out = path.join(root, 'graded');
+  const stderr: string[] = [];
+  const run = () => runCli(['train', '--regrade', moved, '--out', out], {
+    streams: { stdout() {}, stderr: line => stderr.push(line) } });
+  expect(await run(), stderr.join('\n')).toBe(0);
+  expect(JSON.parse(await readFile(path.join(out, 'REGRADE.json'), 'utf8'))).toMatchObject({
+    scope: 'final-stages', status: 'pass', evaluation: { checks: { filed: { status: 'pass' } } } });
+  envelope.payload.report.snapshot.artifacts.article.bytes = 'tampered';
+  await writeFile(moved, JSON.stringify(envelope));
+  expect(await run()).not.toBe(0);
+  expect(stderr.join('\n')).toMatch(/digest|integrity/i);
+  envelope.digest = storedJsonDigest(envelope.payload);
+  await writeFile(moved, JSON.stringify(envelope));
+  await expect(readTrialEval(moved)).rejects.toThrow('artifact digest mismatch');
 });

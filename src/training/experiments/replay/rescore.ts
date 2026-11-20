@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { combine, evaluatePlan, result } from '../../evaluation/index.js';
 import { freezeCriteria } from '../training/index.js';
 import { capturedTrial } from './source.js';
+import type { TrialReport } from '../trials/index.js';
 import type { RescoreOptions, RescoreReport } from './types.js';
 
 /** Explicit evaluator work over frozen evidence. This function has no subject-adapter dependency. */
@@ -30,26 +31,41 @@ export async function rescoreStoredTrial(options: RescoreOptions): Promise<Resco
         payload: { type: 'judge.attempt', evaluationId: options.id, payload: attempt } }, 'evaluator');
       await observer?.(structuredClone(attempt));
     } }, options.registry);
+  const report = await rescoreFinalStages(original, { id: options.id, evaluationId: source.id, digest: source.digest,
+    criteria: { datasetId: dataset.id, datasetDigest: dataset.sourceDigest, sharedPlanDigest: dataset.sharedPlanDigest,
+      stages: record.effectiveStages, registryVersions: dataset.registryVersions, sidecarDigests: dataset.criterionFileDigests, inferenceRoutes },
+    evaluation: evaluationContext, registry: options.registry, signal: options.signal });
+  await options.store.appendEvaluation(options.runId, { id: options.id, report }, 'evaluator');
+  return report;
+}
+
+export async function rescoreFinalStages(original: Omit<TrialReport, 'paths'>, options: {
+  id: string; evaluationId: string; digest: string; criteria: RescoreReport['criteria'];
+  requireConfirmedClosure?: boolean;
+  evaluation: RescoreOptions['evaluation']; registry: RescoreOptions['registry']; signal?: AbortSignal;
+}): Promise<RescoreReport> {
   if (options.signal?.aborted) throw new Error('Rescore cancelled before evaluation');
-  const evaluation = await evaluatePlan(structuredClone(record.effectiveStages), { ...evaluationContext, snapshot: structuredClone(original.snapshot),
+  const evaluation = await evaluatePlan(structuredClone(options.criteria.stages), { ...options.evaluation, snapshot: structuredClone(original.snapshot),
     results: {}, scores: {}, signal: options.signal }, options.registry);
   if (options.signal?.aborted) throw new Error('Rescore cancelled during evaluation');
   const gates = [result(evaluation.status, 'Rescored final-stage plan')];
   if (original.decisiveFailure) gates.push(original.decisiveFailure);
-  if (original.execution !== 'completed' || original.hostWork !== 'settled' || original.stop?.state !== 'acknowledged') {
+  const confirmed = original.hostWork === 'settled' && original.stop?.state === 'acknowledged' &&
+    original.stop.quiescence === 'confirmed' && !original.stop.unevidenced;
+  if (options.requireConfirmedClosure && confirmed && ['deferred', 'limit-exceeded'].includes(original.execution)) {
+    if (evaluation.status !== 'error') gates.push(result('fail', 'Original native delivery was ' + original.execution));
+  } else if (original.execution !== 'completed' || original.hostWork !== 'settled' || original.stop?.state !== 'acknowledged' ||
+    options.requireConfirmedClosure && !confirmed) {
     gates.push(result('error', 'Original native execution or cleanup remains incomplete'));
   }
   const report: RescoreReport = {
-    schema: 'spawnfile.training.rescore.v1', id: options.id, runId: options.runId, scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
-    original: { evaluationId: source.id, digest: source.digest, candidateId: original.candidateId, datasetDigest: original.datasetDigest,
+    schema: 'spawnfile.training.rescore.v1', id: options.id, runId: original.id, scope: 'final-stages', notReevaluated: ['live', 'per-turn'],
+    original: { evaluationId: options.evaluationId, digest: options.digest, candidateId: original.candidateId, datasetDigest: original.datasetDigest,
       planDigest: original.planDigest, recordId: original.recordId, phase: original.phase, status: original.status },
-    criteria: { datasetId: dataset.id, datasetDigest: dataset.sourceDigest, sharedPlanDigest: dataset.sharedPlanDigest,
-      stages: record.effectiveStages,
-      registryVersions: dataset.registryVersions, sidecarDigests: dataset.criterionFileDigests, inferenceRoutes },
+    criteria: options.criteria,
     execution: original.execution, hostWork: original.hostWork, coverage: structuredClone(original.snapshot.coverage),
     decisiveFailure: original.decisiveFailure, stop: original.stop, error: original.error,
     status: combine('all', gates).status, evaluation,
   };
-  await options.store.appendEvaluation(options.runId, { id: options.id, report }, 'evaluator');
   return report;
 }

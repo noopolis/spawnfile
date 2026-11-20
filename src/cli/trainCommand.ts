@@ -29,7 +29,7 @@ export const registerTrainCommand = (
     .option("--history <directory>", "Local recorded history for --materialize")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
     .option("--resume", "Resume the exact persisted training experiment in --out")
-    .option("--regrade <manifest>", "Grade recorded outputs with a declared check on the run's judges; boots no subject")
+    .option("--regrade <file>", "Regrade evals/<trial>.eval offline or grade a recorded-output manifest with its judges")
     .option("--trial-cache <mode>", "reuse (default): replay identical earlier trials and judgments; fresh: run every trial again (stability repeats), still recording; off: neither")
     .option("--cache-dir <directory>", "Trial and judgment cache kept across runs (default ~/.spawnfile/training-cache)")
     .option("--judge-concurrency <n>", "Warm judge containers per judge, booted only when all are busy (1..8, default 4)")

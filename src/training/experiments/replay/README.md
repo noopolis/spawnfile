@@ -58,3 +58,17 @@ legacy captures without the field remain readable with unknown efficiency.
 Captures with subject usage also retain the authored `expectedTurns` independently
 of returned turn results. Replay rejects missing/invalid planned counts and complete
 claims with truncated work; legacy reports without subject usage remain readable.
+
+## Portable trial files
+
+Each new stored trial writes one private file under `<out>/evals/`. Its returned
+report gives the relative path in `evalFile`. Copy that file to an evaluator's
+machine and run `spawnfile train --regrade moved.eval --out graded`. Read
+`graded/REGRADE.json` for the original verdict, the new final-stage evaluation,
+coverage and native closure.
+
+The file carries the authored task and each staged turn input, the normalized
+trace, declared output artifacts, staged input files, criteria read during grading
+and original grading results. The offline command has no judge or embedding routes.
+Checks that need unavailable services retain an unsettled result. Live and turn
+grades are historical. File digests detect damage. They do not authenticate a sender.

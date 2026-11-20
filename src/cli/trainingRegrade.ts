@@ -16,6 +16,7 @@ export interface RunTrainingRegradeOptions {
 /** Grade recorded outputs using the runtime that owns the declared judge providers. */
 export const runTrainingRegrade = async (options: RunTrainingRegradeOptions): Promise<number> => {
   const { authProfile } = options;
+  if (options.manifest.endsWith(".eval")) return regradeTraining(options);
   if (!authProfile) throw new SpawnfileError("validation_error", "Regrade requires --auth-profile");
   return regradeTraining({
     manifest: options.manifest, out: options.out, concurrency: options.concurrency, streams: options.streams,

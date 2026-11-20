@@ -60,6 +60,9 @@ const judgeFailure = z.object({ cause: z.enum(judgeFailureCauses), judge: identi
 const result: z.ZodType<EvaluationResult> = z.lazy(() => z.object({ id: z.string().optional(), status: verdict,
   finality: z.enum(['provisional', 'final']), reason: z.string(), judgeFailure: judgeFailure.optional(),
   score: z.number().min(0).max(1).optional(),
+  absent: z.literal(true).optional(),
+  mechanicalEvidence: z.object({ count: z.number().int().nonnegative().optional(), found: z.number().int().nonnegative().optional(),
+    total: z.number().int().nonnegative().optional(), missing: z.array(z.string()).optional() }).optional(),
   evidence: z.array(z.object({ kind: z.enum(['event', 'artifact', 'input', 'output', 'sidecar']), id: z.string(), digest: z.string().optional() })),
   cache: z.object({ key: z.string(), sourceCallId: z.string(), sourceCalls: z.array(judgeCall).optional() }).optional(),
   grading: createGradeResultSchema(judgeCall).optional(),
@@ -74,7 +77,7 @@ const plan = z.object({ status: verdict, stages: z.array(z.object({ id: z.string
   score: weighted.optional(), weights: z.record(z.string(), z.number().finite().nonnegative()).optional() })), checks: z.record(z.string(), result), scores: z.record(z.string(), weighted),
   judgeCalls: z.array(judgeCall).optional() });
 const observation = z.object({ id: identity, source: identity, seq: z.number().int().nonnegative(),
-  type: z.enum(['tool.dispatch', 'tool.complete', 'output', 'usage', 'diagnostic', 'input']), timestamp: z.string(),
+  type: z.enum(['tool.request', 'tool.dispatch', 'tool.complete', 'output', 'usage', 'diagnostic', 'input']), timestamp: z.string(),
   trialId: identity, wakeId: identity, callId: z.string().optional(), tool: z.string().optional(),
   args: z.unknown().optional(), result: z.unknown().optional(), success: z.boolean().optional(), text: z.string().optional(),
   usage: usage.optional(), causalParents: z.array(z.string()).optional(), native: z.unknown().optional() });
@@ -85,7 +88,7 @@ const snapshot = z.object({ trialId: identity, recordId: identity, closed: z.lit
 
 /** Version-one reports contain only a final snapshot; turn results do not imply turn snapshots. */
 const declaredLimit = z.enum(['tokens', 'requests', 'timeout']);
-export const trialReportSchema = z.object({
+const reportFields = z.object({
   schema: compatibleWireLiteral('spawnfile.training.trial.v1'), id: identity, phase: z.enum(['train', 'validation', 'test']), candidateId: identity,
   datasetDigest: identity, planDigest: identity, recordId: identity,
   candidate: z.custom<CandidateManifest>(value => {
@@ -108,7 +111,9 @@ export const trialReportSchema = z.object({
     error: z.string().optional(), stop: stop.optional() }) })),
   evaluation: plan, live: z.array(z.object({ checkId: z.string(), boundary: z.string(), result })),
   decisiveFailure: result.optional(), stop: stop.optional(), error: z.string().optional(),
-}).superRefine((report, context) => {
+});
+
+function verifyReport(report: Omit<z.infer<typeof reportFields>, 'paths'>, context: z.RefinementCtx) {
   if (report.candidate && report.candidate.id !== report.candidateId) {
     context.addIssue({ code: 'custom', path: ['candidate'], message: 'Evaluated candidate identity mismatch' });
   }
@@ -118,4 +123,7 @@ export const trialReportSchema = z.object({
   if (!subjectUsageMatchesNative(report)) {
     context.addIssue({ code: 'custom', path: ['snapshot', 'subjectUsage'], message: 'Subject usage does not match authoritative native totals and closure' });
   }
-});
+}
+
+export const trialReportSchema = reportFields.superRefine(verifyReport);
+export const portableReportSchema = reportFields.omit({ paths: true, candidate: true }).superRefine(verifyReport);
