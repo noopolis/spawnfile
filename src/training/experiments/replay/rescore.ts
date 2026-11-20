@@ -5,38 +5,50 @@ import { capturedTrial } from './source.js';
 import type { TrialReport } from '../trials/index.js';
 import type { RescoreOptions, RescoreReport } from './types.js';
 
+type CriteriaOptions = Pick<RescoreOptions, 'dataset' | 'evaluation' | 'registry' | 'signal' | 'id'> & { requireConfirmedClosure?: boolean };
+
+/** Capture caller-owned routing and plan data before the first asynchronous read. */
+function snapshotCriteria(options: CriteriaOptions): CriteriaOptions {
+  const judges = Object.fromEntries(Object.entries(options.evaluation.judges).map(([name, route]) => [name, { ...route }]));
+  return { ...options, dataset: structuredClone(options.dataset), evaluation: { ...options.evaluation, judges, embeddings: { ...options.evaluation.embeddings } } };
+}
+
 /** Explicit evaluator work over frozen evidence. This function has no subject-adapter dependency. */
 export async function rescoreStoredTrial(options: RescoreOptions): Promise<RescoreReport> {
   if (options.access.audience !== 'evaluator' && options.access.audience !== 'operator') throw new Error('Rescore requires evaluator or operator access');
   if (!options.id || options.id.length > 512 || options.id.includes('\0')) throw new Error('Rescore requires a valid immutable evaluation ID');
-  const dataset = structuredClone(options.dataset);
-  const judges = Object.fromEntries(Object.entries(options.evaluation.judges).map(([name, route]) => [name, { ...route }]));
-  const embeddings = { ...options.evaluation.embeddings };
+  const criteria = snapshotCriteria(options);
+  const replay = await options.store.readReplay(options.runId, options.access);
+  const { report: original, source } = capturedTrial(replay);
+  if (replay.evaluations.some(entry => entry.id === options.id)) throw new Error('Rescore evaluation ID already exists');
+  const observer = criteria.evaluation.observeJudgeAttempt;
+  const report = await rescoreWithCriteria(original, source, { ...criteria, evaluation: { ...criteria.evaluation,
+    observeJudgeAttempt: async attempt => {
+      await options.store.appendEvent(options.runId, { id: randomUUID(),
+        payload: { type: 'judge.attempt', evaluationId: options.id, payload: attempt } }, 'evaluator');
+      await observer?.(structuredClone(attempt));
+    } } });
+  await options.store.appendEvaluation(options.runId, { id: options.id, report }, 'evaluator');
+  return report;
+}
+
+export async function rescoreWithCriteria(original: Omit<TrialReport, 'paths'>, source: { id: string; digest: string },
+  options: CriteriaOptions) {
+  const { dataset } = options, { judges, embeddings } = options.evaluation;
   const inferenceRoutes = {
     judges: Object.fromEntries(Object.entries(judges).map(([name, route]) => [name, { providerId: route.provider.id, model: route.model, citationRepairs: route.citationRepairs ?? 0 }])),
     embeddings: Object.fromEntries(Object.entries(embeddings).map(([name, route]) => [name, { providerId: route.id, version: route.version }])),
   };
-  const replay = await options.store.readReplay(options.runId, options.access);
-  const { report: original, source } = capturedTrial(replay);
-  if (replay.evaluations.some(entry => entry.id === options.id)) throw new Error('Rescore evaluation ID already exists');
   const records = dataset.records.filter(record => record.id === original.recordId);
   if (records.length !== 1) throw new Error('New criteria must select the original record exactly once');
   const record = records[0]!;
   if (record.turns?.some(turn => turn.checks?.length)) throw new Error('Per-turn rescoring requires stored turn snapshots; only final stages are supported');
   if (!record.effectiveStages.length) throw new Error('Rescore requires a nonempty final-stage plan');
-  const observer = options.evaluation.observeJudgeAttempt;
-  const evaluationContext = await freezeCriteria(dataset, { ...options.evaluation, judges, embeddings,
-    observeJudgeAttempt: async attempt => {
-      await options.store.appendEvent(options.runId, { id: randomUUID(),
-        payload: { type: 'judge.attempt', evaluationId: options.id, payload: attempt } }, 'evaluator');
-      await observer?.(structuredClone(attempt));
-    } }, options.registry);
-  const report = await rescoreFinalStages(original, { id: options.id, evaluationId: source.id, digest: source.digest,
+  const evaluationContext = await freezeCriteria(dataset, options.evaluation, options.registry);
+  return rescoreFinalStages(original, { requireConfirmedClosure: options.requireConfirmedClosure, id: options.id, evaluationId: source.id, digest: source.digest,
     criteria: { datasetId: dataset.id, datasetDigest: dataset.sourceDigest, sharedPlanDigest: dataset.sharedPlanDigest,
       stages: record.effectiveStages, registryVersions: dataset.registryVersions, sidecarDigests: dataset.criterionFileDigests, inferenceRoutes },
     evaluation: evaluationContext, registry: options.registry, signal: options.signal });
-  await options.store.appendEvaluation(options.runId, { id: options.id, report }, 'evaluator');
-  return report;
 }
 
 export async function rescoreFinalStages(original: Omit<TrialReport, 'paths'>, options: {

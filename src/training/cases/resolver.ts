@@ -18,7 +18,16 @@ export function resolveDatasetForCost(document: DatasetDocument, options: Resolu
   return projectDatasetCost(resolve(document, options, true));
 }
 
-function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly: boolean): ResolvedDataset {
+/** Resolve only the recorded case's terminal checks. Native preparations and turn checks are historical. */
+export function resolveCapturedCriteria(document: DatasetDocument, options: ResolutionOptions, recordId: string, artifacts: readonly string[]): ResolvedDataset {
+  const records = document.dataset.records.filter(record => record.id === recordId);
+  if (records.length !== 1) throw new Error('New criteria must select the original record exactly once');
+  const { live: _live, ...terminal } = document.dataset;
+  const dataset = { ...terminal, records };
+  return resolve({ ...document, dataset }, options, false, new Set(artifacts));
+}
+
+function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly: boolean, capturedArtifacts?: ReadonlySet<string>): ResolvedDataset {
   const dataset = validateDataset(document.dataset, options.inferenceProviders);
   if (options.subject !== undefined && dataset.subject !== undefined && options.subject !== dataset.subject) {
     fail('$.subject', 'does not match the selected native subject');
@@ -39,7 +48,7 @@ function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly
     const profile = dataset.setup.profile;
     if (typeof profile !== 'string' || !profile) fail('$.setup.profile', 'required preparation profile');
     const preparation = registry.preparations?.[profile];
-    if (!costOnly) {
+    if (!costOnly && !capturedArtifacts) {
       if (!preparation) fail('$.setup', `unsupported preparation ${profile}`);
       versions[`preparation:${profile}`] = preparation.version;
     }
@@ -47,9 +56,9 @@ function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly
   const sharedVersions = structuredClone(versions);
   const records: ResolvedRecord[] = dataset.records.map(record => {
     if (options.requireGroups && !record.group) fail(`record.${record.id}.group`, 'required for optimization and held-out comparison');
-    const expanded = expandRecord(dataset, record, options, costOnly);
+    const expanded = expandRecord(dataset, record, options, costOnly || capturedArtifacts !== undefined);
     validateRecord(expanded, `record.${record.id}`, true);
-    if (expanded.setup && !costOnly) {
+    if (expanded.setup && !costOnly && !capturedArtifacts) {
       const profile = expanded.setup.profile as string;
       versions[`preparation:${profile}`] = registry.preparations![profile]!.version;
     }
@@ -57,13 +66,14 @@ function resolve(document: DatasetDocument, options: ResolutionOptions, costOnly
     if (expanded.setup?.artifacts) {
       for (const name of Object.keys(object(expanded.setup.artifacts, 'setup.artifacts'))) artifactNames.add(name);
     }
-    const recordContext = { ...context, artifacts: artifactNames };
+    const recordContext = { ...context, artifacts: capturedArtifacts ?? artifactNames };
     const stages = [...normalizeStages(dataset), ...normalizeStages(expanded, 'record-checks')];
     if (!stages.length) fail(`record.${record.id}`, 'requires at least one effective terminal check');
     const effectiveStages = resolveStages(stages, recordContext);
     const recordLive = { checks: resolveLive(dataset.live?.checks ?? [], recordContext) };
     const availableBindings = new Set<string>();
     for (const turn of expanded.turns ?? []) {
+      if (capturedArtifacts) delete turn.checks;
       if (turn.checks) turn.checks = resolveStages(normalizeStages({ checks: turn.checks }, `turn-${turn.id}`), recordContext, true)[0]!.checks;
       validateBindingReferences(turn.input, availableBindings, `record.${record.id}.turn.${turn.id}.input`);
       for (const name of Object.keys(turn.bind ?? {})) {

@@ -1,10 +1,12 @@
 import { mkdtemp, readFile, rename, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { testBankYaml, testJudge, testMaterial, testReplies } from "../training/questionnaire/index.js";
 import { regradeTraining } from "./trainingRegrade.js";
 
+import { fixture as replayFixture } from "../training/experiments/replay/fixture.js";
+import { writeTrialEval } from "../training/experiments/replay/index.js";
 import { runCli } from "../cli/runCli.js";
 import { contentDigest, openExperimentStore, readTrialEval, runStoredTrial, snapshotCandidate, storedJsonDigest } from "../training/index.js";
 import { complete, setup } from "../training/experiments/trials/fixture.js";
@@ -164,4 +166,96 @@ it('moves a private multi-turn eval out of the store and regrades its trace offl
   envelope.digest = storedJsonDigest(envelope.payload);
   await writeFile(moved, JSON.stringify(envelope));
   await expect(readTrialEval(moved)).rejects.toThrow('artifact digest mismatch');
+});
+
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+async function recorded() {
+  const { store, options, runRoot } = await replayFixture(report => {
+    report.stop!.quiescence = 'confirmed';
+    report.snapshot.events = [...report.snapshot.events, { id: 'dispatch', type: 'tool.dispatch', timestamp: '2026-01-01T00:00:00Z',
+      trialId: report.id, wakeId: 'wake', source: 'native', seq: 1, callId: 'call', tool: 'write' }];
+    const article = report.snapshot.artifacts.article!;
+    report.snapshot.artifacts = { ...report.snapshot.artifacts,
+      reply: { ...article, name: 'reply', provenance: 'trial-reply', checkpointId: 'final/reply' },
+      cache: { ...article, name: 'cache', provenance: 'PRIVATE-CACHE' } };
+  });
+  const root = path.dirname(path.dirname(runRoot)), out = path.join(root, 'graded'), dataset = path.join(root, 'criteria.yaml');
+  const replay = await store.readReplay(options.runId, options.access);
+  const record = options.dataset.records[0]!;
+  expect(record.outputs).toBeUndefined();
+  const file = path.join(root, await writeTrialEval({ storeRoot: root, registry: options.registry, record }, replay, [], new Map()));
+  await rm(runRoot, { recursive: true });
+  const bytes = await readFile(file, 'utf8');
+  expect(bytes).not.toContain('PRIVATE-CACHE');
+  const capture = await readTrialEval(file);
+  expect(Object.keys(capture.report.snapshot.artifacts)).toEqual(['reply']);
+  const lines: string[] = [];
+  const streams = { stdout: (line: string) => lines.push(line), stderr: (line: string) => lines.push(line) };
+  const args = ['train', '--regrade', file, '--train', dataset, '--out', out];
+  const forbidden = vi.fn(() => { throw new Error('Unexpected subject or optimizer'); });
+  const handlers = { loadTrainingProject: forbidden, createTrainingContext: forbidden, runTraining: forbidden };
+  return { root, file, bytes, out, dataset, args, streams, lines, handlers, forbidden };
+}
+
+const trace = { id: 'trace', eval: 'tool-called', tool: 'write', phase: 'dispatch' };
+const criteria = (checks: unknown[], training?: unknown) => JSON.stringify({ schema: 'spawnfile.training.dataset.v1', id: 'revised',
+  setup: { profile: 'spawnfile/moment' }, training, records: [{ id: 'story', setup: { moment: { wake: 'unused' } },
+    input: { prompt: 'Never execute' }, context: { origin: 'replacement' }, checks }] });
+
+it('grades the implicit reply through the authored grader and original tool evidence', async () => {
+  const f = await recorded();
+  await writeFile(f.dataset, criteria([trace, { id: 'grade', eval: 'grader', grader: 'grader.json', input: 'artifact:reply',
+    context: { origin: 'context:origin' } }]));
+  await writeFile(path.join(f.root, 'grader.json'), JSON.stringify({ schema: 'spawnfile.training.grader.v1', id: 'editor',
+    calibration: 'identity', context: { origin: { description: 'Source' } }, model: { backend: 'typesafe', name: 'jev-1.13.0' },
+    max_spend_usd: 0.5, questions: [{ id: 'q', ask: 'Is the headline accurate?', type: 'yes-no', expected: 'yes',
+      reads: ['output.headline', 'context.origin'] }], score: { method: 'weighted', pass_at: 0.8 } }));
+  vi.stubEnv('TYPESAFE_API_KEY', 'offline-test');
+  const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+    const { state, questions } = JSON.parse(String(init?.body));
+    expect(JSON.parse(state)).toEqual({ 'output.headline': 'ARTICLE', 'context.origin': 'original' });
+    return Response.json({ model: 'jev-1.13.0', answers: Object.fromEntries(Object.keys(questions).map(key =>
+      [key, { type: 'noul', noul: 0.9 }])), usage: { input_tokens: 10, output_tokens: 1 } });
+  });
+  vi.stubGlobal('fetch', fetch);
+  expect(await runCli(f.args, f), f.lines.join('\n')).toBe(0);
+  const report = JSON.parse(await readFile(path.join(f.out, 'REGRADE.json'), 'utf8'));
+  expect(report).toMatchObject({ status: 'pass', original: { status: 'fail' }, stop: { quiescence: 'confirmed' },
+    evaluation: { checks: { trace: { status: 'pass', evidence: [{ kind: 'event', id: 'dispatch' }] },
+      grade: { status: 'pass', score: 0.9, grading: { identity: { calibration: { mode: 'identity' } } } } } } });
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(await readFile(f.file, 'utf8')).toBe(f.bytes);
+  const envelope = JSON.parse(f.bytes);
+  envelope.payload.report.snapshot.events[0].tool = 'altered';
+  await writeFile(f.file, JSON.stringify(envelope));
+  expect(await runCli(f.args, f)).not.toBe(0);
+  expect(f.lines.join('\n')).toContain('payload digest mismatch');
+  expect(fetch).toHaveBeenCalledOnce();
+  await writeFile(f.file, f.bytes);
+  expect(f.forbidden).not.toHaveBeenCalled();
+  await rm(path.join(f.root, 'grader.json'));
+  expect(await runCli(f.args, f)).not.toBe(0);
+  expect(f.lines.join('\n')).toContain('cannot load grader resource');
+  expect(fetch).toHaveBeenCalledOnce();
+});
+
+it('uses only the named judge with the captured reply and refuses a missing subscription profile', async () => {
+  const f = await recorded();
+  await writeFile(f.dataset, criteria([trace, { id: 'reader', eval: 'llm-rubric', input: 'artifact:reply#/headline',
+    judge: 'editor', rubric: { prompt: 'Grade the headline.' }, minimum: 0.8 }], {
+    models: { reader: { provider: 'codex-subscription', model: 'test-reader' }, writer: { provider: 'ollama', model: 'unused' } },
+    judges: { editor: { model: 'reader' } }, optimizer: { model: 'writer' } }));
+  const generate = vi.fn(async () => ({ model: 'test-reader', route: 'fixture', usage: null, text: JSON.stringify({
+    score: 1, verdict: 'pass', reasons: ['Accurate'], citations: [{ source: 'input', quote: 'ARTICLE' }] }) }));
+  const provider = vi.fn(() => ({ id: 'fixture', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const,
+    temperature: false, seed: false }, generate }));
+  expect(await runCli(f.args, { ...f, handlers: { ...f.handlers, runTrainingRegrade: options => regradeTraining({ ...options, provider }) } }),
+    f.lines.join('\n')).toBe(0);
+  expect(provider).toHaveBeenCalledTimes(1);
+  expect(provider).toHaveBeenCalledWith(expect.objectContaining({ model: 'test-reader' }), expect.any(Number));
+  expect(generate).toHaveBeenCalledOnce();
+  expect(f.forbidden).not.toHaveBeenCalled();
+  expect(await runCli(f.args, f)).not.toBe(0);
+  expect(f.lines.join('\n')).toContain('--auth-profile');
 });

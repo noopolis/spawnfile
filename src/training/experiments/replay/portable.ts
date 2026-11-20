@@ -36,7 +36,7 @@ export async function writeTrialEval(options: Pick<StoredTrialOptions, 'storeRoo
   portable.snapshot.events = portable.snapshot.events.map(portableObservation);
   const { id, context, input, turns, outputs, reference, effectiveStages, live } = options.record;
   portable.snapshot.artifacts = Object.fromEntries(Object.entries(portable.snapshot.artifacts)
-    .filter(([name]) => Object.hasOwn(outputs ?? {}, name)));
+    .filter(([name, artifact]) => Object.hasOwn(outputs ?? {}, name) || name === 'reply' && artifact.provenance === 'trial-reply'));
   const versions = Object.fromEntries(Object.entries(options.registry).map(([key, entry]) => [key, entry.definition.version]));
   const gradingBlobs: Record<string, string> = {};
   const compact = await externalizeEvaluationJson({ async putBlob(runId, bytes) {

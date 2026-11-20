@@ -29,7 +29,7 @@ export const registerTrainCommand = (
     .option("--history <directory>", "Local recorded history for --materialize")
     .option("--dry-run", "Validate and estimate without compiling, authenticating or starting models")
     .option("--resume", "Resume the exact persisted training experiment in --out")
-    .option("--regrade <file>", "Regrade evals/<trial>.eval offline or grade a recorded-output manifest with its judges")
+    .option("--regrade <file>", "Regrade a .eval offline, add --train for configured criteria, or grade a recorded-output manifest")
     .option("--trial-cache <mode>", "reuse (default): replay identical earlier trials and judgments; fresh: run every trial again (stability repeats), still recording; off: neither")
     .option("--cache-dir <directory>", "Trial and judgment cache kept across runs (default ~/.spawnfile/training-cache)")
     .option("--judge-concurrency <n>", "Warm judge containers per judge, booted only when all are busy (1..8, default 4)")
@@ -45,7 +45,11 @@ export const registerTrainCommand = (
       if (typeof options.out !== "string") throw new SpawnfileError("validation_error", "--regrade requires --out");
       const concurrency = typeof options.concurrency === "string" ? Number(options.concurrency) : undefined;
       if (concurrency !== undefined && (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 16)) throw new SpawnfileError("validation_error", "--concurrency for --regrade must be an integer from 1 to 16");
-      setExitCode(await handlers.runTrainingRegrade({ manifest: options.regrade, out: options.out,
+      const train = options.train as string | undefined;
+      const judges = options.judge as string[], citationRepairs = options.judgeCitationRepairs as string[];
+      if (train && !options.regrade.endsWith(".eval")) throw new SpawnfileError("validation_error", "--train with --regrade requires a .eval file");
+      if ((judges.length || citationRepairs.length) && !train) throw new SpawnfileError("validation_error", "Regrade judge flags require --train");
+      setExitCode(await handlers.runTrainingRegrade({ manifest: options.regrade, out: options.out, train, judges, citationRepairs,
         authProfile: options.authProfile as string | undefined, ...(concurrency === undefined ? {} : { concurrency }), controls, streams, signal }));
       return;
     }

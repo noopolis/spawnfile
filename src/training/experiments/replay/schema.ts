@@ -108,6 +108,8 @@ const reportFields = z.object({
     limit: declaredLimit.optional(), failure: z.literal('quota').optional(), admission: z.object({ executionRecords: tokenCount, executionsUsed: tokenCount, agentExecutionsUsed: tokenCount,
       tokensUsed: tokenCount, agentTokensUsed: tokenCount, toolEvents: tokenCount, outputEvents: tokenCount }).strict().optional(),
     text: z.string(), coverage: z.array(coverage), usage: usage.nullable(),
+    evidence: z.object({ adapterId: identity, reusedFrom: identity.optional() })
+      .transform(origin => ({ ...origin, payload: null })).optional(),
     error: z.string().optional(), stop: stop.optional() }) })),
   evaluation: plan, live: z.array(z.object({ checkId: z.string(), boundary: z.string(), result })),
   decisiveFailure: result.optional(), stop: stop.optional(), error: z.string().optional(),

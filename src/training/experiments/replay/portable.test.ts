@@ -37,6 +37,26 @@ it('keeps missing output coverage unknown and omits unselected collector files',
   expect(await regradeTrialEval(path)).toMatchObject({ coverage: [], status: 'unknown', evaluation: { status: 'unknown' } });
 });
 
+it.each([
+  ['trial-reply', ['article', 'reply']],
+  ['operator-file', ['article']],
+] as const)('includes only the authoritative implicit reply beside declared files (%s)', async (provenance, names) => {
+  const path = await capture(report => {
+    report.snapshot.artifacts = { ...report.snapshot.artifacts,
+      reply: { ...report.snapshot.artifacts.article!, name: 'reply', provenance } };
+  });
+  expect(Object.keys((await readTrialEval(path)).report.snapshot.artifacts).sort()).toEqual(names);
+});
+
+it('keeps the measured trial identity on reuse and excludes opaque native data', async () => {
+  const path = await capture(report => {
+    report.turns[0]!.native.evidence = { adapterId: 'native', reusedFrom: 'measured-trial', payload: 'private native bytes' };
+  });
+  expect((await readTrialEval(path)).report.turns[0]!.native.evidence)
+    .toEqual({ adapterId: 'native', reusedFrom: 'measured-trial', payload: null });
+  expect(await readFile(path, 'utf8')).not.toContain('private native bytes');
+});
+
 it('checks the format version, report identity and grading blob references', async () => {
   const path = await capture();
   const file = JSON.parse(await readFile(path, 'utf8'));
