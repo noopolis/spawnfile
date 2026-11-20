@@ -1,7 +1,7 @@
 import type { EffectiveModelTarget, ResolvedAgentNode } from "../compiler/types.js";
 import { SpawnfileError } from "../shared/index.js";
 import {
-  createRuntimeImageCopyCommand,
+  createRuntimeImageCopyCommand, globalNpmInstallCommand,
   type RuntimeInstallCapability
 } from "./containerRecipe.js";
 import {
@@ -21,7 +21,7 @@ export const standardRuntimeInstall: RuntimeInstallCapability = Object.freeze({
       case "npm": {
         const spec = resolveInstallPackageSpec(selection.packageName, selection.version, packageOverrides);
         return {
-          commands: [`npm install -g --omit=dev --no-fund --no-audit ${spec}`],
+          commands: [globalNpmInstallCommand([spec])],
           copyCommands: needsVendorCopyCommand([selection.packageName], packageOverrides) ? [createVendorCopyCommand()] : [],
           env: containerEnv,
           runtimeName,
