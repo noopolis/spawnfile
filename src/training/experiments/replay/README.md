@@ -62,7 +62,8 @@ claims with truncated work; legacy reports without subject usage remain readable
 ## Portable trial files
 
 Each new stored trial writes one private file under `<out>/evals/`. Its returned
-report gives the relative path in `evalFile`. Copy that file to an evaluator's
+report gives the relative path in `evalFile`. Resume restores a missing file
+from the stored evidence and the original grading inputs. Copy the file to an evaluator's
 machine and run `spawnfile train --regrade moved.eval --out graded`. Read
 `graded/REGRADE.json` for the original verdict, the new final-stage evaluation,
 coverage and native closure.

@@ -58,3 +58,5 @@ access are injected.
 portable.ts writes and verifies versioned, evaluator-owned trial files. Keep only
 normalized trace data, declared files, staged inputs and grading evidence. The
 offline reader resolves grading blobs and criterion reads inside the file.
+Persist the capture context before publishing the original evaluation. Resume
+uses that context to restore a missing file without rerunning a subject or judge.

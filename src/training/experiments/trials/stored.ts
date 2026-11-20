@@ -1,9 +1,9 @@
-import { writeTrialEval } from '../replay/index.js';
+import { evalContextEventId, publishStoredEval, trialEvalContext } from '../replay/index.js';
 import { canonicalWireId } from '../../contracts/index.js';
 import { randomUUID } from 'node:crypto';
 import type { CandidateManifest } from '../../candidates/index.js';
 import { materializeCandidate, validateCandidate } from '../../candidates/index.js';
-import type { ExperimentStore } from '../../storage/index.js';
+import { trialEvalRelativePath, type ExperimentStore } from '../../storage/index.js';
 import type { TrialOptions, TrialReport, TrialEvent } from './types.js';
 import { runTrial } from './trial.js';
 
@@ -71,9 +71,11 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
     } });
   report.candidate = structuredClone(options.candidate);
   if (options.round !== undefined) report.round = options.round;
+  report.evalFile = trialEvalRelativePath(report.id);
+  await options.store.appendEvent(report.id, { id: evalContextEventId, payload: trialEvalContext(options, inputs, sidecars) }, 'evaluator');
   await options.store.appendEvaluation(options.id, { id: randomUUID(), report }, 'evaluator');
   const replay = await options.store.readReplay(options.id, { audience: 'evaluator', phase: options.phase === 'test' ? 'test' : 'replay',
     frozenCandidateIds: [options.candidate.id] });
-  report.evalFile = await writeTrialEval(options, replay, inputs, sidecars);
+  await publishStoredEval(options.storeRoot, replay);
   return report;
 }

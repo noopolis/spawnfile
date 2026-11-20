@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Observation } from '../../contracts/execution.js';
 import { createEvaluationRegistry } from '../../evaluation/index.js';
-import { contentDigest, readStored, storedJsonDigest, writeTrialEvalFile,
+import { contentDigest, hasTrialEvalFile, readStored, storedJsonDigest, writeTrialEvalFile,
   externalizeEvaluationJson, hydrateEvaluationJson, type Replay } from '../../storage/index.js';
 import type { StoredTrialOptions } from '../trials/index.js';
 import { portableReportSchema } from './schema.js';
@@ -14,9 +14,11 @@ const envelope = z.strictObject({ schema: z.literal(schema), digest, payload: z.
 const stage = z.object({ id: z.string(), checks: z.array(z.record(z.string(), z.json())),
   gate: z.record(z.string(), z.json()).optional(), when: z.record(z.string(), z.json()).optional(),
   score: z.object({ linear: z.record(z.string(), z.number()) }).optional() });
+const task = z.object({ id: z.string(), outputs: z.record(z.string(), z.string()).optional(),
+  preparedArtifacts: z.array(z.string()).optional() }).catchall(z.json());
 const payloadSchema = z.strictObject({
   datasetId: z.string(), evaluationId: z.string(), evaluationDigest: digest,
-  task: z.record(z.string(), z.json()), inputs: z.array(z.strictObject({ id: z.string(), input: z.string() })),
+  task, inputs: z.array(z.strictObject({ id: z.string(), input: z.string() })),
   stages: z.array(stage), sidecars: z.record(z.string(), z.string()), versions: z.record(z.string(), z.string()),
   report: z.unknown(), gradingBlobs: z.record(digest, z.string()),
 });
@@ -28,16 +30,28 @@ function portableObservation(event: Observation): Observation {
   return { id, source, seq, type, timestamp, trialId, wakeId, causalParents };
 }
 
+export const evalContextEventId = 'portable-eval-context';
+const contextSchema = payloadSchema.pick({ task: true, inputs: true, stages: true, sidecars: true, versions: true });
+
+export function trialEvalContext(options: Pick<StoredTrialOptions, 'registry' | 'record'>,
+  inputs: { id: string; input: string }[], sidecars: Map<string, string>) {
+  const { id, context, input, turns, outputs, reference, effectiveStages, live } = options.record;
+  const declarations = options.record.setup?.artifacts;
+  const preparedArtifacts = declarations && typeof declarations === 'object' ? Object.keys(declarations) : undefined;
+  const captured = { task: { id, context, input, turns, outputs, reference, live, preparedArtifacts }, inputs, stages: effectiveStages,
+    sidecars: Object.fromEntries(sidecars),
+    versions: Object.fromEntries(Object.entries(options.registry).map(([key, entry]) => [key, entry.definition.version])) };
+  return contextSchema.parse(JSON.parse(JSON.stringify(captured)));
+}
+
 /** The authenticated report supplies evidence. Only staged stimuli and criterion reads supplement it. */
-export async function writeTrialEval(options: Pick<StoredTrialOptions, 'storeRoot' | 'registry' | 'record'>, replay: Replay,
-  inputs: { id: string; input: string }[], sidecars: Map<string, string>): Promise<string> {
+async function publishTrialEval(root: string, replay: Replay, context: z.infer<typeof contextSchema>): Promise<string> {
   const { report, source } = capturedTrial(replay);
   const portable = portableReportSchema.parse(report);
   portable.snapshot.events = portable.snapshot.events.map(portableObservation);
-  const { id, context, input, turns, outputs, reference, effectiveStages, live } = options.record;
+  const declared = new Set([...Object.keys(context.task.outputs ?? {}), ...context.task.preparedArtifacts ?? []]);
   portable.snapshot.artifacts = Object.fromEntries(Object.entries(portable.snapshot.artifacts)
-    .filter(([name, artifact]) => Object.hasOwn(outputs ?? {}, name) || name === 'reply' && artifact.provenance === 'trial-reply'));
-  const versions = Object.fromEntries(Object.entries(options.registry).map(([key, entry]) => [key, entry.definition.version]));
+    .filter(([name, artifact]) => declared.has(name) || name === 'reply' && artifact.provenance === 'trial-reply'));
   const gradingBlobs: Record<string, string> = {};
   const compact = await externalizeEvaluationJson({ async putBlob(runId, bytes) {
     const text = Buffer.from(bytes).toString('utf8');
@@ -45,10 +59,21 @@ export async function writeTrialEval(options: Pick<StoredTrialOptions, 'storeRoo
     gradingBlobs[digest] = text;
     return { id: digest, runId, digest, size: Buffer.byteLength(text) };
   } }, report.id, portable);
-  const payload = { datasetId: replay.manifest.datasetId, evaluationId: source.id, evaluationDigest: source.digest,
-    task: { id, context, input, turns, outputs, reference, live }, inputs, stages: effectiveStages,
-    sidecars: Object.fromEntries(sidecars), versions, report: compact, gradingBlobs };
-  return writeTrialEvalFile(options.storeRoot, report.id, JSON.stringify({ schema, digest: storedJsonDigest(payload), payload }) + '\n');
+  const payload = { datasetId: replay.manifest.datasetId, evaluationId: source.id, evaluationDigest: source.digest, ...context,
+    report: compact, gradingBlobs };
+  return writeTrialEvalFile(root, report.id, JSON.stringify({ schema, digest: storedJsonDigest(payload), payload }) + '\n');
+}
+
+export function writeTrialEval(options: Pick<StoredTrialOptions, 'storeRoot' | 'registry' | 'record'>, replay: Replay,
+  inputs: { id: string; input: string }[], sidecars: Map<string, string>): Promise<string> {
+  return publishTrialEval(options.storeRoot, replay, trialEvalContext(options, inputs, sidecars));
+}
+
+/** A durable context allows resume to finish an interrupted file write without starting the subject. */
+export async function publishStoredEval(root: string, replay: Replay, resume = false): Promise<void> {
+  if (resume && await hasTrialEvalFile(root, replay.manifest.id)) return;
+  const event = replay.events.find(event => event.id === evalContextEventId);
+  await publishTrialEval(root, replay, contextSchema.parse(event?.payload));
 }
 
 export async function readTrialEval(path: string) {

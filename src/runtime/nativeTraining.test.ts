@@ -51,15 +51,21 @@ it("writes a portable file for every trial through the project CLI and grades a 
         replacements: [{ resource: "AGENTS.md", source: "replacement.md" }] } }, validation_groups: ["second"],
       test: "test.yaml", budget: { max_trials: 6, timeout_ms: 30000 }
     } }));
-    const code = await runCli(["train", root, "--train", trainPath, "--out", out, "--editable", "AGENTS.md"], { streams });
+    const args = ["train", root, "--train", trainPath, "--out", out, "--editable", "AGENTS.md"];
+    const code = await runCli(args, { streams });
     expect(code, errors.join("\n")).toBe(0);
     expect(route).toHaveBeenCalledOnce();
     const names = await readdir(path.join(out, "evals"));
     expect(names).toHaveLength(6);
     expect(close).toHaveBeenCalledTimes(names.length);
     expect(new Set(subjects.values())).toEqual(new Set(["BASE\n", "IMPROVED\n"]));
+    const original = path.join(out, "evals", names[0]!);
+    const bytes = await readFile(original);
+    await rm(original);
+    expect(await runCli([...args, "--resume"], { streams }), errors.join("\n")).toBe(0);
+    expect(await readFile(original)).toEqual(bytes);
     const moved = path.join(root, "sample.eval");
-    await writeFile(moved, await readFile(path.join(out, "evals", names[0]!)), { mode: 0o600 });
+    await writeFile(moved, bytes, { mode: 0o600 });
     await rm(out, { recursive: true });
     await mkdir(graded);
     expect(await runCli(["train", "--regrade", moved, "--out", graded], { streams }), errors.join("\n")).toBe(0);

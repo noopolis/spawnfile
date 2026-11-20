@@ -6,11 +6,12 @@ import type { TrialReport } from '../trials/index.js';
 import { fixture } from './fixture.js';
 import { readTrialEval, regradeTrialEval, writeTrialEval } from './portable.js';
 
-async function capture(change?: (report: TrialReport) => void) {
+async function capture(change?: (report: TrialReport) => void, prepared?: Record<string, { collector: string }>) {
   const { store, options, runRoot } = await fixture(change);
   const replay = await store.readReplay(options.runId, options.access);
   const record = options.dataset.records[0]!;
   record.outputs = { article: 'article.json' };
+  if (prepared) record.setup = { profile: 'fixture', artifacts: prepared };
   const storeRoot = dirname(dirname(runRoot));
   const name = await writeTrialEval({ storeRoot, record, registry: options.registry }, replay, [], new Map());
   return join(storeRoot, name);
@@ -55,6 +56,15 @@ it('keeps the measured trial identity on reuse and excludes opaque native data',
   expect((await readTrialEval(path)).report.turns[0]!.native.evidence)
     .toEqual({ adapterId: 'native', reusedFrom: 'measured-trial', payload: null });
   expect(await readFile(path, 'utf8')).not.toContain('private native bytes');
+});
+
+it('includes declared preparation artifacts without copying their collector configuration', async () => {
+  const path = await capture(report => {
+    report.snapshot.artifacts = { ...report.snapshot.artifacts, brief: { ...report.snapshot.artifacts.article!, name: 'brief' } };
+  }, { brief: { collector: 'private collector settings' } });
+  const file = await readTrialEval(path);
+  expect(Object.keys(file.report.snapshot.artifacts).sort()).toEqual(['article', 'brief']);
+  expect(await readFile(path, 'utf8')).not.toContain('private collector settings');
 });
 
 it('checks the format version, report identity and grading blob references', async () => {

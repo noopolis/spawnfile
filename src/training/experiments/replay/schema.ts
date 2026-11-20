@@ -2,6 +2,7 @@ import { compatibleWireLiteral } from '../../contracts/index.js';
 import { createAtomicGradeResultSchema } from '../../graders/atomic/index.js';
 import { validateCandidate, type CandidateManifest } from '../../candidates/index.js';
 import { z } from 'zod';
+import { trialEvalRelativePath } from '../../storage/index.js';
 import { decisionAccountingSchema, createGradeResultSchema } from '../../graders/index.js';
 import { subjectUsageMatchesNative } from './subject-usage.js';
 import { judgeFailureCauses, type EvaluationResult } from '../../contracts/evaluation.js';
@@ -90,7 +91,7 @@ const snapshot = z.object({ trialId: identity, recordId: identity, closed: z.lit
 const declaredLimit = z.enum(['tokens', 'requests', 'timeout']);
 const reportFields = z.object({
   schema: compatibleWireLiteral('spawnfile.training.trial.v1'), id: identity, phase: z.enum(['train', 'validation', 'test']), candidateId: identity,
-  datasetDigest: identity, planDigest: identity, recordId: identity,
+  datasetDigest: identity, planDigest: identity, recordId: identity, evalFile: z.string().optional(),
   candidate: z.custom<CandidateManifest>(value => {
     try { validateCandidate(value as CandidateManifest); return true; } catch { return false; }
   }, 'Invalid evaluated candidate manifest').optional(),
@@ -108,14 +109,16 @@ const reportFields = z.object({
     limit: declaredLimit.optional(), failure: z.literal('quota').optional(), admission: z.object({ executionRecords: tokenCount, executionsUsed: tokenCount, agentExecutionsUsed: tokenCount,
       tokensUsed: tokenCount, agentTokensUsed: tokenCount, toolEvents: tokenCount, outputEvents: tokenCount }).strict().optional(),
     text: z.string(), coverage: z.array(coverage), usage: usage.nullable(),
-    evidence: z.object({ adapterId: identity, reusedFrom: identity.optional() })
-      .transform(origin => ({ ...origin, payload: null })).optional(),
+    evidence: z.object({ adapterId: identity, reusedFrom: identity.optional(), payload: z.unknown() }).optional(),
     error: z.string().optional(), stop: stop.optional() }) })),
   evaluation: plan, live: z.array(z.object({ checkId: z.string(), boundary: z.string(), result })),
   decisiveFailure: result.optional(), stop: stop.optional(), error: z.string().optional(),
 });
 
 function verifyReport(report: Omit<z.infer<typeof reportFields>, 'paths'>, context: z.RefinementCtx) {
+  if (report.evalFile !== undefined && report.evalFile !== trialEvalRelativePath(report.id)) {
+    context.addIssue({ code: 'custom', path: ['evalFile'], message: 'Trial eval path does not match the trial identity' });
+  }
   if (report.candidate && report.candidate.id !== report.candidateId) {
     context.addIssue({ code: 'custom', path: ['candidate'], message: 'Evaluated candidate identity mismatch' });
   }
@@ -128,4 +131,8 @@ function verifyReport(report: Omit<z.infer<typeof reportFields>, 'paths'>, conte
 }
 
 export const trialReportSchema = reportFields.superRefine(verifyReport);
-export const portableReportSchema = reportFields.omit({ paths: true, candidate: true }).superRefine(verifyReport);
+export const portableReportSchema = reportFields.omit({ paths: true, candidate: true, evalFile: true })
+  .superRefine(verifyReport).transform(report => {
+    for (const turn of report.turns) if (turn.native.evidence) turn.native.evidence.payload = null;
+    return report;
+  });

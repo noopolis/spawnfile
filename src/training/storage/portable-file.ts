@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { lstat } from 'node:fs/promises';
 import { contentDigest } from './content.js';
 import { immutableWrite, initializeStoreRoot, safeStorePath } from './filesystem.js';
 
@@ -8,9 +8,22 @@ function trialEvalName(id: string): string {
   return base + '.eval';
 }
 
+export const trialEvalRelativePath = (id: string): string => 'evals/' + trialEvalName(id);
+
+export async function hasTrialEvalFile(root: string, id: string): Promise<boolean> {
+  const path = await safeStorePath(await initializeStoreRoot(root), ['evals', trialEvalName(id)]);
+  try {
+    if (!(await lstat(path)).isFile()) throw new Error('Expected a regular trial eval file');
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
 export async function writeTrialEvalFile(root: string, id: string, bytes: string): Promise<string> {
   const name = trialEvalName(id);
   const path = await safeStorePath(await initializeStoreRoot(root), ['evals', name]);
   await immutableWrite(path, bytes);
-  return join('evals', name);
+  return trialEvalRelativePath(id);
 }
