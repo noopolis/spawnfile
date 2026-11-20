@@ -135,6 +135,8 @@ Hermes and OpenCode both require a login created for the selected harness. Each 
 
 Hermes rejects WhatsApp, Discord guild or channel allowlists, Slack or Discord pairing, and outbound webhooks. Its upstream gateway cannot enforce those declarations with the compiled credentials. For both harnesses, training reports tool coverage as partial. A captured completion can support a tool-call grade. Missing events alone cannot establish that a tool never ran.
 
+Each deployment keeps the agent's native conversation history in a per-instance volume. Replacing the container can resume the same Moltnet conversation. On startup, Hermes also refreshes compiler-owned workspace files. An operator's edits and unrelated workspace files survive that refresh.
+
 ### Active Runtime Capability Matrix
 
 Support levels:

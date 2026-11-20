@@ -58,7 +58,12 @@ describe("Hermes Agent adapter", () => {
       approvals: { mode: "manual", unattended_mode: "deny", cron_mode: "deny" }
     });
     expect(target.configEnvBindings).toBeUndefined();
-    expect(target.persistentMounts).toEqual([{ id: "hermes-agent-assistant-cron", mountPath: "<instance-root>/hermes/cron", reason: "Hermes Agent native cron state" }, { id: "hermes-agent-assistant-workspace", mountPath: "<instance-root>/workspace", reason: "Hermes Agent workspace" }]);
+    expect(target.persistentMounts).toEqual([
+      { id: "hermes-agent-assistant-cron", mountPath: "<instance-root>/hermes/cron", reason: "Hermes Agent native cron state" },
+      { id: "hermes-agent-assistant-sessions", lifecycle: "exclusive-reattach",
+        mountPath: "<instance-root>/hermes/.spawnfile-session-store", reason: "Hermes Agent native sessions and transcript recovery" },
+      { id: "hermes-agent-assistant-workspace", mountPath: "<instance-root>/workspace", reason: "Hermes Agent workspace" }
+    ]);
   });
 
   it("binds only the selected endpoint credential at startup", async () => {

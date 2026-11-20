@@ -54,10 +54,10 @@ These runtimes have working adapters:
 1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, native `mcp.servers`, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
 3. **[Daimon](/runtimes/daimon/)** -- Noopolis-native generated harness app backed by Pi, grouped team agents, subscription auth support, local model endpoints, shared workspace resources.
-4. **Hermes Agent** uses the `hermes-agent` runtime name and emits structured training turns. [Hermes Agent](https://github.com/NousResearch/hermes-agent)
-5. **OpenCode** uses the `opencode` runtime name and emits native tool results during training. [OpenCode](https://github.com/anomalyco/opencode)
+4. **Hermes Agent** supports ChatGPT, SuperGrok, Nous Portal and MiniMax logins. Its adapter lowers cron schedules, MCP servers, and supported Telegram, Discord and Slack access rules. [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+5. **OpenCode** supports ChatGPT, SuperGrok and GitHub Copilot logins, plus the OpenCode Go plan key. Its adapter supports MCP servers and text-only helpers. [OpenCode](https://github.com/anomalyco/opencode)
 
-Both use ACP for room and direct messages. The bundled Moltnet v0.1.22 release predates ACP. Standalone use and training do not require Moltnet.
+Both harnesses export a portable `.eval` from training and use ACP for Moltnet rooms and direct messages. The bundled Moltnet v0.1.22 release predates ACP. Standalone agents and training work independently of Moltnet. [Subscription setup and feature details](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIMES.md#use-a-model-subscription)
 
 ## Exploratory Runtimes
 

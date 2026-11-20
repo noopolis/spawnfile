@@ -7,6 +7,8 @@ import { hermesAuthDirectory } from "./auth.js";
 import { hermesAuthLaunchCommand } from "./authLaunch.js";
 import { hermesConfigFile } from "./config.js";
 import { hermesSurfaceEnvCommand } from "./surfaces.js";
+import { hermesWorkspaceLaunchCommand } from "./workspaceAssets.js";
+import { hermesNativeSessionCommand } from "./sessionStore.js";
 import { hermesBinary } from "./install.js";
 
 export const hermesEnvCommand = [
@@ -44,7 +46,7 @@ function acpArgs(context: RuntimeMoltnetBridgeContext): string[] {
   return [
     ...hermesEnvCommand.slice(1),
     ...Object.entries(hermesEnvironment(homePath, context.workspacePath)).map(([name, value]) => `${name}=${value}`),
-    ...hermesSurfaceEnvCommand, ...hermesAuthLaunchCommand, hermesBinary, "acp"
+    ...hermesSurfaceEnvCommand, ...hermesAuthLaunchCommand, ...hermesWorkspaceLaunchCommand, ...hermesNativeSessionCommand, hermesBinary, "acp"
   ];
 }
 

@@ -2,6 +2,7 @@ import { hermesSurfaceEnvCommand } from "./surfaces.js";
 import { posix } from "node:path";
 import type { NativeTrainingDriver, NativeTrainingInstance, NativeTrainingTurn } from "../nativeTraining.js";
 import { hermesAuthLaunchCommand } from "./authLaunch.js";
+import { hermesNativeSessionCommand } from "./sessionStore.js";
 import { hermesConfigFile } from "./config.js";
 import { hermesEnvCommand, hermesEnvironment } from "./instance.js";
 import { emptyHermesTotals, hermesTurnUsage, readHermesTurn, type HermesTokenTotals } from "./trainingEvents.js";
@@ -23,7 +24,7 @@ const sessions = new WeakMap<NativeTrainingInstance, TrialSession>();
 // A chat client can auto-start an idle-exit gateway before the foreground owner
 // finishes booting. Probe without auto-start and discard the attach ticket.
 const chatOnReadyGateway = [
-  ...hermesEnvCommand, ...hermesSurfaceEnvCommand, ...hermesAuthLaunchCommand, "bash", "-c",
+  ...hermesEnvCommand, ...hermesSurfaceEnvCommand, ...hermesAuthLaunchCommand, ...hermesNativeSessionCommand, "bash", "-c",
   'for ((attempt=0; attempt<60; attempt++)); do if hermes gateway attach --json >/dev/null 2>&1; then exec hermes chat "$@"; fi; sleep 1; done; exit 1',
   "hermes-training"
 ];

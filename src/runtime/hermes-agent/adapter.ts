@@ -21,6 +21,8 @@ import {
 import { hermesAuthDirectory, hermesAuthRoute, hermesAuthRouteFile, prepareHermesRuntimeAuth } from "./auth.js";
 import { hermesAuthLaunchCommand } from "./authLaunch.js";
 import { hermesEnvCommand, hermesEnvironment, hermesWiring } from "./instance.js";
+import { hermesWorkspaceAssetFiles, hermesWorkspaceCaptureCommand, hermesWorkspaceLaunchCommand } from "./workspaceAssets.js";
+import { hermesNativeSessionCommand, hermesSessionMount, hermesSessionStoreCommand } from "./sessionStore.js";
 import { hermesImageRef, hermesInstall } from "./install.js";
 
 function checkAgent(node: ResolvedAgentNode) {
@@ -65,9 +67,11 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
     startCommand: [
       ...hermesEnvCommand,
       ...Object.entries(hermesEnvironment("<home-path>", "<workspace-path>")).map(([name, value]) => `${name}=${value}`),
-      ...hermesSurfaceEnvCommand, ...hermesAuthLaunchCommand, ...hermesCronGatewayCommand
+      ...hermesSurfaceEnvCommand, ...hermesAuthLaunchCommand, ...hermesWorkspaceLaunchCommand, ...hermesNativeSessionCommand, ...hermesCronGatewayCommand
     ],
     postRootfsCommands: [
+      hermesWorkspaceCaptureCommand,
+      hermesSessionStoreCommand,
       // The pinned Hermes atomic writer stages and replaces beside the resolved symlink target.
       // Both auth.json and its flock must follow the same writable profile mount.
       "find /var/lib/spawnfile/instances/hermes-agent -mindepth 2 -maxdepth 2 -type d -name hermes " +
@@ -95,6 +99,7 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
     const schedule = hermesScheduleCapability(node);
     const delegation = hermesSubagentDiagnostic(node);
     const soul = node.docs.find(document => document.role === "soul");
+    const workspaceFiles = [...createDocumentFiles("workspace", node.docs), ...createSkillFiles(hermesSkillRoot, node.skills)];
     return {
       capabilities: createAgentCapabilities(node, {
         ...memory,
@@ -111,9 +116,9 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
         { path: hermesConfigFile, content: buildHermesConfig(models, node) },
         { path: `home/${hermesAuthRouteFile}`, content: `${nativeRoute ?? "-"}\n` },
         ...hermesScheduleFiles(node),
-        ...createDocumentFiles("workspace", node.docs),
-        ...(soul ? [{ path: "home/SOUL.md", content: soul.content }] : []),
-        ...createSkillFiles(hermesSkillRoot, node.skills)
+        ...workspaceFiles,
+        ...hermesWorkspaceAssetFiles(workspaceFiles),
+        ...(soul ? [{ path: "home/SOUL.md", content: soul.content }] : [])
       ]
     };
   }
@@ -131,7 +136,7 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
           opaqueMountTargets: [`<instance-root>/hermes/${hermesAuthDirectory}`]
         } : {}),
         ...(bindings.length ? { configEnvBindings: bindings } : {}),
-        persistentMounts: [hermesCronMount(input.slug), {
+        persistentMounts: [hermesCronMount(input.slug), hermesSessionMount(input.slug), {
           id: `hermes-agent-${input.slug}-workspace`,
           mountPath: "<instance-root>/workspace",
           reason: "Hermes Agent workspace"
