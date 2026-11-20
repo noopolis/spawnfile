@@ -80,10 +80,14 @@ See [container deployment](specs/CONTAINERS.md), [status](specs/STATUS.md), and 
 | Runtime | Use it for |
 |---|---|
 | **Daimon** | Agents using subscription CLI engines such as Codex and Claude Code, with Moltnet and memory integration. |
+| **Hermes Agent** | Run a Hermes workspace and capture its training turns with `runtime: hermes-agent`. |
 | **OpenClaw** | OpenClaw agents and their native messaging surfaces. The default agent scaffold. |
+| **OpenCode** | Run an OpenCode workspace and capture its training turns with `runtime: opencode`. |
 | **PicoClaw** | PicoClaw agents and their native messaging surfaces. |
 
 Daimon requires a pinned runtime image matching the compiler contract.
+
+Hermes Agent and OpenCode connect to Moltnet through ACP. The bundled Moltnet v0.1.22 release predates ACP. For chat, supply an [ACP-capable Moltnet build](specs/RUNTIME_ADAPTERS.md). Standalone agents and training work independently of Moltnet.
 
 Portability is capability-specific: the compiler reports each feature as **supported**, **degraded**, or **unsupported**. Read that report before switching runtimes. Exact versions live in [runtimes.yaml](runtimes.yaml); the [runtime specification](specs/RUNTIMES.md) describes the adapter model.
 

@@ -54,14 +54,16 @@ These runtimes have working adapters:
 1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, native `mcp.servers`, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
 3. **[Daimon](/runtimes/daimon/)** -- Noopolis-native generated harness app backed by Pi, grouped team agents, subscription auth support, local model endpoints, shared workspace resources.
+4. **Hermes Agent** uses the `hermes-agent` runtime name and emits structured training turns. [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+5. **OpenCode** uses the `opencode` runtime name and emits native tool results during training. [OpenCode](https://github.com/anomalyco/opencode)
+
+Both use ACP for room and direct messages. The bundled Moltnet v0.1.22 release predates ACP. Standalone use and training do not require Moltnet.
 
 ## Exploratory Runtimes
 
 These runtimes are tracked as adapter research targets but have no bundled adapter yet:
 
-5. **[OpenFang](https://github.com/RightNow-AI/openfang)** -- declarative config and agent templates, not mapped to a Spawnfile adapter yet.
-6. **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** -- active harness candidate; config, workspace, and skill surfaces still need research.
-7. **[OpenCode](https://github.com/anomalyco/opencode)** -- active coding-agent harness candidate; long-running runtime behavior still needs research.
+OpenFang provides declarative configuration and agent templates. Its Spawnfile adapter is exploratory. [OpenFang](https://github.com/RightNow-AI/openfang)
 
 ## Version Pinning
 

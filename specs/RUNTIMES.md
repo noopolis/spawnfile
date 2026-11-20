@@ -71,8 +71,12 @@ The active v0.1 adapters are:
 | Runtime | Install Strategy | Adapter Shape |
 |---------|------------------|---------------|
 | `daimon` | Immutable generic runtime image | One public `noopolis.daimon.organization-runtime.v1` host for up to 32 agents |
+| `hermes-agent` | Upstream multi-architecture image pinned by digest | One Hermes workspace, native session and configuration per agent |
 | `openclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
+| `opencode` | Pinned `opencode-ai` npm package | One OpenCode server and workspace per agent |
 | `picoclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
+
+Hermes Agent and OpenCode can run standalone or as team members. Both use their native commands for training and the shared ACP stdio bridge for Moltnet rooms and direct messages. Each agent uses its own bearer token with the `attach`, `observe`, and `write` scopes so it can read history and send replies. The checked-in Moltnet release predates ACP. The adapter guide explains how to supply an ACP-capable build. [Runtime adapters](RUNTIME_ADAPTERS.md)
 
 ### Active Runtime Capability Matrix
 
