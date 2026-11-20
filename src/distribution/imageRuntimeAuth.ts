@@ -1,14 +1,9 @@
 import type { ResolvedAuthProfile } from "../auth/index.js";
-import {
-  loadImportedClaudeCodeCredential,
-  loadImportedCodexCredential
-} from "../auth/index.js";
-import { fileExists } from "../filesystem/index.js";
 import { getRuntimeAdapter, resolveImageCredentialUid, type ImageCredentialUidOptions } from "../runtime/index.js";
-import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
+import { prepareRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
+import { createLoginVolumeReservation } from "../runtime/nativeLogin.js";
 import { adapterManagedAuthMethods, runtimeHost } from "../runtime/hostSelection.js";
 import type { RuntimePreparedImageLaunch } from "../runtime/hostTypes.js";
-import { SpawnfileError } from "../shared/index.js";
 
 import type { DistributionReport } from "./types.js";
 
@@ -32,7 +27,8 @@ export const prepareImageRuntimeAuthMounts = async (
 ): Promise<ImageRuntimeAuthResult> => {
   const coveredModelSecrets = new Set<string>();
   const mountArgs: string[] = [];
-  const imports = resolveRuntimeHomeImports(input.report.runtime_instances, input.authProfile);
+  const importedAuth = await prepareRuntimeHomeImports(input.report.runtime_instances, input.authProfile);
+  const reserveLoginVolume = createLoginVolumeReservation();
 
   for (const instance of input.report.runtime_instances) {
     const image = input.runtimePreparations?.get(instance.runtime);
@@ -41,6 +37,7 @@ export const prepareImageRuntimeAuthMounts = async (
     if (prepareAuth) {
       mountArgs.push(...await prepareAuth(instance, {
         authProfile: input.authProfile,
+        reserveLoginVolume,
         containerCredentialUid: resolveImageCredentialUid(instance.runtime, credentialOptions),
         sourceEnvironment: input.sourceEnvironment ?? process.env,
         tempRoot: input.tempRoot
@@ -54,6 +51,7 @@ export const prepareImageRuntimeAuthMounts = async (
     }
     const prepared = await adapter.prepareRuntimeAuth({
       authProfile: input.authProfile,
+      reserveLoginVolume,
       env: {},
       instance: {
         config_path: instance.config_path,
@@ -72,22 +70,5 @@ export const prepareImageRuntimeAuthMounts = async (
     mountArgs.push(...prepared.mountArgs);
   }
 
-  for (const { method, source, targets } of imports) {
-    if (!(await fileExists(source))) {
-      throw new SpawnfileError("validation_error", `Imported auth path for ${method} does not exist: ${source}`);
-    }
-    const credential = method === "claude-code"
-      ? await loadImportedClaudeCodeCredential(source)
-      : await loadImportedCodexCredential(source);
-    if (!credential) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Imported ${method} auth at ${source} has no usable credential. ` +
-          `Re-run the ${method} login (or re-import) before deploying this image.`
-      );
-    }
-    for (const target of targets) mountArgs.push("-v", `${source}:${target}`);
-  }
-
-  return { coveredModelSecrets, mountArgs };
+  return { coveredModelSecrets, mountArgs: [...mountArgs, ...importedAuth.mountArgs] };
 };

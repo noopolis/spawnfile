@@ -76,22 +76,24 @@ function harness(first = wake(1, turn.text)) {
   let overrideExport: string | undefined;
   const calls: string[][] = [];
   const instance: NativeTrainingInstance = {
-    homePath: "/pilot/home", workspacePath: actualWorkspace, configPath: "/pilot/opencode.json",
+    homePath: "/pilot/home", workspacePath: actualWorkspace, configPath: "/pilot/opencode.json", port: 6123,
     readFile: vi.fn(async () => null),
     exec: vi.fn(async (argv, options) => {
       calls.push([...argv]);
       expect(options?.env).toMatchObject({ HOME: "/pilot/home", OPENCODE_CONFIG: "/pilot/opencode.json" });
-      expect(options?.env?.XDG_DATA_HOME).toMatch(/^\/pilot\/home\/\.local\/share\/training\//);
+      expect(options?.env?.XDG_DATA_HOME).toBe("/pilot/home/.local/share");
       expect(options?.timeoutMs).toBeGreaterThan(0);
       if (argv[1] === "-c") {
         expect(argv.slice(5, 13)).toEqual([
-          "/bin/bash", "/pilot/home/opencode-launch.sh", "/usr/local/bin/opencode",
-          "run", "--dir", actualWorkspace, "--format", "json"
+          "/usr/local/bin/opencode", "run", "--attach", "http://127.0.0.1:6123",
+          "--dir", actualWorkspace, "--format", "json"
         ]);
         if (argv[13] === "--title") title = argv[14]!;
         return overrideStdout ?? stream(current.parts);
       }
-      expect(argv).toEqual(["/bin/bash", "/pilot/home/opencode-launch.sh", "/usr/local/bin/opencode", "export", session]);
+      expect(argv.slice(0, 3)).toEqual(["node", "--input-type=module", "-e"]);
+      expect(argv.slice(-4, -1)).toEqual(["http://127.0.0.1:6123", actualWorkspace, title]);
+      expect(["", session]).toContain(argv.at(-1));
       return overrideExport ?? JSON.stringify({ info: { id: session, title, directory: actualWorkspace },
         messages: [...history, ...current.messages] });
     })
@@ -180,7 +182,10 @@ describe("OpenCode training driver", () => {
       } else {
         if (kind === "wrong part session") parts[1] = { ...parts[1]!, sessionID: otherSession };
         if (kind === "duplicated") parts.push(parts[0]!);
-        if (kind === "unclosed") parts.pop();
+        if (kind === "unclosed") {
+          parts.pop();
+          fixture.messages.at(-1)!.parts.pop();
+        }
         if (kind === "unbound") parts[1] = { ...parts[1]!, text: "spoofed reply" };
         run.stdout(stream(parts));
       }
@@ -188,6 +193,15 @@ describe("OpenCode training driver", () => {
         .rejects.toThrow(kind === "error" ? /reported a native error/ : /verified reply/);
     }
   );
+
+  it.each(["empty", "partial"])("captures the exact persisted turn when the attached CLI stream is %s", async delivery => {
+    const record = wake(1, turn.text);
+    const run = harness(record);
+    run.stdout(delivery === "empty" ? "" : stream(record.parts.slice(0, 2)));
+    const reply = await opencodeTrainingDriver.run(run.instance, turn);
+    expect(reply.text).toBe("Final reply 1.");
+    expect(reply.observations?.map(event => event.tool)).toEqual(["write", "read"]);
+  });
 
   it("rejects tool-only completion and ignores fabricated tool JSON in final text", async () => {
     const missingText = wake(1, turn.text);

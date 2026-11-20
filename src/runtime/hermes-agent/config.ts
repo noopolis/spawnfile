@@ -1,11 +1,14 @@
 import { listEffectiveExecutionModelTargets, resolveModelProviderEnvName } from "../../compiler/modelEnv.js";
-import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
+import type { EffectiveModelTarget, ResolvedAgentNode } from "../../compiler/types.js";
 import { SpawnfileError } from "../../shared/index.js";
 import type { RuntimeContainerConfigEnvBinding } from "../types.js";
+import { buildHermesSurfaceConfig } from "./surfaces.js";
 import { buildHermesMcpConfig } from "./nativeFeatures.js";
+import { portalRoutes } from "./login.js";
 import { hermesSubscriptions } from "./auth.js";
 
 const providers = new Map([
+  ["deepseek", { base_url: "https://api.deepseek.com/v1", transport: "chat_completions" }],
   ["anthropic", { base_url: "https://api.anthropic.com", transport: "anthropic_messages" }],
   ["openai", { base_url: "https://api.openai.com/v1", transport: "codex_responses" }],
   ["openrouter", { base_url: "https://openrouter.ai/api/v1", transport: "chat_completions" }],
@@ -18,12 +21,6 @@ const hermesProvider = "spawnfile-model";
 
 export function refuse(feature: string): never {
   throw new SpawnfileError("validation_error", `Hermes Agent does not support ${feature}`);
-}
-
-export function assertHermesSurfaces(surfaces: ResolvedAgentSurfaces | undefined): void {
-  for (const surface of Object.keys(surfaces ?? {})) {
-    if (surface !== "moltnet") refuse(`the ${surface} surface`);
-  }
 }
 
 function routeFor(target: EffectiveModelTarget) {
@@ -47,7 +44,7 @@ function supportedCodexEfforts(model: string): string[] {
 
 export function assertHermesModel(target: EffectiveModelTarget): void {
   const { method } = target.auth;
-  if (method === "subscription" && target.provider === "nous" && !target.endpoint && !target.reasoningEffort) return;
+  if (method === "subscription" && portalRoutes.has(target.provider) && !target.endpoint && !target.reasoningEffort) return;
   if (method === "codex" || method === "grok") {
     if (target.endpoint || target.provider !== hermesSubscriptions[method].provider) {
       refuse(`${method} auth for ${target.provider} with this route`);
@@ -74,7 +71,10 @@ interface HermesRoute {
 
 function lowerRoute(model: EffectiveModelTarget, index: number): HermesRoute {
   const { method } = model.auth;
-  if (method === "subscription") return { provider: "nous", transport: "chat_completions" };
+  if (method === "subscription") {
+    const route = portalRoutes.get(model.provider) ?? refuse(`subscription for ${model.provider}`);
+    return { provider: route.native, transport: route.transport };
+  }
   if (method === "codex" || method === "grok") {
     return { provider: hermesSubscriptions[method].native, transport: "codex_responses" };
   }
@@ -93,7 +93,7 @@ export function resolveHermesModels(node: ResolvedAgentNode): [EffectiveModelTar
   const efforts = new Map<string, string | undefined>();
   for (const model of models) {
     assertHermesModel(model);
-    if (model.auth.method === "subscription" || model.auth.method === "codex" || model.auth.method === "grok") subscriptions.add(model.auth.method);
+    if (model.auth.method === "subscription" || model.auth.method === "codex" || model.auth.method === "grok") subscriptions.add(model.provider);
     const name = model.name.trim().toLowerCase().split("/").at(-1)!.replaceAll(".", "-");
     if (efforts.has(name) && efforts.get(name) !== model.reasoningEffort) {
       refuse("different reasoning_effort values for the same model in a fallback chain");
@@ -128,6 +128,7 @@ export function buildHermesConfig(models: [EffectiveModelTarget, ...EffectiveMod
     target.reasoningEffort ? [[target.name, target.reasoningEffort]] : []));
 
   return `${JSON.stringify({
+    ...buildHermesSurfaceConfig(node?.surfaces),
     ...(node ? { mcp_servers: buildHermesMcpConfig(node) } : {}),
     model: { default: model.name, provider: primaryRoute.provider },
     ...(Object.keys(customProviders).length ? { providers: customProviders } : {}),
@@ -139,7 +140,7 @@ export function buildHermesConfig(models: [EffectiveModelTarget, ...EffectiveMod
     auth: { adopt_external_logins: false },
     terminal: { backend: "local", cwd: "<workspace-path>" },
     skills: { external_dirs: ["<workspace-path>/skills", "<workspace-path>/.agents/skills"] },
-    platform_toolsets: { cli: toolsets, oneshot: toolsets, acp: toolsets },
+    platform_toolsets: { cli: toolsets, oneshot: toolsets, acp: toolsets, telegram: toolsets, discord: toolsets, slack: toolsets },
     display: { tool_progress: "all" },
     approvals: { mode: "manual", unattended_mode: "deny", cron_mode: "deny" },
     security: { allow_lazy_installs: false }

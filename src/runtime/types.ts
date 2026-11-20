@@ -139,6 +139,8 @@ export interface RuntimeAuthInstance {
 }
 
 export interface RuntimeAuthPreparationInput {
+  /** Claim a rotating grant that cannot be shared by concurrent instances. */
+  reserveLoginVolume?(volume: string): void;
   /**
    * The Spawnfile-managed auth profile (`--auth-profile`), or `null` when the
    * run/up invocation did not select one. Host-credential staging that does

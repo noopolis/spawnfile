@@ -18,7 +18,8 @@ export async function runNativeTraining(runtime: string, driver: NativeTrainingD
   }
   const profile = options.authProfile ? await requireAuthProfile(options.authProfile) : null;
   const registration = { create: ({ timeoutMs }: { timeoutMs: number }) =>
-    createNativeTrainingSubject(runtime, driver, timeoutMs, input => bootNativeTrainingTrial(context, profile, input)) };
+    createNativeTrainingSubject(runtime, driver, timeoutMs, input =>
+      bootNativeTrainingTrial(context, profile, input, undefined, driver.serviceEnvironment)) };
   const outIndex = args.indexOf("--out");
   const out = outIndex < 0 ? undefined : args[outIndex + 1];
   if (!out) throw new SpawnfileError("validation_error", "Training requires --out");

@@ -2,6 +2,8 @@ import type { ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/ty
 import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import { SpawnfileError } from "../../shared/index.js";
 import { createWorkspaceAgentScaffold } from "../workspaceScaffold.js";
+import { buildOpenCodeSubagents } from "./subagents.js";
+import type { RuntimeCompileContext } from "../types.js";
 import { assertOpenCodeMcp, openCodeMcpCapabilities, openCodeMcpEnvBindings, openCodeMemoryCapability } from "./nativeFeatures.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import {
@@ -13,6 +15,7 @@ import type { AdapterCompileResult, ContainerTargetInput, RuntimeAdapter, Runtim
 import { opencodeHost, opencodeLoginDirectory, openCodeSubscriptionProvider, prepareOpenCodeRuntimeAuth } from "./auth.js";
 import { assertOpenCodeModel, openCodeConfig } from "./config.js";
 import { openCodeInstall, opencodeConfigFile, opencodeContainer, opencodeWiring } from "./launch.js";
+import { opencodeOwnerFile, openCodeOwnerSource } from "./acpOwner.js";
 import { opencodeLaunchFile, renderOpenCodeLaunch } from "./launchScript.js";
 
 function assertSurfaces(surfaces: ResolvedAgentSurfaces | undefined): void {
@@ -30,6 +33,10 @@ function assertAgent(node: ResolvedAgentNode): void {
   }
   if (node.execution?.model?.fallback?.length) {
     throw new SpawnfileError("validation_error", "OpenCode does not implement Spawnfile execution.model fallback");
+  }
+  const [primary] = listEffectiveExecutionModelTargets(node.execution);
+  if (openCodeSubscriptionProvider(primary) && (node.surfaces?.moltnet?.length ?? 0) > 1) {
+    throw new SpawnfileError("validation_error", "An OpenCode subscription instance supports one Moltnet bridge");
   }
   assertOpenCodeMcp(node);
 }
@@ -56,16 +63,18 @@ class OpenCodeAdapter extends RuntimeAdapterBase {
   readonly validateRuntimeOptions = (options: Record<string, unknown>) =>
     Object.keys(options).sort().map(key => createDiagnostic("error", `OpenCode runtime option ${key} is unsupported`));
 
-  async compileAgent(node: ResolvedAgentNode): Promise<AdapterCompileResult> {
+  async compileAgent(node: ResolvedAgentNode, context?: RuntimeCompileContext): Promise<AdapterCompileResult> {
     assertAgent(node);
     const [primary] = listEffectiveExecutionModelTargets(node.execution);
+    const ownsAcp = Boolean(openCodeSubscriptionProvider(primary) && node.surfaces?.moltnet?.length);
+    const helpers = buildOpenCodeSubagents(node, context);
     const docs = createDocumentFiles("workspace", node.docs);
     const disabled = node.schedule?.kind === "disabled";
     const memory = openCodeMemoryCapability(node);
     const warnings = [
       ...(node.execution?.sandbox ? ["OpenCode does not enforce Spawnfile execution.sandbox"] : []),
       ...(node.schedule && !disabled ? ["OpenCode has no Spawnfile schedule integration"] : []),
-      ...(node.subagents.length ? ["OpenCode does not invoke declared Spawnfile subagents"] : []),
+      ...(helpers.message ? [helpers.message] : []),
       ...(node.memoryAccess?.length && memory.memoryOutcome === "degraded" ? [memory.memoryMessage] : [])
     ];
     return {
@@ -74,14 +83,16 @@ class OpenCodeAdapter extends RuntimeAdapterBase {
         sandboxOutcome: "degraded",
         scheduleOutcome: disabled ? "supported" : "degraded",
         scheduleMessage: disabled ? "Schedule is disabled" : "OpenCode has no Spawnfile schedule integration",
-        subagentOutcome: "degraded"
+        subagentOutcome: "degraded", subagentMessage: helpers.message
       }).filter(capability => !capability.key.startsWith("mcp.")), ...openCodeMcpCapabilities(node)],
       diagnostics: warnings.map(message => createDiagnostic("warn", message)),
       files: [
         ...docs,
+        ...helpers.files,
         ...createSkillFiles(WORKSPACE_SKILL_BASE_DIRECTORY, node.skills),
-        { path: opencodeConfigFile, content: openCodeConfig(node, docs) },
-        { path: `home/${opencodeLaunchFile}`, content: renderOpenCodeLaunch(primary) }
+        { path: opencodeConfigFile, content: openCodeConfig(node, docs, helpers.config) },
+        { path: `home/${opencodeLaunchFile}`, content: renderOpenCodeLaunch(primary, ownsAcp) },
+        ...(ownsAcp ? [{ path: `home/${opencodeOwnerFile}`, content: openCodeOwnerSource }] : [])
       ]
     };
   }

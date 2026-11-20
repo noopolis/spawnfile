@@ -89,6 +89,8 @@ Daimon requires a pinned runtime image matching the compiler contract.
 
 Hermes Agent and OpenCode connect to Moltnet through ACP. The bundled Moltnet v0.1.22 release predates ACP. For chat, supply an [ACP-capable Moltnet build](specs/RUNTIME_ADAPTERS.md). Standalone agents and training work independently of Moltnet.
 
+Hermes and OpenCode can use per-agent ChatGPT or SuperGrok subscriptions for deployment and training. Hermes also accepts Nous Portal and MiniMax logins. OpenCode accepts GitHub Copilot and OpenCode Go. [Subscription setup and supported features](specs/RUNTIMES.md#use-a-model-subscription)
+
 Portability is capability-specific: the compiler reports each feature as **supported**, **degraded**, or **unsupported**. Read that report before switching runtimes. Exact versions live in [runtimes.yaml](runtimes.yaml); the [runtime specification](specs/RUNTIMES.md) describes the adapter model.
 
 ## Go further

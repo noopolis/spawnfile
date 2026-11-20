@@ -66,12 +66,11 @@ export function readOpenCodeEvents(stdout: string, expectedSession: string | und
     ids.add(part.id);
     events.push({ timestamp: row.timestamp, part });
   }
-  if (!session || !events.length) fail();
   return { session, events };
 }
 
 interface ExpectedTurn {
-  session: string;
+  session: string | undefined;
   title: string;
   workspace: string;
   previousUsers: readonly string[];
@@ -85,12 +84,15 @@ function nativeParts(parts: unknown[]): RecordObject[] {
 function currentParts(transcript: string, expected: ExpectedTurn) {
   const stored = parse(transcript);
   const session = object(stored?.info);
-  if (session?.id !== expected.session || session.title !== expected.title ||
+  const sessionId = session?.id;
+  if (!session || typeof sessionId !== "string" || !sessionIdFormat.test(sessionId) ||
+      (expected.session !== undefined && sessionId !== expected.session) || session.title !== expected.title ||
       session.directory !== expected.workspace || session.parentID !== undefined ||
       !Array.isArray(stored?.messages)) fail();
 
   const users: string[] = [];
-  const parts: RecordObject[] = [];
+  const events: Event[] = [];
+  const partIds = new Set<string>();
   const messagesSeen = new Set<string>();
   let userTime = 0;
   let finish: unknown;
@@ -99,7 +101,7 @@ function currentParts(transcript: string, expected: ExpectedTurn) {
     const info = object(message?.info);
     const id = info?.id;
     if (typeof id !== "string" || !messageIdFormat.test(id) || messagesSeen.has(id) ||
-        info?.sessionID !== expected.session || !Array.isArray(message?.parts)) fail();
+        info?.sessionID !== sessionId || !Array.isArray(message?.parts)) fail();
     messagesSeen.add(id);
 
     if (info.role === "user") {
@@ -114,7 +116,7 @@ function currentParts(transcript: string, expected: ExpectedTurn) {
       const [input, ...extra] = nativeParts(message.parts);
       if (!timestamp(created) || extra.length || input?.type !== "text" || input.text !== expected.prompt ||
           input.synthetic === true || input.ignored === true ||
-          input.sessionID !== expected.session || input.messageID !== id) fail();
+          input.sessionID !== sessionId || input.messageID !== id) fail();
       userTime = created;
       continue;
     }
@@ -124,12 +126,14 @@ function currentParts(transcript: string, expected: ExpectedTurn) {
         info.summary === true || !timestamp(completed) || completed < userTime) fail();
     finish = info.finish;
     for (const part of nativeParts(message.parts)) {
-      if (part.sessionID !== expected.session || part.messageID !== id) fail();
-      if (typeof part.type === "string" && persistedEventTypes.has(part.type)) parts.push(part);
+      if (part.sessionID !== sessionId || part.messageID !== id || typeof part.id !== "string" ||
+          !partIdFormat.test(part.id) || partIds.has(part.id)) fail();
+      partIds.add(part.id);
+      if (typeof part.type === "string" && persistedEventTypes.has(part.type)) events.push({ part, timestamp: completed });
     }
   }
   if (!userTime || finish !== "stop") fail();
-  return { users, parts, userTime };
+  return { session: sessionId, users, events, userTime };
 }
 
 function measuredUsage(finishes: RecordObject[]): Usage | null {
@@ -186,17 +190,24 @@ function toolObservation(
 export function bindOpenCodeReply(
   events: Event[], transcript: string, expected: ExpectedTurn, turn: NativeTrainingTurn, previousSequence: number
 ) {
-  const { users, parts, userTime } = currentParts(transcript, expected);
-  const stream = events.filter(event => event.part.type !== "reasoning");
-  if (parts.length !== stream.length || parts.some((part, index) =>
-    !isDeepStrictEqual(part, stream[index]?.part) || stream[index]!.timestamp < userTime)) fail();
+  const durable = currentParts(transcript, expected);
+  const { users, userTime } = durable;
+  // In attach mode the pinned CLI can finish before the last SSE delivery, including
+  // before the first one. Verify every delivered part against the durable turn in order.
+  let cursor = 0;
+  for (const event of events) {
+    if (event.part.type === "reasoning") continue;
+    while (cursor < durable.events.length && durable.events[cursor]!.part.id !== event.part.id) cursor++;
+    const match = durable.events[cursor++];
+    if (!match || !isDeepStrictEqual(match.part, event.part) || event.timestamp < userTime) fail();
+  }
 
   const source = `opencode:run:${turn.sessionId}`;
   const observations: Observation[] = [];
   const finishes: RecordObject[] = [];
   let text: string[] = [];
   let openStep: unknown;
-  for (const event of stream) {
+  for (const event of durable.events) {
     const part = event.part;
     if (part.type === "step-start") {
       if (openStep || finishes.at(-1)?.reason === "stop") fail();
@@ -221,5 +232,5 @@ export function bindOpenCodeReply(
   }
   const reply = text.join("\n");
   if (openStep || finishes.at(-1)?.reason !== "stop" || !reply.trim()) fail();
-  return { text: maskSecrets(reply), observations, users, usage: measuredUsage(finishes) };
+  return { session: durable.session, text: maskSecrets(reply), observations, users, usage: measuredUsage(finishes) };
 }

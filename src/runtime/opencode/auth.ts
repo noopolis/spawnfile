@@ -4,7 +4,6 @@ import type { ResolvedAuthProfile } from "../../auth/index.js";
 import type { EffectiveModelTarget } from "../../compiler/types.js";
 import { SpawnfileError } from "../../shared/index.js";
 import type { RuntimeHostIntegration } from "../hostTypes.js";
-import { nativeLoginVolume } from "../nativeLogin.js";
 import type { RuntimeAuthInstance, RuntimeAuthPreparationInput, RuntimeAuthPreparationResult } from "../types.js";
 
 export const opencodeLoginDirectory = ".spawnfile-opencode-login";
@@ -22,7 +21,7 @@ export function openCodeSubscriptionProvider(target: EffectiveModelTarget | unde
     target.auth.method === opencodeSubscriptionMethods[target.provider]) return target.provider;
 }
 
-function loginMount(instance: RuntimeAuthInstance, profile: ResolvedAuthProfile | null): string[] {
+function loginMount(instance: RuntimeAuthInstance, profile: ResolvedAuthProfile | null, reserve?: (volume: string) => void): string[] {
   const methods = Object.entries(instance.model_auth_methods);
   const native = methods.filter(([, method]) => Object.values(opencodeSubscriptionMethods).some(entry => entry === method));
   const route = Object.entries(opencodeSubscriptionMethods).find(([provider, method]) => instance.model_auth_methods[provider] === method);
@@ -51,25 +50,32 @@ function loginMount(instance: RuntimeAuthInstance, profile: ResolvedAuthProfile 
     throw new SpawnfileError("validation_error", `${opencodeAuthVolumesEnv} must be a JSON object of instance ids and volume names`);
   }
   const volumes = new Map(Object.entries(entries));
-  const name = volumes.get(instance.id) ?? nativeLoginVolume(profile, "opencode", route[0], instance.id);
+  const nativeKey = `opencode/${route[0]}/`;
+  const exact = profile.nativeLogins?.[nativeKey + instance.id];
+  const legacy = volumes.get(instance.id);
+  if (exact !== undefined && volumes.has(instance.id) && exact !== legacy) {
+    throw new SpawnfileError("validation_error", `OpenCode has conflicting explicit login volumes for ${instance.id}. Use the same volume in both bindings or remove the legacy entry from ${opencodeAuthVolumesEnv}.`);
+  }
+  const name = volumes.has(instance.id) ? legacy : exact ?? profile.nativeLogins?.[nativeKey + "*"];
   if (typeof name !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/u.test(name)) {
     throw new SpawnfileError("validation_error", `OpenCode needs a native login volume for ${instance.id} from spawnfile auth login --runtime opencode or ${opencodeAuthVolumesEnv}`);
   }
   if ([...volumes.values()].filter(volume => volume === name).length > 1) {
     throw new SpawnfileError("validation_error", "OpenCode login volumes must be assigned to only one runtime instance");
   }
+  reserve?.(name);
   return ["--mount", `type=volume,source=${name},target=${posix.join(home, opencodeLoginDirectory)},volume-nocopy`];
 }
 
 export async function prepareOpenCodeRuntimeAuth(input: RuntimeAuthPreparationInput): Promise<RuntimeAuthPreparationResult> {
   return {
-    mountArgs: loginMount(input.instance, input.authProfile),
+    mountArgs: loginMount(input.instance, input.authProfile, input.reserveLoginVolume),
     coveredModelSecrets: []
   };
 }
 
 export const opencodeHost: RuntimeHostIntegration = {
   async prepareImageAuth(instance, input) {
-    return loginMount(instance, input.authProfile);
+    return loginMount(instance, input.authProfile, input.reserveLoginVolume);
   }
 };

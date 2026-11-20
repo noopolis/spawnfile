@@ -1,11 +1,12 @@
 import { nativeLoginCapability, type NativeLoginFlow } from "../nativeLogin.js";
 import { opencodeBinary } from "./launch.js";
+import { usableOpenCodeLogin } from "./storeFormat.js";
 
 function flow(provider: string, method: string): NativeLoginFlow {
   return {
     provider, command: [opencodeBinary, "providers", "login", "--provider", provider, "--method", method],
     credentialFile: ".local/share/opencode/auth.json",
-    hasLogin: `Object.keys(store).length === 1 && store[${JSON.stringify(provider)}]?.type === "oauth" && store[${JSON.stringify(provider)}].refresh`
+    hasLogin: usableOpenCodeLogin(provider)
   };
 }
 

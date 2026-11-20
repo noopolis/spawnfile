@@ -16,11 +16,24 @@ export interface NativeLoginFlow {
   command: readonly string[];
   /** The harness produces this file under a fresh, private home. */
   credentialFile: string;
+  /** Optional native coordination file in the persistent grant directory. */
+  persistLockFile?: "auth.lock";
   /** JavaScript expression over the parsed native file (store), limited to this provider. */
   hasLogin: string;
 }
 
 const keyFor = (runtime: string, provider: string, instance = "*") => [runtime, provider, instance].join("/");
+
+/** Runtime adapters call this only for grants that need a single refresh owner. */
+export function createLoginVolumeReservation() {
+  const volumes = new Set<string>();
+  return (volume: string) => {
+    if (volumes.has(volume)) {
+      throw new SpawnfileError("validation_error", "These agents need separate native logins. Assign each its own login with --instance.");
+    }
+    volumes.add(volume);
+  };
+}
 
 export function nativeLoginVolume(profile: ResolvedAuthProfile | null, runtime: string, provider: string, instance: string) {
   return profile?.nativeLogins?.[keyFor(runtime, provider, instance)] ?? profile?.nativeLogins?.[keyFor(runtime, provider)];
@@ -69,17 +82,28 @@ export function nativeLoginCapability(runtime: string, flows: Readonly<Record<st
       const persist = [
         'const fs = require("node:fs"), path = require("node:path");',
         'const source = path.join(process.env.HOME, process.argv[1]);',
-        'const store = JSON.parse(fs.readFileSync(source, "utf8"));',
-        `if (!(${flow.hasLogin})) throw new Error("The native client did not save the requested OAuth login");`,
-        'const out = "/login/seed-" + require("node:crypto").randomUUID();',
-        'try { fs.writeFileSync(out, JSON.stringify(store), {mode: 0o600, flag: "wx"}); fs.renameSync(out, "/login/auth.json"); }',
-        'finally { fs.rmSync(out, {force: true}); }'
+        'try {',
+        '  const fd = fs.openSync(source, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);',
+        '  let store;',
+        '  try {',
+        '    const stat = fs.fstatSync(fd), bytes = Buffer.alloc(65537);',
+        '    if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.getuid() || (stat.mode & 0o7777) !== 0o600) throw new Error();',
+        '    const count = fs.readSync(fd, bytes);',
+        '    if (count !== stat.size || count > 65536) throw new Error();',
+        '    store = JSON.parse(bytes.toString("utf8", 0, count));',
+        '  } finally { fs.closeSync(fd); }',
+        `  if (!(${flow.hasLogin})) throw new Error();`,
+        '  const out = "/login/seed-" + require("node:crypto").randomUUID();',
+        '  try { fs.writeFileSync(out, JSON.stringify(store), {mode: 0o600, flag: "wx"}); fs.renameSync(out, "/login/auth.json"); }',
+        '  finally { fs.rmSync(out, {force: true}); }',
+        '} catch { process.stderr.write("The native client did not save a usable private login for this provider.\\n"); process.exit(1); }'
       ].join("\n");
       // Only the login client runs with a terminal. The profile and Docker arguments receive volume names.
       const script = [
         "set -eu", "umask 077", "HOME=$(mktemp -d)", "export HOME",
         'export HERMES_HOME="$HOME/.hermes" XDG_DATA_HOME="$HOME/.local/share" XDG_CONFIG_HOME="$HOME/.config" XDG_CACHE_HOME="$HOME/.cache" XDG_STATE_HOME="$HOME/.local/state"',
-        'mkdir -p "$HERMES_HOME"', 'cd "$HOME"', 'save=$1; relative=$2; shift 2', '"$@"', 'node -e "$save" "$relative"'
+        'mkdir -p "$HERMES_HOME"', 'cd "$HOME"', 'save=$1; relative=$2; shift 2', '"$@"',
+        flow.persistLockFile ? `flock -x /login/${flow.persistLockFile} node -e "$save" "$relative"` : 'node -e "$save" "$relative"'
       ].join("\n");
       const command = ["docker", "run", "--rm", "-it", "--user", "spawnfile", "--mount", mount, "--entrypoint", "flock", image,
         "-n", "/login", "sh", "-c", script, "login", persist, flow.credentialFile, ...flow.command];

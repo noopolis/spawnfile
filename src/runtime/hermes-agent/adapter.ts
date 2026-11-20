@@ -1,6 +1,8 @@
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { createWorkspaceAgentScaffold } from "../workspaceScaffold.js";
 import { MNEME_PACKAGE } from "../mnemeMcp.js";
+import { hermesSubagentDiagnostic } from "./subagents.js";
+import { assertSupportedHermesSurfaces, buildHermesSurfaceEnvBindings, hermesSurfaceEnvCommand } from "./surfaces.js";
 import { assertHermesMcp, hermesMcpEnvBindings, hermesMemoryCapability } from "./nativeFeatures.js";
 import { hermesCronGatewayCommand, hermesCronMount, hermesScheduleCapability, hermesScheduleFiles } from "./schedules.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
@@ -13,15 +15,16 @@ import type {
   RuntimeSystemInstructionSurface
 } from "../types.js";
 import {
-  assertHermesModel, assertHermesSurfaces, buildHermesConfig, hermesConfigFile, hermesModelBindings,
+  assertHermesModel, buildHermesConfig, hermesConfigFile, hermesModelBindings,
   hermesSkillRoot, refuse, resolveHermesModels
 } from "./config.js";
-import { hermesAuthDirectory, prepareHermesRuntimeAuth } from "./auth.js";
+import { hermesAuthDirectory, hermesAuthRoute, hermesAuthRouteFile, prepareHermesRuntimeAuth } from "./auth.js";
+import { hermesAuthLaunchCommand } from "./authLaunch.js";
 import { hermesEnvCommand, hermesEnvironment, hermesWiring } from "./instance.js";
 import { hermesImageRef, hermesInstall } from "./install.js";
 
 function checkAgent(node: ResolvedAgentNode) {
-  assertHermesSurfaces(node.surfaces);
+  assertSupportedHermesSurfaces(node.surfaces);
   assertHermesMcp(node);
   if (node.expose) refuse("public ingress for the native service");
   return resolveHermesModels(node);
@@ -45,7 +48,7 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
   readonly training = { login: hermesLogin, ...nativeTrainingCapability("hermes-agent",
     async () => (await import("./training.js")).hermesTrainingDriver) };
   override readonly assertSupportedModelTarget = assertHermesModel;
-  readonly assertSupportedSurfaces = assertHermesSurfaces;
+  readonly assertSupportedSurfaces = assertSupportedHermesSurfaces;
   readonly preflightAgent = checkAgent;
 
   readonly container: RuntimeContainerMeta = {
@@ -62,7 +65,7 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
     startCommand: [
       ...hermesEnvCommand,
       ...Object.entries(hermesEnvironment("<home-path>", "<workspace-path>")).map(([name, value]) => `${name}=${value}`),
-      ...hermesCronGatewayCommand
+      ...hermesSurfaceEnvCommand, ...hermesAuthLaunchCommand, ...hermesCronGatewayCommand
     ],
     postRootfsCommands: [
       // The pinned Hermes atomic writer stages and replaces beside the resolved symlink target.
@@ -72,9 +75,9 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
         `ln -s "${hermesAuthDirectory}/auth.json" "$dir/auth.json" && ` +
         `ln -s "${hermesAuthDirectory}/auth.lock" "$dir/auth.lock" || exit; done' bash {} +`,
       "find /var/lib/spawnfile/instances/hermes-agent -mindepth 2 -maxdepth 2 -type d -name hermes -exec chmod 0700 {} +",
-      "find /var/lib/spawnfile/instances/hermes-agent -mindepth 3 -maxdepth 3 -type f -path '*/hermes/config.yaml' -exec chmod 0600 {} +"
+      `find /var/lib/spawnfile/instances/hermes-agent -mindepth 3 -maxdepth 3 -type f \\( -path '*/hermes/config.yaml' -o -path '*/hermes/${hermesAuthRouteFile}' \\) -exec chmod 0600 {} +`
     ],
-    systemDeps: ["bash", "ca-certificates", "curl"]
+    systemDeps: ["bash", "ca-certificates", "curl", "util-linux"]
   };
 
   readonly systemInstructionSurface: RuntimeSystemInstructionSurface = {
@@ -87,22 +90,26 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
 
   async compileAgent(node: ResolvedAgentNode): Promise<AdapterCompileResult> {
     const models = checkAgent(node);
+    const nativeRoute = models.map(model => hermesAuthRoute(model.provider, model.auth.method)).find(Boolean);
     const memory = hermesMemoryCapability(node);
     const schedule = hermesScheduleCapability(node);
+    const delegation = hermesSubagentDiagnostic(node);
     const soul = node.docs.find(document => document.role === "soul");
     return {
       capabilities: createAgentCapabilities(node, {
         ...memory,
         ...schedule,
         sandboxOutcome: "unsupported",
-        subagentOutcome: "unsupported"
+        subagentOutcome: "degraded", subagentMessage: delegation
       }),
       diagnostics: [
+        ...(delegation ? [createDiagnostic("warn", delegation)] : []),
         ...(node.memoryAccess?.length && memory.memoryOutcome === "degraded" ? [createDiagnostic("warn", memory.memoryMessage)] : []),
         ...(schedule.scheduleOutcome === "degraded" ? [createDiagnostic("warn", schedule.scheduleMessage)] : [])
       ],
       files: [
         { path: hermesConfigFile, content: buildHermesConfig(models, node) },
+        { path: `home/${hermesAuthRouteFile}`, content: `${nativeRoute ?? "-"}\n` },
         ...hermesScheduleFiles(node),
         ...createDocumentFiles("workspace", node.docs),
         ...(soul ? [{ path: "home/SOUL.md", content: soul.content }] : []),
@@ -115,7 +122,7 @@ class HermesAgentAdapter extends RuntimeAdapterBase {
     return inputs.map(input => {
       if (input.value.kind !== "agent") return refuse("a shared team container target");
       const models = checkAgent(input.value);
-      const bindings = [...hermesModelBindings(models), ...hermesMcpEnvBindings(input.value)];
+      const bindings = [...hermesModelBindings(models), ...hermesMcpEnvBindings(input.value), ...buildHermesSurfaceEnvBindings(input.value.surfaces)];
       return {
         id: `agent-${input.slug}`,
         sourceIds: [input.id],

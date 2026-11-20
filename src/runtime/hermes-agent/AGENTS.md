@@ -6,7 +6,8 @@
 - `training.ts` binds each trial to its native session. `trainingEvents.ts` decodes the pinned CLI's structured output.
 - The foreground native gateway uses its private loopback transport. Keep unattended approvals on deny and use the writable workspace as the file-tool write root.
 - Model lowering supports OpenAI, Anthropic, OpenRouter, and explicit compatible endpoints. A local OpenAI-compatible endpoint can run without credentials. Compose runtime credentials through the compiler's protected config binding.
-- `auth.ts` and `login.ts` own native ChatGPT, SuperGrok and Nous Portal credentials. Keep private inputs and token refresh outside compiled output.
+- `auth.ts`, `authStore.ts`, `authLaunch.ts` and `login.ts` own native ChatGPT, SuperGrok, Nous Portal and MiniMax credentials. Gateway, ACP and training validate the same selected store. Keep credentials and refreshes outside compiled output.
+- `surfaces.ts` owns Telegram, Discord and Slack access checks, structured token bindings and removal of team-wide chat variables. Reject any declaration that the native platform cannot enforce.
 - `nativeFeatures.ts` lowers authored MCP and scoped awake Mneme access. `schedules.ts` and `cronBootstrap.ts` reconcile the declared cron job under the gateway's scheduler.
 - Verify native routing and access rules before marking a declared capability supported.
 - Record only lifecycle events bound to the current native session and turn. Hermes reports cumulative token counts, so trained turns use confirmed differences between adjacent snapshots.

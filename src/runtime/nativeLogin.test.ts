@@ -23,7 +23,7 @@ describe("native profile logins", () => {
   it.each([
     [openCodeLogin, "chatgpt", "ChatGPT Pro/Plus (headless)"], [openCodeLogin, "copilot", "Login with GitHub Copilot"],
     [openCodeLogin, "supergrok", "SuperGrok Subscription"], [hermesLogin, "chatgpt", "openai-codex"],
-    [hermesLogin, "supergrok", "xai-oauth"], [hermesLogin, "nous", "nous"]
+    [hermesLogin, "supergrok", "xai-oauth"], [hermesLogin, "nous", "nous"], [hermesLogin, "minimax", "minimax-oauth"]
   ] as const)("prepares the native device flow with no saved login on a dry run", async (login, engine, method) => {
     expect(login.supportsEngine(engine)).toBe(true);
     const result = await login.run({ engine, profileName: "sample", image: "local/login:fixture", dryRun: true });

@@ -54,6 +54,24 @@ describe("OpenCode adapter", () => {
     });
   });
 
+  it("uses one native ACP owner only for a subscription with one resolved Moltnet bridge", async () => {
+    const primary = { provider: "openai", name: "gpt-5.5", auth: { method: "codex" as const } };
+    const first = { network: "org", memberId: "pilot", teamSource: "team" };
+    const withoutBridge = agent({ execution: { model: { primary } } });
+    const withBridge = agent({ ...withoutBridge, surfaces: { moltnet: [first] } });
+    const withTwoBridges = agent({ ...withBridge, surfaces: { moltnet: [first, { ...first, network: "other" }] } });
+    expect((await adapter.compileAgent(withoutBridge)).files.map(file => file.path)).not.toContain("home/opencode-acp-owner.cjs");
+    expect((await adapter.compileAgent(withBridge)).files).toEqual(expect.arrayContaining([
+      { path: "home/opencode-acp-owner.cjs", content: expect.stringContaining('spawn(binary, ["acp"') },
+      { path: "home/opencode-launch.sh", content: expect.stringContaining('owner "$binary" "$login_lock"') }
+    ]));
+    expect(() => adapter.preflightAgent?.(withTwoBridges, "pilot")).toThrow(/supports one Moltnet bridge/);
+    await expect(adapter.compileAgent(withTwoBridges)).rejects.toThrow(/supports one Moltnet bridge/);
+    const apiKey = { ...primary, auth: { method: "api_key" as const, key: "PILOT_KEY" } };
+    expect((await adapter.compileAgent({ ...withTwoBridges, execution: { model: { primary: apiKey } } })).files
+      .map(file => file.path)).not.toContain("home/opencode-acp-owner.cjs");
+  });
+
   it("selects OpenCode Go using the plan's API key and catalog entry", async () => {
     expect(await config(agent({ execution: { model: { primary: {
       provider: "opencode-go", name: "kimi-k3", auth: { method: "api_key", key: "GO_SUBSCRIPTION_KEY" }

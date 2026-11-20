@@ -50,7 +50,10 @@ async function harness(provider: "openai" | "xai" | "github-copilot" = "openai")
   const method = { openai: "codex", xai: "grok", "github-copilot": "subscription" } as const;
   await writeFile(file, JSON.stringify({ [provider]: { ...auth, ...(provider !== "openai" ? { access: "synthetic-access" } : {}) } }), { mode: 0o600 });
   await writeFile(config, JSON.stringify({ model: `${provider}/${model}`, agent: { build: { variant: "high" } } }));
-  await writeFile(compiled, renderOpenCodeLaunch({ provider, name: model, auth: { method: method[provider] } }));
+  const launcher = renderOpenCodeLaunch({ provider, name: model, auth: { method: method[provider] } });
+  // The Linux-only test below exercises the real lease. Keep store validation
+  // and fixture writeback runnable on hosts without util-linux.
+  await writeFile(compiled, process.platform === "linux" ? launcher : launcher.replace("/usr/bin/flock", ":"));
   await writeFile(native, `#!/bin/bash
 set -eu
 test -z "\${OPENCODE_AUTH_CONTENT:-}\${${keyName}:-}"
@@ -58,11 +61,11 @@ case "$1" in
   models) test -z "$OPENCODE_CONFIG"
     test "$OPENCODE_CONFIG_CONTENT" = '{"enabled_providers":["${provider}"]}'
     printf '%s\\n' '${provider}/other' '{}' '${provider}/${model}' '{"capabilities":{"toolcall":true},"variants":{"high":{"reasoningEffort":"high"}}}' ;;
-  run) printf '%s' '{"openai":{"type":"oauth","refresh":"synthetic-rotated","access":"synthetic-access","expires":42,"accountId":"synthetic-account"}}' > "$XDG_DATA_HOME/opencode/auth.json"
-    test -z "\${OPENCODE_CONFIG_CONTENT:-}"
-    cat ;;
   serve) printf '%s\\n' ready
-    read -r unused || true ;;
+    test -z "\${OPENCODE_CONFIG_CONTENT:-}"
+    if read -r rotate && [ "$rotate" = rotate ] && [ '${provider}' = openai ]; then
+      printf '%s' '{"openai":{"type":"oauth","refresh":"synthetic-rotated","access":"synthetic-access","expires":42,"accountId":"synthetic-account"}}' > "$XDG_DATA_HOME/opencode/auth.json"
+    fi ;;
   *) test -r "$XDG_DATA_HOME/opencode/auth.json" ;;
 esac
 `, { mode: 0o700 });
@@ -74,9 +77,9 @@ esac
   return {
     login, file, compiled, config, data,
     start: () => spawn("/bin/bash", [compiled, native, "serve"], { env: { ...env, XDG_DATA_HOME: data }, timeout: 4_000 }),
-    run: (command: string, xdg = data) => spawnSync("/bin/bash", [compiled, native, command], {
-      env: { ...env, XDG_DATA_HOME: xdg },
-      encoding: "utf8", input: "--preserve prompt\n  whitespace", timeout: 10_000
+    run: (command: string) => spawnSync("/bin/bash", [compiled, native, command], {
+      env: { ...env, XDG_DATA_HOME: data },
+      encoding: "utf8", input: "rotate\n", timeout: 10_000
     })
   };
 }
@@ -97,15 +100,55 @@ describe("OpenCode native subscription projection", () => {
     })).toEqual({ mountArgs: [], coveredModelSecrets: [] });
   });
 
+  it.each([
+    { exact: "pilot-login", legacy: undefined, expected: "pilot-login" },
+    { exact: "pilot-login", legacy: "pilot-login", expected: "pilot-login" },
+    { exact: undefined, legacy: "legacy-login", expected: "legacy-login" },
+    { exact: undefined, legacy: undefined, expected: "fallback-login" },
+    { exact: "pilot-login", legacy: "legacy-login", expected: undefined }
+  ])("resolves explicit and default bindings in project and image auth (exact=$exact, legacy=$legacy)", async ({ exact, legacy, expected }) => {
+    const env: Record<string, string> = legacy === undefined ? {} : { [opencodeAuthVolumesEnv]: JSON.stringify({ "agent-pilot": legacy }) };
+    const authProfile: ResolvedAuthProfile = {
+      ...profile,
+      env,
+      nativeLogins: { "opencode/openai/*": "fallback-login", ...(exact ? { "opencode/openai/agent-pilot": exact } : {}) }
+    };
+    const project = prepareOpenCodeRuntimeAuth({ ...input, authProfile }).then(result => result.mountArgs);
+    const image = opencodeHost.prepareImageAuth!({
+      ...input.instance, node_ids: [], internal_port: 4096, published_port: null, workspace_path: "/instances/pilot/workspace"
+    }, { authProfile, tempRoot: input.tempRoot, sourceEnvironment: input.env });
+    if (expected === undefined) {
+      for (const result of await Promise.allSettled([project, image])) {
+        expect(result).toMatchObject({
+          status: "rejected",
+          reason: { code: "validation_error", message: expect.stringContaining("conflicting explicit login volumes for agent-pilot") }
+        });
+        if (result.status === "rejected") expect(result.reason.message).not.toMatch(/pilot-login|legacy-login/u);
+      }
+    } else {
+      const args = ["--mount", `type=volume,source=${expected},target=${containerHome}/${opencodeLoginDirectory},volume-nocopy`];
+      expect(await Promise.all([project, image])).toEqual([args, args]);
+    }
+  });
+
+  it("refuses an invalid explicit legacy entry even when a default exists", async () => {
+    const authProfile = {
+      ...profile,
+      env: { [opencodeAuthVolumesEnv]: '{"agent-pilot":null}' },
+      nativeLogins: { "opencode/openai/*": "fallback-login" }
+    };
+    await expect(prepareOpenCodeRuntimeAuth({ ...input, authProfile })).rejects.toThrow(/needs a native login volume/);
+  });
+
   it.each([["xai", "grok"], ["github-copilot", "subscription"]] as const)(
     "uses a scoped native %s OAuth entry", async (provider, method) => {
       const instance = { ...input.instance, model_auth_methods: { [provider]: method } };
       const nativeProfile = { ...profile, nativeLogins: { [`opencode/${provider}/agent-pilot`]: "pilot-login" } };
       expect(await prepareOpenCodeRuntimeAuth({ ...input, instance, authProfile: nativeProfile })).toEqual(await prepareOpenCodeRuntimeAuth(input));
       const trial = await harness(provider);
-      expect(trial.run("spawnfile-serve").status).toBe(0);
+      expect(trial.run("serve").status).toBe(0);
       await writeFile(trial.file, JSON.stringify({ openai: auth }));
-      const result = trial.run("acp");
+      const result = trial.run("serve");
       expect(result.status).toBe(1);
       expect(result.stderr).toContain(`needs a usable native ${provider} OAuth login`);
     }
@@ -122,20 +165,18 @@ describe("OpenCode native subscription projection", () => {
     await expect(prepareOpenCodeRuntimeAuth({ ...input, authProfile })).rejects.not.toThrow(source);
   });
 
-  it("uses a single durable auth file across restarts and a separate training data home", async () => {
+  it("uses a single durable auth file across restarts and refuses direct subscription clients", async () => {
     const trial = await harness();
     expect(await readFile(trial.compiled, "utf8")).not.toContain(source);
-    expect(trial.run("spawnfile-serve").status).toBe(0);
-    expect(trial.run("acp").status).toBe(0);
-    const training = join(trial.data, "training", "trial");
-    const result = trial.run("run", training);
-    expect({ status: result.status, stdout: result.stdout, stderr: result.stderr }).toEqual({
-      status: 0, stdout: "--preserve prompt\n  whitespace", stderr: ""
-    });
+    expect(trial.run("serve").status).toBe(0);
+    for (const command of ["acp", "run"]) {
+      const result = trial.run(command);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("connect to the instance service");
+    }
     expect(await readlink(join(trial.data, "opencode", "auth.json"))).toBe(trial.file);
-    expect(await readlink(join(training, "opencode", "auth.json"))).toBe(trial.file);
     expect(JSON.parse(await readFile(trial.file, "utf8")).openai.refresh).toBe("synthetic-rotated");
-    expect(trial.run("spawnfile-serve").status).toBe(0);
+    expect(trial.run("serve").status).toBe(0);
   });
 
   it.skipIf(process.platform !== "linux")("reserves a login until the serving process exits", async () => {
@@ -166,9 +207,9 @@ describe("OpenCode native subscription projection", () => {
         await rm(trial.file);
         await symlink(trial.config, trial.file);
       }
-      const result = trial.run("acp");
+      const result = trial.run("serve");
       expect(result.status).toBe(1);
-      expect(result.stderr).toMatch(/needs a usable native openai OAuth login/);
+      expect(result.stderr).toMatch(/needs a native login volume|needs a usable native openai OAuth login/);
       expect(result.stderr + result.stdout).not.toContain(source);
     }
   );
@@ -179,7 +220,7 @@ describe("OpenCode native subscription projection", () => {
   ])("rejects unlisted models and variants instead of letting the native CLI fall back", async mismatch => {
     const trial = await harness();
     await writeFile(trial.config, JSON.stringify(mismatch));
-    const result = trial.run("spawnfile-serve");
+    const result = trial.run("serve");
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/pinned openai catalog/);
   });
