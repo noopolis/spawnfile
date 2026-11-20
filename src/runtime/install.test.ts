@@ -11,7 +11,9 @@ describe("runtime install selection", () => {
     await expect(assertInstallSelectionsCoverCompileableRuntimes()).resolves.toBeUndefined();
     await expect(listInstallSelectionRuntimes()).resolves.toEqual([
       "daimon",
+      "hermes-agent",
       "openclaw",
+      "opencode",
       "picoclaw"
     ]);
   });

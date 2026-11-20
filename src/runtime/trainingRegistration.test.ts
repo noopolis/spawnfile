@@ -14,7 +14,7 @@ it('leaves training adapters unloaded for compilation and resolves them only at 
   expect(entries.find(entry => entry.name === 'daimon')!.training!.subject).toBeTypeOf('function');
   const subjects = await createTrainingSubjects(entries);
   expect(loading.count).toBe(1);
-  expect(Object.keys(subjects).sort()).toEqual(['daimon', 'openclaw', 'picoclaw']);
+  expect(Object.keys(subjects).sort()).toEqual(['daimon', 'hermes-agent', 'openclaw', 'opencode', 'picoclaw']);
   expect(subjects.daimon!.hostInference).toBeUndefined();
 });
 
