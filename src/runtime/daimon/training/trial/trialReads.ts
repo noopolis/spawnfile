@@ -13,8 +13,11 @@ const MAX_TRANSCRIPT_FILES = 4;
 /** Daimon's per-request stream sits beside the usage ledger. */
 const REQUEST_LEDGER = path.posix.join(path.posix.dirname(DAIMON_GROK_TURN_USAGE_LEDGER.filePath), "requests.jsonl");
 
-export const readRequestLedger = async (docker: TrialDocker, container: string): Promise<UsageRequestRecord[]> =>
-  parseUsageRequestLedger(await docker(["exec", container, "cat", REQUEST_LEDGER]).catch(() => ""));
+export const readRequestLedger = async (docker: TrialDocker, container: string): Promise<UsageRequestRecord[]> => {
+  const text = await docker(["exec", container, "cat", REQUEST_LEDGER], { preserveWhitespace: true }).catch(() => "");
+  const lastComplete = text.lastIndexOf("\n");
+  return lastComplete < 0 ? [] : parseUsageRequestLedger(text.slice(0, lastComplete));
+};
 
 /**
  * A turn the engine never closed (a wall-clock or token bound killed it) has no per-turn usage row, but its

@@ -14,7 +14,7 @@ cache storage live under `src/compiler/training/trial/`.
   networks or external participants; the subject loses surfaces, schedule and
   training and takes the candidate prompt as its system document). Team
   inheritance and relative paths therefore hold as in production.
-- `momentVolumes.ts` fills a record's moment (`setup.moment`) into the trial's
+- The shared trial volume helper fills a record's moment (`setup.moment`) into the trial's
   own fresh volumes before boot: a root, network-less helper on the
   organization image, content streamed as a tar on stdin (no bind mounts),
   extracted as the organization uid, feeds landed as `trees/<revision>` behind
@@ -62,6 +62,11 @@ cache storage live under `src/compiler/training/trial/`.
 - `trialReads.ts` reads a running organization: usage and request ledgers, the
   engine's session records since a wake began, the agent's execution error and
   whether its queue has settled.
+- `nativeToolEvidence.ts` binds request rows to the delivered wake or its
+  confirmed execution ID. A unique
+  Codex request batch identifies its fresh thread. `codexToolEvidence.ts` reads
+  the matching bounded rollout, checks session identity and timestamps, and
+  retains only tool lifecycle facts. Grok and AGY rows can record tool requests.
 - `gateway.ts` places Daimon's auth gateway as a sidecar
   (`renderDaimonGatewaySidecarScript`): production Docker security args, the
   realm volume `spawnfile-training-<profile>-<engine>-realm` (kept across

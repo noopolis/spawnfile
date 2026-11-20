@@ -33,6 +33,11 @@ posts one wake and waits on its receipt, `stop` tears the organization down.
 - Absent usage rows are `usage: null`, never zero. A receipt that never
   reached a terminal state before the trial deadline is a `failed` turn.
 - The transcript is operator-only: a `diagnostic` observation, never output.
+- The subject emits the wake's normalized native tool observations, including
+  after cache reuse. Native sources, event IDs, timestamps and causal edges
+  survive reuse. The adapter binds observations to the current trial and turn.
+  Tool coverage is partial for observed lifecycle events and absent for
+  request-only evidence. A matching dispatch and completion prove a causal edge.
 - `judge.ts` is the booted judge: `createBootedJudgeInference` maps one
   `InferenceRequest` onto one wake of the run's judge for its engine, model and
   effort (`BootedJudgeLauncher`, bound per run with `bindBootedJudges`). System,
