@@ -4,12 +4,14 @@ import { opencodeLoginDirectory, openCodeSubscriptionProvider } from "./auth.js"
 import { usableOpenCodeLogin } from "./storeFormat.js";
 
 export const opencodeLaunchFile = "opencode-launch.sh";
+export const opencodeSessionsDirectory = ".spawnfile-sessions";
 
 export function renderOpenCodeLaunch(target: EffectiveModelTarget | undefined, ownsAcp = false): string {
   const head = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
     "umask 077",
+    `if [ "$2" = serve ]; then install -d -m 0700 -- "$HOME/${opencodeSessionsDirectory}"; fi`,
     "unset OPENCODE_AUTH_CONTENT OPENCODE_CONFIG_CONTENT"
   ].join("\n") + "\n";
   const provider = openCodeSubscriptionProvider(target);

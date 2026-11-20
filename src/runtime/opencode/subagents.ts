@@ -8,6 +8,7 @@ import { renderOpenCodeSubagentGuard } from "./subagentsGuard.js";
 
 const directory = "home/spawnfile-subagents";
 const guardPath = `${directory}/guard.mjs`;
+const nativeNpmConfigPath = "home/.config/opencode/.npmrc";
 
 interface OpenCodeSubagentConfig {
   mode: "subagent";
@@ -30,10 +31,11 @@ interface OpenCodeSubagentPlan {
 
 function unsupportedChild(node: ResolvedAgentNode, parentModel: EffectiveModelTarget | undefined): string | undefined {
   if (node.runtime.name !== "opencode") return "requires its own runtime";
+  const sandbox = node.execution?.sandbox?.mode;
   if (node.mcpServers.length || node.memory?.length || node.memoryAccess?.length || node.skills.length ||
       node.workspaceResources?.length || node.secrets.length || Object.keys(node.env).length ||
       node.packages?.length || node.subagents.length || node.surfaces || node.expose ||
-      (node.schedule && node.schedule.kind !== "disabled") || node.execution?.sandbox || node.training ||
+      (node.schedule && node.schedule.kind !== "disabled") || (sandbox && sandbox !== "workspace") || node.training ||
       Object.keys(node.runtime.options).length) {
     return "requires capabilities, state or isolation unavailable to a native text helper";
   }
@@ -109,7 +111,13 @@ export function buildOpenCodeSubagents(
     ...refusals.map(refusal => `OpenCode subagent ${refusal}`)
   ];
   return {
-    files: names.length ? [...files, { path: guardPath, content: renderOpenCodeSubagentGuard(names) }] : [],
+    files: names.length ? [
+      ...files,
+      { path: guardPath, content: renderOpenCodeSubagentGuard(names) },
+      // OpenCode waits for its optional npm bootstrap before loading even a
+      // dependency-free local plugin. Keep that bootstrap local to this home.
+      { path: nativeNpmConfigPath, content: "offline=true\n" }
+    ] : [],
     config: {
       permission: { task: "deny" },
       ...(names.length ? { agent, plugin: [`./${guardPath}`], subagent_depth: 1 } : {})

@@ -16,7 +16,7 @@ import { opencodeHost, opencodeLoginDirectory, openCodeSubscriptionProvider, pre
 import { assertOpenCodeModel, openCodeConfig } from "./config.js";
 import { openCodeInstall, opencodeConfigFile, opencodeContainer, opencodeWiring } from "./launch.js";
 import { opencodeOwnerFile, openCodeOwnerSource } from "./acpOwner.js";
-import { opencodeLaunchFile, renderOpenCodeLaunch } from "./launchScript.js";
+import { opencodeLaunchFile, opencodeSessionsDirectory, renderOpenCodeLaunch } from "./launchScript.js";
 
 function assertSurfaces(surfaces: ResolvedAgentSurfaces | undefined): void {
   for (const surface of Object.keys(surfaces ?? {}) as Array<keyof ResolvedAgentSurfaces>) {
@@ -102,6 +102,12 @@ class OpenCodeAdapter extends RuntimeAdapterBase {
       id: `${input.kind}-${input.slug}`,
       files: input.emittedFiles,
       sourceIds: [input.id],
+      persistentMounts: [{
+        id: `opencode-${input.slug}-sessions`,
+        lifecycle: "exclusive-reattach" as const,
+        mountPath: `<instance-root>/home/${opencodeSessionsDirectory}`,
+        reason: "OpenCode sessions and Moltnet conversation ids"
+      }],
       ...(input.value.kind === "agent" && openCodeSubscriptionProvider(listEffectiveExecutionModelTargets(input.value.execution)[0]) ? {
         opaqueMountTargets: [`<instance-root>/home/${opencodeLoginDirectory}`]
       } : {}),

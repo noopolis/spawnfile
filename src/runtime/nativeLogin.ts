@@ -78,7 +78,14 @@ export function nativeLoginCapability(runtime: string, flows: Readonly<Record<st
       await runDocker(["volume", "create", "--label", "spawnfile.native-login=1", volume]);
       const mount = `type=volume,source=${volume},target=/login,volume-nocopy`;
       await runDocker(["run", "--rm", "--network", "none", "--user", "root", "--mount", mount, "--entrypoint", "sh", image,
-        "-ec", "chown spawnfile:spawnfile /login && chmod 0700 /login"]);
+        "-ec", [
+          'owner=$(id -u spawnfile):$(id -g spawnfile):700',
+          'if [ "$(stat -c %u:%g:%a /login)" = "$owner" ]; then exit 0; fi',
+          'exec 9</login; flock -xn 9',
+          'if [ "$(stat -c %u:%g:%a /login)" = "$owner" ]; then exit 0; fi',
+          'if [ -n "$(ls -A /login)" ]; then echo "This login belongs to a different runtime user. Select its original image or create a separate login." >&2; exit 1; fi',
+          'chown spawnfile:spawnfile /login && chmod 0700 /login'
+        ].join("\n")]);
       const persist = [
         'const fs = require("node:fs"), path = require("node:path");',
         'const source = path.join(process.env.HOME, process.argv[1]);',

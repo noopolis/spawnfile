@@ -1,5 +1,10 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
+import { compileProject } from "../../compiler/compileProject.js";
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import type { RuntimeCompileContext } from "../types.js";
 import { buildOpenCodeSubagents } from "./subagents.js";
@@ -27,6 +32,61 @@ function fixture(childOverrides: Partial<ResolvedAgentNode> = {}) {
 }
 
 describe("OpenCode native subagents", () => {
+  it("compiles the guard and text role when execution uses the default workspace mode", async () => {
+    const root = await mkdtemp(join(tmpdir(), "spawnfile-opencode-subagent-"));
+    const model = `
+runtime: opencode
+execution:
+  model:
+    primary:
+      provider: local
+      name: fixture
+      endpoint:
+        base_url: http://127.0.0.1:1
+        compatibility: openai
+`;
+    try {
+      const child = join(root, "reviewer");
+      await mkdir(child);
+      await Promise.all([
+        writeFile(join(root, "Spawnfile"), `spawnfile_version: "0.1"
+kind: agent
+name: editor
+${model}
+subagents:
+  - id: review
+    ref: ./reviewer
+policy:
+  mode: warn
+  on_degrade: warn
+`),
+        writeFile(join(child, "Spawnfile"), `spawnfile_version: "0.1"
+kind: agent
+name: reviewer
+description: Review supplied copy.
+${model}
+workspace:
+  docs:
+    system: AGENTS.md
+`),
+        writeFile(join(child, "AGENTS.md"), "Check the copy against {env:FIXTURE_ROLE_TOKEN}.\n")
+      ]);
+      const result = await compileProject(root);
+      const editor = join(result.outputDirectory, "container/rootfs/var/lib/spawnfile/instances/opencode/agent-editor");
+      const config = JSON.parse(await readFile(join(editor, "opencode.json"), "utf8"));
+      expect(config.agent["spawnfile-reviewer"]).toMatchObject({ mode: "subagent", permission: { "*": "deny" } });
+      expect(config.plugin).toEqual(["./home/spawnfile-subagents/guard.mjs"]);
+      expect(await readFile(join(editor, config.plugin[0]), "utf8")).toContain('["spawnfile-reviewer"]');
+      expect(await readFile(join(editor, "home/.config/opencode/.npmrc"), "utf8")).toBe("offline=true\n");
+      const childConfig = join(editor, "../agent-reviewer/home/.config/opencode/.npmrc");
+      await expect(readFile(childConfig, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(join(editor, "home/spawnfile-subagents/spawnfile-reviewer.md"), "utf8"))
+        .toContain("Check the copy against {env:FIXTURE_ROLE_TOKEN}.");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("emits a named text role with a file-backed prompt and deny-by-default task config", () => {
     const { parent, context } = fixture();
     const plan = buildOpenCodeSubagents(parent, context);
@@ -56,6 +116,10 @@ describe("OpenCode native subagents", () => {
     expect(plan.files).toEqual([]);
     expect(plan.config).toEqual({ permission: { task: "deny" } });
     expect(plan.message).toContain("review requires capabilities");
+    for (const mode of ["sandboxed", "unrestricted"] as const) {
+      const child = { ...context.subagents[0]!.node, env: {}, execution: { ...parent.execution, sandbox: { mode } } };
+      expect(buildOpenCodeSubagents(parent, { subagents: [{ ...context.subagents[0]!, node: child }] }).files).toEqual([]);
+    }
     for (const child of context.subagents) {
       expect(() => buildOpenCodeSubagents(parent, { subagents: [{ ...child, slug: "../reviewer" }] }))
         .toThrow("Ambiguous OpenCode subagents");

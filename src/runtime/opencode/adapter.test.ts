@@ -41,6 +41,11 @@ describe("OpenCode adapter", () => {
     expect(files).toContainEqual({ path: "home/opencode-launch.sh", content: expect.stringContaining("OPENCODE_AUTH_CONTENT") });
     const [target] = await adapter.createContainerTargets!([{ id: "pilot", kind: "agent", slug: "pilot", value: node, emittedFiles: files }]);
     expect(target?.opaqueMountTargets).toEqual(["<instance-root>/home/.spawnfile-opencode-login"]);
+    expect(target?.persistentMounts).toContainEqual({
+      id: "opencode-pilot-sessions", mountPath: "<instance-root>/home/.spawnfile-sessions",
+      lifecycle: "exclusive-reattach",
+      reason: "OpenCode sessions and Moltnet conversation ids"
+    });
     expect(JSON.stringify(target)).not.toContain("synthetic-oauth");
   });
 
@@ -144,11 +149,12 @@ describe("OpenCode adapter", () => {
       const workspacePath = `${prefix}/workspace`;
       const bridge = wiring.bridge({ configPath: `${prefix}/opencode.json`, homePath: `${prefix}/home`, workspacePath,
         agentId: id, agentName: id, memberId: id, networkId: "network", networkStateDirectory: "/net", nodeSlug: id });
-      expect(bridge).toMatchObject({ kind: "acp", command: "/usr/bin/env", workspace_path: workspacePath });
+      expect(bridge).toMatchObject({ kind: "acp", command: "/usr/bin/env", workspace_path: workspacePath,
+        session_store_path: `${prefix}/home/.spawnfile-sessions/moltnet-network.json` });
       expect(bridge.args).toEqual(expect.arrayContaining([
         workspacePath, `HOME=${prefix}/home`, `XDG_DATA_HOME=${prefix}/home/.local/share`,
         `XDG_CONFIG_HOME=${prefix}/home/.config`, `OPENCODE_CONFIG=${prefix}/opencode.json`,
-        `${prefix}/home/opencode-launch.sh`
+        `${prefix}/home/opencode-launch.sh`, `OPENCODE_DB=${prefix}/home/.spawnfile-sessions/opencode.db`
       ]));
       expect((bridge.args as string[]).slice(-7)).toEqual(["acp", "--hostname", "127.0.0.1", "--port", "0", "--cwd", workspacePath]);
     }

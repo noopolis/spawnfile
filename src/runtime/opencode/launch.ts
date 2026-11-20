@@ -8,7 +8,7 @@ import { createAcpStdioWiring, createMoltnetWorkspace } from "../portableMoltnet
 import type { RuntimeContainerMeta } from "../types.js";
 import type { RuntimeWiring } from "../wiringTypes.js";
 import { opencodeSubscriptionMethods } from "./auth.js";
-import { opencodeLaunchFile } from "./launchScript.js";
+import { opencodeLaunchFile, opencodeSessionsDirectory } from "./launchScript.js";
 
 export const opencodeConfigFile = "opencode.json";
 export const opencodeBinary = "/usr/local/bin/opencode";
@@ -36,6 +36,7 @@ export function opencodeEnvironment(configPath: string, homePath: string, worksp
     XDG_DATA_HOME: posix.join(homePath, ".local/share"),
     XDG_STATE_HOME: posix.join(homePath, ".local/state"),
     OPENCODE_CONFIG: configPath,
+    OPENCODE_DB: posix.join(homePath, opencodeSessionsDirectory, "opencode.db"),
     OPENCODE_DISABLE_AUTOUPDATE: "true",
     OPENCODE_DISABLE_MODELS_FETCH: "true",
     OPENCODE_DISABLE_PROJECT_CONFIG: "true",
@@ -80,6 +81,10 @@ export const opencodeWiring: RuntimeWiring = {
   moltnet: {
     ...createAcpStdioWiring({
       command: "/usr/bin/env",
+      sessionStorePath({ homePath, networkId, agentName }) {
+        if (!homePath) throw new SpawnfileError("validation_error", `OpenCode ACP requires an instance home for ${agentName}`);
+        return posix.join(homePath, opencodeSessionsDirectory, `moltnet-${encodeURIComponent(networkId)}.json`);
+      },
       args({ agentName, configPath, homePath, workspacePath }) {
         if (!homePath) {
           throw new SpawnfileError("validation_error", `OpenCode ACP requires an instance home for ${agentName}`);
