@@ -1,7 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -15,7 +14,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { createServer } = require("node:http");
 const { createInterface } = require("node:readline");
-assert.deepEqual(process.argv.slice(2), ["acp", "--hostname", "127.0.0.1", "--port", process.env.PORT, "--cwd", process.cwd()]);
+assert.deepEqual(process.argv.slice(2), ["acp", "--hostname", "127.0.0.1", "--port", "0", "--cwd", process.cwd()]);
 assert.ok(fs.fstatSync(3).isFile());
 fs.appendFileSync(process.env.HOME + "/starts", process.pid + "\n");
 const pid = () => ({ pid: process.pid });
@@ -31,7 +30,7 @@ const server = createServer((req, res) => {
     res.end(JSON.stringify(pid()));
   }
 });
-server.listen(Number(process.env.PORT), "127.0.0.1");
+server.listen(0, "127.0.0.1", () => process.stderr.write("listening " + server.address().port + "\n"));
 function send(frame) { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...frame }) + "\n"); }
 createInterface({ input: process.stdin }).on("line", line => {
   const message = JSON.parse(line);
@@ -59,25 +58,18 @@ it("keeps one native owner for health, a Moltnet bridge and an HTTP turn through
   const root = await mkdtemp(join(tmpdir(), "spawnfile-opencode-owner-test-"));
   const workspace = join(root, "workspace ".repeat(12));
   await mkdir(workspace);
-  const port = await new Promise<number>(resolve => {
-    const reservation = createServer().listen(0, "127.0.0.1", () => {
-      const address = reservation.address();
-      if (typeof address !== "object" || address === null) throw new Error("No test port");
-      reservation.close(() => resolve(address.port));
-    });
-  });
   const script = join(root, opencodeOwnerFile);
-  const binary = join(root, "opencode");
+  const binary = join(root, "opencode.cjs");
   const lease = await open(join(root, "lease"), "w");
   await writeFile(script, openCodeOwnerSource, { mode: 0o600 });
   await writeFile(binary, nativeSource, { mode: 0o700 });
-  const env = { ...process.env, HOME: root, PORT: String(port) };
-  const origin = `http://127.0.0.1:${port}`;
-  const owner = spawn(process.execPath, [script, "owner", binary, "3", "--hostname", "127.0.0.1", "--port", String(port)], {
+  const env = { ...process.env, HOME: root };
+  const owner = spawn(process.execPath, [script, "owner", binary, "3", "--hostname", "127.0.0.1", "--port", "0"], {
     cwd: workspace, env, stdio: ["ignore", "ignore", "pipe", lease.fd]
   });
-  await lease.close();
+  const ownerMessages = createInterface({ input: owner.stderr! })[Symbol.asyncIterator]();
   const ownerExit = once(owner, "exit");
+  await lease.close();
   const sockets: ChildProcess[] = [];
 
   function attach() {
@@ -85,12 +77,16 @@ it("keeps one native owner for health, a Moltnet bridge and an HTTP turn through
     const stderr: string[] = [];
     bridge.stdin.on("error", () => {});
     bridge.stderr.setEncoding("utf8").on("data", chunk => stderr.push(chunk));
-    const lines = createInterface({ input: bridge.stdout });
+    const lines = createInterface({ input: bridge.stdout })[Symbol.asyncIterator]();
     const result = {
       bridge,
       finished: once(bridge, "close"),
       stderr,
-      async receive() { return JSON.parse((await once(lines, "line"))[0]); },
+      async receive() {
+        const line = await lines.next();
+        if (line.done) throw new Error("OpenCode bridge closed before its reply");
+        return JSON.parse(line.value);
+      },
       send(frame: Record<string, unknown>) { bridge.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...frame }) + "\n"); }
     };
     sockets.push(bridge);
@@ -98,8 +94,13 @@ it("keeps one native owner for health, a Moltnet bridge and an HTTP turn through
   }
 
   try {
-    await expect.poll(async () => (await fetch(`${origin}/global/health`)).ok).toBe(true);
-    const { pid } = await (await fetch(`${origin}/global/health`)).json();
+    const listening = await ownerMessages.next();
+    const port = /^listening (\d+)$/u.exec(listening.value ?? "")?.[1];
+    if (!port) throw new Error(`OpenCode test owner failed to start: ${listening.value ?? "closed stderr"}`);
+    const origin = `http://127.0.0.1:${port}`;
+    const health = await fetch(`${origin}/global/health`);
+    expect(health.ok).toBe(true);
+    const { pid } = await health.json();
     const one = attach();
     one.send({ id: 1, method: "initialize" });
     expect(await one.receive()).toEqual({ jsonrpc: "2.0", id: 1, result: { protocolVersion: 1, pid } });
