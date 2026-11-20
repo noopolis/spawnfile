@@ -8,7 +8,10 @@ import { getRuntimeAdapter } from "./registry.js";
 export const RUNTIME_INSTALL_ROOT = "/opt/spawnfile/runtime-installs";
 
 export interface RuntimeInstallRecipe {
+  /** Preferred image when composing a compatible container. */
   baseImage?: string;
+  /** An installation that depends on the image's system libraries must use this base. */
+  requiredBaseImage?: string;
   commands: string[];
   copyCommands: string[];
   /**

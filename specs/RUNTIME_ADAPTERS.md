@@ -80,7 +80,7 @@ Packages that imported implementation files directly from `spawnfile/dist/` may 
 
 ## Optional features
 
-Declare the features the harness actually supports. A memory hook, credential preparation, health check, training provider, or Moltnet connection can be supplied independently. Native code, schemas, install assets, credentials, and compatibility readers belong to the adapter folder.
+Declare the features the harness actually supports. A memory hook, credential preparation, health check, training provider, or Moltnet connection can be supplied independently. Native code, schemas, install assets, credentials, and compatibility readers belong to the adapter folder. An install recipe can set `requiredBaseImage` when the harness needs system libraries from a particular image. Agents can share that image. Combining incompatible required images produces a compile error.
 
 An adapter that consumes raw imported CLI credentials lists the supported methods in `container.rawHomeAuthImports`. Spawnfile mounts a configured profile import into an instance's home only when that instance also requests the matching model authentication method. For example, an instance that selects only Codex gets only the `.codex` mount, even when the profile contains both logins. Earlier versions also mounted `.claude` in that home. A secondary CLI that relied on that implicit login now needs its own declared credential setup. External runtimes sharing a container must all opt into each raw credential staged there. Adapters can also implement host authentication hooks to manage credentials themselves.
 
