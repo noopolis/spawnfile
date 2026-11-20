@@ -1,7 +1,7 @@
 import { lstat, mkdir } from "node:fs/promises";
-import { safeSegment, type History } from "./history.js";
+import type { History } from "./history.js";
 import { compareInstants } from "./instant.js";
-import { copySnapshotTree, readSnapshotManifest, snapshotHistoryPath, type SnapshotManifest } from "./snapshotManifest.js";
+import { copySnapshotTree, isPartialSnapshot, readSnapshotManifest, snapshotHistoryPath, wakeHistoryPath, type SnapshotManifest } from "./snapshotManifest.js";
 import type { InputContext, InputResult } from "./types.js";
 
 export interface SelectedVolumeSnapshot { snapshot: string; startedAt: string; manifest: SnapshotManifest; relative: string }
@@ -9,7 +9,7 @@ export interface SelectedVolumeSnapshot { snapshot: string; startedAt: string; m
 /** A published row plus retained directory and manifest is complete; never infer time from its name. */
 export const selectVolumeSnapshot = async (history: History, agentSlug: string, agentId: string, id: string,
   at: string, recordId?: string): Promise<SelectedVolumeSnapshot> => {
-  const rowsPath = `recording/${safeSegment(agentSlug)}/wake-moments.jsonl`;
+  const rowsPath = wakeHistoryPath(agentSlug);
   const rows = await history.wakeMoments(rowsPath);
   if (!rows) throw new Error(`Missing volume snapshot history ${rowsPath}`);
   const candidates = rows.flatMap((row, index) => row.agent_id !== agentId ? [] : row.snapshots.filter((entry) => entry.id === id)
@@ -17,7 +17,7 @@ export const selectVolumeSnapshot = async (history: History, agentSlug: string, 
     .filter(({ row, entry }) => recordId === undefined ? compareInstants(row.started_at, at) <= 0 : entry.snapshot === recordId)
     .sort((a, b) => compareInstants(b.row.started_at, a.row.started_at) || b.index - a.index);
   for (const { row, entry } of candidates) {
-    if (entry.snapshot.endsWith(".partial")) {
+    if (isPartialSnapshot(entry.snapshot)) {
       if (recordId !== undefined) throw new Error(`Recorded volume snapshot ${recordId} is partial`);
       continue;
     }

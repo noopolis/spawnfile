@@ -3,6 +3,7 @@ import type { Command } from "commander";
 import { SpawnfileError } from "../shared/index.js";
 import { resumedMomentDatasets, withLoweredDatasets } from "../compiler/training/moments.js";
 import type { CliHandlers, CliStreams } from "./runCli.js";
+import { requireLiveTraining } from "../runtime/trainingSelection.js";
 import { parseTrainingRunControls } from "./trainingRun.js";
 
 const forwarded = ["train", "validation", "test", "editable", "resource", "judge", "judge-citation-repairs", "validation-group", "optimizer-model",
@@ -22,7 +23,7 @@ export const registerTrainCommand = (
     .description("Plan, rewind, or train one canonical agent through its declared training inputs")
     .argument("[path]", "Canonical project directory or Spawnfile path", process.cwd())
     .option("--agent <id>", "Canonical agent id or unambiguous short name (inferred for one agent)")
-    .option("--auth-profile <name>", "Login for production-booted Daimon trials (held by the run's auth gateway)")
+    .option("--auth-profile <name>", "Auth profile for the selected runtime's live training")
     .option("--plan", "Print the resolved training authoring plan without executing training")
     .option("--materialize <example>", "Rewind an authored example into --out without running training")
     .option("--history <directory>", "Local recorded history for --materialize")
@@ -111,10 +112,7 @@ export const registerTrainCommand = (
       throw new SpawnfileError("validation_error", "Actual training requires --out when no training targets are declared");
     }
     const context = await handlers.createTrainingContext(inputPath, { agent: plan.agent.id, packageVersion });
-    // Trials are production-booted Daimon organizations: the container per trial is the isolation.
-    if (options.dryRun !== true && context.agent.runtime !== "daimon") {
-      throw new SpawnfileError("validation_error", `Actual training boots Daimon trials; agent ${context.agent.id} runs on ${context.agent.runtime}`);
-    }
+    if (options.dryRun !== true) await requireLiveTraining(context.agent.runtime, context.agent.id);
     if (lowered) await handlers.allocateTrainingOutputParent(lowered.execution.output);
     // Authored moments become one executable dataset per role; a resume reuses the persisted lowering.
     if (lowered && options.dryRun !== true && ["train", "validation", "test"].some((role) => options[role] !== undefined)) {

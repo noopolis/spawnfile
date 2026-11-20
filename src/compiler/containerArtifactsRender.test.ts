@@ -32,7 +32,8 @@ const loadRenderModule = async (
     }
   >
 ) => {
-  vi.doMock("../runtime/index.js", () => ({
+  vi.doMock("../runtime/index.js", async (importOriginal) => ({
+    ...await importOriginal<typeof import("../runtime/index.js")>(),
     createRuntimeInstallRecipe: vi.fn(async (runtimeName: string) => {
       const recipe = recipeByRuntime[runtimeName];
       if (!recipe) {
@@ -372,7 +373,7 @@ describe("renderDockerfile", () => {
     );
   });
 
-  it("installs python3 when Moltnet node endpoints can be rebound at runtime", async () => {
+  it("prepares config updates and private node receipts for the unprivileged Moltnet user", async () => {
     const { renderDockerfile } = await loadRenderModule({
       openclaw: {
         commands: [],
@@ -398,6 +399,24 @@ describe("renderDockerfile", () => {
     );
 
     expect(dockerfile).toContain("python3");
+    expect(dockerfile).toContain("install -d -o spawnfile -g spawnfile -m 700 '/run/spawnfile/moltnet-readiness'");
+  });
+
+  it("installs the managed Moltnet readiness client even when the adapter needs no system packages", async () => {
+    const runtimeName = "echo-harness";
+    const { renderDockerfile } = await loadRenderModule({
+      [runtimeName]: { commands: [], copyCommands: [], runtimeName, runtimeRoot: "/opt/echo" }
+    });
+    const server = { auth: { mode: "none" }, listen: { bind: "127.0.0.1", port: 8787 },
+      mode: "managed", store: { kind: "memory" } } as const;
+    const rendered = await renderDockerfile([createRuntimePlan(runtimeName)], {
+      hasMoltnet: true, hasStagedMoltnetBinaries: true,
+      moltnet: { nodePlans: [], serverPlans: [{
+        baseUrl: "http://127.0.0.1:8787", configPath: "/tmp/Moltnet.json", id: "net",
+        mode: "managed", name: "net", networkId: "net", port: 8787, rooms: [], secretPatches: [], server, teamSource: "/project/Spawnfile"
+      }] }
+    });
+    expect(rendered).toContain("apt-get install -y --no-install-recommends curl");
   });
 
   it("rejects Moltnet without a pinned stamped release instead of installing latest", async () => {

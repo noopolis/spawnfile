@@ -14,6 +14,7 @@ const { renderRuntimeLinkMaterializer } = await import(
 ) as RuntimeLinkMaterializerModule;
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const imageDirectory = path.join(repository, "src", "runtime", "daimon", "image");
 const digest = (file: string): string => `sha256:${execFileSync("shasum", ["-a", "256", file], { encoding: "utf8" }).split(" ")[0] ?? ""}`;
 const pinnedManifest = JSON.parse(readFileSync(path.join(repository, "src", "runtime", "daimon", "contract-manifest.json"), "utf8")) as { grokEngineBroker: { artifacts: { x64Sha256: string }; grokCliArtifacts: { x64: { url: string } }; grokCliVersion: string } };
 // The runtime image refuses any Grok executable but the manifest-pinned build,
@@ -58,7 +59,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     const args = ["build", "--network=none", "--platform", "linux/amd64", "--build-context", `source_bundle=${sourceContext}`, "--build-context", `dependency_bundle=${dependencyContext}`,
       "--output", `type=local,dest=${output}`, "--build-arg", `SOURCE_ARCHIVE_SHA256=${sourceReceipt.archive_sha256}`, "--build-arg", `DEPENDENCY_ARCHIVE_SHA256=${dependencyReceipt.archive_sha256}`,
       "--build-arg", `SOURCE_MANIFEST_SHA256=${sourceReceipt.manifest_sha256}`, "--build-arg", `DEPENDENCY_MANIFEST_SHA256=${dependencyReceipt.manifest_sha256}`,
-      "-f", path.join(repository, "runtime-images", "daimon", "SourceBundle.Dockerfile"), repository];
+      "-f", path.join(imageDirectory, "SourceBundle.Dockerfile"), imageDirectory];
     execFileSync("docker", args, { stdio: "inherit" });
     const identity = JSON.parse(readFileSync(path.join(output, "source-inputs.json"), "utf8"));
     assert.equal(identity.target, "linux/amd64"); assert.equal(identity.source.archive_sha256, digest(sourceTar)); assert.equal(identity.dependencies.archive_sha256, digest(dependencyTar));
@@ -70,7 +71,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     cpSync(path.join(output, "daimon.tgz"), path.join(packageContext, "daimon.tgz")); cpSync(path.join(output, "runtime-dependencies.tar"), path.join(packageContext, "dependencies.tar")); cpSync(path.join(output, "source-inputs.json"), path.join(packageContext, "source-inputs.json"));
     execFileSync("docker", ["build", "--network=none", "--platform", "linux/amd64", "--target", "offline_dependency_probe", "--build-context", `daimon_package=${packageContext}`,
       "--output", `type=local,dest=${probe}`, "--build-arg", `DAIMON_PACKAGE_SHA256=${digest(path.join(output, "daimon.tgz"))}`,
-      "--build-arg", `DAIMON_DEPENDENCY_ARCHIVE_SHA256=${digest(path.join(output, "runtime-dependencies.tar"))}`, "-f", path.join(repository, "runtime-images", "daimon", "Dockerfile"), repository], { stdio: "inherit" });
+      "--build-arg", `DAIMON_DEPENDENCY_ARCHIVE_SHA256=${digest(path.join(output, "runtime-dependencies.tar"))}`, "-f", path.join(imageDirectory, "Dockerfile"), imageDirectory], { stdio: "inherit" });
     assert.deepEqual(JSON.parse(readFileSync(path.join(probe, "probe", "source-inputs.json"), "utf8")), identity);
     const grok = path.join(packageContext, "grok"), agyTree = path.join(temporary, "agy-tree"), agy = path.join(agyTree, "antigravity"), agyTar = path.join(packageContext, "agy.tar.gz");
     cpSync(pinnedGrokCli(), grok); mkdirSync(agyTree); writeFileSync(agy, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
@@ -95,7 +96,7 @@ test("actual Daimon lock produces a real offline linux/amd64 shipped artifact an
     const receipt = { architecture: "amd64", daimon: { package_sha256: packageSha, source_inputs: sourceInputs, source_sha256: digest(path.join(packageContext, "source-inputs.json")) }, engines: { agy: { executable_sha256: agySha }, codex: { executable_sha256: codexSha }, grok: { executable_sha256: grokSha } }, manifest_sha256: manifestSha, provenance: { agy: { archive: { format: "tar.gz", sha512: sha512(agyTar), url: "https://invalid.example/agy", version: "fixture" } }, grok: { executable: { sha256: grokSha, url: pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url, version: pinnedManifest.grokEngineBroker.grokCliVersion } } }, version: "spawnfile.daimon-runtime-capability-receipt.v1" };
     const shipped = path.join(temporary, "shipped"), shippedTar = path.join(temporary, "shipped.tar"); mkdirSync(shipped);
     execFileSync("docker", ["build", "--network=none", "--platform", "linux/amd64", "--build-context", `daimon_package=${packageContext}`, "--output", `type=tar,dest=${shippedTar}`,
-      "--build-arg", `DAIMON_CAPABILITY_RECEIPT_BASE64=${Buffer.from(`${JSON.stringify(receipt)}\n`).toString("base64")}`, "--build-arg", `DAIMON_MANIFEST_SHA256=${manifestSha}`, "--build-arg", `DAIMON_PACKAGE_SHA256=${packageSha}`, "--build-arg", `DAIMON_SOURCE_SHA256=${receipt.daimon.source_sha256}`, "--build-arg", "DAIMON_DEPENDENCY_MODE=offline-bundle", "--build-arg", `DAIMON_DEPENDENCY_ARCHIVE_SHA256=${runtimeArchive}`, "--build-arg", `CODEX_CLI_SHA256=${codexSha}`, "--build-arg", `GROK_CLI_VERSION=${pinnedManifest.grokEngineBroker.grokCliVersion}`, "--build-arg", `GROK_CLI_URL=${pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url}`, "--build-arg", `GROK_CLI_SHA256=${grokSha.slice(7)}`, "--build-arg", "AGY_CLI_VERSION=fixture", "--build-arg", "AGY_CLI_URL=https://invalid.example/agy", "--build-arg", `AGY_CLI_SHA512=${sha512(agyTar).slice(7)}`, "--build-arg", `AGY_CLI_SHA256=${agySha.slice(7)}`, "-f", path.join(repository, "runtime-images", "daimon", "Dockerfile"), repository], { stdio: "inherit" });
+      "--build-arg", `DAIMON_CAPABILITY_RECEIPT_BASE64=${Buffer.from(`${JSON.stringify(receipt)}\n`).toString("base64")}`, "--build-arg", `DAIMON_MANIFEST_SHA256=${manifestSha}`, "--build-arg", `DAIMON_PACKAGE_SHA256=${packageSha}`, "--build-arg", `DAIMON_SOURCE_SHA256=${receipt.daimon.source_sha256}`, "--build-arg", "DAIMON_DEPENDENCY_MODE=offline-bundle", "--build-arg", `DAIMON_DEPENDENCY_ARCHIVE_SHA256=${runtimeArchive}`, "--build-arg", `CODEX_CLI_SHA256=${codexSha}`, "--build-arg", `GROK_CLI_VERSION=${pinnedManifest.grokEngineBroker.grokCliVersion}`, "--build-arg", `GROK_CLI_URL=${pinnedManifest.grokEngineBroker.grokCliArtifacts.x64.url}`, "--build-arg", `GROK_CLI_SHA256=${grokSha.slice(7)}`, "--build-arg", "AGY_CLI_VERSION=fixture", "--build-arg", "AGY_CLI_URL=https://invalid.example/agy", "--build-arg", `AGY_CLI_SHA512=${sha512(agyTar).slice(7)}`, "--build-arg", `AGY_CLI_SHA256=${agySha.slice(7)}`, "-f", path.join(imageDirectory, "Dockerfile"), imageDirectory], { stdio: "inherit" });
     execFileSync("tar", ["-xf", shippedTar, "-C", shipped], { stdio: "inherit" });
     assert.deepEqual(JSON.parse(readFileSync(path.join(shipped, "opt", "spawnfile", "runtime-installs", "daimon", "source-inputs.json"), "utf8")), receipt.daimon.source_inputs);
     const shippedRoot=path.join(shipped,"opt","spawnfile","runtime-installs","daimon");

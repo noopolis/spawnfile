@@ -57,7 +57,7 @@ export const registerReleaseCommand = (
     .description("Build and deploy only when the image inputs changed, draining running turns first")
     .argument("[path]", "Project directory or Spawnfile path", process.cwd())
     .requiredOption("--deployment <name>", "Detached deployment to release into")
-    .addOption(runtimeEnvFileOption("Runtime secrets; must set SPAWNFILE_DAIMON_CONTROL_TOKEN to drain"))
+    .addOption(runtimeEnvFileOption("Runtime secrets for the selected adapter's drain operation"))
     .addOption(envFileAliasOption())
     .option("--auth-profile <name>", "Local Spawnfile auth profile")
     .option("--context <name>", "Docker context for the build and deployment target")

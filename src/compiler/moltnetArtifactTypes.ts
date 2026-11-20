@@ -25,6 +25,7 @@ export interface MoltnetServerPlan {
 }
 
 export interface MoltnetNodePlan {
+  protocolCapability?: string;
   sourceNodeId?: string;
   configPath: string;
   credentialAgentId?: string;
@@ -33,6 +34,7 @@ export interface MoltnetNodePlan {
   memberId?: string;
   networkId: string;
   receiptStorePath?: string;
+  releaseCapability?: string;
 }
 
 export interface MoltnetPersistentMount {

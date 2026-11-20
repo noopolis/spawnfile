@@ -4,7 +4,6 @@ import type { TeamNetworkServer } from "../manifest/index.js";
 
 import {
   createMoltnetNativeServerConfig,
-  createMoltnetDaimonReceiptStorePath,
   createDefaultMoltnetStorePath,
   createMoltnetNodeConfigPath,
   createMoltnetOpenTokenDirectory,
@@ -38,15 +37,6 @@ describe("moltnetConfigLowering", () => {
       .toBe("container/rootfs/var/lib/spawnfile/moltnet/servers/org-net/Moltnet.json");
     expect(createMoltnetNodeConfigPath("root team", "org net", "field/rep"))
       .toBe("container/rootfs/var/lib/spawnfile/moltnet/nodes/root-team-org-net-field-rep.json");
-  });
-
-  it("renders only collision-free absolute Daimon receipt-store paths", () => {
-    expect(createMoltnetDaimonReceiptStorePath("local", "relay-agent"))
-      .toBe("/var/lib/spawnfile/moltnet/networks/local/daimon-receipts/relay-agent.json");
-    expect(() => createMoltnetDaimonReceiptStorePath("local", "../relay-agent"))
-      .toThrow("invalid Daimon receipt-store path segment");
-    expect(() => createMoltnetDaimonReceiptStorePath("local net", "relay-agent"))
-      .toThrow("invalid Daimon receipt-store path segment");
   });
 
   it("renders listen addresses and base URLs for managed and external servers", () => {

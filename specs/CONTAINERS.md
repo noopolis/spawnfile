@@ -144,9 +144,9 @@ noopolis/spawnfile-runtime-picoclaw:0.3.1
 Public Daimon hosts do not accept raw or tag-only image overrides. Standard
 compiles always use the `runtimes.yaml` digest and receipt.
 
-The published Daimon image is built by CI (`runtime-images.yml`, `daimon` job,
-`scripts/publish-daimon-runtime.ts`) from the Daimon commit, AGY and Codex pins
-in `runtime-images/daimon/publish-inputs.json` and the Grok pin in the vendored
+The published Daimon image is built by CI (`runtime-images.yml`, scripted build lane,
+`src/runtime/daimon/image/publishRuntime.ts`) from the Daimon commit, AGY and Codex pins
+in `src/runtime/daimon/image/publish-inputs.json` and the Grok pin in the vendored
 contract manifest. It is a `linux/amd64` + `linux/arm64` index tagged
 `<daimon version>-<short commit>`; an existing tag is never moved. Each
 platform embeds its own capability receipt (the packaged engine broker and CLI

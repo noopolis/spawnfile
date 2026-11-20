@@ -120,7 +120,6 @@ describe("spawnfile artifacts export", () => {
 
   it("renders machine-readable JSON with --json", async () => {
     const exportRunArtifacts = vi.fn(async () => createResult({
-      failedFiles: ["raw/daimon/eleanor/causal.jsonl"],
       missingOptionalFiles: ["raw/mneme/office-recall/causal.jsonl"]
     }));
     const stdout: string[] = [];
@@ -135,10 +134,25 @@ describe("spawnfile artifacts export", () => {
     const parsed = JSON.parse(stdout.join("\n"));
     expect(parsed).toMatchObject({
       deployment: "default",
-      failed_files: ["raw/daimon/eleanor/causal.jsonl"],
+      failed_files: [],
       missing_optional_files: ["raw/mneme/office-recall/causal.jsonl"]
     });
     expect(parsed.index.version).toBe("spawnfile.export-index.v1");
+  });
+
+  it.each([false, true])("returns failure when a required export file is missing (JSON %s)", async (json) => {
+    const file = "raw/example/turns.jsonl";
+    const exportRunArtifacts = vi.fn(async () => createResult({ failedFiles: [file] }));
+    const stdout = vi.fn();
+    const stderr = vi.fn();
+    const code = await runCli(
+      ["artifacts", "export", projectRoot, "--out", "/tmp/export-out", ...(json ? ["--json"] : [])],
+      { stdout, stderr }, { exportRunArtifacts }
+    );
+    expect(code).toBe(1);
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining(file));
+    if (json) expect(JSON.parse(stdout.mock.calls[0]![0])).toMatchObject({ failed_files: [file] });
+    else expect(stdout).not.toHaveBeenCalled();
   });
 
   it("requires --out", async () => {

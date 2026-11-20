@@ -8,9 +8,20 @@ import {
 import {
   isReferencedMember,
   loadManifest,
+  NESTED_ADAPTERS_MESSAGE,
   type InlineAgentMember,
+  type LoadedManifest,
   type TeamManifest
 } from "../manifest/index.js";
+import { SpawnfileError } from "../shared/index.js";
+
+/** Only the invoked root may select adapter modules; nested declarations are refused, never ignored. */
+export const assertRootOnlyAdapters = (loaded: LoadedManifest, rootManifestPath: string): LoadedManifest => {
+  if (loaded.manifest.adapters !== undefined && getCanonicalManifestPath(loaded.manifestPath) !== rootManifestPath) {
+    throw new SpawnfileError("invalid_manifest", `Invalid Spawnfile manifest ${loaded.manifestPath}: ${NESTED_ADAPTERS_MESSAGE} (${rootManifestPath})`);
+  }
+  return loaded;
+};
 
 export const createInlineAgentSource = (teamSource: string, memberId: string): string =>
   `${teamSource}#member=${encodeURIComponent(memberId)}`;
@@ -18,7 +29,8 @@ export const createInlineAgentSource = (teamSource: string, memberId: string): s
 export const collectProjectManifestPaths = async (
   manifestPath: string,
   recursive: boolean,
-  visited = new Set<string>()
+  visited = new Set<string>(),
+  rootManifestPath = getCanonicalManifestPath(manifestPath)
 ): Promise<string[]> => {
   const canonicalPath = getCanonicalManifestPath(manifestPath);
   if (visited.has(canonicalPath)) {
@@ -30,7 +42,7 @@ export const collectProjectManifestPaths = async (
     return [canonicalPath];
   }
 
-  const loadedManifest = await loadManifest(canonicalPath);
+  const loadedManifest = assertRootOnlyAdapters(await loadManifest(canonicalPath), rootManifestPath);
   const childRefs = loadedManifest.manifest.kind === "team"
     ? loadedManifest.manifest.members.filter(isReferencedMember).map((member) => member.ref)
     : (loadedManifest.manifest.subagents ?? []).map((subagent) => subagent.ref);
@@ -39,7 +51,8 @@ export const collectProjectManifestPaths = async (
       collectProjectManifestPaths(
         getManifestPath(path.resolve(getProjectRoot(canonicalPath), ref)),
         true,
-        visited
+        visited,
+        rootManifestPath
       )
     )
   );

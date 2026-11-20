@@ -100,9 +100,9 @@ describe("collectOrganizationUsage", () => {
     expect(usage.roster.map((entry) => entry.agent)).toEqual(["brass", "cogsworth", "foreman"]);
   });
 
-  it("renders a missing ledger as empty rather than an error", async () => {
+  it("marks a missing live ledger as unknown", async () => {
     const result = await collectOrganizationUsage({ outputDirectory: "/tmp/out" }, handlersFor({}));
-    expect(result).toMatchObject({ records: [], unreadableUnits: [] });
+    expect(result).toMatchObject({ records: [], unreadableUnits: [{ reason: "ledger_read_failed", unitId: "unit-0" }] });
   });
 
   it("reports a stopped container as unreadable rather than as zero usage", async () => {

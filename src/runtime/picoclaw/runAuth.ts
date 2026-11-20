@@ -1,4 +1,4 @@
-import { loadImportedClaudeCodeCredential } from "../../auth/index.js";
+import { loadImportedClaudeCodeCredential } from "../../auth/runtimeCredentials.js";
 import type { RuntimeAuthPreparationInput, RuntimeAuthPreparationResult } from "../types.js";
 
 /**

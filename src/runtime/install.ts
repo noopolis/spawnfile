@@ -2,15 +2,18 @@ import { SpawnfileError } from "../shared/index.js";
 
 import {
   assertRuntimeCanCompile,
+  getRuntimeAdapter,
+  hasRuntimeAdapter,
+  listRuntimeAdapters,
   loadRuntimeRegistry,
-  type DaimonCapabilityReceipts
+  type RuntimeCapabilityReceipts
 } from "./registry.js";
 
 export type RuntimeInstallSelection =
   | {
       ecosystem: "go" | "node";
       capabilityReceipt?: string;
-      capabilityReceipts?: DaimonCapabilityReceipts;
+      capabilityReceipts?: RuntimeCapabilityReceipts;
       contractManifestSha256?: string;
       digest?: string;
       image: string;
@@ -64,87 +67,11 @@ const convertRemoteToHttps = (remote: string): string => {
   return remote.replace(/^git\+/, "");
 };
 
-const installHints = new Map<
-  string,
-  Record<
-    RuntimeInstallSelection["kind"],
-    {
-      ecosystem: "go" | "node";
-      installHint: string;
-    }
-  >
->([
-  [
-    "daimon",
-    {
-      container_image: {
-        ecosystem: "node",
-        installHint: "Copy a pinned Daimon runtime image."
-      },
-      github_release_archive: {
-        ecosystem: "node",
-        installHint: "Download a pinned Daimon runtime release archive."
-      },
-      npm: {
-        ecosystem: "node",
-        installHint: "Install the pinned Daimon package and Pi SDK dependencies inside the generated runtime app."
-      },
-      source_repo: {
-        ecosystem: "node",
-        installHint: "Checkout the pinned Daimon repo ref and install from the repository root."
-      }
-    }
-  ],
-  [
-    "openclaw",
-    {
-      container_image: {
-        ecosystem: "node",
-        installHint:
-          "Copy the pinned OpenClaw runtime files from the official container image."
-      },
-      github_release_archive: {
-        ecosystem: "node",
-        installHint: "Download the pinned OpenClaw artifact archive from the release."
-      },
-      npm: {
-        ecosystem: "node",
-        installHint: "Install the pinned OpenClaw package version from npm."
-      },
-      source_repo: {
-        ecosystem: "node",
-        installHint: "Checkout the pinned repo ref and install from the repository root."
-      }
-    }
-  ],
-  [
-    "picoclaw",
-    {
-      container_image: {
-        ecosystem: "go",
-        installHint: "Copy the pinned PicoClaw runtime files from the official container image."
-      },
-      github_release_archive: {
-        ecosystem: "go",
-        installHint: "Download the pinned PicoClaw release archive for the target platform."
-      },
-      npm: {
-        ecosystem: "node",
-        installHint: "Install the pinned PicoClaw package version from npm."
-      },
-      source_repo: {
-        ecosystem: "go",
-        installHint: "Checkout the pinned repo ref and build/install from the repository root."
-      }
-    }
-  ]
-]);
-
 export const resolveRuntimeInstallSelection = async (
   runtimeName: string
 ): Promise<RuntimeInstallSelection> => {
   const runtime = await assertRuntimeCanCompile(runtimeName);
-  const installProfile = installHints.get(runtime.name);
+  const installProfile = hasRuntimeAdapter(runtime.name) ? getRuntimeAdapter(runtime.name).install.hints : undefined;
 
   if (!installProfile) {
     throw new SpawnfileError(
@@ -212,7 +139,7 @@ export const resolveRuntimeInstallSelection = async (
 };
 
 export const listInstallSelectionRuntimes = async (): Promise<string[]> =>
-  [...installHints.keys()].sort();
+  listRuntimeAdapters();
 
 export const assertInstallSelectionsCoverCompileableRuntimes = async (): Promise<void> => {
   const compileableRuntimeNames = (await loadRuntimeRegistry())

@@ -1,8 +1,9 @@
 import path from "node:path";
 
+import { WAKE_MOMENT_VERSION } from "../recording/types.js";
 import type { CompileReportWorkspaceGitResource, RecordingAgentReport } from "../report/index.js";
-import { resolveMnemeDurableMemoryMountPath } from "../runtime/mnemeMcp.js";
-import { daimonRecordingDirectory } from "../runtime/daimon/recording.js";
+import { findRuntimeWiring } from "../runtime/index.js";
+import { recordingOperationFor } from "./recordingCapability.js";
 import { recordingKeepMs, SpawnfileError } from "../shared/index.js";
 import type { CompilePlan } from "./types.js";
 import { resolveTrainingRecordVolumes } from "./training/plan/index.js";
@@ -13,19 +14,23 @@ export const resolveRecordingAgentFacts = (
 ): RecordingAgentReport[] => plan.nodes.flatMap((node): RecordingAgentReport[] => {
   if (node.value.kind !== "agent" || node.value.training?.record === undefined) return [];
   const agent = node.value;
+  const memoryWiring = findRuntimeWiring(agent.runtime.name)?.memory;
   const memory = new Map<string, RecordingAgentReport["memory"][number]>();
   for (const access of agent.memoryAccess ?? []) {
     const declaring = plan.nodes.find((entry) => entry.value.source === access.source);
     if (!declaring) throw new SpawnfileError("validation_error", `Recording bank ${access.bank.id} has no declaring node`);
-    const home = resolveMnemeDurableMemoryMountPath(access.bank);
+    const home = memoryWiring?.(access.bank).mountPath ?? null;
     memory.set(`${declaring.id}\0${access.bank.id}`, {
       id: access.bank.id, declared_by: declaring.id,
       ledger_path: home === null ? null : path.posix.join(home, "memory/events.jsonl")
     });
   }
   const resources = agent.workspaceResources ?? [];
+  const recording = recordingOperationFor(node);
+  const wakeFormat = recording.reader?.format;
   return [{
-    node_id: node.id, slug: node.slug, directory: daimonRecordingDirectory(node.slug),
+    node_id: node.id, slug: node.slug, directory: recording.facts(node).directory,
+    ...(wakeFormat && wakeFormat !== WAKE_MOMENT_VERSION ? { wake_format: wakeFormat } : {}),
     keep_ms: recordingKeepMs(agent.training!.record)!,
     networks: [...new Set((agent.surfaces?.moltnet ?? []).map((entry) => entry.network))].sort(),
     memory: [...memory.values()].sort((a, b) => `${a.declared_by}:${a.id}`.localeCompare(`${b.declared_by}:${b.id}`)),

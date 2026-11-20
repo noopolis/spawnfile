@@ -1,16 +1,20 @@
+import { daimonHostIntegration } from "./host/integration.js";
+import { RuntimeAdapterBase } from "../adapterBase.js";
+import { createDaimonInstallRecipe, daimonInstallHints } from "./install.js";
+import type { AdapterCompileResult, RuntimeAdapter, RuntimeContainerMeta, RuntimeSystemInstructionSurface } from "../types.js";
+import { daimonTraining } from "./trainingCapability.js";
+import { daimonWiring, DAIMON_CONTROL_TOKEN_ENV } from "./wiring.js";
 import type { EffectiveModelTarget, ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
 import type { CapabilityReport } from "../../report/index.js";
 import { SpawnfileError } from "../../shared/index.js";
 import {
-  CLI_ENGINE_SKILL_BASE_DIRECTORIES,
   createAgentCapabilities,
   createDiagnostic,
   createDocumentFiles,
   createSkillFiles
 } from "../common.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
-import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
-import type { AdapterCompileResult, RuntimeAdapter } from "../types.js";
+import { DAIMON_SKILL_ROOTS, daimonGrokSkillsError } from "./grokSkillsSupport.js";
 
 import {
   assertDaimonAgentOptions,
@@ -30,6 +34,7 @@ import { prepareDaimonRuntimeAuth } from "./runAuth.js";
 import { hasDaimonScheduleAuthority } from "./scheduleAuthority.js";
 import { resolveDaimonAttention } from "./attention.js";
 import { resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
+import { daimonOperations } from "./operations.js";
 
 const assertDaimonSurfaces = (surfaces: ResolvedAgentSurfaces | undefined): void => {
   if (!surfaces) return;
@@ -95,7 +100,7 @@ const daimonWorkspaceRestrictionWarning = (node: ResolvedAgentNode): string | un
  * as user-scoped skills, and the broker attests it against `skillsSha256`
  * before every turn (`containerDaimonGrokWorkerProvisioning.ts`).
  */
-export const daimonSkillBaseDirectories = (_node: ResolvedAgentNode): readonly string[] => CLI_ENGINE_SKILL_BASE_DIRECTORIES;
+export const daimonSkillBaseDirectories = (_node: ResolvedAgentNode): readonly string[] => DAIMON_SKILL_ROOTS;
 
 const daimonCodexPolicyError = (node: ResolvedAgentNode): string | undefined => {
   if (node.runtime.options.codex_policy === undefined) return undefined;
@@ -172,16 +177,17 @@ const scheduleCapabilityFor = async (
   };
 };
 
-export const daimonAdapter: RuntimeAdapter = {
-  assertSupportedModelTarget: assertDaimonModel,
-  assertSupportedSurfaces: assertDaimonSurfaces,
-  container: {
+class DaimonRuntimeAdapter extends RuntimeAdapterBase {
+  readonly host = daimonHostIntegration;
+  readonly assertSupportedModelTarget = assertDaimonModel;
+  readonly assertSupportedSurfaces = assertDaimonSurfaces;
+  readonly container: RuntimeContainerMeta = {
     configFileName: DAIMON_CONFIG_FILE,
     configPathEnv: "SPAWNFILE_DAIMON_CONFIG",
     env: [{
       description: "Bearer token for the Daimon organization control API",
       generated: true,
-      name: "SPAWNFILE_DAIMON_CONTROL_TOKEN",
+      name: DAIMON_CONTROL_TOKEN_ENV,
       required: true
     }],
     instancePaths: {
@@ -202,8 +208,8 @@ export const daimonAdapter: RuntimeAdapter = {
       "gnome-keyring",
       "util-linux"
     ]
-  },
-  async compileAgent(node): Promise<AdapterCompileResult> {
+  };
+  readonly compileAgent = async (node: ResolvedAgentNode): Promise<AdapterCompileResult> => {
     unsupportedAgentFeatures(node);
     const scheduleCapability = await scheduleCapabilityFor(node);
     const memorySelectionWarning = daimonMemorySelectionWarning(node);
@@ -235,10 +241,12 @@ export const daimonAdapter: RuntimeAdapter = {
         ...createSkillFiles(daimonSkillBaseDirectories(node), node.skills)
       ]
     };
-  },
-  createContainerTargets: createDaimonContainerTargets,
-  name: "daimon",
-  preflightAgent(node, nodeId) {
+  };
+  readonly createContainerTargets = createDaimonContainerTargets;
+  readonly name = "daimon";
+  readonly wiring = daimonWiring;
+  readonly operations = daimonOperations;
+  readonly preflightAgent = (node: ResolvedAgentNode, nodeId: string) => {
     unsupportedAgentFeatures(node);
     const codexPolicyError = daimonCodexPolicyError(node);
     if (codexPolicyError) throw new SpawnfileError("validation_error", codexPolicyError);
@@ -246,15 +254,15 @@ export const daimonAdapter: RuntimeAdapter = {
     if (grokSkillsError) throw new SpawnfileError("validation_error", grokSkillsError);
     assertDaimonAgentOptions(nodeId, node);
     assertDaimonInstructionBounds(nodeId, node);
-  },
-  prepareRuntimeAuth: prepareDaimonRuntimeAuth,
-  systemInstructionSurface: {
+  };
+  readonly prepareRuntimeAuth = prepareDaimonRuntimeAuth;
+  readonly systemInstructionSurface: RuntimeSystemInstructionSurface = {
     placement: "append_pointer",
     resolvePath() {
       return "workspace/AGENTS.md";
     }
-  },
-  validateRuntimeOptions(options) {
+  };
+  readonly validateRuntimeOptions = (options: Record<string, unknown>) => {
     const diagnostics = [];
     if (options.engine !== undefined &&
       (typeof options.engine !== "string" || !(DAIMON_ENGINES as readonly string[]).includes(options.engine))) {
@@ -274,5 +282,9 @@ export const daimonAdapter: RuntimeAdapter = {
     try { resolveDaimonAttention(options.attention); }
     catch (error) { diagnostics.push(createDiagnostic("error", error instanceof Error ? error.message : "Daimon attention is invalid")); }
     return diagnostics;
-  }
-};
+  };
+  readonly training = daimonTraining;
+  override readonly install = { hints: daimonInstallHints, createRecipe: createDaimonInstallRecipe };
+}
+
+export const daimonAdapter: RuntimeAdapter = new DaimonRuntimeAdapter();

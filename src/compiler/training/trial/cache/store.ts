@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFile, cp, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { TrialWake } from "../boot.js";
+import type { TrialWake } from "../types.js";
 import { TRIAL_CACHE_VERSION } from "./digest.js";
 
 /**

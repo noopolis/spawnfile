@@ -6,8 +6,17 @@ export type SpawnfileErrorCode =
   | "runtime_error"
   | "validation_error";
 
+const spawnfileErrorBrand = Symbol.for("spawnfile.SpawnfileError");
+const knownCodes: ReadonlySet<string> = new Set<SpawnfileErrorCode>([
+  "adapter_error", "compile_error", "invalid_manifest", "io_error", "runtime_error", "validation_error"
+]);
+
 export class SpawnfileError extends Error {
   public readonly code: SpawnfileErrorCode;
+
+  public get [spawnfileErrorBrand](): true {
+    return true;
+  }
 
   public constructor(code: SpawnfileErrorCode, message: string, options?: ErrorOptions) {
     super(message, options);
@@ -16,8 +25,18 @@ export class SpawnfileError extends Error {
   }
 }
 
-export const isSpawnfileError = (value: unknown): value is SpawnfileError =>
-  value instanceof SpawnfileError;
+export const isSpawnfileError = (value: unknown): value is SpawnfileError => {
+  if (value instanceof SpawnfileError) return true;
+  if (!(value instanceof Error) || value.name !== "SpawnfileError" || !Object.hasOwn(value, "code")) return false;
+
+  const candidate = value as Error & { code?: unknown; [spawnfileErrorBrand]?: unknown };
+  if (typeof candidate.code !== "string" || !knownCodes.has(candidate.code)) return false;
+  if (candidate[spawnfileErrorBrand] === true) return true;
+
+  // Older installed copies used a named Error subclass with own name and code fields.
+  return Object.hasOwn(value, "name")
+    && Object.getPrototypeOf(value)?.constructor?.name === "SpawnfileError";
+};
 
 // Codes that mean the input itself was bad (usage/input errors → exit 2).
 // Everything else is a runtime failure that surfaced after validation (→ exit 1).

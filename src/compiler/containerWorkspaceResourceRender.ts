@@ -1,5 +1,5 @@
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
-import { VOLUME_BOOTSTRAP_MARKER, VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
+import { VOLUME_BOOTSTRAP_CLAIM, VOLUME_BOOTSTRAP_MARKER, VOLUME_BOOTSTRAP_MARKER_CONTENT } from "./containerVolumeBootstrap.js";
 
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
 
@@ -30,7 +30,12 @@ export const createWorkspaceResourceCommands = (plan: RuntimeTargetPlan): string
     ];
   });
 
-export const createWorkspaceResourceShellFunctions = (): string[] => [
+// Generic images seed markers with chown spawnfile:spawnfile. A runtime wrapper supplies its own numeric IDs.
+const markerMetadataMismatch = (usesWrapperIdentity: boolean): string => usesWrapperIdentity
+  ? '[ "$(stat -c "%u:%g:%a:%h" "$bootstrap_claim")" != "${volume_bootstrap_uid}:${volume_bootstrap_gid}:600:1" ]'
+  : '[ "$(find -P "$bootstrap_claim" -maxdepth 0 -type f -user spawnfile -group spawnfile ! -uid 0 ! -gid 0 -perm 0600 -links 1 -print)" != "$bootstrap_claim" ]';
+
+export const createWorkspaceResourceShellFunctions = (usesWrapperIdentity = false): string[] => [
   "directory_is_empty() {",
   '  local target="$1"',
   '  [ -d "$target" ] && [ -z "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)" ]',
@@ -84,17 +89,20 @@ export const createWorkspaceResourceShellFunctions = (): string[] => [
   "    fi",
   "  else",
   `    local bootstrap="$backing_path/${VOLUME_BOOTSTRAP_MARKER}"`,
-  `    local bootstrap_claim="$backing_path/${VOLUME_BOOTSTRAP_MARKER}.claim"`,
+  `    local bootstrap_claim="$backing_path/${VOLUME_BOOTSTRAP_CLAIM}"`,
   '    local first_entry',
   '    first_entry="$(find "$backing_path" -mindepth 1 -maxdepth 1 -print -quit)"',
   '    if [ -n "$first_entry" ]; then',
   '      if [ "$first_entry" = "$bootstrap" ]; then',
   '        mv -T --no-clobber -- "$bootstrap" "$bootstrap_claim"',
   '      elif [ "$first_entry" != "$bootstrap_claim" ]; then',
-  '      echo "Workspace volume resource $id is nonempty without an authenticated replacement sentinel" >&2',
-  "      exit 1",
+  '        echo "Workspace volume resource $id is nonempty without an authenticated replacement sentinel" >&2',
+  "        exit 1",
   "      fi",
-  '      if [ "$(find "$backing_path" -mindepth 1 -maxdepth 1 ! -name ' + `'${VOLUME_BOOTSTRAP_MARKER}.claim'` + ' -print -quit)" != "" ] || [ -L "$bootstrap_claim" ] || [ ! -f "$bootstrap_claim" ] || [ "$(stat -c "%u:%g:%a:%h" "$bootstrap_claim")" != "${volume_bootstrap_uid}:${volume_bootstrap_gid}:600:1" ] || [ "$(cat "$bootstrap_claim")" != "' + VOLUME_BOOTSTRAP_MARKER_CONTENT + '" ]; then',
+  `      if [ -n "$(find "$backing_path" -mindepth 1 -maxdepth 1 ! -name '${VOLUME_BOOTSTRAP_CLAIM}' -print -quit)" ] ||`,
+  '         [ -L "$bootstrap_claim" ] || [ ! -f "$bootstrap_claim" ] ||',
+  `         ${markerMetadataMismatch(usesWrapperIdentity)} ||`,
+  `         [ "$(cat "$bootstrap_claim")" != '${VOLUME_BOOTSTRAP_MARKER_CONTENT}' ]; then`,
   '        echo "Workspace volume resource $id bootstrap marker mismatch" >&2',
   "        exit 1",
   "      fi",

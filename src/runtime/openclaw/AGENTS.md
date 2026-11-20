@@ -12,7 +12,10 @@ src/runtime/openclaw/
 ├── schedules.ts      # OpenClaw native cron-store lowering for Mneme dream jobs
 ├── surfaces.ts       # OpenClaw surface lowering and surface-support validation
 ├── runAuth.ts        # OpenClaw runtime-auth preparation for `spawnfile run`
+├── install.ts        # Native install recipe and registry install hints
 ├── scaffold.ts       # OpenClaw-owned `spawnfile init --runtime openclaw` scaffold
+├── image/            # Repository image context and build metadata
+├── package-assets.json # Assets copied into the installed CLI
 ├── scaffold-assets/  # Bundled OpenClaw starter docs copied into dist at build time
 └── adapter.test.ts   # OpenClaw adapter tests
 ```

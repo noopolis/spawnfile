@@ -13,9 +13,8 @@ export interface RealmTurnOptions {
 
 /**
  * First-come turns on exclusive login realms, one holder per realm at a time.
- * An engine whose login is one realm held under an exclusive lock (Daimon's
- * AGY keyring, `flock` on `.daimon-lease`) admits one container per login:
- * every container of a run that mounts that realm takes a turn here first, so
+ * An engine whose login uses an exclusive realm admits one container per login.
+ * Every container of a run that mounts that realm takes a turn here first, so
  * a second container never boots into the lock and dies at readiness.
  */
 export interface RealmTurns {

@@ -1,6 +1,6 @@
 # Canonical Training Context
 
-- `trial/` owns actual training: production-booted trials for Daimon subjects, one compiled organization container per trial, sharing one auth gateway sidecar per run. There is no other training launch.
+- `trial/` owns shared production trial services, including project projection, evidence, caches and realm locks. The runtime adapter owns native launch and login.
 - `contract.ts` owns the strict, versioned public JSON handoff to the training core.
 - `context.ts` resolves the full compiler graph and pins source files without compiling or launching it.
 - `resolution.ts` merges direct-member training metadata during traversal and preserves declaring sources.
@@ -20,7 +20,7 @@
 - Execution carries dataset byte pins captured with parsed moments.
 
 - `moments.ts` lowers every unique authored moment (role/dataset/example) into one executable dataset per role under `<out>/moments`: the wake as production Moltnet renders it, `setup.moment` with each resource's fill pinned (git commit and feed revision, directory digest, inline files), grader context from files, one grader check over the declared output or the reply, and the case or target grader copied beside the datasets. `trainingMomentSchema` validates a moment where the trial boots. Moments carry data only; no hooks.
-- `compiledAgent.ts` validates the consumed compile-report projection and resolves exact agent IDs or names to host and container paths. Shared runtimes publish adapter-owned per-agent paths; missing associations refuse rather than infer layouts.
+- `compiledAgent.ts` validates the consumed compile-report projection and resolves exact agent IDs or names to host and container paths. Shared runtimes publish adapter-owned per-agent paths. Older single-member reports use the adapter's declared legacy skill roots when present.
 - Public exports include the offline SQLite inspector with ordered room/sender filtering.
 
 - Authored `judges` and `critic` resolve with the other training fields (local judge names and a local critic replace inherited ones; guide paths become absolute) and enter the plan as optional fields. `moments.ts` lowers them into the train dataset's `training` block, copies critic guide documents and questionnaire banks as sidecars, and binds a questionnaire's named example contexts.

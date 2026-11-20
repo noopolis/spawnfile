@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { loadImportedClaudeCodeCredential, loadImportedCodexCredential } from "../../auth/index.js";
+import { loadImportedClaudeCodeCredential, loadImportedCodexCredential } from "../../auth/runtimeCredentials.js";
 import { ensureDirectory, writeUtf8File } from "../../filesystem/index.js";
 import type { RuntimeAuthPreparationInput, RuntimeAuthPreparationResult } from "../types.js";
 

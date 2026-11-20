@@ -127,7 +127,7 @@ it("allows legacy data only in the exact compatibility allowlist", () => {
 });
 
 it("scans documentation, images, core, tests, fixtures, names and mixed case", () => {
-  const files = ["README.md", "runtime-images/daimon/Dockerfile", "src/training/legacy.ts",
+  const files = ["README.md", "src/runtime/daimon/image/Dockerfile", "src/training/legacy.ts",
     "src/cli/example.test.ts", "src/compiler/fixtures.test-helper.ts", "PAIDEIA.md"];
   expect(scan(files, () => "PaIdEiA")).toEqual(files);
   expect(scan(['Paideia.txt'], () => 'clean contents')).toEqual(['Paideia.txt']);

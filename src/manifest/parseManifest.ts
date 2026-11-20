@@ -41,22 +41,17 @@ const describeMember = (parsed: unknown, path: PropertyKey[]): string => {
   return typeof member?.id === "string" ? ` member ${member.id}` : "";
 };
 
-/**
- * Parses one Spawnfile. Errors name the file, and the declared kind and name
- * when the YAML got far enough to have them, so a member's malformed manifest
- * is attributable from `spawnfile validate` on the organization root.
- */
-export const parseManifest = (source: string, manifestPath: string): Manifest => {
-  let parsed: unknown;
+export const parseManifestYaml = (source: string, manifestPath: string): unknown => {
   try {
-    parsed = parseYaml(source);
+    return parseYaml(source);
   } catch (error) {
-    // A YAML syntax error is a malformed manifest, not a runtime failure — wrap
-    // it so it exits as a usage error instead of leaking the parser's wording.
     const reason = error instanceof Error ? error.message : String(error);
     throw new SpawnfileError("invalid_manifest", `Invalid Spawnfile manifest ${manifestPath}: ${reason}`);
   }
+};
 
+/** Report the file, kind, name and member that own a malformed declaration. */
+export const validateManifestDocument = (parsed: unknown, manifestPath: string): Manifest => {
   try {
     return manifestSchema.parse(parsed);
   } catch (error) {
@@ -72,3 +67,6 @@ export const parseManifest = (source: string, manifestPath: string): Manifest =>
     throw error;
   }
 };
+
+export const parseManifest = (source: string, manifestPath: string): Manifest =>
+  validateManifestDocument(parseManifestYaml(source, manifestPath), manifestPath);

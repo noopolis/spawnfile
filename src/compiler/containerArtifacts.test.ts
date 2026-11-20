@@ -1221,13 +1221,7 @@ describe("createContainerArtifacts distribution contract", () => {
     expect(Array.isArray(instance?.model_auth_methods)).toBe(false);
   });
 
-  /**
-   * `specs/SURFACES.md` promises a Moltnet release without `daimon-bridge` is
-   * rejected. No published release implements the daimon node runtime kind, and
-   * the node config decodes with DisallowUnknownFields, so an ungated compile
-   * ships a container that dies at boot on strict decode of `agent_id`. A node
-   * plan carries `receiptStorePath` if and only if its agent runtime is daimon.
-   */
+  // Compile each native attachment against the bridge capabilities in its pinned release.
   const piBridgeRelease = {
     architecture: "amd64",
     asset: "moltnet_linux_amd64.tar.gz",
@@ -1246,12 +1240,13 @@ describe("createContainerArtifacts distribution contract", () => {
     source_sha256: `sha256:${"c".repeat(64)}`,
     version: "spawnfile.moltnet-release-identity.v1"
   } as const;
-  const moltnetWith = (nodePlans: { configPath: string; networkId: string; receiptStorePath?: string }[]) => ({
+  const moltnetWith = (nodePlans: { configPath: string; networkId: string; receiptStorePath?: string; releaseCapability?: string }[]) => ({
     files: [], nodePlans, persistentMounts: [], ports: [], publishedPorts: [], serverPlans: []
   });
   const daimonPlans = moltnetWith([{
     configPath: "/etc/spawnfile/moltnet/mapper.json",
     networkId: "daimon_lab",
+    releaseCapability: "daimon-bridge",
     receiptStorePath: "/var/lib/spawnfile/moltnet/networks/daimon_lab/daimon-receipts/mapper.json"
   }]);
 

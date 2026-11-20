@@ -180,7 +180,7 @@ describe("createDockerRunInvocation", () => {
     ]);
   });
 
-  it("writes env files, publishes ports, and mounts imported auth", async () => {
+  it("writes env files and publishes ports without mounting unused auth imports", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
     await setAuthProfileEnv("dev", { ANTHROPIC_API_KEY: "profile-ant" });
@@ -234,14 +234,10 @@ describe("createDockerRunInvocation", () => {
     expect(invocation.args).toContain("--rm");
     expect(invocation.args).toContain("-p");
     expect(invocation.args).toContain("18789:18789");
-    expect(invocation.args).toContain(
-      `${codexImport.directory}:/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.codex`
-    );
-    expect(invocation.args).toContain(
-      `${claudeImport.directory}:/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.claude`
-    );
-    // A Grok login is the auth gateway's alone: never bind-mounted into a runtime home.
-    expect(invocation.args.join("\n")).not.toContain(grokImport.directory);
+    // An API-key instance uses the selected environment values only.
+    for (const imported of [codexImport, claudeImport, grokImport]) {
+      expect(invocation.args.join("\n")).not.toContain(imported.directory);
+    }
 
     const envFile = await readUtf8File(invocation.envFilePath);
     expect(envFile).toContain("ANTHROPIC_API_KEY=profile-ant");
@@ -251,7 +247,7 @@ describe("createDockerRunInvocation", () => {
     await removeDirectory(path.dirname(invocation.envFilePath));
   });
 
-  it("keeps an explicitly provided runtime secret and rejects missing imported auth paths", async () => {
+  it("keeps an explicitly provided runtime secret and ignores unused imports", async () => {
     const spawnfileHome = await createTempDirectory("spawnfile-auth-home-");
     process.env.SPAWNFILE_HOME = spawnfileHome;
     await setAuthProfileEnv("dev", {
@@ -264,43 +260,37 @@ describe("createDockerRunInvocation", () => {
       path: "/tmp/does-not-exist-codex"
     };
 
-    await expect(
-      createDockerRunInvocation(
-        {
-          organizationReadinessEvidence: genericOrganizationReadinessEvidence,
-          outputDirectory: "/tmp/spawnfile-run-out",
-          report: createCompileReport({
-            dockerfile: "Dockerfile",
+    const invocation = await createDockerRunInvocation(
+      {
+        organizationReadinessEvidence: genericOrganizationReadinessEvidence,
+        outputDirectory: "/tmp/spawnfile-run-out",
+        report: createCompileReport({
+          dockerfile: "Dockerfile",
           entrypoint: "entrypoint.sh",
           env_example: ".env.example",
           model_secrets_required: ["ANTHROPIC_API_KEY"],
           ports: [18789],
-          runtime_instances: [
-            {
-              config_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json",
-              home_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home",
-              id: "agent-assistant",
-              model_auth_methods: {
-                anthropic: "api_key"
-              },
-              model_secrets_required: ["ANTHROPIC_API_KEY"],
-              runtime: "openclaw"
-            }
-          ],
+          runtime_instances: [{
+            config_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home/.openclaw/openclaw.json",
+            home_path: "/var/lib/spawnfile/instances/openclaw/agent-assistant/home",
+            id: "agent-assistant",
+            model_auth_methods: { anthropic: "api_key" },
+            model_secrets_required: ["ANTHROPIC_API_KEY"],
+            runtime: "openclaw"
+          }],
           runtime_homes: ["/var/lib/spawnfile/instances/openclaw/agent-assistant/home"],
           runtime_secrets_required: ["OPENCLAW_GATEWAY_TOKEN"],
           runtimes_installed: ["openclaw"],
           secrets_required: ["ANTHROPIC_API_KEY", "OPENCLAW_GATEWAY_TOKEN"]
         }),
-          reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json"
-        },
-        "spawnfile-single-agent",
-        { authProfile: profile }
-      )
-    ).rejects.toMatchObject({
-      code: "validation_error",
-      message: "Imported auth path for codex does not exist: /tmp/does-not-exist-codex"
-    });
+        reportPath: "/tmp/spawnfile-run-out/spawnfile-report.json"
+      },
+      "spawnfile-single-agent",
+      { authProfile: profile }
+    );
+    expect(await readUtf8File(invocation.envFilePath)).toContain("OPENCLAW_GATEWAY_TOKEN=provided-token");
+    expect(invocation.args.join("\n")).not.toContain(profile.imports.codex.path);
+    await removeDirectory(invocation.supportDirectory);
   });
 
   it("supports detached runs with an explicit container name", async () => {

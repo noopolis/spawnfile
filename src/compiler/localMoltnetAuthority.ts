@@ -5,7 +5,16 @@ import { chmod, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 
 import { ensureDirectory, fileExists } from "../filesystem/index.js";
-import { SpawnfileError } from "../shared/index.js";
+import {
+  parseLocalMoltnetBridgeCapabilities,
+  SpawnfileError,
+  type LocalMoltnetBridgeCapabilities
+} from "../shared/index.js";
+import {
+  createLocalMoltnetBridgeProbeConfig, probeReceiptDirectory, PROBE_TOKEN_ENV, releaseProbeKinds,
+  type MoltnetProbeKind
+} from "../runtime/moltnet/releaseProbe.js";
+export { createLocalMoltnetBridgeProbeConfig } from "../runtime/moltnet/releaseProbe.js";
 import type { MoltnetTargetArchitecture } from "./moltnetReleaseAuthority.js";
 
 const execFile = promisify(execFileCallback);
@@ -15,7 +24,7 @@ export interface LocalMoltnetReleaseIdentity {
   readonly architecture: MoltnetTargetArchitecture;
   readonly asset: string;
   readonly asset_sha256: `sha256:${string}`;
-  readonly capabilities: readonly ["daimon-bridge", "pi-bridge"];
+  readonly capabilities: LocalMoltnetBridgeCapabilities;
   readonly development: Readonly<{
     mode: "local-development";
     non_production: true;
@@ -30,7 +39,7 @@ export interface LocalMoltnetReleaseIdentity {
 interface LocalMoltnetReleaseStamp {
   readonly arch: MoltnetTargetArchitecture;
   readonly asset: string;
-  readonly capabilities: readonly ["daimon-bridge", "pi-bridge"];
+  readonly capabilities: LocalMoltnetBridgeCapabilities;
   readonly development: LocalMoltnetReleaseIdentity["development"];
   readonly sha256: string;
   readonly source_sha256: `sha256:${string}`;
@@ -44,39 +53,19 @@ const exactKeys = (value: Record<string, unknown>, keys: readonly string[]): boo
 const assetName = (architecture: MoltnetTargetArchitecture): string =>
   `moltnet_linux_${architecture}.tar.gz`;
 
-/** @internal Complete synthetic bridge contract used by local artifact verification. */
-export const createLocalMoltnetBridgeProbeConfig = (
-  kind: "daimon" | "pi",
-  directory: string
-): string => JSON.stringify({
-  attachments: [{
-    agent: { id: `${kind}-capability-probe`, name: `${kind} capability probe` },
-    runtime: kind === "daimon"
-      ? {
-          control_url: "http://127.0.0.1:9",
-          kind,
-          receipt_store_path: path.join(directory, "daimon-receipts", "daimon-capability-probe.json"),
-          token_env: "SPAWNFILE_DAIMON_CONTROL_TOKEN"
-        }
-      : { control_url: "http://127.0.0.1:9/agents/pi-capability-probe/wake", kind }
-  }],
-  moltnet: { base_url: "http://127.0.0.1:9", network_id: "capability-probe" },
-  version: "moltnet.node.v1"
-});
-
 const assertBridgeCapability = async (
   binaryPath: string,
   directory: string,
-  kind: "daimon" | "pi"
+  kind: MoltnetProbeKind
 ): Promise<void> => {
   const configPath = path.join(directory, `${kind}-bridge-probe.json`);
-  const receiptDirectory = path.join(directory, "daimon-receipts");
+  const receiptDirectory = probeReceiptDirectory(directory);
   await ensureDirectory(receiptDirectory);
   await chmod(receiptDirectory, 0o700);
   await writeFile(configPath, createLocalMoltnetBridgeProbeConfig(kind, directory), { mode: 0o600 });
   try {
     await execFile(binaryPath, ["node", configPath], {
-      env: { ...process.env, SPAWNFILE_DAIMON_CONTROL_TOKEN: "capability-probe" },
+      env: { ...process.env, [PROBE_TOKEN_ENV]: "capability-probe" },
       timeout: 1_000
     });
     throw new SpawnfileError("compile_error", `Local Moltnet binary exited before proving its ${kind}-bridge capability`);
@@ -110,12 +99,12 @@ export const parseLocalReleaseStamp = (
   const value = parsed as Record<string, unknown>;
   const development = value.development as Record<string, unknown> | undefined;
   const sourceInputs = value.source_inputs as Record<string, unknown> | undefined;
+  const capabilities = parseLocalMoltnetBridgeCapabilities(value.capabilities);
   if (!exactKeys(value, ["arch", "asset", "capabilities", "development", "sha256", "source_sha256", "stamp_version", ...(sourceInputs ? ["source_inputs"] : [])])
     || value.stamp_version !== "spawnfile.local-moltnet-release-stamp.v1"
     || value.arch !== architecture
     || value.asset !== assetName(architecture)
-    || !Array.isArray(value.capabilities)
-    || value.capabilities.join("\0") !== "daimon-bridge\0pi-bridge"
+    || !capabilities
     || !development
     || !exactKeys(development, ["mode", "non_production", "unsigned", "unpublished"])
     || development.mode !== "local-development"
@@ -129,7 +118,7 @@ export const parseLocalReleaseStamp = (
     || (sourceInputs && (!exactKeys(sourceInputs, ["dependencies_sha256", "mode", "source_sha256", "toolchain"]) || sourceInputs.mode !== "source-bundle" || !/^sha256:[a-f0-9]{64}$/u.test(String(sourceInputs.dependencies_sha256)) || sourceInputs.source_sha256 !== value.source_sha256 || sourceInputs.toolchain !== "golang:1.24-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac"))) {
     throw new SpawnfileError("compile_error", "Local Moltnet release stamp must be a complete development-only dual-bridge identity");
   }
-  return value as unknown as LocalMoltnetReleaseStamp;
+  return { ...value, capabilities } as unknown as LocalMoltnetReleaseStamp;
 };
 
 /**
@@ -167,9 +156,11 @@ export const moltnetBinaryIsDirectlyExecutable = (
 const verifyBuiltMoltnetArchive = async (
   releaseAssetPath: string,
   architecture: MoltnetTargetArchitecture,
-  host: MoltnetExecutionHost
+  host: MoltnetExecutionHost,
+  capabilities: LocalMoltnetBridgeCapabilities
 ): Promise<void> => {
   const temporaryDirectory = path.join(path.dirname(releaseAssetPath), `.spawnfile-moltnet-verify-${process.pid}-${Date.now()}`);
+  const kinds = releaseProbeKinds(capabilities.some((capability) => capability === "acp-bridge"));
   try {
     await ensureDirectory(temporaryDirectory);
     await execFile("tar", ["-C", temporaryDirectory, "-xzf", releaseAssetPath]);
@@ -180,11 +171,11 @@ const verifyBuiltMoltnetArchive = async (
     await chmod(binaryPath, 0o755);
     if (moltnetBinaryIsDirectlyExecutable(architecture, host)) {
       const { stdout } = await execFile(binaryPath, ["version"]); if (!stdout.trim()) throw new SpawnfileError("compile_error", "Local Moltnet binary did not produce a bounded version identity");
-      await assertBridgeCapability(binaryPath, temporaryDirectory, "pi"); await assertBridgeCapability(binaryPath, temporaryDirectory, "daimon");
+      for (const kind of kinds) await assertBridgeCapability(binaryPath, temporaryDirectory, kind);
     } else {
-      for (const kind of ["pi", "daimon"] as const) {
-        const configPath = path.join(temporaryDirectory, `${kind}-docker-probe.json`); await writeFile(configPath, createLocalMoltnetBridgeProbeConfig(kind, "/receipts"));
-        const { stdout: rawId } = await execFile("docker", ["create", "--platform", `linux/${architecture}`, "--env", "SPAWNFILE_DAIMON_CONTROL_TOKEN=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"]); const id = rawId.trim();
+      for (const kind of kinds) {
+        const configPath = path.join(temporaryDirectory, `${kind}-docker-probe.json`); await writeFile(configPath, createLocalMoltnetBridgeProbeConfig(kind, kind === "acp" ? "/tmp" : "/receipts"));
+        const { stdout: rawId } = await execFile("docker", ["create", "--platform", `linux/${architecture}`, "--env", PROBE_TOKEN_ENV + "=probe", "node:24-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df", "timeout", "2", "/moltnet", "node", "/config.json"]); const id = rawId.trim();
         try { await execFile("docker", ["cp", binaryPath, `${id}:/moltnet`]); await execFile("docker", ["cp", configPath, `${id}:/config.json`]); try { await execFile("docker", ["start", "--attach", id]); } catch (error) { const result = error as { code?: unknown; stdout?: unknown; stderr?: unknown }; const output = `${String(result.stdout ?? "")}\n${String(result.stderr ?? "")}`; if (result.code !== 124 && !/connection refused|connect:|dial tcp|network is unreachable/iu.test(output)) throw new SpawnfileError("compile_error", `Local Moltnet cross-host ${kind} capability probe failed`); } }
         finally { await execFile("docker", ["rm", "--force", id]); }
       }
@@ -210,12 +201,12 @@ export const readLocalMoltnetReleaseIdentity = async (
   if (stamp.sha256 !== sha256) {
     throw new SpawnfileError("compile_error", "Local Moltnet development stamp does not match its archive bytes");
   }
-  await verifyBuiltMoltnetArchive(assetPath, architecture, host);
+  await verifyBuiltMoltnetArchive(assetPath, architecture, host, stamp.capabilities);
   return Object.freeze({
     architecture,
     asset,
     asset_sha256: `sha256:${sha256}`,
-    capabilities: Object.freeze(["daimon-bridge", "pi-bridge"] as const),
+    capabilities: Object.freeze(stamp.capabilities),
     development: Object.freeze({ mode: "local-development", non_production: true, unsigned: true, unpublished: true }),
     source_sha256: stamp.source_sha256,
     ...(stamp.source_inputs ? { source_inputs: Object.freeze(stamp.source_inputs) } : {}),

@@ -1,0 +1,4 @@
+{
+  "publisher": "publishRuntime.ts",
+  "local_builder": "buildLocalRuntime.ts"
+}

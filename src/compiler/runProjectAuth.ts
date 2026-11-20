@@ -11,6 +11,8 @@ import {
 import type { ContainerReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
+import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
+import { selectRuntimeGeneratedSecrets } from "../runtime/hostSelection.js";
 import type { RuntimeAuthPreparationResult } from "../runtime/types.js";
 import {
   CLI_CREDENTIAL_SECRET_NAME,
@@ -20,6 +22,7 @@ import {
 interface PreparedRunAuth {
   coveredModelSecrets: Set<string>;
   launchIdentity?: RuntimeAuthPreparationResult["launchIdentity"];
+  credentialRuntime?: string;
   mountArgs: string[];
 }
 
@@ -27,7 +30,6 @@ const MODEL_AUTH_IMPORT_KINDS: Record<string, ImportedAuthKind | null> = {
   api_key: null,
   "claude-code": "claude-code",
   codex: "codex",
-  grok: null,
   none: null
 };
 
@@ -97,6 +99,7 @@ export const prepareRuntimeAuthMounts = async (
   // Adapters receive null profiles so they can handle runtime-owned credentials.
   const coveredModelSecrets = new Set<string>();
   let launchIdentity: RuntimeAuthPreparationResult["launchIdentity"];
+  let credentialRuntime: string | undefined;
   const mountArgs: string[] = [];
 
   for (const instance of containerReport.runtime_instances) {
@@ -116,20 +119,21 @@ export const prepareRuntimeAuthMounts = async (
 
     addCoveredModelSecrets(coveredModelSecrets, instance.id, prepared.coveredModelSecrets);
     if (prepared.launchIdentity) {
-      if (launchIdentity && launchIdentity.uid !== prepared.launchIdentity.uid) {
+      if (launchIdentity && (launchIdentity.uid !== prepared.launchIdentity.uid || credentialRuntime !== instance.runtime)) {
         throw new SpawnfileError(
           "validation_error",
           "Opaque runtime credentials resolve conflicting launch UIDs"
         );
       }
       launchIdentity = prepared.launchIdentity;
+      credentialRuntime = instance.runtime;
     }
     mountArgs.push(...prepared.mountArgs);
   }
 
   return {
     coveredModelSecrets,
-    ...(launchIdentity ? { launchIdentity } : {}),
+    ...(launchIdentity ? { launchIdentity, credentialRuntime } : {}),
     mountArgs
   };
 };
@@ -178,27 +182,6 @@ export const assertDeclaredModelAuthSatisfied = (
       `Auth profile ${authProfile.name} is missing required auth imports: ${missingImportKinds.join(", ")}`
     );
   }
-};
-
-const RUNTIME_HOME_IMPORT_KINDS = ["claude-code", "codex"] as const;
-const getImportMountTargetName = (kind: (typeof RUNTIME_HOME_IMPORT_KINDS)[number]): string =>
-  kind === "claude-code" ? ".claude" : ".codex";
-
-const createGeneratedRuntimeSecret = (
-  secretName: string,
-  generatedMoltnetSecrets: Set<string>
-): string | null => {
-  if (secretName === "OPENCLAW_GATEWAY_TOKEN" || secretName === "OPENCLAW_HOOKS_TOKEN") {
-    return randomBytes(24).toString("hex");
-  }
-  if (generatedMoltnetSecrets.has(secretName)) {
-    return randomBytes(32).toString("base64url");
-  }
-  if (secretName === "SPAWNFILE_DAIMON_CONTROL_TOKEN") {
-    return randomBytes(32).toString("base64url");
-  }
-
-  return null;
 };
 
 const hasEnvValue = (env: Record<string, string>, name: string): boolean =>
@@ -258,6 +241,7 @@ export const resolveRunEnvironment = (
     }
   }
 
+  const generatedRuntimeSecrets = selectRuntimeGeneratedSecrets(containerReport.runtime_instances.map((instance) => instance.runtime));
   for (const name of new Set([
     ...containerReport.runtime_secrets_required,
     ...generatedMoltnetSecrets
@@ -266,9 +250,11 @@ export const resolveRunEnvironment = (
       continue;
     }
 
-    const generatedValue = createGeneratedRuntimeSecret(name, generatedMoltnetSecrets);
-    if (generatedValue) {
-      env[name] = generatedValue;
+    const policy = generatedRuntimeSecrets.get(name);
+    if (policy) {
+      env[name] = randomBytes(policy.bytes).toString(policy.encoding);
+    } else if (generatedMoltnetSecrets.has(name)) {
+      env[name] = randomBytes(32).toString("base64url");
     }
   }
 
@@ -357,28 +343,12 @@ export const resolveAuthMountArgs = async (
   containerReport: ContainerReport,
   authProfile: ResolvedAuthProfile | null
 ): Promise<string[]> => {
-  if (!authProfile || containerReport.runtime_homes.length === 0) {
-    return [];
-  }
-
   const args: string[] = [];
-  // Only runtime-home logins are bind-mounted; a Grok import belongs to the auth gateway alone.
-  for (const kind of RUNTIME_HOME_IMPORT_KINDS) {
-    const entry = authProfile.imports[kind];
-    if (!entry) {
-      continue;
+  for (const { method, source, targets } of resolveRuntimeHomeImports(containerReport.runtime_instances, authProfile)) {
+    if (!(await fileExists(source))) {
+      throw new SpawnfileError("validation_error", `Imported auth path for ${method} does not exist: ${source}`);
     }
-    if (!(await fileExists(entry.path))) {
-      throw new SpawnfileError(
-        "validation_error",
-        `Imported auth path for ${kind} does not exist: ${entry.path}`
-      );
-    }
-
-    for (const runtimeHome of containerReport.runtime_homes) {
-      args.push("-v", `${entry.path}:${path.posix.join(runtimeHome, getImportMountTargetName(kind))}`);
-    }
+    for (const target of targets) args.push("-v", `${source}:${target}`);
   }
-
   return args;
 };

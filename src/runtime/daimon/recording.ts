@@ -1,4 +1,5 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // The public plan barrel also loads buildCompilePlan -> runtime registry. Keep
 // the adapter on its pure resolver to avoid cycling through its own registration.
@@ -7,7 +8,20 @@ import { toWorkspaceResourcePlan, workspaceResourceTargetId } from "../../compil
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { recordingKeepMs, SpawnfileError } from "../../shared/index.js";
 import type { ContainerTargetInput } from "../types.js";
+import type { RuntimeRecordingOperations } from "../operations.js";
+import {
+  DAIMON_CONTRACT_MANIFEST_SHA256, daimonSupportsWakeMoments,
+  readVerifiedDaimonContractManifest, type DaimonContractManifest
+} from "./contractManifest.js";
+import { daimonRecordingReader } from "./recordingIo.js";
 import { DAIMON_WAKE_MOMENTS } from "./wakeMoments.js";
+
+declare module "../operations.js" {
+  interface RuntimeRecordingOptions {
+    /** Historical compile-time override for the pinned recording manifest. */
+    daimonContractManifest?: DaimonContractManifest;
+  }
+}
 
 export interface DaimonAgentRecording {
   directory: string;
@@ -62,5 +76,23 @@ export const assertDaimonRecordingIsolation = (
     if (recording.directory.length > 4096 || conflicting.some((root) => overlaps(path.posix.normalize(root), recording.directory))) {
       throw new SpawnfileError("validation_error", `Daimon recording store ${recording.directory} overlaps a runtime or snapshot root or another recording store`);
     }
+  }
+};
+
+export const daimonRecording: RuntimeRecordingOperations = {
+  reader: daimonRecordingReader,
+  async assertSupported(options) {
+    let manifest = (options.runtimeRecordingAuthorities?.daimon ?? options.daimonContractManifest) as DaimonContractManifest | undefined;
+    if (manifest === undefined) {
+      const verified = await readVerifiedDaimonContractManifest(fileURLToPath(new URL("./", import.meta.url)));
+      if (verified.digest !== DAIMON_CONTRACT_MANIFEST_SHA256) throw new SpawnfileError("validation_error",
+        "Pinned Daimon contract manifest does not match the capability-receipt digest");
+      manifest = verified.manifest;
+    }
+    if (!daimonSupportsWakeMoments(manifest)) throw new SpawnfileError("validation_error",
+      "The pinned Daimon runtime image does not declare the wakeMoments capability; a Daimon release with it and a runtimes.yaml / contract-manifest re-pin are required");
+  },
+  facts(node) {
+    return { directory: daimonRecordingDirectory(node.slug), mountId: daimonRecordingMountId(node.slug) };
   }
 };

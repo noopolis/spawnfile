@@ -149,15 +149,17 @@ export const registerAuthCommands = (
 
   authCommand
     .command("login")
-    .description("Sign an auth profile into its own volume-held login (AGY) from this terminal")
-    .argument("<engine>", "Daimon engine whose login lives in a keyring realm, e.g. agy")
+    .description("Sign an auth profile into a runtime engine from this terminal")
+    .argument("<engine>", "Engine with a volume-held login")
     .option("-p, --profile <name>", "Auth profile name", "default")
+    .option("--runtime <name>", "Runtime that owns the engine")
     .option("--dry-run", "Prepare the login volumes and print the login command without running it")
-    .action(async (engine: string, options: { dryRun?: boolean; profile: string }) => {
+    .action(async (engine: string, options: { dryRun?: boolean; profile: string; runtime?: string }) => {
       if (!options.dryRun && process.stdin.isTTY !== true) {
         throw new Error("spawnfile auth login is interactive; run it from a terminal");
       }
-      const result = await handlers.loginSubscriptionRealm({ engine, profileName: options.profile, dryRun: options.dryRun === true });
+      const result = await handlers.loginSubscriptionRealm({ engine, profileName: options.profile, dryRun: options.dryRun === true,
+        ...(options.runtime === undefined ? {} : { runtime: options.runtime }) });
       emitLines(streams, [
         ...formatAuthProfileSummary(result.profile),
         `realm volume: ${result.binding.realmVolume}`,

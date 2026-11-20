@@ -8,10 +8,7 @@ import type { DistributionReport } from "./types.js";
 import type { DistributionPersistentMount } from "./types.js";
 import { createExclusiveReattachVolumeName } from "../shared/index.js";
 
-const GENERATED_RUNTIME_SECRET_NAMES = new Set([
-  "OPENCLAW_GATEWAY_TOKEN",
-  "OPENCLAW_HOOKS_TOKEN"
-]);
+import { selectRuntimeGeneratedSecrets } from "../runtime/hostSelection.js";
 
 /** Derives a kebab-case deployment name from the image repository component. */
 export const deriveDeploymentName = (ref: ParsedImageReference): string => {
@@ -80,14 +77,16 @@ export const resolveImageEnvironment = (
     }
   }
 
+  const generated = selectRuntimeGeneratedSecrets(input.report.runtime_instances.map((instance) => instance.runtime));
   for (const category of ["runtime"] as const) {
     for (const entry of input.report.secrets[category]) {
       if (!entry.generated) {
         continue;
       }
       const hasValue = typeof env[entry.name] === "string" && env[entry.name]!.length > 0;
-      if (!hasValue && GENERATED_RUNTIME_SECRET_NAMES.has(entry.name)) {
-        env[entry.name] = randomBytes(24).toString("hex");
+      const policy = generated.get(entry.name);
+      if (!hasValue && policy?.generateForImage) {
+        env[entry.name] = randomBytes(policy.bytes).toString(policy.encoding);
       }
     }
   }

@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { buildDistributionReport, createDistributionImageLabels, DISTRIBUTION_REPORT_OUTPUT_FILE, normalizeProjectLabelSlug, WORLD_BINDINGS_IMAGE_PATH } from "../distribution/index.js";
 import type { DistributionReport } from "../distribution/index.js";
 import type { CompileReport, ContainerPersistentMountReport } from "../report/index.js";
-import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity, type EmittedFile, type RuntimeContainerPackageOverrides } from "../runtime/index.js";
+import type { EmittedFile, RuntimeContainerPackageOverrides } from "../runtime/index.js";
+import { selectedRuntimeHosts } from "../runtime/hostSelection.js";
 import { SpawnfileError } from "../shared/index.js";
 import { createMoltnetSummary, createOrganizationSummary } from "./containerArtifactSummaries.js";
 import { createEnvVariableMap, createRuntimeTargetPlans } from "./containerArtifactsPlans.js";
@@ -10,6 +11,7 @@ import { createDockerIgnoreContent } from "./dockerBuildContext.js";
 import { createRootfsFiles, renderDockerfile, renderEntrypoint, renderEnvExample } from "./containerArtifactsRender.js";
 import { createMemoryArtifactBundle } from "./memoryArtifacts.js";
 import { resolveRecordingReport } from "./recordingReport.js";
+import { assertMoltnetBridgeCapabilities } from "./moltnetBridgeCapabilities.js";
 import type { MoltnetArtifacts } from "./moltnetArtifacts.js";
 import type { MoltnetReleaseIdentity } from "./moltnetBinaries.js";
 import type { CompiledNodeArtifact, GeneratedContainerArtifacts } from "./containerArtifactsTypes.js";
@@ -33,41 +35,17 @@ export interface ContainerArtifactOptions {
   runtimePackageOverrides?: RuntimeContainerPackageOverrides;
 }
 
-/**
- * Refuse a Daimon attachment unless the pinned Moltnet release advertises
- * daimon-bridge (specs/SURFACES.md). Older pi-only releases reject its config
- * and tear down the container at boot. receiptStorePath identifies resolved
- * Daimon attachments; unsupported configs are errors, never degradations.
- */
-const assertMoltnetDaimonBridgeCapability = (
-  moltnet: MoltnetArtifacts | undefined | null,
-  release: MoltnetReleaseIdentity | undefined
-): void => {
-  const daimonNetworks = [...new Set((moltnet?.nodePlans ?? [])
-    .filter((nodePlan) => nodePlan.receiptStorePath !== undefined)
-    .map((nodePlan) => nodePlan.networkId))].sort();
-  if (daimonNetworks.length === 0) return;
-  const capabilities: readonly string[] = release?.capabilities ?? [];
-  if (capabilities.includes("daimon-bridge")) return;
-  throw new SpawnfileError(
-    "compile_error",
-    `Moltnet release ${release?.version ?? "(unstaged)"} does not advertise the daimon-bridge capability, but `
-      + `${daimonNetworks.length} network attachment(s) lower a daimon runtime bridge (${daimonNetworks.join(", ")}). `
-      + "The published release implements pi-bridge only and rejects a daimon node config at strict JSON decode, so "
-      + "the container would exit at boot. Build Moltnet locally (scripts/build-local-moltnet.ts, then "
-      + "SPAWNFILE_LOCAL_MOLTNET_RELEASE_DIR with SPAWNFILE_ALLOW_LOCAL_E2E=1) to stage a daimon-bridge release, or "
-      + "remove the Moltnet attachment from the daimon agent(s)."
-  );
-};
-
 export const createContainerArtifacts = async (
   plan: CompilePlan,
   compiledNodes: CompiledNodeArtifact[],
   options: ContainerArtifactOptions = {}
 ): Promise<GeneratedContainerArtifacts> => {
-  assertMoltnetDaimonBridgeCapability(options.moltnet, options.moltnetRelease);
-  const localDaimonIdentityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
-  const localDaimonIdentity = localDaimonIdentityPath ? await loadLocalDaimonRuntimeIdentity(localDaimonIdentityPath) : undefined;
+  assertMoltnetBridgeCapabilities(options.moltnet?.nodePlans ?? [], options.moltnetRelease);
+  const hosts = selectedRuntimeHosts(Object.keys(plan.runtimes).sort());
+  const localImageReports = await Promise.all(hosts.map(async ({ name, host }) => {
+    const identity = await host.localImageReport?.();
+    return identity ? [[`local_${name}_runtime`, identity] as const] : [];
+  }));
   const runtimePlans = await createRuntimeTargetPlans(plan, compiledNodes, options.worldBindings, options.deploymentLineage);
   const envVariableMap = createEnvVariableMap(compiledNodes, runtimePlans, options.moltnet);
   const projectedWorldTokenEnvNames = [...new Set(
@@ -371,11 +349,7 @@ export const createContainerArtifacts = async (
       entrypoint: "entrypoint.sh",
       env_example: ".env.example",
       internal_ports: internalPorts,
-      ...(localDaimonIdentity ? { local_daimon_runtime: {
-        capability_receipt_sha256: localDaimonIdentity.capabilityReceipt,
-        image_reference: localDaimonIdentity.imageReference,
-        registry_authority: localDaimonIdentity.registryAuthority
-      } } : {}),
+      ...Object.fromEntries(localImageReports.flat()),
       model_secrets_required: modelSecretsRequired,
       ...(moltnetSummary ? { moltnet: moltnetSummary } : {}),
       port_mappings: portMappings,

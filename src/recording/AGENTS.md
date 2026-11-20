@@ -1,8 +1,9 @@
 # Moment Recording
 
 - `moment.ts` owns the shared strict moment-record schema, inferred type and parser; rewind consumes the public barrel.
-- `types.ts`, `parse.ts`, and `compose.ts` own the pure wake-row contract and pin composition.
-- `sync.ts` joins activation-scoped evidence; `read.ts` reads bounded byte chunks via the usage exec transport.
+- `types.ts` and `compose.ts` own the portable wake-row contract and pin composition.
+- `sync.ts` joins activation-scoped evidence and selects the registered reader by recorded format. Facts without a format use the released v1 wake-row format.
+- `jsonl.ts` provides bounded parsing. The adapter owns the live byte transport and source format. `parse.ts` and `read.ts` preserve the historical exports.
 - `history.ts` selects recording facts from the activation log; `deployment.ts` selects the live deployment and resolves feed histories.
 - `store.ts` owns private, immutable moment publication and per-agent retention.
 - `index.ts` is the public barrel. Tests stay beside the code.

@@ -30,5 +30,5 @@ The cache lives outside any run (`<spawnfile home>/training-cache` by default) a
   rerun (or a rerun after a crash) repeats the whole search without a new subject trial; `fresh`
   asks the optimizer again.
 
-Tests: `session.test.ts` drives the real launcher with a fake compile and must fail if a changed
+The Daimon adapter test `trialCache.test.ts` drives its real launcher with a fake compile and must fail if a changed
 prompt or skill file is served from cache.

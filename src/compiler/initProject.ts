@@ -7,10 +7,11 @@ import {
   ensureDirectory,
   ensureGitignoreEntry,
   fileExists,
+  resolveOutputFilePaths,
   writeUtf8File
 } from "../filesystem/index.js";
 import { createTeamScaffoldManifest, renderSpawnfile } from "../manifest/index.js";
-import { getRuntimeAdapter } from "../runtime/index.js";
+import { defaultScaffoldRuntimeName, getRuntimeAdapter } from "../runtime/index.js";
 import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
 
 export interface InitProjectOptions {
@@ -19,8 +20,6 @@ export interface InitProjectOptions {
   team?: boolean;
   template?: string;
 }
-
-const DEFAULT_AGENT_RUNTIME = "openclaw";
 
 // Bundled example org projects double as `init --template` starting points.
 // Resolves to the package's examples/ dir in both dev (src/) and the published
@@ -40,7 +39,6 @@ export const initProject = async (
 ): Promise<{ createdFiles: string[]; directory: string }> => {
   const directory = path.resolve(options.directory ?? process.cwd());
   const manifestPath = path.join(directory, "Spawnfile");
-  const runtimeName = options.runtime ?? DEFAULT_AGENT_RUNTIME;
 
   if (await fileExists(manifestPath)) {
     throw new SpawnfileError(
@@ -77,9 +75,8 @@ export const initProject = async (
     templateSource = path.join(EXAMPLES_ROOT, options.template);
   }
 
-  await ensureDirectory(directory);
-
   if (templateSource) {
+    await ensureDirectory(directory);
     await copyDirectory(templateSource, directory);
     await ensureGitignoreEntry(directory, `${DEFAULT_OUTPUT_DIRECTORY}/`);
     // Report only the files this template contributed — never pre-existing
@@ -93,6 +90,16 @@ export const initProject = async (
     return { createdFiles, directory };
   }
 
+  const runtimeName = options.team ? undefined : (options.runtime ?? defaultScaffoldRuntimeName());
+  const scaffold = runtimeName === undefined ? undefined : getRuntimeAdapter(runtimeName).scaffoldAgentProject?.();
+  if (runtimeName !== undefined && !scaffold) {
+    throw new SpawnfileError("runtime_error", `Runtime ${runtimeName} does not provide an init scaffold`);
+  }
+  const scaffoldPaths = scaffold
+    ? await resolveOutputFilePaths(directory, scaffold.files.map((file) => file.path))
+    : [];
+  await ensureDirectory(directory);
+
   const createdFiles: string[] = [manifestPath];
   const gitignorePath = path.join(directory, ".gitignore");
   const hadGitignore = await fileExists(gitignorePath);
@@ -105,19 +112,12 @@ export const initProject = async (
     await writeUtf8File(manifestPath, renderSpawnfile(createTeamScaffoldManifest()));
     await writeUtf8File(teamDocPath, "# Team Instructions\n");
     createdFiles.push(teamDocPath);
-  } else {
-    const scaffold = getRuntimeAdapter(runtimeName).scaffoldAgentProject?.();
-    if (!scaffold) {
-      throw new SpawnfileError(
-        "runtime_error",
-        `Runtime ${runtimeName} does not provide an init scaffold`
-      );
-    }
-
+  } else if (scaffold) {
     await writeUtf8File(manifestPath, renderSpawnfile(scaffold.manifest));
 
-    for (const file of scaffold.files) {
-      const targetPath = path.join(directory, file.path);
+    for (const [index, file] of scaffold.files.entries()) {
+      const targetPath = scaffoldPaths[index]!;
+      await ensureDirectory(path.dirname(targetPath));
       await writeUtf8File(targetPath, file.content);
       createdFiles.push(targetPath);
     }

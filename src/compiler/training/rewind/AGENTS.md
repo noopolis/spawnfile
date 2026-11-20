@@ -6,7 +6,7 @@
 - `select.ts` and `inputs.ts` resolve original attempts, examples and compiled input identities; `recordInput.ts` isolates per-input recording failures. Dataset `at` matches wake time; `effectiveAt` is the original startedAt and owns all cuts, clocks and leak bounds.
 - `types.ts` defines input identities, declarations and per-kind contexts/results; `index.ts` exports the public materializer and pure selection/cut helpers.
 - `git.ts` owns resources; `gitProcess.ts`, `gitHistory.ts`, `gitTree.ts`, and `gitArchive.ts` isolate argv execution, containment, blob trees, and raw feed trees; `recordedCommit.ts` verifies full recorded IDs name commit objects without peeling.
-- `feed.ts`, `memory.ts`, and `volumes.ts` own input reconstruction. `snapshotManifest.ts` requires Daimon completion markers and verifies full trees; `memorySchemas.ts` validates ledger events. Mneme generations are unsupported; seq:0 is exact empty.
+- `feed.ts`, `memory.ts`, and `volumes.ts` own input reconstruction. `snapshotManifest.ts` verifies full trees and forwards the released snapshot format reader to its owning adapter; `memorySchemas.ts` validates ledger events. Mneme generations are unsupported; seq:0 is exact empty.
 - `feedContent.ts` verifies plain git revisions and re-extracts for independent byte acceptance; retained copies must match. Prepared revisions prove provenance only: always approximate, never compared to a directory content digest.
 - `moltnet.ts` dispatches stores; `moltnetJson.ts`, `moltnetSqlite.ts`, `moltnetSqliteData.ts`, and `moltnetSchemas.ts` own snapshots, copied databases, SQL decoding, and strict native shapes.
 - `materialize.ts` stages all inputs and publishes only after the independent disk reader in `leakCheck.ts` accepts them.

@@ -7,6 +7,8 @@ import {
   ensureDirectory, readUtf8File
 } from "../filesystem/index.js";
 import { deployResourcesSchema } from "./resourceLog.js";
+import { acquirePidLock } from "./pidLock.js";
+import { assertDeploymentLifecycleCorrelation, createDeploymentLifecycleCorrelation } from "./deploymentLifecycleCorrelation.js";
 import { publishDeploymentRecord } from "./recordPublication.js";
 import { compatibleIsoDateTimeSchema, SpawnfileError } from "../shared/index.js";
 import { recordingReportSchema } from "../report/index.js";
@@ -303,4 +305,32 @@ export const writeDeploymentRecord = async (
   await ensureDirectory(path.dirname(recordPath));
   await publishDeploymentRecord(recordPath, parsed, undefined, previous);
   return recordPath;
+};
+
+/** A project run and its export share a lifecycle lock while they publish.
+ * Ordinary record storage retains its existing write and rename sequence. */
+export const publishProjectDeploymentRecord = async (
+  outputDirectory: string,
+  record: DeploymentRecord,
+  previous?: DeploymentRecord | null,
+  publishExportFiles?: () => Promise<void>
+): Promise<string> => {
+  if (!record.run_id && !previous?.run_id && !publishExportFiles) {
+    return writeDeploymentRecord(outputDirectory, record, previous);
+  }
+  const parsed = parseDeploymentRecord(record);
+  const recordPath = resolveDeploymentRecordPath(outputDirectory, parsed.name);
+  await ensureDirectory(path.dirname(recordPath));
+  const release = await acquirePidLock(`${recordPath}.lock`);
+  try {
+    if (publishExportFiles) {
+      const current = await readDeploymentRecord(recordPath);
+      assertDeploymentLifecycleCorrelation(current, createDeploymentLifecycleCorrelation(parsed));
+      await publishExportFiles();
+    }
+    await publishDeploymentRecord(recordPath, parsed, undefined, previous);
+    return recordPath;
+  } finally {
+    await release();
+  }
 };

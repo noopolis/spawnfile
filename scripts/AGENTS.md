@@ -26,26 +26,16 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
   fragments before Docker runs.
 - Daimon builds also accept only the Grok CLI build the vendored Daimon
   contract manifest pins for the target architecture (`readPinnedGrokCli`).
-- `vendor-daimon-grok-contract.ts` (run with `node --import tsx`) reads a
-  Daimon checkout as data and
-  writes `src/runtime/daimon/contract-manifest.{json,sha256}` plus
-  `grokWorkerConfigBytes.ts` (Daimon's unclocked and clocked worker `config.toml` renderer bytes
-  and sandbox-profile samples). `--check` fails on drift. It never builds or
-  writes inside Daimon.
-  Update `DAIMON_CONTRACT_MANIFEST_SHA256` and the manifest version to match.
-  Preserve published registry digests/receipts until a real publication exists;
-  install and production-compile tests must express any required re-pin, never
-  relabel an old image as attesting the new manifest.
-- `generate-daimon-engine-descriptors.ts` reads static Git objects at the exact
-  Daimon commit in the registry. It generates the v5 descriptor fallback's JSON,
-  digest and typed data; `--check` verifies all three against the pinned checkout
-  in CI. Never edit generated engine or broker facts by hand.
+- The Daimon descriptor, contract, and live-check entrypoints delegate to
+  `src/runtime/daimon/image/`. Its guide records the provenance and probe rules.
 - The local builder pushes only to the fixed loopback development repository.
   Its generated immutable manifest/receipt identity is ignored and never
   edits `runtimes.yaml`. Clean-source builds select the native Docker
   architecture unless an explicit supported architecture is supplied.
-- `publish-daimon-runtime.ts` is the CI publication path. It reads only the
-  checked-in `runtime-images/daimon/publish-inputs.json` (full Daimon commit,
+- `runtime-image-catalog.ts` reads static metadata under each adapter without loading runtime code.
+  Discovery sends only runtime IDs to matrix jobs. Each build job reads its own build metadata.
+- `publish-daimon-runtime.ts` delegates to the same adapter-owned publisher as CI. The publisher reads the
+  checked-in `src/runtime/daimon/image/publish-inputs.json` (full Daimon commit,
   per-architecture AGY pins, Codex pin; Grok comes from the vendored manifest),
   refuses a packed manifest that differs from the explicit publication
   `contract_manifest_sha256` (or vendored contract for legacy inputs), and never
@@ -60,6 +50,10 @@ tools live in `../archive/legacy-worktree-tools/` and are not active helpers.
   `SPAWNFILE_DAIMON_DEPENDENCY_BUNDLE`. Strict deterministic USTAR archives bind
   source, lockfile, package archives, and npm cache. Dependency preparation is
   pinned to `linux/amd64`; Docker verifies those bytes and installs offline.
+- To stamp an ACP-capable local Moltnet archive, set
+  `SPAWNFILE_MOLTNET_ENABLE_ACP=1` when building an ACP-capable source revision.
+  The builder must prove the ACP node contract before writing its capability.
+  The production release pin is independent of this local opt-in.
 - Moltnet archive mode requires source and Go dependency provenance archives.
   Its pinned Go build verifies the graph and runs with `GOPROXY=off` and
   Docker `--network=none`.

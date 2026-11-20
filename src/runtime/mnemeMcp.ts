@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import path from "node:path/posix";
 
 import { slugify } from "../compiler/helpers.js";
-import type { ResolvedAgentNode } from "../compiler/types.js";
+import type { ResolvedAgentNode, ResolvedMemoryBank } from "../compiler/types.js";
+import type { RuntimeMemoryWiring } from "./wiringTypes.js";
 
 export const MNEME_PACKAGE = "@noopolis/mneme@0.1.1";
 
@@ -32,18 +33,7 @@ export const isMnemeMemoryAccessSupported = (access: MnemeMemoryAccess): boolean
 const normalizePosixPath = (value: string): string =>
   path.normalize(value).replace(/\/+$/u, "") || "/";
 
-/**
- * The container path a bank's Mneme runtime home is durably mounted at, or
- * `null` when the compiler emits no persistent volume for it.
- *
- * This is the single authority shared by two sides that must never disagree:
- * `src/compiler/memoryArtifacts.ts`, which emits the persistent mount (and
- * therefore the directory the Daimon UID entrypoint creates and chowns to the
- * runtime uid), and the runtime config emitters, which may only point an
- * in-process Mneme runtime at a path the container actually mounts. A path
- * without a mount is either absent at runtime or root-owned, so an in-process
- * runtime pointed at one fails its first `mkdir`/write instead of degrading.
- */
+/** Resolve the durable container mount shared by Mneme config and volume planning. */
 export const resolveMnemeDurableMemoryMountPath = (
   bank: MnemeMemoryAccess["bank"]
 ): string | null => {
@@ -62,6 +52,11 @@ export const resolveMnemeDurableMemoryMountPath = (
 
   return store.path ? path.dirname(normalizePosixPath(store.path)) : null;
 };
+
+export const resolveMnemeMcpMemoryWiring = (bank: ResolvedMemoryBank): RuntimeMemoryWiring => ({
+  mountPath: resolveMnemeDurableMemoryMountPath(bank),
+  transport: bank.store.kind === "sqlite" || bank.store.kind === "json" ? "mcp" : "degraded_mcp"
+});
 
 const memoryAccessKey = (access: MnemeMemoryAccess): string =>
   `${access.source}:${access.bank.id}`;

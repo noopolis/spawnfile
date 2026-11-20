@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { SpawnfileError } from "../shared/index.js";
+import { isContainerMountTarget, SpawnfileError } from "../shared/index.js";
 import { recordingReportSchema } from "../report/index.js";
 
 import {
@@ -112,7 +112,7 @@ export const distributionReportSchema = z.object({
     id: instanceIdSchema,
     kind: z.literal("volume"),
     lifecycle: z.literal("exclusive-reattach").optional(),
-    target: containerPathSchema
+    target: containerPathSchema.refine(isContainerMountTarget, "must be a canonical Docker volume target")
   }).strict()),
   port_mappings: z.array(z.object({
     internal_port: portSchema,

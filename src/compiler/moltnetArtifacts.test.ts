@@ -1018,7 +1018,7 @@ describe("moltnetArtifacts", () => {
     });
 
     await expect(generateMoltnetArtifacts(plan)).rejects.toThrow(
-      /does not know how to attach runtime mysteryclaw/
+      /unsupported-agent selects runtime mysteryclaw, which has no Moltnet wiring capability/
     );
   });
 });

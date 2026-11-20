@@ -7,7 +7,7 @@ authoring, native compilation, evaluation, cost planning, optimization and isola
 Actual training is production-booted: every trial is the subject agent's own
 compiled organization, booted with production's entrypoint and Docker security
 arguments, and all trials of one run share one Daimon auth gateway sidecar that
-holds the login of `--auth-profile` (see `src/compiler/training/trial/AGENTS.md`).
+holds the login of `--auth-profile` (see `src/runtime/daimon/training/trial/AGENTS.md`).
 The training core and graders run in the parent process. Only Daimon subjects
 train; dry-run remains a host-only estimate.
 
@@ -442,7 +442,10 @@ reuse `workspace_git_resources` and `workspace_bundles`, without resolving sourc
 agent: node ID, slug, recording directory, keep window, snapshot IDs, consumed feed IDs
 and volume names, git/bundle resource IDs, memory bank IDs with declaring node and ledger
 path, and attached Moltnet networks. These facts survive releases that remove or change
-inputs. Legacy entries without them remain readable but cannot produce exact moments.
+inputs. A recording format other than the released Daimon v1 format records its ID in
+`wake_format`. Sync selects the registered reader with that format ID. Facts without
+`wake_format` use the released Daimon v1 reader. Legacy entries without compiled recording
+facts remain readable but cannot produce exact moments.
 Every resource MUST retain its workspace-visible `id`, compiled `agent_node_ids`, and
 `declared_by` node ID when known. Git adds `{kind:"git", commit, sha256, url?}`; bundles
 add `{kind:"bundle", sha256, origin?}`. Ownership MUST survive compile and distribution

@@ -1,8 +1,12 @@
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { createLocalMoltnetBridgeProbeConfig, moltnetBinaryIsDirectlyExecutable, parseLocalReleaseStamp } from "./localMoltnetAuthority.js";
+import { createLocalMoltnetBridgeProbeConfig, moltnetBinaryIsDirectlyExecutable, parseLocalReleaseStamp, readLocalMoltnetReleaseIdentity } from "./localMoltnetAuthority.js";
 
 describe("local Moltnet bridge capability probes", () => {
   it("represents every required Daimon runtime field with private-state-compatible paths", () => {
@@ -28,6 +32,41 @@ describe("local Moltnet bridge capability probes", () => {
     const stamp = { arch: "amd64", asset: "moltnet_linux_amd64.tar.gz", capabilities: ["daimon-bridge", "pi-bridge"], development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true }, sha256: "b".repeat(64), source_inputs: { dependencies_sha256: digest, mode: "source-bundle", source_sha256: digest, toolchain: "golang:1.24-bookworm@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac" }, source_sha256: digest, stamp_version: "spawnfile.local-moltnet-release-stamp.v1" };
     expect(parseLocalReleaseStamp(JSON.stringify(stamp), "amd64").source_inputs).toEqual(stamp.source_inputs);
     expect(() => parseLocalReleaseStamp(JSON.stringify({ ...stamp, source_inputs: { ...stamp.source_inputs, dependencies_sha256: "sha256:bad" } }), "amd64")).toThrow(/complete development-only/u);
+  });
+
+  it("probes an advertised ACP capability before accepting the local archive", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "spawnfile-acp-probe-"));
+    try {
+      const asset = "moltnet_linux_amd64.tar.gz";
+      const source = path.join(root, "source");
+      const binary = path.join(source, "moltnet");
+      const archive = path.join(root, asset);
+      const capabilities = ["acp-bridge", "daimon-bridge", "pi-bridge"];
+      await mkdir(source);
+      const stampArchive = async (acpResult: string): Promise<void> => {
+        await writeFile(binary, [
+          "#!/bin/sh",
+          'if [ "$1" = version ]; then echo moltnet; exit 0; fi',
+          `if grep -q '"kind":"acp"' "$2"; then ${acpResult}; fi`,
+          "echo connection refused >&2; exit 1"
+        ].join("\n"), { mode: 0o755 });
+        execFileSync("tar", ["-C", source, "-czf", archive, "moltnet"]);
+        const sha256 = createHash("sha256").update(await readFile(archive)).digest("hex");
+        await writeFile(path.join(root, "local_moltnet_release_stamp_amd64.json"), JSON.stringify({
+          arch: "amd64", asset, capabilities,
+          development: { mode: "local-development", non_production: true, unsigned: true, unpublished: true },
+          sha256, source_sha256: `sha256:${"a".repeat(64)}`,
+          stamp_version: "spawnfile.local-moltnet-release-stamp.v1"
+        }));
+      };
+      const host = { architecture: "amd64", platform: "linux" } as const;
+      await stampArchive("echo unsupported >&2; exit 1");
+      await expect(readLocalMoltnetReleaseIdentity(root, "amd64", host)).rejects.toThrow(/does not accept acp-bridge/u);
+      await stampArchive(`grep -Fq '"args":["literal argument with spaces"]' "$2" || { echo invalid args >&2; exit 1; }`);
+      await expect(readLocalMoltnetReleaseIdentity(root, "amd64", host)).resolves.toMatchObject({ capabilities });
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
   });
 
   /**

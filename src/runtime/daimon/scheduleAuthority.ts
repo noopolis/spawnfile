@@ -1,5 +1,5 @@
 import { SpawnfileError } from "../../shared/index.js";
-import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity } from "../localDaimonAuthority.js";
+import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity } from "./localDaimonAuthority.js";
 
 import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
 

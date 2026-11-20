@@ -50,6 +50,7 @@ describe("picoClawAdapter", () => {
 
   it("exposes container metadata for gateway boot", () => {
     expect(picoClawAdapter.container).toEqual({
+      rawHomeAuthImports: ["claude-code", "codex"],
       configFileName: "config.json",
       configPathEnv: "PICOCLAW_CONFIG",
       globalNpmPackages: ["@anthropic-ai/claude-code", "@openai/codex", "@noopolis/mneme@0.1.1"],

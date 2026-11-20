@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,6 +110,16 @@ test('installed tarball exposes every integration value and type through explici
     await run('npm', ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund',
       join(directory, packs[0].filename)], directory);
     const installed = join(directory, 'node_modules/spawnfile');
+    const training = join(installed, 'dist/runtime/daimon/training');
+    for (const name of ['trial/boot', 'trial/bootedTrial', 'trial/gateway', 'trial/homeLogin', 'trial/judge',
+      'trial/judgmentCache', 'trial/launcher', 'trial/login', 'trial/momentVolumes', 'trial/trialReads',
+      'trial/run', 'trial/runTraining', 'trial/trainingCodexAuthority', 'trial/trainingGrokWriteback',
+      'graderProviders', 'inferenceProviders']) {
+      for (const extension of ['js', 'd.ts']) {
+        const artifact = join(training, `${name}.${extension}`);
+        assert.ok((await stat(artifact)).size > 0, `Missing native training build artifact: ${name}.${extension}`);
+      }
+    }
     const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8')) as {
       exports: Record<string, { types: string; import: string } | string>;
       dependencies: Record<string, string>;

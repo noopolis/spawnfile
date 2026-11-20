@@ -1,9 +1,7 @@
-import { execFile as execFileCallback } from "node:child_process";
-import { chmod, readFile } from "node:fs/promises";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 
-import { ensureDirectory, writeUtf8File } from "../filesystem/index.js";
+import { assertOutputRelativePath, ensureDirectory, resolveOutputFilePaths, writeUtf8File } from "../filesystem/index.js";
 import { getRuntimeAdapter, type EmittedFile } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -13,13 +11,12 @@ import {
   createMoltnetClientConfigFiles,
   resolveMoltnetWorkspaceLayout
 } from "./moltnetClientConfig.js";
+import { assertMoltnetSkillLayout, installMoltnetSkillFiles } from "./moltnetSkillInstall.js";
 import type { TeamCompileSupport } from "./teamContextSupport.js";
 import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
 export { prepareTeamCompileSupport } from "./teamContextSupport.js";
 export type { TeamCompileSupport } from "./teamContextSupport.js";
-
-const execFile = promisify(execFileCallback);
 
 export interface CompiledNodeOutput {
   emittedFiles: EmittedFile[];
@@ -45,6 +42,7 @@ const resolveAgentWorkspacePaths = (
   }
 
   const systemInstructionPath = systemInstructionSurface.resolvePath({ node });
+  assertOutputRelativePath(systemInstructionPath);
   const systemInstructionDirectory = path.posix.dirname(systemInstructionPath);
 
   return {
@@ -72,11 +70,13 @@ const upsertEmittedFile = (
 
 export const writeEmittedFiles = async (
   outputDirectory: string,
-  files: EmittedFile[]
+  files: EmittedFile[],
+  relativeDirectory?: string
 ): Promise<void> => {
+  const targets = await resolveOutputFilePaths(outputDirectory, files.map((file) => file.path), relativeDirectory);
   await Promise.all(
-    files.map(async (file) => {
-      const targetPath = path.join(outputDirectory, file.path);
+    files.map(async (file, index) => {
+      const targetPath = targets[index]!;
       await ensureDirectory(path.dirname(targetPath));
       await writeUtf8File(targetPath, file.content);
       if (file.mode !== undefined) {
@@ -138,7 +138,7 @@ export const injectTeamCompileSupportFiles = async (
         })
   );
 
-  await writeEmittedFiles(path.join(outputDirectory, compiled.report.output_dir), filesToWrite);
+  await writeEmittedFiles(outputDirectory, filesToWrite, compiled.report.output_dir);
 };
 
 export const injectMoltnetWorkspaceFiles = async (
@@ -161,7 +161,6 @@ export const injectMoltnetWorkspaceFiles = async (
       continue;
     }
 
-    const runtimeOutputDirectory = path.join(outputDirectory, compiled.report.output_dir);
     const moltnetClientConfigFiles = createMoltnetClientConfigFiles(
       compiled.value,
       artifacts,
@@ -172,20 +171,14 @@ export const injectMoltnetWorkspaceFiles = async (
     }
 
     const layout = resolveMoltnetWorkspaceLayout(compiled.value.runtime.name, compiled.value.name);
-    const workspacePath = path.join(runtimeOutputDirectory, layout.workspaceRootPath);
+    assertMoltnetSkillLayout(layout, compiled.value.name);
 
     for (const file of moltnetClientConfigFiles) {
       upsertEmittedFile(compiled.emittedFiles, file);
     }
-    await writeEmittedFiles(runtimeOutputDirectory, moltnetClientConfigFiles);
+    await writeEmittedFiles(outputDirectory, moltnetClientConfigFiles, compiled.report.output_dir);
 
-    // Daimon agents talk Moltnet through the native moltnet_send/moltnet_read
-    // tools, and the moltnet CLI is not authenticated inside a Daimon
-    // workspace. Installing its skill there only teaches the agent a shell
-    // path that fails before it falls back to the tools it already has, so
-    // Daimon skips the skill install entirely; .moltnet/config.json above is
-    // still emitted since the native tools read it.
-    if (compiled.value.runtime.name === "daimon") {
+    if (layout.installSkill === false) {
       continue;
     }
 
@@ -193,39 +186,13 @@ export const injectMoltnetWorkspaceFiles = async (
       moltnetCliCommand = await resolveMoltnetCliCommand();
     }
 
-    try {
-      await execFile(moltnetCliCommand, [
-        "skill",
-        "install",
-        "--runtime",
-        layout.cliRuntime,
-        "--workspace",
-        workspacePath
-      ]);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new SpawnfileError(
-        "compile_error",
-        `Unable to install the Moltnet skill into ${compiled.value.name}: ${reason}`
-      );
-    }
-
-    const moltnetSkillFiles = await Promise.all(
-      layout.skillPaths.map(async (filePath) => {
-        try {
-          return {
-            content: await readFile(path.join(runtimeOutputDirectory, filePath), "utf8"),
-            path: filePath
-          };
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          throw new SpawnfileError(
-            "compile_error",
-            `Moltnet skill install for ${compiled.value.name} did not produce ${filePath}: ${reason}`
-          );
-        }
-      })
-    );
+    const moltnetSkillFiles = await installMoltnetSkillFiles({
+      agentName: compiled.value.name,
+      cliCommand: moltnetCliCommand,
+      emittedFiles: compiled.emittedFiles,
+      layout
+    });
+    await writeEmittedFiles(outputDirectory, moltnetSkillFiles, compiled.report.output_dir);
 
     for (const file of moltnetSkillFiles) {
       upsertEmittedFile(compiled.emittedFiles, file);

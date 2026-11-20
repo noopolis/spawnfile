@@ -110,7 +110,6 @@ const renderSummary = (result: ExportRunArtifactsResult): string[] => [
   ...result.missingOptionalFiles.map(
     (file) => `skipped (not present yet): ${file}`,
   ),
-  ...result.failedFiles.map((file) => `FAILED to export: ${file}`),
 ];
 
 export const registerArtifactsCommands = (
@@ -155,18 +154,24 @@ export const registerArtifactsCommands = (
         runId: options.runId,
         timeoutMs: options.timeout ? Number(options.timeout) : undefined,
       };
+      const exportFiles = async (expected?: DeploymentLifecycleCorrelation) => {
+        const result = await handlers.exportRunArtifacts({
+          ...base,
+          ...(expected ? { expectedLifecycleCorrelation: expected } : {}),
+        });
+        if (result.failedFiles.length) {
+          if (options.json && !options.lifecycleInvocation) streams.stdout(renderJson(result));
+          throw new SpawnfileError("runtime_error", `Required artifact export failed: ${result.failedFiles.join(", ")}`);
+        }
+        return result;
+      };
       if (!options.json) {
-        for (const line of renderSummary(await handlers.exportRunArtifacts(base)))
+        for (const line of renderSummary(await exportFiles()))
           streams.stdout(line);
         return;
       }
       const render = async (expected?: DeploymentLifecycleCorrelation) =>
-        renderJson(
-          await handlers.exportRunArtifacts({
-            ...base,
-            ...(expected ? { expectedLifecycleCorrelation: expected } : {}),
-          }),
-        );
+        renderJson(await exportFiles(expected));
       if (!options.lifecycleInvocation) {
         streams.stdout(await render());
         return;

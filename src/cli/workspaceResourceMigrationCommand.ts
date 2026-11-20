@@ -9,6 +9,10 @@ export interface WorkspaceResourceMigrationCommandDependencies {
   stdout?: (message: string) => void;
 }
 
+const manifestOption = "--manifest";
+const identityOption = "--resolved-identity";
+export const workspaceResourceValueOptions: ReadonlySet<string> = new Set([manifestOption, identityOption]);
+
 const usage = "usage: spawnfile workspace-resource migrate <source> <destination> --manifest <path> --resolved-identity <sha256> --source-quiesced [--json]";
 
 export const runWorkspaceResourceMigrationCommand = async (
@@ -19,8 +23,8 @@ export const runWorkspaceResourceMigrationCommand = async (
   const stderr = dependencies.stderr ?? ((message) => process.stderr.write(`${message}\n`));
   if (!isWorkspaceResourceMigrationInvocation(argv)) return 2;
   const sourcePath = argv[2]; const destinationPath = argv[3];
-  const manifestIndex = argv.indexOf("--manifest"); const manifestPath = manifestIndex < 0 ? undefined : argv[manifestIndex + 1];
-  const identityIndex = argv.indexOf("--resolved-identity"); const resolvedIdentity = identityIndex < 0 ? undefined : argv[identityIndex + 1];
+  const manifestIndex = argv.indexOf(manifestOption); const manifestPath = manifestIndex < 0 ? undefined : argv[manifestIndex + 1];
+  const identityIndex = argv.indexOf(identityOption); const resolvedIdentity = identityIndex < 0 ? undefined : argv[identityIndex + 1];
   const quiescedIndex = argv.indexOf("--source-quiesced");
   const allowed = new Set([0, 1, 2, 3, manifestIndex, manifestIndex + 1, identityIndex, identityIndex + 1, quiescedIndex, argv.indexOf("--json")].filter((index) => index >= 0));
   if (!sourcePath || !destinationPath || !manifestPath || !resolvedIdentity || quiescedIndex < 0 || argv.some((_value, index) => !allowed.has(index))) { stderr(usage); return 2; }

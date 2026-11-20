@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MOLTNET_ACP_BRIDGE_CAPABILITIES,
   MOLTNET_DUAL_BRIDGE_CAPABILITIES,
   parseMoltnetBridgeCapabilities,
   parseTrustedMoltnetReleaseAuthority,
@@ -67,7 +68,11 @@ describe("trusted Moltnet release authority", () => {
     expect(MOLTNET_DUAL_BRIDGE_CAPABILITIES).toEqual(["daimon-bridge", "pi-bridge"]);
     expect(authority.capabilities).toEqual([...MOLTNET_DUAL_BRIDGE_CAPABILITIES]);
     expect(parseMoltnetBridgeCapabilities(["daimon-bridge", "pi-bridge"])).toEqual(["daimon-bridge", "pi-bridge"]);
+    expect(parseTrustedMoltnetReleaseAuthority({ ...authority, capabilities: MOLTNET_ACP_BRIDGE_CAPABILITIES }).capabilities)
+      .toEqual(["acp-bridge", "daimon-bridge", "pi-bridge"]);
     for (const rejected of [
+      ["daimon-bridge", "pi-bridge", "acp-bridge"],
+      ["acp-bridge", "pi-bridge"],
       ["pi-bridge", "daimon-bridge"],
       ["daimon-bridge"],
       ["pi-bridge", "pi-bridge"],

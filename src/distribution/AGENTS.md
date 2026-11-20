@@ -15,9 +15,10 @@ src/distribution/
 ├── tarReader.ts                 # Adversarial single-file tar extraction (size cap, no symlinks)
 ├── extractImage.ts              # Helper-container report extraction with cleanup
 ├── dockerRunner.ts              # Shared spawn-based docker command runner
-├── preflight.ts                 # api_key-only auth and required-secret preflight
+├── preflight.ts                 # Model-auth and required-secret admission
+├── imageHost.ts                 # Select runtime hooks before image replacement
+├── imageRuntimeAuth.ts          # Shared import checks and image credential mounts
 ├── consumeImage.ts              # up <image-ref> orchestration
-├── consumeImageDaimonDocker.ts  # Daimon image config inspection and launch posture
 ├── consumeImageSupport.ts       # Name/volume derivation and env resolution
 ├── projectImageView.ts          # DistributionReport to OrganizationView projection
 ├── renderImageInterface.ts      # Static status <image-ref> interface renderer

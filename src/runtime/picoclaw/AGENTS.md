@@ -11,8 +11,11 @@ src/runtime/picoclaw/
 ├── mcp.ts            # PicoClaw-authored MCP server and config-env binding lowering
 ├── runAuth.ts        # PicoClaw runtime-auth preparation for `spawnfile run`
 ├── schedules.ts      # PicoClaw cron schedule and Mneme dream-job lowering
+├── install.ts        # Native install recipe and registry install hints
 ├── scaffold.ts       # PicoClaw-owned `spawnfile init --runtime picoclaw` scaffold
 ├── surfaces.ts       # PicoClaw surface lowering and supported-surface checks
+├── image/            # Repository image context and build metadata
+├── package-assets.json # Assets copied into the installed CLI
 ├── scaffold-assets/  # Bundled PicoClaw starter docs copied into dist at build time
 └── *.test.ts         # PicoClaw adapter, schedule, auth, and surface tests
 ```

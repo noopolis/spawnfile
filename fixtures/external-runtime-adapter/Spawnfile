@@ -1,0 +1,17 @@
+spawnfile_version: "0.1"
+kind: team
+name: harness-workshop
+adapters:
+  echo-harness: "@spawnfile-fixtures/echo-adapter"
+  word-count: ./word-count/adapter.mjs
+mode: swarm
+members:
+  - id: echo
+    runtime: { name: echo-harness }
+    workspace: { docs: { system: AGENTS.md } }
+  - id: counter
+    runtime:
+      name: word-count
+      options:
+        text: "one small custom harness"
+    workspace: { docs: { system: AGENTS.md } }

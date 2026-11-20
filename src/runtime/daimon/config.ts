@@ -1,9 +1,8 @@
 import path from "node:path";
-import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
-import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
+import { createDaimonWorkerDetails } from "./host/targetDetails.js";
+import { DAIMON_SKILL_ROOTS, daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
 import { daimonGatewayedSubscriptionRealms, daimonSubscriptionRealmMountId } from "./subscriptionRealms.js";
-
 import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import { SpawnfileError } from "../../shared/index.js";
@@ -27,6 +26,7 @@ import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
 import { assertDaimonTurnTimeoutBound, resolveDaimonCliTurnTimeoutMs } from "./turnTimeout.js";
 import { assertDaimonWakeTextBound, resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
+import { DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY, daimonReadinessReceiptPath } from "./readiness.js";
 import { assertDaimonRecordingIsolation, daimonRecordingMountId, resolveDaimonAgentRecording } from "./recording.js";
 
 import { DAIMON_PINNED_PORTABLE_DESCRIPTOR } from "./engineDescriptorSchema.js";
@@ -45,8 +45,9 @@ export {
 export const DAIMON_CONFIG_FILE = "daimon-organization-runtime.json";
 export const DAIMON_CONTROL_PORT = 19700;
 export const DAIMON_MAX_AGENTS = 32;
+export const DAIMON_USAGE_MOUNT_ID = "daimon-grok-usage-ledger";
 export const DAIMON_ORGANIZATION_TARGET_ID = "daimon-organization";
-export const DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY = "state/wake-acceptance";
+export { DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY };
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_ENV = "DAIMON_RUNTIME_ACCEPTANCE_STORE";
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID = "daimon-organization-acceptance-store";
 export const DAIMON_RUNTIME_READINESS_RECEIPT_ENV = "DAIMON_RUNTIME_READINESS_RECEIPT";
@@ -165,7 +166,7 @@ const renderStartScript = (agents: Array<{
   workspacePath: string;
 }>): string => {
   const acceptanceStorePath = `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`;
-  const readinessReceiptPath = `${acceptanceStorePath}/runtime-readiness.json`;
+  const readinessReceiptPath = daimonReadinessReceiptPath("<instance-root>");
   const setup = agents.flatMap((agent) => {
     const material = getDaimonEngineDescriptor(agent.engine.kind)?.credentialMaterial;
     const credential = material?.sourceRelativePath ? material as typeof DAIMON_ENGINE_CREDENTIALS[keyof typeof DAIMON_ENGINE_CREDENTIALS] : undefined;
@@ -327,13 +328,15 @@ export const createDaimonContainerTargets = async (
   return [{
     agentPathsByNodeId: Object.fromEntries(configAgents.map((agent) => [agent.id, {
       workspacePath: agent.workspacePath, homePath: agent.runtimeHomePath,
-      skillRoots: CLI_ENGINE_SKILL_BASE_DIRECTORIES.map(
+      skillRoots: DAIMON_SKILL_ROOTS.map(
         (root) => path.posix.join(agent.workspacePath, path.posix.relative("workspace", root)))
     }])),
     engineByNodeId,
-    ...(hasGrok ? { grokModelByNodeId } : {}),
-    ...(hasGrok && Object.keys(grokTurnLimitsByNodeId).length > 0 ? { grokTurnLimitsByNodeId } : {}),
-    ...(Object.keys(grokSkillsByNodeId).length > 0 ? { grokSkillsByNodeId } : {}),
+    ...(hasGrok ? { hostDetails: createDaimonWorkerDetails({
+      modelByNodeId: grokModelByNodeId,
+      turnLimitsByNodeId: grokTurnLimitsByNodeId,
+      skillsByNodeId: grokSkillsByNodeId
+    }) } : {}),
     files: [
       ...agents.flatMap((input) => input.emittedFiles.map((file) => moveWorkspaceFile(file, input.slug))),
       { content: serializedConfig, path: DAIMON_CONFIG_FILE },
@@ -375,7 +378,7 @@ export const createDaimonContainerTargets = async (
         // `ensureUsageLedgerReadable`), and Codex also writes here
         // (`engineDispatcher.ts`'s `onTurnUsage`) even in a codex-only
         // organization with no Grok or AGY agent at all.
-        id: "daimon-grok-usage-ledger",
+        id: DAIMON_USAGE_MOUNT_ID,
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
         reason: "Daimon per-turn engine usage ledger"

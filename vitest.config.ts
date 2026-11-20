@@ -27,6 +27,7 @@ const sourceGateTests = [
   "src/training/boundaries.test.ts",
   "src/deployment/providerRuntimeBoundary.test.ts",
   "src/ownership/mnemePublicImportBoundary.test.ts",
+  "src/ownership/runtimeAdapterBoundary.test.ts",
   "src/compiler/training/execution.mutation.test.ts",
 ];
 
@@ -35,7 +36,11 @@ const sourceGateTests = [
 const trainingThresholds = Object.fromEntries(globSync(
   ["src/training/**/*.ts", "src/runtime/daimon/training/**/*.ts", "tooling/training/**/*.ts"],
   { cwd: fileURLToPath(new URL(".", import.meta.url)),
-    exclude: ["**/*.test.ts", "**/*.d.ts", "src/training/copyAssets.ts"] },
+    exclude: [
+      "**/*.test.ts", "**/*.d.ts", "src/training/copyAssets.ts",
+      // Relocated native trial host files retain the previous aggregate floor.
+      "src/runtime/daimon/training/trial/**"
+    ] },
 ).map(file => [file, { branches: 90, functions: 90, lines: 90, statements: 90 }]));
 
 export default defineConfig({
@@ -48,6 +53,7 @@ export default defineConfig({
         "**/*.test.ts",
         "**/*.d.ts",
         "src/e2e/**",
+        "src/runtime/*/image/**", // Repository tooling is covered by the Node script suite.
         "src/!(training)/**/index.ts",
         "src/index.ts",
         "src/!(training)/**/*Types.ts",
@@ -74,7 +80,7 @@ export default defineConfig({
     environment: "node",
     projects: [
       { extends: true, test: { name: "spawnfile", include: ["src/**/*.test.ts"],
-        exclude: [...configDefaults.exclude, ...sourceGateTests, "src/training/**", "src/runtime/daimon/training/**"],
+        exclude: [...configDefaults.exclude, ...sourceGateTests, "src/training/**", "src/runtime/daimon/training/**", "src/runtime/*/image/**"],
         sequence: { groupOrder: 0 } } },
       { extends: true, test: { name: "training", include: ["src/training/**/*.test.ts", "src/runtime/daimon/training/**/*.test.ts", "tooling/training/**/*.test.ts"],
         exclude: [...configDefaults.exclude, ...sourceGateTests, ...realBridgeTests], testTimeout: 15_000, hookTimeout: 15_000,

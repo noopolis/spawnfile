@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 
-import { ensureDirectory, fileExists, readUtf8File, writeUtf8File } from "../filesystem/index.js";
+import { ensureDirectory, fileExists, readUtf8File } from "../filesystem/index.js";
+import { resolveOutputFilePaths, resolveOutputRoot } from "../filesystem/outputPaths.js";
+import type { RuntimePrivateExportDirectory } from "../runtime/operations.js";
 import type { CompileReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { REPORT_FILENAME } from "../shared/index.js";
@@ -16,13 +18,14 @@ import {
 } from "./artifactsExportDocker.js";
 import { EXPORT_INDEX_VERSION, type ExportIndex, type ExportIndexFile, type ExportIndexSource } from "./artifactsExportTypes.js";
 import { planArtifactExports, type PlannedExportFile } from "./artifactsExportPlan.js";
-import { exportPrivateRuntimeArtifacts } from "./privateArtifactsExport.js";
+import { EXPORT_INDEX_PATH, publishArtifactFiles, resolveArtifactOutputPaths } from "./artifactExportPublication.js";
+import { exportPrivateRuntimeArtifacts, planPrivateArtifactExports } from "./privateArtifactsExport.js";
 import {
   assertDeploymentLifecycleCorrelation,
   createDeploymentLifecycleCorrelation,
   type DeploymentLifecycleCorrelation,
 } from "./deploymentLifecycleCorrelation.js";
-import { listDeploymentRecords, readDeploymentRecordFromOutput, writeDeploymentRecord } from "./record.js";
+import { listDeploymentRecords, readDeploymentRecordFromOutput, publishProjectDeploymentRecord } from "./record.js";
 import type { DeploymentRecord } from "./record.js";
 
 export interface ExportRunArtifactsOptions {
@@ -47,9 +50,12 @@ export interface ExportRunArtifactsOptions {
 export interface ExportRunArtifactsResult {
   deploymentName: string;
   /** Planned files that failed to copy despite the container/volume being reachable
-   * (a real per-file problem, worth surfacing — as opposed to `missingOptionalFiles`). */
+   * (a real per-file problem, worth surfacing, as opposed to `missingOptionalFiles`).
+   * When non-empty, nothing is promoted into the destination: no file, no index and no
+   * deployment-record marker is written, so an earlier successful export stays intact. */
   failedFiles: string[];
   index: ExportIndex;
+  /** Written only when `failedFiles` is empty. */
   indexPath: string;
   /** Planned files that were legitimately absent (e.g. no recall yet) — not failures. */
   missingOptionalFiles: string[];
@@ -182,7 +188,8 @@ const exportOnePlannedFile = async (input: {
     return null;
   }
 
-  const buffer = await readFile(hostPath);
+  const [copiedPath] = await resolveOutputFilePaths(input.destinationDirectory, [input.plan.relativePath]);
+  const buffer = await readFile(copiedPath!);
   return {
     bytes: buffer.byteLength,
     path: input.plan.relativePath,
@@ -191,27 +198,13 @@ const exportOnePlannedFile = async (input: {
   };
 };
 
-/**
- * `spawnfile artifacts export` — mechanical egress of a run's durable artifacts (moltnet
- * causal log, mneme bank ledgers, daimon per-agent telemetry) into the compose-and-observe
- * run-dir layout (`decisions.md` Decision 21 §2), plus the `spawnfile.export-index.v1`
- * index simfile's observer folds into its own run manifest.
- *
- * As of Piece 4b, every planned file is volume-sourced (moltnet + mneme already were;
- * daimon telemetry joined them — see `artifactsExportPlan.ts`'s `planDaimonFiles`), and a
- * named volume outlives its container across a plain `docker rm` (no `--volumes`). So this
- * no longer requires the deployment's container to still be alive in the general case: the
- * container-liveness check below (`requiresLiveContainer`) only runs when the plan actually
- * contains a `kind: "container"` file, which today only happens for a legacy pre-Piece-4b
- * compile report. This is the real relaxation of the export-before-teardown invariant
- * Piece 4b unlocks: `spawnfile down` (without `--volumes`) can run BEFORE `spawnfile
- * artifacts export`, and export still recovers everything from the named volumes.
- */
+/** Export durable volume files after a container stops, or request a live container
+ * for adapters that declare container sources or private runtime directories. */
 export const exportRunArtifacts = async (
   options: ExportRunArtifactsOptions
 ): Promise<ExportRunArtifactsResult> => {
   const compiledOutputDirectory = path.resolve(options.compiledOutputDirectory);
-  const destinationDirectory = path.resolve(options.destinationDirectory);
+  const destinationDirectory = await resolveOutputRoot(path.resolve(options.destinationDirectory));
   const dockerCommand = options.dockerCommand ?? "docker";
   const execFileImpl = options.execFile ?? defaultDockerArtifactExecFile;
   const timeoutMs = options.timeoutMs ?? 30_000;
@@ -245,48 +238,55 @@ export const exportRunArtifacts = async (
   }
 
   const report = await readCompileReport(compiledOutputDirectory);
-  const planned = planArtifactExports(report);
-
-  // Only a `kind: "container"` planned file needs the live container (see this function's
-  // own doc comment) — every other source reads a named volume, which survives a plain
-  // `docker rm` on its own. Gating on this, rather than checking unconditionally, is the
-  // actual export-before-teardown relaxation Piece 4b delivers.
-  const requiresLiveContainer = options.includePrivate === true
-    || planned.some((entry) => entry.source.kind === "container");
-  if (requiresLiveContainer) {
-    const exists = await containerExists(record.target, containerRef, {
-      dockerCommand,
-      execFile: execFileImpl,
-      timeoutMs
-    });
-    if (!exists) {
-      throw new SpawnfileError(
-        "runtime_error",
-        `Deployment "${record.name}" has no live container ("${containerRef}"), and its planned export ` +
-          "includes at least one file that can only be read from a live container (a legacy, " +
-          "pre-Piece-4b compile report — recompile to move it onto a durable volume). Run " +
-          "`spawnfile artifacts export` BEFORE `spawnfile down` removes the container, or recompile."
-      );
-    }
+  if (report.compile_fingerprint !== undefined && report.compile_fingerprint !== record.compile_fingerprint) {
+    throw new SpawnfileError("validation_error", "The compile report does not match the deployment being exported");
   }
-
+  const planned = planArtifactExports(report);
+  const privateDirectories = options.includePrivate ? planPrivateArtifactExports(report) : [];
+  const indexPath = path.join(destinationDirectory, EXPORT_INDEX_PATH);
   const readerImage = options.readerImage ?? unit.image_tag;
+  await ensureDirectory(destinationDirectory);
+  const temporary = await mkdtemp(path.join(destinationDirectory, ".spawnfile-export-"));
+  try {
+    const stagingDirectory = path.join(temporary, "files");
+    await ensureDirectory(stagingDirectory);
+    await resolveArtifactOutputPaths(stagingDirectory, [...planned, ...privateDirectories].map((entry) => entry.relativePath));
+    if (options.includePrivate || planned.some((entry) => entry.source.kind === "container")) {
+      if (!(await containerExists(record.target, containerRef, { dockerCommand, execFile: execFileImpl, timeoutMs }))) {
+        throw new SpawnfileError("runtime_error",
+          `Deployment "${record.name}" has no live container ("${containerRef}"). Run ` +
+          "`spawnfile artifacts export` BEFORE `spawnfile down`, or recompile to use durable volumes.");
+      }
+    }
+    const staged = await stageExport({
+      containerRef, dockerCommand, execFile: execFileImpl, privateDirectories,
+      planned, readerImage, report, stagingDirectory, target: record.target, timeoutMs
+    });
+    return await publishExport({
+      ...staged, compiledOutputDirectory, destinationDirectory, indexPath, record, runId, stagingDirectory
+    });
+  } finally {
+    await rm(temporary, { force: true, recursive: true });
+  }
+};
 
+const stageExport = async (input: {
+  containerRef: string;
+  dockerCommand: string;
+  execFile: DockerArtifactExecFile;
+  privateDirectories: readonly RuntimePrivateExportDirectory[];
+  planned: readonly PlannedExportFile[];
+  readerImage: string;
+  report: CompileReport;
+  stagingDirectory: string;
+  target: DeploymentRecord["target"];
+  timeoutMs: number;
+}): Promise<{ failedFiles: string[]; files: ExportIndexFile[]; missingOptionalFiles: string[] }> => {
   const files: ExportIndexFile[] = [];
   const missingOptionalFiles: string[] = [];
   const failedFiles: string[] = [];
-
-  for (const plan of planned) {
-    const entry = await exportOnePlannedFile({
-      containerRef,
-      destinationDirectory,
-      dockerCommand,
-      execFile: execFileImpl,
-      plan,
-      readerImage,
-      target: record.target,
-      timeoutMs
-    });
+  for (const plan of input.planned) {
+    const entry = await exportOnePlannedFile({ ...input, destinationDirectory: input.stagingDirectory, plan });
     if (entry) {
       files.push(entry);
     } else if (plan.optional) {
@@ -295,39 +295,52 @@ export const exportRunArtifacts = async (
       failedFiles.push(plan.relativePath);
     }
   }
-  if (options.includePrivate === true) {
+  if (input.privateDirectories.length) {
     const privateResult = await exportPrivateRuntimeArtifacts({
-      containerRef,
-      destinationDirectory,
-      dockerCommand,
-      execFile: execFileImpl,
-      report,
-      target: record.target,
-      timeoutMs,
-    });
+      containerRef: input.containerRef,
+      destinationDirectory: input.stagingDirectory,
+      dockerCommand: input.dockerCommand,
+      execFile: input.execFile,
+      report: input.report,
+      target: input.target,
+      timeoutMs: input.timeoutMs,
+    }, input.privateDirectories);
     files.push(...privateResult.files);
+    // A requested private directory that cannot be read is a required-file failure.
     failedFiles.push(...privateResult.missing);
   }
+  return { failedFiles, files, missingOptionalFiles };
+};
 
+const publishExport = async (input: {
+  compiledOutputDirectory: string;
+  destinationDirectory: string;
+  failedFiles: string[];
+  files: ExportIndexFile[];
+  indexPath: string;
+  missingOptionalFiles: string[];
+  record: DeploymentRecord;
+  runId: string;
+  stagingDirectory: string;
+}): Promise<ExportRunArtifactsResult> => {
+  const { failedFiles, indexPath, missingOptionalFiles, record, runId } = input;
   const index: ExportIndex = {
     deployment: record.name,
     exported_at: new Date().toISOString(),
-    files: files.sort((left, right) => left.path.localeCompare(right.path)),
+    files: input.files.sort((left, right) => left.path.localeCompare(right.path)),
     run_id: runId,
     version: EXPORT_INDEX_VERSION
   };
 
-  const indexPath = path.join(destinationDirectory, "spawnfile", "export-index.json");
-  await ensureDirectory(path.dirname(indexPath));
-  await writeUtf8File(indexPath, `${JSON.stringify(index, null, 2)}\n`);
-
-  // Stamp the export-before-teardown marker onto the SAME deployment record `spawnfile
-  // down` resolves (record.ts's `export_index`), so down never needs a second, out-of-band
-  // way to learn that this run's artifacts are already safe to discard the container for.
-  await writeDeploymentRecord(compiledOutputDirectory, {
+  // A required file that failed to copy is not a successful export: leave the
+  // destination, its index and the deployment record exactly as they were.
+  if (failedFiles.length > 0) {
+    return { deploymentName: record.name, failedFiles, index, indexPath, missingOptionalFiles };
+  }
+  await publishProjectDeploymentRecord(input.compiledOutputDirectory, {
     ...record,
     export_index: { exported_at: index.exported_at, path: indexPath, run_id: runId }
-  });
+  }, record, () => publishArtifactFiles(input.destinationDirectory, input.stagingDirectory, index));
 
   return {
     deploymentName: record.name,

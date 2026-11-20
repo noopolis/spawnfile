@@ -7,7 +7,10 @@ This folder owns user-facing command parsing and process exit behavior.
 ```text
 src/cli/
 ├── index.ts        # Executable Node entrypoint
-├── runCli.ts       # Top-level Commander setup and shared CLI types
+├── runCli.ts       # Dedicated command routing and per-invocation adapter loading
+├── cliProgram.ts   # Commander setup and command handlers
+├── adapterOptions.ts # Explicit global --adapter parsing
+├── projectAdapterCommands.ts # Loads root-declared adapters before each project command
 ├── capabilitiesCommand.ts # Read-only public capability command registration
 ├── capabilitiesReceipt.ts # Strict Spawnfile capability receipt
 ├── composedLifecycleContractSet.ts # Closed machine command/contract inventory
@@ -15,7 +18,7 @@ src/cli/
 ├── compileBuildCommands.ts # `compile` and `build` command registration
 ├── trainCommand.ts # Canonical plan/rewind selection and training-core option forwarding
 ├── trainingExecution.ts # In-process host estimates and isolated training image preparation/launch
-├── trainingBooted.ts # Daimon subjects: training core on the host, production-booted trials behind one auth gateway
+├── trainingBooted.ts # Live training dispatch and interrupt handling by selected runtime
 ├── trainingRegrade.ts # `train --regrade`: a judges-only booted run around the runtime regrade composition; boots no subject
 ├── lifecycleCommands.ts # Thin lifecycle/compile/build/run/publish/up/down registration composition
 ├── lifecyclePlanningCommands.ts # Durable lifecycle plan and lookup command registration
@@ -57,7 +60,7 @@ src/cli/
 └── runCli.test.ts  # General CLI behavior tests
 ```
 
-`index.ts` should stay minimal. `runCli.ts` owns command wiring, while real work stays in compiler modules.
+`index.ts` should stay minimal. `runCli.ts` dispatches commands and `cliProgram.ts` builds the Commander program. Compiler modules own compilation.
 
 ## Rules
 

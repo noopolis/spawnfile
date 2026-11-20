@@ -27,12 +27,7 @@ export interface RuntimeTargetPlan {
   /** Passthrough of `ContainerTarget.engineByNodeId` (see `runtime/types.ts`), for
    * `containerArtifacts.ts` to stamp onto `ContainerRuntimeInstanceReport.engine_by_node_id`. */
   engineByNodeId?: Record<string, string>;
-  /** Passthrough of `ContainerTarget.grokModelByNodeId` for the Daimon broker worker render. */
-  grokModelByNodeId?: Record<string, { model: string; reasoningEffort: string }>;
-  /** Passthrough of `ContainerTarget.grokTurnLimitsByNodeId` for the Daimon broker worker render. */
-  grokTurnLimitsByNodeId?: Record<string, { maxRequests?: number; maxTokens?: number; timeoutMs?: number }>;
-  /** Passthrough of `ContainerTarget.grokSkillsByNodeId` for the Daimon broker worker render. */
-  grokSkillsByNodeId?: Record<string, { name: string; files: { path: string; content: string }[] }[]>;
+  hostDetails?: object;
   packages?: ResolvedPackage[];
   envFiles: Array<{
     envName: string;

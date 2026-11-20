@@ -14,7 +14,9 @@ src/release/
 ├── runRelease.ts      # The orchestration: order, no-op decision, failure and deferral reporting
 ├── swap.ts            # Runtime drainability check, drain, pre-deploy confirmation, deploy
 ├── drainPhase.ts      # Drain marker, drain/wait/resume around a release, interrupted-drain recovery
-├── drainControl.ts    # Drain, resume and availability over the shared Daimon control client (`../runtime/daimon/control.ts`)
+├── drainControl.ts    # Resolve a running target's registered control hooks
+├── drainSupport.ts    # Shared admission polling and control credential resolution
+├── drainTargets.ts    # Select drain contracts from the image report and resolve declared control credentials
 ├── releaseDocker.ts   # Release image tags, container inspection, settle, image pruning
 ├── ledger.ts          # Release ledger, append-only log, per-deployment lock, atomic JSON writes
 ├── pending.ts         # Deferral record: notify once when a release has waited too long
@@ -35,9 +37,8 @@ src/release/
   is held from before the drain until the ledger is written. The image consumer verifies
   the old container stopped and captures activation immediately before replacement start;
   the release clock is forwarded to that consumer for ordering tests.
-- Only containers whose every runtime has a drain contract (`DRAINABLE_RUNTIMES`)
-  are drained; anything else is refused unless `--no-drain`. Keep every effect behind `ReleaseDependencies` so the order stays
-  a test, not a comment.
+- Only drain a running container when every recorded runtime declares a drain
+  contract. Keep effects behind `ReleaseDependencies` to test sequencing.
 - Nothing here stops a turn. A drain that times out or is interrupted resumes
   admission and abandons the release (exit 75, deferred). `--no-drain` is the
   only path that deploys over running work, and it says so.
@@ -53,7 +54,7 @@ src/release/
 - Notifications carry a reason word from `RELEASE_FAILURE_REASONS` and a short
   path-scrubbed message. The full detail stays in `log.jsonl`. A notifier never
   throws into the release.
-- The control token is read from the env file or process (same precedence as
-  `up`) and reaches curl on stdin, never argv.
+- Resolve declared control credentials with the same environment precedence
+  as `up`. The adapter owns its control transport.
 - Generic only: no organization, product or schedule names. Policy such as
   "release only between editions" belongs to the caller's timer.

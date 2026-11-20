@@ -161,6 +161,7 @@ describe("Daimon descriptor authority", () => {
     const engines = await import("./engines.js");
     const { daimonAdapter } = await import("./adapter.js");
     const { createDaimonContainerTargets } = await import("./config.js");
+    const { daimonWorkerDetails } = await import("./host/targetDetails.js");
     expect(engines.DAIMON_ENGINES).toEqual(active.supportedEngineKinds);
     expect(engines.daimonTrainingDeclaration.engines).toEqual(active.supportedEngineKinds);
     expect(engines.daimonEngineHasBroker("new-broker")).toBe(true);
@@ -172,7 +173,7 @@ describe("Daimon descriptor authority", () => {
       execution: { model: { primary: { auth: { method: "grok" }, name: "grok-4.6", provider: "xai", reasoning_effort: "low" } } } });
     const targets = await createDaimonContainerTargets([{ emittedFiles: [], id: "agent:test", kind: "agent", slug: "test", value: node }]);
     expect(targets[0]!.engineByNodeId).toEqual({ "agent:test": "new-broker" });
-    expect(targets[0]!.grokTurnLimitsByNodeId).toEqual({ "agent:test": { maxRequests: 12 } });
-    expect(targets[0]!.grokModelByNodeId).toEqual({ "agent:test": { model: "grok-4.6", reasoningEffort: "low" } });
+    expect(daimonWorkerDetails(targets[0]!)?.turnLimitsByNodeId).toEqual({ "agent:test": { maxRequests: 12 } });
+    expect(daimonWorkerDetails(targets[0]!)?.modelByNodeId).toEqual({ "agent:test": { model: "grok-4.6", reasoningEffort: "low" } });
   });
 });

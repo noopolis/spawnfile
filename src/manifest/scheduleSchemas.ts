@@ -7,7 +7,7 @@ const schedulePromptSchema = z.string().min(1).superRefine((value, context) => {
   if (!value.trim()) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "prompt must not be empty" });
   } else if (Buffer.byteLength(value, "utf8") > MAX_RUNTIME_STRING_BYTES || [...value].length > MAX_RUNTIME_STRING_CODEPOINTS) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "prompt exceeds Daimon's schedule string bound" });
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "schedule prompt exceeds the length limit" });
   }
 });
 const CRON_FIELD_BOUNDS = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]] as const;
@@ -18,7 +18,7 @@ const scheduleTimezoneSchema = z.string().min(1).superRefine((value, context) =>
 const cronSchema = z.string().trim().min(1).superRefine((value, context) => {
   const fields = value.split(/\s+/u);
   if ([...value].length > MAX_RUNTIME_STRING_CODEPOINTS) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: "cron exceeds Daimon's runtime string bound" });
+    context.addIssue({ code: z.ZodIssueCode.custom, message: "cron expression exceeds the length limit" });
   }
   if (fields.length !== 5 || !fields.every((field, index) => validCronField(field, CRON_FIELD_BOUNDS[index]!)) || !cronCalendarPossible(fields)) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: "cron must contain five supported numeric fields within their bounds" });
@@ -58,14 +58,7 @@ const cronValues = (field: string, [minimum, maximum]: readonly [number, number]
 const everySchema = z.string().trim().min(1).superRefine((value, context) => {
   if (parseEveryScheduleMs(value) === null) context.addIssue({ code: z.ZodIssueCode.custom, message: "every must be a positive duration" });
 });
-/**
- * Upper bound on `schedule.jitter_seconds`, mirroring Daimon's
- * `ORGANIZATION_RUNTIME_MAX_SCHEDULE_JITTER_SECONDS` so every jitter value this
- * schema accepts also lowers cleanly into the Daimon runtime config: one hour,
- * generous next to the finest cron granularity (a minute) while staying small
- * relative to the daily/sub-daily cadences jitter exists to blur, so a
- * jittered wake still lands recognizably near its scheduled instant.
- */
+/** Portable schedule jitter is bounded to one hour for every runtime. */
 const MAX_SCHEDULE_JITTER_SECONDS = 3_600;
 const jitterSecondsSchema = z.number().int().min(0).max(MAX_SCHEDULE_JITTER_SECONDS);
 

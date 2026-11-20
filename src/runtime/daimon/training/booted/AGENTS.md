@@ -1,7 +1,7 @@
 # Production-booted Daimon subject
 
 One training trial is the subject's real compiled organization, booted the
-production way (`src/compiler/training/trial/`). This adapter maps the
+production way (`src/runtime/daimon/training/trial/`). This adapter maps the
 engine-neutral `SubjectAdapter` contract onto an injected launcher: `start`
 boots one trial organization with the candidate's instructions, every `run`
 posts one wake and waits on its receipt, `stop` tears the organization down.

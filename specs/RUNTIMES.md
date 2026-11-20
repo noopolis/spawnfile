@@ -336,10 +336,7 @@ If the install artifact version differs from the source `ref`, both values shoul
 
 ### Registry Contract
 
-`runtimes.yaml` is the source of truth for supported versions and install
-strategies. `spawnfile compile` must not require runtime source checkouts on the
-compiler machine; container build/install uses the registry pin plus the
-adapter's verified install strategy.
+Bundled runtime versions and install pins come from `runtimes.yaml`. An explicitly loaded third-party adapter supplies its own catalog entry for that invocation. Compilation uses the selected pin and install strategy. It requires no runtime source checkout.
 
 In v0.1, generated Dockerfiles must not clone runtime repositories or rebuild runtime sources during image build when a verified compiled install strategy is available. `source_repo` exists as a registry/install fallback, not the intended default for active runtime builds.
 
@@ -349,9 +346,9 @@ In v0.1, generated Dockerfiles must not clone runtime repositories or rebuild ru
 
 ### Adding A New Runtime
 
-1. Add an entry to `runtimes.yaml` with `status: exploratory`
-2. Research the pinned upstream source and add findings to `specs/research/RUNTIME-NOTES.md`
-3. When ready to implement, create `src/runtime/<name>/adapter.ts` and change status to `active`
+An independently maintained runtime can supply a local module or installed package through the public adapter SDK. Register its entrypoint in the root Spawnfile's `adapters` map and select its name with `runtime.name`. Project commands load those modules automatically. The repeatable `--adapter` flag also supports explicit, per-command registration. [Writing a runtime adapter](RUNTIME_ADAPTERS.md)
+
+For a bundled runtime, add its pin to `runtimes.yaml`, implement it under `src/runtime/<name>/` and export the adapter as `adapter` from that folder's `registration.ts`. The build generates the registration list from those folders. Native build recipes, workspace templates, credentials, optional features and tests belong with that adapter.
 
 ### Promoting To Active
 

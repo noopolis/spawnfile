@@ -1,0 +1,176 @@
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import type { ResolvedAuthProfile } from "../../../../auth/index.js";
+import {
+  DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, DAIMON_GATEWAY_SIDECAR_ALIAS, DAIMON_GATEWAY_SIDECAR_KEY_ENV, DAIMON_GATEWAY_SIDECAR_URL,
+  DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV, renderDaimonGatewaySidecarScript
+} from "../../host/index.js";
+import { slugify } from "../../../../compiler/index.js";
+import {
+  captureTrialEvidence, createTrialDocker, waitFor, type TrialDocker, type TrialEvidenceCaptureCall
+} from "../../../../compiler/training/trial/index.js";
+import { SpawnfileError } from "../../../../shared/index.js";
+import { parseOpaqueTargetHandle } from "../../../../target/index.js";
+import {
+  createDockerResourceSpec, createDockerTargetExecutors, executeDockerResource,
+  removeExactDockerResource
+} from "../../../../target/docker/index.js";
+import {
+  assertSafeDaimonSourceFile, DAIMON_GATEWAY_PORT, daimonGatewayBootstrapMountPath, daimonGatewayedEngines,
+  daimonGatewayRealmPath
+} from "../../index.js";
+
+export interface TrainingGatewayOptions {
+  /** Any compiled image of the subject: it carries the pinned Daimon runtime the gateway binary comes from. */
+  image: string;
+  runtimeRoot: string;
+  engines: readonly string[];
+  authProfile: ResolvedAuthProfile;
+  /** Training run identity; names the run's networks and labels every resource. */
+  runId: string;
+  docker?: TrialDocker;
+  /** Overrides the rendered sidecar script (tests and diagnostics only). */
+  script?: (script: string) => string;
+  readyTimeoutMs?: number;
+  /**
+   * Where the sidecar's whole log is kept before it is removed (stop, restart, a start that never became ready),
+   * one `capture-<n>` directory per removal: the same evidence a trial container leaves, with the gateway key masked.
+   */
+  evidenceDirectory: string;
+  /** Saves the sidecar's evidence (tests only; default: the real capture). */
+  evidence?: TrialEvidenceCaptureCall;
+}
+
+/** What a trial needs to boot against the sidecar: one agent contract, never a login. */
+export interface TrainingGatewayAccess {
+  url: string;
+  key: string;
+  /** Internal (no egress) network the trials join; only the gateway reaches the internet. */
+  network: string;
+}
+
+export interface TrainingGateway extends TrainingGatewayAccess {
+  container: string;
+  realmVolumes: readonly string[];
+  /** Stops and removes the sidecar and both networks. The realm volumes stay: they are the login. */
+  stop(): Promise<void>;
+  /** Replaces a dead or stuck sidecar in place: same key, networks and realm, so booted trials keep working. */
+  restart(script?: (script: string) => string): Promise<void>;
+}
+
+const hex = (value: string): string => createHash("sha256").update(value).digest("hex");
+const opaque = (value: string) => parseOpaqueTargetHandle(`opaque_${hex(value)}`);
+const LABEL = "spawnfile.training-gateway";
+
+/**
+ * The gatewayed engines whose login the auth profile holds: the run's gateway
+ * serves all of them, so subject and judges may run on any of these engines.
+ */
+export const trainingGatewayLogins = (profile: ResolvedAuthProfile): string[] =>
+  daimonGatewayedEngines(Object.keys(profile.imports)).map(({ id }) => id);
+
+/**
+ * The bootstrap leaf comes only from the profile's own import: a training
+ * gateway never falls back to the operator's personal engine home.
+ */
+const trainingGatewaySource = (profile: ResolvedAuthProfile, engine: string, fileName: string): string => {
+  const imported = (profile.imports as Partial<Record<string, { path: string }>>)[engine];
+  if (!imported) throw new SpawnfileError("validation_error", `Auth profile ${profile.name} has no imported ${engine} login`);
+  return path.join(imported.path, fileName);
+};
+
+/** One durable realm volume per auth profile and engine: the gateway is its sole holder (exclusive flock). */
+export const trainingGatewayRealmVolume = (profile: string, engine: string): string =>
+  `spawnfile-training-${slugify(profile) || "profile"}-${engine}-realm`;
+
+/**
+ * Places Daimon's auth gateway as a sidecar for one training run: a container
+ * from the subject's own compiled image (the pinned Daimon runtime is a
+ * scratch copy source and runs nothing by itself), with the production Docker
+ * security posture, owning the engine realm volume, on a dedicated egress
+ * network plus the run's internal network that the trials join. Nothing is
+ * published to the host. The bootstrap leaf of the selected auth profile is
+ * staged through the same gate as `spawnfile up`.
+ */
+export const startTrainingGateway = async (options: TrainingGatewayOptions): Promise<TrainingGateway> => {
+  const docker = options.docker ?? createTrialDocker();
+  const descriptors = daimonGatewayedEngines(options.engines);
+  if (descriptors.length === 0) throw new SpawnfileError("validation_error", "Training gateway needs a gatewayed engine");
+  const context = await docker(["context", "show"]);
+  const executor = createDockerTargetExecutors().resource;
+  const internal = createDockerResourceSpec({
+    kind: "data_network", operationHandle: opaque(`${options.runId}\0network`), requestDigest: `sha256:${hex(options.runId)}`,
+    runId: options.runId, selectedTargetHandle: opaque(context)
+  });
+  const suffix = hex(options.runId).slice(0, 16);
+  const egress = `spawnfile-training-egress-${suffix}`;
+  const container = `spawnfile-training-gateway-${suffix}`;
+  const key = randomBytes(32).toString("hex");
+  const mounts: string[] = [];
+  const realmVolumes: string[] = [];
+  for (const descriptor of descriptors) {
+    const source = trainingGatewaySource(options.authProfile, descriptor.id, descriptor.auth.fileName);
+    await assertSafeDaimonSourceFile(source, descriptor.id, descriptor.auth.maxCredentialBytes, descriptor.id);
+    const volume = trainingGatewayRealmVolume(options.authProfile.name, descriptor.id);
+    realmVolumes.push(volume);
+    mounts.push("--mount", `type=volume,source=${volume},target=${daimonGatewayRealmPath(descriptor)}`,
+      "-v", `${source}:${daimonGatewayBootstrapMountPath(descriptor.auth.realm)}:ro`);
+  }
+  let captures = 0;
+  /** The sidecar is every gatewayed login's only route: when a judge or trial reads "unavailable", this log says why. */
+  const keepEvidence = async (): Promise<void> => {
+    await docker(["stop", "--time", "10", container]).catch(() => undefined);
+    await (options.evidence ?? captureTrialEvidence)({ container, directory: path.join(options.evidenceDirectory, `capture-${++captures}`), secrets: [key] })
+      .catch(() => undefined);
+  };
+  const stop = async (): Promise<void> => {
+    await keepEvidence();
+    await docker(["rm", "-f", container]).catch(() => undefined);
+    await docker(["network", "rm", egress]).catch(() => undefined);
+    await removeExactDockerResource(internal, { context, executor, timeoutMs: 30_000 }).catch(() => undefined);
+  };
+  const launch = async (wrap = options.script): Promise<void> => {
+    const support = await mkdtemp(path.join(os.tmpdir(), "spawnfile-training-gateway-"));
+    try {
+      const envFile = path.join(support, "gateway.env");
+      // Test-only: `SPAWNFILE_TRAINING_TEST_FORCE_REFRESH=1` makes the gateway rotate each login once, on its first request.
+      const forced = process.env.SPAWNFILE_TRAINING_TEST_FORCE_REFRESH === "1" ? `${DAIMON_GATEWAY_TEST_FORCE_REFRESH_ENV}=1\n` : "";
+      await writeFile(envFile, `${DAIMON_GATEWAY_SIDECAR_KEY_ENV}=${key}\n${forced}`, { mode: 0o600 });
+      const script = renderDaimonGatewaySidecarScript(options.engines, options.runtimeRoot);
+      await docker(["create", "--name", container, "--restart", "no", "--network", egress, "--label", `${LABEL}=${suffix}`,
+        ...DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, ...mounts, "--env-file", envFile,
+        "--entrypoint", "bash", options.image, "-ceu", wrap ? wrap(script) : script]);
+    } finally {
+      await rm(support, { recursive: true, force: true });
+    }
+    await docker(["network", "connect", "--alias", DAIMON_GATEWAY_SIDECAR_ALIAS, internal.name, container]);
+    await docker(["start", container]);
+    await waitFor(async () => {
+      const state = await docker(["inspect", "--format", "{{.State.Running}}", container]);
+      if (state !== "true") {
+        const logs = await docker(["logs", "--tail", "20", container], { combined: true }).catch(() => "");
+        throw new SpawnfileError("runtime_error", `training auth gateway exited before readiness: ${logs.replace(/\s+/gu, " ").slice(-400)}`);
+      }
+      return docker(["exec", container, "bash", "-c", `(exec 3<>/dev/tcp/127.0.0.1/${DAIMON_GATEWAY_PORT})`]).then(() => true, () => false);
+    }, options.readyTimeoutMs ?? 60_000, "training auth gateway readiness");
+  };
+  try {
+    await executeDockerResource({ args: ["--context", context, ...internal.args], executor, timeoutMs: 30_000 });
+    await docker(["network", "create", "--label", `${LABEL}=${suffix}`, egress]);
+    await launch();
+  } catch (error) {
+    await stop();
+    throw error;
+  }
+  return {
+    container, key, network: internal.name, realmVolumes, stop, url: DAIMON_GATEWAY_SIDECAR_URL,
+    restart: async (wrap) => {
+      await keepEvidence();
+      await docker(["rm", "-f", container]);
+      await launch(wrap);
+    }
+  };
+};

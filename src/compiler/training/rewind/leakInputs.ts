@@ -6,14 +6,14 @@ import { digestDirectory } from "../../../volume/index.js";
 import { assertPreparedFeedRevision, feedGitRevision, verifyPlainFeedTree } from "./feedContent.js";
 import { assertLocalGitRepository } from "./gitHistory.js";
 import { permitsFeedPublicationTime } from "./leakFeed.js";
-import { historyKey, inside, safeSegment, type History } from "./history.js";
+import { historyKey, inside, type History } from "./history.js";
 import { compareInstants } from "./instant.js";
 import { diskPath } from "./leakFiles.js";
 import { assertDirectoryEntries } from "./leakLayout.js";
 import { parseMemoryLedger } from "./memory.js";
 import { inspectMoltnetJson } from "./moltnetJson.js";
 import { inspectMoltnetSqlite } from "./moltnetSqlite.js";
-import { readSnapshotManifest, snapshotBytes, snapshotHistoryPath, snapshotTreeFindings } from "./snapshotManifest.js";
+import { isPartialSnapshot, readSnapshotManifest, snapshotBytes, snapshotHistoryPath, snapshotTreeFindings, wakeHistoryPath } from "./snapshotManifest.js";
 
 export const addInputFinding = (report: LeakCheck, input: MaterializedInput, kind: LeakFinding["class"], detail: string, file = input.path!): void => {
   report.findings.push({ input: { section: input.section, id: input.id, declaredBy: input.declaredBy }, class: kind, path: file, detail });
@@ -101,13 +101,13 @@ export const inspectVolumeBundle = async (root: string, input: MaterializedInput
     return;
   }
   if (!history || !input.source.snapshot || !input.source.agentSlug) throw new Error("Snapshot verification requires its history, agent slug and selected snapshot");
-  if (input.source.snapshot.endsWith(".partial")) throw new Error("Selected snapshot is partial");
+  if (isPartialSnapshot(input.source.snapshot)) throw new Error("Selected snapshot is partial");
   const relative = snapshotHistoryPath(input.source.agentSlug, input.id, input.source.snapshot);
   const manifest = await readSnapshotManifest(history, relative, input.id, input.source.snapshot);
   const retained = await history.path(relative);
   if (!manifest || !retained) throw new Error("Snapshot tree or manifest is missing");
   if (compareInstants(manifest.started_at, report.at) > 0) throw new Error("Selected snapshot is later than the moment");
-  const rows = await history.wakeMoments(`recording/${safeSegment(input.source.agentSlug)}/wake-moments.jsonl`);
+  const rows = await history.wakeMoments(wakeHistoryPath(input.source.agentSlug));
   if (!rows?.some((row) => compareInstants(row.started_at, manifest.started_at) === 0
     && row.snapshots.some((entry) => entry.id === input.id && entry.snapshot === input.source.snapshot))) {
     throw new Error("Selected snapshot has no matching wake row");

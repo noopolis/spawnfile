@@ -13,7 +13,7 @@ vi.mock("../deployment/index.js", async (importOriginal) => {
     ...actual,
     probeDockerOrganizationReadiness: vi.fn(),
     readDeploymentRecord: vi.fn(),
-    writeDeploymentRecord: vi.fn(),
+    publishProjectDeploymentRecord: vi.fn(),
     writeDockerDeploymentRecordForRun: vi.fn()
   };
 });
@@ -23,7 +23,7 @@ import { upProject } from "./upProject.js";
 import {
   probeDockerOrganizationReadiness,
   readDeploymentRecord,
-  writeDeploymentRecord,
+  publishProjectDeploymentRecord,
   writeDockerDeploymentRecordForRun,
   type DeploymentRecord
 } from "../deployment/index.js";
@@ -85,9 +85,9 @@ describe("upProject organization readiness authority", () => {
     });
     vi.mocked(writeDockerDeploymentRecordForRun).mockResolvedValue("/tmp/spawnfile-ready/deployments/football.json");
     vi.mocked(readDeploymentRecord).mockResolvedValue(record);
-    vi.mocked(writeDeploymentRecord).mockResolvedValue("/tmp/spawnfile-ready/deployments/football.json");
+    vi.mocked(publishProjectDeploymentRecord).mockResolvedValue("/tmp/spawnfile-ready/deployments/football.json");
     vi.mocked(probeDockerOrganizationReadiness).mockImplementation(async (input) => {
-      expect(vi.mocked(writeDeploymentRecord)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(publishProjectDeploymentRecord)).toHaveBeenCalledTimes(1);
       expect(input.record.organization_ready).toMatchObject({ code: "compiled_evidence_missing", state: "pending" });
       return {
         ...input.record.organization_ready!,
@@ -102,9 +102,9 @@ describe("upProject organization readiness authority", () => {
       runRunner: async () => ({ containerId: "opaque-container" })
     });
 
-    expect(writeDeploymentRecord).toHaveBeenCalledTimes(2);
-    const [firstOutput, firstRecord] = vi.mocked(writeDeploymentRecord).mock.calls[0]!;
-    const [secondOutput, secondRecord] = vi.mocked(writeDeploymentRecord).mock.calls[1]!;
+    expect(publishProjectDeploymentRecord).toHaveBeenCalledTimes(2);
+    const [firstOutput, firstRecord] = vi.mocked(publishProjectDeploymentRecord).mock.calls[0]!;
+    const [secondOutput, secondRecord] = vi.mocked(publishProjectDeploymentRecord).mock.calls[1]!;
     expect(firstOutput).toBe("/tmp/spawnfile-ready");
     expect(secondOutput).toBe("/tmp/spawnfile-ready");
     expect(firstRecord.organization_ready).toMatchObject({ code: "compiled_evidence_missing", state: "pending" });
@@ -129,7 +129,7 @@ describe("upProject organization readiness authority", () => {
       reportPath: path.join("/tmp/spawnfile-ready", "spawnfile-report.json")
     });
     await upProject("/tmp/project", { runRunner: async () => undefined });
-    expect(writeDeploymentRecord).not.toHaveBeenCalled();
+    expect(publishProjectDeploymentRecord).not.toHaveBeenCalled();
     expect(probeDockerOrganizationReadiness).not.toHaveBeenCalled();
   });
 });

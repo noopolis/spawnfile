@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { link, lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
-import { verifyTrainingCodexBootstrap } from './trainingCodexAuthority.js';
+import { findTrainingCredentialOperations } from "../runtime/trainingSelection.js";
 
 /**
  * Grok is deliberately absent: a training run's Grok login lives in its auth
@@ -16,22 +16,20 @@ export interface TrainingAuthStageOptions {
   /** Explicit provisioned leaf; default is the fixed training ingress. */
   source?: string;
 }
-const targets: Record<TrainingAuthProvider, readonly [string, string]> = {
-  codex: [".daimon-inbound", "codex-auth"],
-  claude: [".claude", ".credentials.json"]
-};
 /** Stages opaque credential bytes once. Never imports configuration, logs bytes, or overwrites renewed auth. */
 export const stageTrainingAuth = async (options: TrainingAuthStageOptions): Promise<{ version: "spawnfile.training-auth-stage.v1"; provider: TrainingAuthProvider; destination: string }> => {
-  if (!Object.hasOwn(targets, options.provider)) throw Error("Unsupported training auth provider");
+  if (options.provider !== "claude" && options.provider !== "codex") throw Error("Unsupported training auth provider");
+  const operations = options.provider === "claude" ? undefined : await findTrainingCredentialOperations(options.provider);
+  if (!operations?.stage && options.provider !== "claude") throw Error("Unsupported training auth provider");
   const home = path.resolve(options.home), source = options.source ?? `/run/spawnfile-training-auth/${options.provider}`;
   if (!path.isAbsolute(options.home) || await realpath(home) !== home || !(await lstat(home)).isDirectory()) throw Error("Training home must be a canonical existing directory");
-  if (options.provider === 'codex') return { version: 'spawnfile.training-auth-stage.v1', provider: 'codex', destination: await verifyTrainingCodexBootstrap(source) };
+  if (operations?.stage) return { version: "spawnfile.training-auth-stage.v1", provider: options.provider, destination: await operations.stage(source) };
   if (!path.isAbsolute(source) || await realpath(source) !== path.resolve(source)) throw Error("Training auth source must be a canonical regular leaf");
   const input = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const before = await input.stat({ bigint: true });
     if (!before.isFile() || before.size < 1n || before.size > 1_048_576n) throw Error("Training auth source must be a bounded nonempty regular leaf");
-    const [folder, leaf] = targets[options.provider];
+    const [folder, leaf] = [".claude", ".credentials.json"];
     const directory = path.join(home, folder);
     try { await mkdir(directory, { mode: 0o700 }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }

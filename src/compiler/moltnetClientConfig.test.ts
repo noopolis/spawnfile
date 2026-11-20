@@ -136,6 +136,7 @@ describe("moltnetClientConfig", () => {
     expect(resolveMoltnetWorkspaceLayout("daimon", "orchestrator")).toEqual({
       clientConfigPath: "workspace/.moltnet/config.json",
       cliRuntime: "codex",
+      installSkill: false,
       skillPaths: [
         "workspace/.agents/skills/moltnet/SKILL.md",
         "workspace/.codex/skills/moltnet/SKILL.md"
@@ -279,7 +280,7 @@ describe("moltnetClientConfig", () => {
 
   it("fails when the runtime does not have a Moltnet workspace layout", () => {
     expect(() => resolveMoltnetWorkspaceLayout("mysteryclaw", "orchestrator")).toThrow(
-      /does not know how to emit files for runtime mysteryclaw/
+      /orchestrator selects runtime mysteryclaw, which has no Moltnet wiring capability/
     );
   });
 
