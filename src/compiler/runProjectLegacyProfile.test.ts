@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -153,6 +154,7 @@ it.each([
 
   const reportBytes = await readFile(path.join(outputDirectory, "distribution-report.json"));
   const report = JSON.parse(reportBytes.toString()) as DistributionReport;
+  const reservations = new Map<string, Record<string, string>>();
   let started = false;
   const image = await consumeImageUp("private/fixture:local", {
     authProfile: await requireAuthProfile("fixture"),
@@ -168,6 +170,23 @@ it.each([
         }));
       }
       if (args[0] === "cp") return tarFile(reportBytes);
+      if (args[0] === "ps" && args.includes("--filter")) return Buffer.alloc(0);
+      if (args[0] === "container" && args[1] === "create") {
+        const name = args[args.indexOf("--name") + 1]!;
+        const id = createHash("sha256").update(name).digest("hex");
+        expect(reservations.has(id)).toBe(false);
+        const labels = args.flatMap((arg, index) => arg === "--label" ? [args[index + 1]!.split("=")] : []);
+        reservations.set(id, Object.fromEntries(labels));
+        return Buffer.from(id);
+      }
+      const reference = args.at(-1)!;
+      if (args[0] === "container" && reservations.has(reference)) {
+        if (args[1] === "inspect") return Buffer.from([JSON.stringify(reference), JSON.stringify(reservations.get(reference))].join("\n"));
+        if (args[1] === "rm") {
+          reservations.delete(reference);
+          return Buffer.from(reference);
+        }
+      }
       if (args[0] === "run") {
         await checkInvocation(args, args[args.indexOf("--env-file") + 1]!);
         started = true;
@@ -184,6 +203,7 @@ it.each([
     }
   });
   expect(image.record.units[0]?.container_id).toBe(containerId);
+  expect(reservations.size).toBe(0);
   await checkPrivateData();
 });
 
