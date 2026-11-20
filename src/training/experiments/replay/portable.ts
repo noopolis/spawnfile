@@ -14,8 +14,12 @@ const envelope = z.strictObject({ schema: z.literal(schema), digest, payload: z.
 const stage = z.object({ id: z.string(), checks: z.array(z.record(z.string(), z.json())),
   gate: z.record(z.string(), z.json()).optional(), when: z.record(z.string(), z.json()).optional(),
   score: z.object({ linear: z.record(z.string(), z.number()) }).optional() });
-const task = z.object({ id: z.string(), outputs: z.record(z.string(), z.string()).optional(),
-  preparedArtifacts: z.array(z.string()).optional() }).catchall(z.json());
+const jsonMap = z.record(z.string(), z.json());
+const task = z.strictObject({
+  id: z.string(), outputs: z.record(z.string(), z.string()).optional(), preparedArtifacts: z.array(z.string()).optional(),
+  context: jsonMap.optional(), input: jsonMap.optional(), turns: z.array(jsonMap).optional(),
+  reference: jsonMap.optional(), live: jsonMap.optional(),
+});
 const payloadSchema = z.strictObject({
   datasetId: z.string(), evaluationId: z.string(), evaluationDigest: digest,
   task, inputs: z.array(z.strictObject({ id: z.string(), input: z.string() })),

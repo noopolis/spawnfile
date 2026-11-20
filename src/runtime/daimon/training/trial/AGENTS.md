@@ -14,7 +14,8 @@ cache storage live under `src/compiler/training/trial/`.
   networks or external participants; the subject loses surfaces, schedule and
   training and takes the candidate prompt as its system document). Team
   inheritance and relative paths therefore hold as in production.
-- The shared trial volume helper fills a record's moment (`setup.moment`) into the trial's
+- `momentVolumes.ts` binds the shared volume writer to the Daimon organization account
+  and preserves the installed module's original exports. It fills a record's moment (`setup.moment`) into the trial's
   own fresh volumes before boot: a root, network-less helper on the
   organization image, content streamed as a tar on stdin (no bind mounts),
   extracted as the organization uid, feeds landed as `trees/<revision>` behind

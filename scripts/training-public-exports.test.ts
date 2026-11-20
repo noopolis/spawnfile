@@ -48,6 +48,10 @@ const surface = {
       "TrainingAuthProvider"
     ]
   },
+  "adapter": {
+    "values": ["nativeTrainingCapability"],
+    "types": ["NativeTrainingDriver", "NativeTrainingInstance", "NativeTrainingReply", "NativeTrainingTurn"]
+  },
   "compiler": {
     "values": [
       "loadTrainingProject",
@@ -86,7 +90,7 @@ const surface = {
   }
 } as const;
 const specifier = (name: string): string => name === 'compiler' ? 'spawnfile/training'
-  : name === 'auth' ? 'spawnfile/auth' : `spawnfile/training/${name}`;
+  : name === 'auth' || name === 'adapter' ? `spawnfile/${name}` : `spawnfile/training/${name}`;
 
 const run = async (command: string, args: string[], cwd: string) => {
   const env = { ...process.env };
@@ -142,6 +146,15 @@ for (const [subpath, names] of ${JSON.stringify(Object.entries(surface).map(([na
   }
   if (subpath.startsWith('spawnfile/training/')) assert.deepEqual(Object.keys(api).sort(), names.toSorted());
 }
+const volumes = await import('spawnfile/dist/runtime/daimon/training/trial/momentVolumes.js');
+assert.deepEqual(Object.keys(volumes).sort(), ['MOMENT_FILL_PROGRAM', 'fillMomentVolumes', 'momentVolumesFor', 'tarOf']);
+const commands = [];
+await volumes.fillMomentVolumes(async args => { commands.push(args); return ''; }, 'trial-image', [{
+  id: 'corpus', volume: 'trial-corpus', mountPath: '/corpus', identity: 'trial', declaredName: 'corpus', fill: { kind: 'empty' }
+}]);
+const fill = commands.find(args => args[0] === 'run');
+assert.ok(fill && fill.includes(volumes.MOMENT_FILL_PROGRAM));
+assert.equal(fill[fill.indexOf(volumes.MOMENT_FILL_PROGRAM) + 1], '2000');
 assert.deepEqual(['SIGINT', 'SIGTERM'].map(name => process.listenerCount(name)), before);
 assert.equal(process.exitCode, undefined);
 console.log('public-imports-ok');
