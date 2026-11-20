@@ -42,13 +42,14 @@ export interface RuntimeTrainingJudgeOptions extends TrainingRunControls {
 }
 
 export interface RuntimeTrainingLoginOptions {
+  image?: string;
+  instance?: string;
   engine: string;
   profileName: string;
   dryRun?: boolean;
 }
 
-export interface RuntimeTrainingLoginResult {
-  binding: SubscriptionRealmBinding;
+export type RuntimeTrainingLoginResult = ({ binding: SubscriptionRealmBinding } | { nativeVolume: string }) & {
   command: readonly string[];
   profile: ResolvedAuthProfile;
 }

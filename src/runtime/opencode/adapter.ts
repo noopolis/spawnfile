@@ -1,13 +1,19 @@
 import type { ResolvedAgentNode, ResolvedAgentSurfaces } from "../../compiler/types.js";
+import { listEffectiveExecutionModelTargets } from "../../compiler/modelEnv.js";
 import { SpawnfileError } from "../../shared/index.js";
+import { createWorkspaceAgentScaffold } from "../workspaceScaffold.js";
+import { assertOpenCodeMcp, openCodeMcpCapabilities, openCodeMcpEnvBindings, openCodeMemoryCapability } from "./nativeFeatures.js";
 import { RuntimeAdapterBase } from "../adapterBase.js";
 import {
   createAgentCapabilities, createDiagnostic, createDocumentFiles, createSkillFiles, WORKSPACE_SKILL_BASE_DIRECTORY
 } from "../common.js";
+import { openCodeLogin } from "./login.js";
 import { nativeTrainingCapability } from "../nativeTraining.js";
 import type { AdapterCompileResult, ContainerTargetInput, RuntimeAdapter, RuntimeSystemInstructionSurface } from "../types.js";
+import { opencodeHost, opencodeLoginDirectory, openCodeSubscriptionProvider, prepareOpenCodeRuntimeAuth } from "./auth.js";
 import { assertOpenCodeModel, openCodeConfig } from "./config.js";
 import { openCodeInstall, opencodeConfigFile, opencodeContainer, opencodeWiring } from "./launch.js";
+import { opencodeLaunchFile, renderOpenCodeLaunch } from "./launchScript.js";
 
 function assertSurfaces(surfaces: ResolvedAgentSurfaces | undefined): void {
   for (const surface of Object.keys(surfaces ?? {}) as Array<keyof ResolvedAgentSurfaces>) {
@@ -25,25 +31,20 @@ function assertAgent(node: ResolvedAgentNode): void {
   if (node.execution?.model?.fallback?.length) {
     throw new SpawnfileError("validation_error", "OpenCode does not implement Spawnfile execution.model fallback");
   }
-  for (const server of node.mcpServers) {
-    if (server.tools) {
-      throw new SpawnfileError("validation_error", `OpenCode MCP server ${server.name} cannot enforce a Spawnfile tools allowlist`);
-    }
-    if (server.auth && server.auth.mode !== "bearer") {
-      throw new SpawnfileError("validation_error", `OpenCode MCP server ${server.name} requires explicit bearer auth when an auth block is present`);
-    }
-    if (server.transport !== "stdio" && server.env && Object.keys(server.env).length > 0) {
-      throw new SpawnfileError("validation_error", `OpenCode MCP server ${server.name} cannot set a remote process environment`);
-    }
-  }
+  assertOpenCodeMcp(node);
 }
 
 class OpenCodeAdapter extends RuntimeAdapterBase {
   readonly name = "opencode";
+  readonly scaffoldAgentProject = () => createWorkspaceAgentScaffold({
+    runtime: this.name, provider: "openai", modelName: "gpt-5.4", authMethod: "codex"
+  });
   override readonly install = openCodeInstall;
   readonly container = opencodeContainer;
+  readonly host = opencodeHost;
+  readonly prepareRuntimeAuth = prepareOpenCodeRuntimeAuth;
   readonly wiring = opencodeWiring;
-  readonly training = nativeTrainingCapability("opencode", async () => (await import("./training.js")).opencodeTrainingDriver);
+  readonly training = { login: openCodeLogin, ...nativeTrainingCapability("opencode", async () => (await import("./training.js")).opencodeTrainingDriver) };
   readonly assertSupportedModelTarget = assertOpenCodeModel;
   readonly assertSupportedSurfaces = assertSurfaces;
   readonly preflightAgent = assertAgent;
@@ -57,28 +58,30 @@ class OpenCodeAdapter extends RuntimeAdapterBase {
 
   async compileAgent(node: ResolvedAgentNode): Promise<AdapterCompileResult> {
     assertAgent(node);
+    const [primary] = listEffectiveExecutionModelTargets(node.execution);
     const docs = createDocumentFiles("workspace", node.docs);
     const disabled = node.schedule?.kind === "disabled";
+    const memory = openCodeMemoryCapability(node);
     const warnings = [
       ...(node.execution?.sandbox ? ["OpenCode does not enforce Spawnfile execution.sandbox"] : []),
       ...(node.schedule && !disabled ? ["OpenCode has no Spawnfile schedule integration"] : []),
       ...(node.subagents.length ? ["OpenCode does not invoke declared Spawnfile subagents"] : []),
-      ...(node.memoryAccess?.length ? ["OpenCode does not connect declared Spawnfile memory banks"] : [])
+      ...(node.memoryAccess?.length && memory.memoryOutcome === "degraded" ? [memory.memoryMessage] : [])
     ];
     return {
-      capabilities: createAgentCapabilities(node, {
-        memoryOutcome: "degraded",
-        memoryMessage: "OpenCode does not connect declared Spawnfile memory banks",
+      capabilities: [...createAgentCapabilities(node, {
+        ...memory,
         sandboxOutcome: "degraded",
         scheduleOutcome: disabled ? "supported" : "degraded",
         scheduleMessage: disabled ? "Schedule is disabled" : "OpenCode has no Spawnfile schedule integration",
         subagentOutcome: "degraded"
-      }),
+      }).filter(capability => !capability.key.startsWith("mcp.")), ...openCodeMcpCapabilities(node)],
       diagnostics: warnings.map(message => createDiagnostic("warn", message)),
       files: [
         ...docs,
         ...createSkillFiles(WORKSPACE_SKILL_BASE_DIRECTORY, node.skills),
-        { path: opencodeConfigFile, content: openCodeConfig(node, docs) }
+        { path: opencodeConfigFile, content: openCodeConfig(node, docs) },
+        { path: `home/${opencodeLaunchFile}`, content: renderOpenCodeLaunch(primary) }
       ]
     };
   }
@@ -88,13 +91,10 @@ class OpenCodeAdapter extends RuntimeAdapterBase {
       id: `${input.kind}-${input.slug}`,
       files: input.emittedFiles,
       sourceIds: [input.id],
-      configEnvBindings: input.value.kind === "agent" ? input.value.mcpServers.flatMap(server =>
-        server.auth?.mode === "bearer" ? [{
-          envName: server.auth.secret,
-          jsonPath: ["mcp", server.name, "headers", "Authorization"],
-          transform: "bearer" as const
-        }] : []
-      ) : []
+      ...(input.value.kind === "agent" && openCodeSubscriptionProvider(listEffectiveExecutionModelTargets(input.value.execution)[0]) ? {
+        opaqueMountTargets: [`<instance-root>/home/${opencodeLoginDirectory}`]
+      } : {}),
+      configEnvBindings: input.value.kind === "agent" ? openCodeMcpEnvBindings(input.value) : []
     }));
   }
 }

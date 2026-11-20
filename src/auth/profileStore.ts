@@ -27,6 +27,7 @@ const importedAuthEntrySchema = z.object({
 
 const authProfileSchema = z.object({
   env: z.record(z.string(), z.string()).default({}),
+  nativeLogins: z.record(z.string(), z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/u)).optional(),
   imports: z
     .object({
       "claude-code": importedAuthEntrySchema.optional(),
@@ -54,6 +55,7 @@ export const createResolvedAuthProfile = (
 ): ResolvedAuthProfile => ({
   authHome: resolveAuthHome(),
   env: { ...profile.env },
+  ...(profile.nativeLogins ? { nativeLogins: { ...profile.nativeLogins } } : {}),
   imports: Object.fromEntries(
     Object.entries(profile.imports).map(([kind, entry]) => [
       kind,
@@ -73,6 +75,7 @@ export const createResolvedAuthProfile = (
 /** The stored form of a resolved profile: import paths relative to its directory again. */
 const storedProfile = (current: ResolvedAuthProfile): AuthProfile => ({
   env: { ...current.env },
+  ...(current.nativeLogins ? { nativeLogins: { ...current.nativeLogins } } : {}),
   imports: Object.fromEntries(
     Object.entries(current.imports).map(([kind, entry]) => [
       kind,
@@ -161,6 +164,11 @@ export const registerSubscriptionRealm = async (
   const stored = storedProfile((await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName)));
   return writeProfile(profileName, { ...stored, realms: { ...stored.realms, [engine]: { ...binding } } });
 };
+
+export async function registerNativeLogin(profile: string, key: string, volume: string): Promise<ResolvedAuthProfile> {
+  const current = storedProfile(await ensureAuthProfile(profile));
+  return writeProfile(profile, { ...current, nativeLogins: { ...current.nativeLogins, [key]: volume } });
+}
 
 export const registerImportedAuth = async (
   profileName: string,

@@ -83,12 +83,15 @@ function harness(first = wake(1, turn.text)) {
       expect(options?.env).toMatchObject({ HOME: "/pilot/home", OPENCODE_CONFIG: "/pilot/opencode.json" });
       expect(options?.env?.XDG_DATA_HOME).toMatch(/^\/pilot\/home\/\.local\/share\/training\//);
       expect(options?.timeoutMs).toBeGreaterThan(0);
-      if (argv[0] === "/bin/bash") {
-        expect(argv.slice(5, 11)).toEqual(["/usr/local/bin/opencode", "run", "--dir", actualWorkspace, "--format", "json"]);
-        if (argv[11] === "--title") title = argv[12]!;
+      if (argv[1] === "-c") {
+        expect(argv.slice(5, 13)).toEqual([
+          "/bin/bash", "/pilot/home/opencode-launch.sh", "/usr/local/bin/opencode",
+          "run", "--dir", actualWorkspace, "--format", "json"
+        ]);
+        if (argv[13] === "--title") title = argv[14]!;
         return overrideStdout ?? stream(current.parts);
       }
-      expect(argv).toEqual(["/usr/local/bin/opencode", "export", session]);
+      expect(argv).toEqual(["/bin/bash", "/pilot/home/opencode-launch.sh", "/usr/local/bin/opencode", "export", session]);
       return overrideExport ?? JSON.stringify({ info: { id: session, title, directory: actualWorkspace },
         messages: [...history, ...current.messages] });
     })

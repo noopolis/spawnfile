@@ -6,7 +6,7 @@ import {
 import { fileExists } from "../filesystem/index.js";
 import { getRuntimeAdapter, resolveImageCredentialUid, type ImageCredentialUidOptions } from "../runtime/index.js";
 import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
-import { runtimeHost } from "../runtime/hostSelection.js";
+import { adapterManagedAuthMethods, runtimeHost } from "../runtime/hostSelection.js";
 import type { RuntimePreparedImageLaunch } from "../runtime/hostTypes.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -47,7 +47,7 @@ export const prepareImageRuntimeAuthMounts = async (
       }));
       continue;
     }
-    if (!input.authProfile) continue;
+    if (!input.authProfile && !Object.values(instance.model_auth_methods).some(method => adapterManagedAuthMethods(instance.runtime)?.includes(method))) continue;
     const adapter = getRuntimeAdapter(instance.runtime);
     if (!adapter.prepareRuntimeAuth) {
       continue;

@@ -1,4 +1,4 @@
-import { runtimeHost } from "../runtime/hostSelection.js";
+import { adapterManagedAuthMethods, runtimeHost } from "../runtime/hostSelection.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type {
@@ -32,7 +32,7 @@ const collectUnsupportedAuth = (
   const unsupported: Array<{ instance: string; method: string; provider: string; runtime: string }> = [];
   for (const instance of report.runtime_instances) {
     for (const [provider, method] of Object.entries(instance.model_auth_methods)) {
-      if (ENV_BASED_AUTH_METHODS.has(method) || runtimeHost(instance.runtime)?.handlesImageModelAuth?.(method)) {
+      if (ENV_BASED_AUTH_METHODS.has(method) || adapterManagedAuthMethods(instance.runtime)?.includes(method) || runtimeHost(instance.runtime)?.handlesImageModelAuth?.(method)) {
         continue;
       }
       const importKind = IMPORT_AUTH_METHOD_KINDS[method];

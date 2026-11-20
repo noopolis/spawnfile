@@ -27,6 +27,42 @@ describe("OpenCode adapter", () => {
     });
   });
 
+  it("selects a native ChatGPT OAuth model and pins the reasoning variant on both primary agents", async () => {
+    const node = agent({ execution: { model: { primary: {
+      provider: "openai", name: "gpt-5.5", auth: { method: "codex" }, reasoning_effort: "xhigh"
+    } } } });
+    expect(await config(node)).toMatchObject({
+      model: "openai/gpt-5.5", enabled_providers: ["openai"], provider: { openai: {
+        env: [], models: { "gpt-5.5": { reasoning_options: [{ type: "effort", values: ["xhigh"] }] } }
+      } },
+      agent: { build: { model: "openai/gpt-5.5", variant: "xhigh" }, plan: { model: "openai/gpt-5.5", variant: "xhigh" } }
+    });
+    const { files } = await adapter.compileAgent(node);
+    expect(files).toContainEqual({ path: "home/opencode-launch.sh", content: expect.stringContaining("OPENCODE_AUTH_CONTENT") });
+    const [target] = await adapter.createContainerTargets!([{ id: "pilot", kind: "agent", slug: "pilot", value: node, emittedFiles: files }]);
+    expect(target?.opaqueMountTargets).toEqual(["<instance-root>/home/.spawnfile-opencode-login"]);
+    expect(JSON.stringify(target)).not.toContain("synthetic-oauth");
+  });
+
+  it("selects native SuperGrok OAuth with its declared reasoning effort", async () => {
+    expect(await config(agent({ execution: { model: { primary: {
+      provider: "xai", name: "grok-4.6", auth: { method: "grok" }, reasoning_effort: "high"
+    } } } }))).toMatchObject({
+      model: "xai/grok-4.6", enabled_providers: ["xai"], provider: { xai: {
+        env: [], models: { "grok-4.6": { reasoning_options: [{ type: "effort", values: ["high"] }] } }
+      } }
+    });
+  });
+
+  it("selects OpenCode Go using the plan's API key and catalog entry", async () => {
+    expect(await config(agent({ execution: { model: { primary: {
+      provider: "opencode-go", name: "kimi-k3", auth: { method: "api_key", key: "GO_SUBSCRIPTION_KEY" }
+    } } } }))).toMatchObject({
+      model: "opencode-go/kimi-k3", enabled_providers: ["opencode-go"],
+      provider: { "opencode-go": { env: ["GO_SUBSCRIPTION_KEY"] } }
+    });
+  });
+
   it("writes documents and native skill discovery paths", async () => {
     const node = agent({
       docs: [
@@ -80,6 +116,7 @@ describe("OpenCode adapter", () => {
       "node /usr/local/lib/node_modules/opencode-ai/postinstall.mjs"
     ]);
     expect(adapter.container.startCommand.slice(-5)).toEqual(["serve", "--hostname", "127.0.0.1", "--port", "<port>"]);
+    expect(adapter.container.startCommand).toContain("<home-path>/opencode-launch.sh");
     expect(adapter.wiring?.readiness?.path).toBe("/global/health");
     const wiring = adapter.wiring!.moltnet!;
     expect(wiring.workspace).toMatchObject({ cliRuntime: "generic", skillPaths: ["workspace/.agents/skills/moltnet/SKILL.md"] });
@@ -92,7 +129,8 @@ describe("OpenCode adapter", () => {
       expect(bridge).toMatchObject({ kind: "acp", command: "/usr/bin/env", workspace_path: workspacePath });
       expect(bridge.args).toEqual(expect.arrayContaining([
         workspacePath, `HOME=${prefix}/home`, `XDG_DATA_HOME=${prefix}/home/.local/share`,
-        `XDG_CONFIG_HOME=${prefix}/home/.config`, `OPENCODE_CONFIG=${prefix}/opencode.json`
+        `XDG_CONFIG_HOME=${prefix}/home/.config`, `OPENCODE_CONFIG=${prefix}/opencode.json`,
+        `${prefix}/home/opencode-launch.sh`
       ]));
       expect((bridge.args as string[]).slice(-7)).toEqual(["acp", "--hostname", "127.0.0.1", "--port", "0", "--cwd", workspacePath]);
     }
@@ -101,8 +139,10 @@ describe("OpenCode adapter", () => {
   it("reports unavailable features and refuses unsupported route selections", async () => {
     expect(adapter.validateRuntimeOptions?.({ restrict_to_workspace: true })?.[0]).toMatchObject({ level: "error" });
     expect(() => adapter.assertSupportedSurfaces?.({ webhook: { url: "http://localhost" } })).toThrow(/webhook/);
-    expect(() => adapter.assertSupportedModelTarget({ provider: "openai", name: "gpt-5", auth: { method: "codex" } }))
+    expect(() => adapter.assertSupportedModelTarget({ provider: "anthropic", name: "claude", auth: { method: "codex" } }))
       .toThrow(/codex auth/);
+    expect(() => adapter.assertSupportedModelTarget({ provider: "anthropic", name: "claude", auth: { method: "claude-code" } }))
+      .toThrow(/no native Claude Code subscription backend/);
     expect(() => adapter.assertSupportedModelTarget({
       provider: "openai", name: "gpt-5", auth: { method: "api_key" }, reasoningEffort: "high"
     })).toThrow(/reasoning_effort/);

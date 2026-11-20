@@ -21,6 +21,8 @@ export interface SubscriptionRealmBinding {
 
 export interface AuthProfile {
   env: Record<string, string>;
+  /** Named Docker volumes holding adapter-native OAuth state, keyed by runtime/provider/instance. */
+  nativeLogins?: Record<string, string>;
   imports: Partial<Record<ImportedAuthKind, ImportedAuthEntry>>;
   realms?: Record<string, SubscriptionRealmBinding>;
   version: 1;
@@ -29,6 +31,8 @@ export interface AuthProfile {
 export interface ResolvedAuthProfile {
   authHome: string;
   env: Record<string, string>;
+  /** Named Docker volumes holding adapter-native OAuth state, keyed by runtime/provider/instance. */
+  nativeLogins?: Record<string, string>;
   imports: Partial<Record<ImportedAuthKind, { kind: ImportedAuthKind; path: string }>>;
   name: string;
   profileDirectory: string;

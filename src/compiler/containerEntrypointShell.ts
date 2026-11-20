@@ -13,7 +13,7 @@ export function runtimeInstanceEnvironment(
   const values: [string, string][] = [];
   if (homePath) {
     values.push(["HOME", homePath]);
-    if (Object.values(modelAuthMethods).some(modelAuthMethodNeedsCliCredential)) {
+    if (Object.values(modelAuthMethods).some(method => modelAuthMethodNeedsCliCredential(method, meta.adapterManagedAuthMethods))) {
       values.push(["CODEX_HOME", path.posix.join(homePath, ".codex")]);
     }
     if (meta.homeEnv) values.push([meta.homeEnv, homePath]);
@@ -41,7 +41,7 @@ export const createCliCredentialMaterialization = (
 ): string[] => {
   const homePaths = [...new Set(runtimePlans
     .filter((plan) => plan.instancePaths.homePath &&
-      Object.values(plan.modelAuthMethods).some(modelAuthMethodNeedsCliCredential))
+      Object.values(plan.modelAuthMethods).some(method => modelAuthMethodNeedsCliCredential(method, plan.meta.adapterManagedAuthMethods)))
     .map((plan) => path.posix.join(plan.instancePaths.homePath!, ".codex")))];
   if (homePaths.length === 0) return [];
 

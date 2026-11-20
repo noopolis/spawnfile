@@ -13,10 +13,36 @@ import {
 } from "./moltnetClientConfig.js";
 import { assertMoltnetSkillLayout, installMoltnetSkillFiles } from "./moltnetSkillInstall.js";
 import type { TeamCompileSupport } from "./teamContextSupport.js";
-import type { ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
+import type { CapabilityReport } from "../report/index.js";
+import type { RuntimeCompileContext } from "../runtime/types.js";
+import type { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 
 export { prepareTeamCompileSupport } from "./teamContextSupport.js";
 export type { TeamCompileSupport } from "./teamContextSupport.js";
+
+export const createTeamCapabilities = (
+  outcome: CapabilityReport["outcome"],
+  message: string
+): CapabilityReport[] => [
+  { key: "team.members", message, outcome },
+  { key: "team.mode", message, outcome },
+  { key: "team.lead", message, outcome },
+  { key: "team.external", message, outcome },
+  { key: "team.shared", message, outcome },
+  { key: "team.nested", message, outcome }
+];
+
+/** Each adapter sees only helpers explicitly declared by this parent. */
+export function createSubagentContexts(nodes: readonly CompilePlanNode[]) {
+  const agents = new Map(nodes.flatMap(({ value, slug }) => value.kind === "agent" ? [[value.source, { value, slug }] as const] : []));
+  return ({ value }: CompilePlanNode): RuntimeCompileContext => ({
+    subagents: value.kind === "agent" ? value.subagents.map(({ id, nodeSource }) => {
+      const child = agents.get(nodeSource);
+      if (!child) throw new SpawnfileError("compile_error", `Missing resolved subagent ${id} of ${value.name}`);
+      return { id, slug: child.slug, node: child.value };
+    }) : []
+  });
+}
 
 export interface CompiledNodeOutput {
   emittedFiles: EmittedFile[];

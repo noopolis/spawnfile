@@ -10,15 +10,11 @@ const codexTarget = {
   name: "gpt-5.4-codex",
   provider: "openai"
 };
-const apiKeyTarget = { ...codexTarget, auth: { method: "api_key" as const } };
 const clawEffortError = /does not support reasoning_effort; only Daimon Codex and Grok engines support it on test-agent/u;
-const nativeEffortError = /reasoning_effort.* on test-agent$/u;
 
 const effortCases = [
   { runtime: "openclaw", primary: codexTarget, error: clawEffortError },
-  { runtime: "picoclaw", primary: codexTarget, error: clawEffortError },
-  { runtime: "hermes-agent", primary: apiKeyTarget, error: nativeEffortError },
-  { runtime: "opencode", primary: apiKeyTarget, error: nativeEffortError }
+  { runtime: "picoclaw", primary: codexTarget, error: clawEffortError }
 ];
 
 describe.each(effortCases)("$runtime reasoning effort boundary", ({ runtime, primary, error }) => {
@@ -46,4 +42,13 @@ describe.each(effortCases)("$runtime reasoning effort boundary", ({ runtime, pri
       reasoningEffort: "low"
     })).toThrow(/reasoning_effort/u);
   });
+});
+
+
+it.each(["hermes-agent", "opencode"])("%s accepts explicit supported Codex effort on its native route", runtime => {
+  const execution = executionSchema.parse({ model: { primary: { ...codexTarget, reasoning_effort: "high" } } });
+  expect(() => assertRuntimeSupportsExecutionModelAuth(runtime, execution, "test-agent")).not.toThrow();
+  expect(() => getRuntimeAdapter(runtime).assertSupportedModelTarget({
+    ...codexTarget, auth: { method: "api_key" }, reasoningEffort: "high"
+  })).toThrow(/reasoning_effort/u);
 });

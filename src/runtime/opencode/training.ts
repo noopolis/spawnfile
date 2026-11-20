@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { posix } from "node:path";
 
 import type { NativeTrainingDriver, NativeTrainingInstance } from "../nativeTraining.js";
-import { opencodeBinary, opencodeEnvironment } from "./launch.js";
+import { opencodeEnvironment, opencodeLaunchCommand } from "./launch.js";
 import { bindOpenCodeReply, readOpenCodeEvents } from "./trainingEvidence.js";
 
 interface TrialSession {
@@ -61,12 +61,13 @@ export const opencodeTrainingDriver: NativeTrainingDriver = {
       // The pinned CLI quotes positional arguments containing spaces. Feed
       // stdin through a fixed script to preserve the exact turn bytes.
       const args = trial.nativeId ? ["--session", trial.nativeId] : ["--title", title];
+      const command = opencodeLaunchCommand(instance.homePath);
       const stdout = await exec([
         "/bin/bash", "-c", 'prompt=$1; shift; exec "$@" < <(printf "%s" "$prompt")', "opencode-run", turn.text,
-        opencodeBinary, "run", "--dir", instance.workspacePath, "--format", "json", ...args
+        ...command, "run", "--dir", instance.workspacePath, "--format", "json", ...args
       ]);
       const { session, events } = readOpenCodeEvents(stdout, trial.nativeId);
-      const transcript = await exec([opencodeBinary, "export", session]);
+      const transcript = await exec([...command, "export", session]);
       const reply = bindOpenCodeReply(events, transcript, {
         session, title, workspace: instance.workspacePath, previousUsers: trial.users, prompt: turn.text
       }, turn, trial.sequence);

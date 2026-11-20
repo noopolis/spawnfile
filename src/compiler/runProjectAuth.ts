@@ -12,7 +12,7 @@ import type { ContainerReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
 import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
-import { selectRuntimeGeneratedSecrets } from "../runtime/hostSelection.js";
+import { adapterManagedAuthMethods, selectRuntimeGeneratedSecrets } from "../runtime/hostSelection.js";
 import type { RuntimeAuthPreparationResult } from "../runtime/types.js";
 import {
   CLI_CREDENTIAL_SECRET_NAME,
@@ -37,7 +37,7 @@ export const resolveHostCliCredential = async (
   containerReport: ContainerReport
 ): Promise<{ name: string; sourcePath: string; value: string } | null> => {
   const needsCredential = containerReport.runtime_instances.some((instance) =>
-    Object.values(instance.model_auth_methods).some(modelAuthMethodNeedsCliCredential)
+    Object.values(instance.model_auth_methods).some(method => modelAuthMethodNeedsCliCredential(method, adapterManagedAuthMethods(instance.runtime)))
   );
   if (!needsCredential) {
     return null;
@@ -147,6 +147,7 @@ export const assertDeclaredModelAuthSatisfied = (
 
   for (const instance of containerReport.runtime_instances) {
     for (const method of Object.values(instance.model_auth_methods)) {
+      if (adapterManagedAuthMethods(instance.runtime)?.includes(method)) continue;
       const importKind = MODEL_AUTH_IMPORT_KINDS[method];
       if (importKind) {
         requiredImportKinds.add(importKind);

@@ -78,6 +78,49 @@ The active v0.1 adapters are:
 
 Hermes Agent and OpenCode can run standalone or as team members. Both use their native commands for training and the shared ACP stdio bridge for Moltnet rooms and direct messages. Each agent uses its own bearer token with the `attach`, `observe`, and `write` scopes so it can read history and send replies. The checked-in Moltnet release predates ACP. The adapter guide explains how to supply an ACP-capable build. [Runtime adapters](RUNTIME_ADAPTERS.md)
 
+### Use a model subscription
+
+Declare the provider and auth method on the agent's primary model. The same selection applies to service startup, ACP and native training. A login uses the pinned harness in Docker and starts its native sign-in flow in the terminal. The profile stores a Docker volume name. The credential stays on the selected Docker engine.
+
+| Harness | Account | Model provider | Model auth method | Login name |
+|---|---|---|---|---|
+| Hermes Agent or OpenCode | ChatGPT | `openai` | `codex` | `chatgpt` |
+| Hermes Agent or OpenCode | SuperGrok | `xai` | `grok` | `supergrok` |
+| Hermes Agent | Nous Portal | `nous` | `subscription` | `nous` |
+| OpenCode | GitHub Copilot | `github-copilot` | `subscription` | `copilot` |
+| OpenCode | OpenCode Go | `opencode-go` | `api_key` | Use the plan key from OpenCode Go |
+
+Start a ChatGPT-backed agent from an empty directory. Substitute `hermes-agent` in both commands that select a runtime to start Hermes.
+
+```sh
+mkdir opencode-agent
+cd opencode-agent
+spawnfile init --runtime opencode
+spawnfile auth login chatgpt --runtime opencode --profile research
+spawnfile up . --auth-profile research
+```
+
+A complete agent can also declare the auth method directly on its primary model. Choose a model available to your account. For SuperGrok, put `auth: { method: grok }` and `reasoning_effort: medium` directly on the `xai` target.
+
+```yaml
+spawnfile_version: "0.1"
+kind: agent
+name: researcher
+runtime: opencode
+workspace:
+  docs: { system: AGENTS.md }
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4
+      auth: { method: codex }
+```
+
+Pass `--instance <id>` to the login command to assign an account to a team member. Find the id under `container.runtime_instances` in the compile report. Pass `--image <reference>` to log in with an already built organization image, including one with a different runtime UID. Use the same Docker engine for login and deployment. A dry run prepares the volume and shows the native command. A successful interactive login binds the volume to the profile. Select the same profile when launching an image or training an agent. Use separate logins for simultaneous OpenCode deployments.
+
+Hermes can also use a dedicated Codex import when the deployment's Docker engine can mount the private directory and the runtime user can write it. OpenCode expects a native OpenCode login. Both harnesses accept Anthropic API keys. Claude base-plan usage requires the official Claude client. [Hermes providers](https://hermes-agent.nousresearch.com/docs/integrations/providers) [OpenCode providers](https://opencode.ai/docs/providers/) [Claude Code terms](https://code.claude.com/docs/en/legal-and-compliance)
+
 ### Active Runtime Capability Matrix
 
 Support levels:

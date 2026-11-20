@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "grok", "none"]);
+export const modelAuthMethodSchema = z.enum(["api_key", "claude-code", "codex", "grok", "subscription", "none"]);
 /**
  * The closed reasoning-effort vocabulary a brokered Daimon Grok worker accepts
  * (`DAIMON_GROK_BROKER_REASONING_EFFORTS`). Only valid on a target that

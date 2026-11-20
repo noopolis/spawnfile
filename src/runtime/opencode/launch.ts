@@ -1,3 +1,4 @@
+import { resolveMnemeMcpMemoryWiring, MNEME_PACKAGE } from "../mnemeMcp.js";
 import { posix } from "node:path";
 
 import { standardRuntimeInstall } from "../adapterBase.js";
@@ -6,6 +7,8 @@ import { SpawnfileError } from "../../shared/index.js";
 import { createAcpStdioWiring, createMoltnetWorkspace } from "../portableMoltnetWiring.js";
 import type { RuntimeContainerMeta } from "../types.js";
 import type { RuntimeWiring } from "../wiringTypes.js";
+import { opencodeSubscriptionMethods } from "./auth.js";
+import { opencodeLaunchFile } from "./launchScript.js";
 
 export const opencodeConfigFile = "opencode.json";
 export const opencodeBinary = "/usr/local/bin/opencode";
@@ -43,12 +46,18 @@ export function opencodeEnvironment(configPath: string, homePath: string, worksp
 function launchArgs(configPath: string, homePath: string, workspacePath: string): string[] {
   return [
     ...Object.entries(opencodeEnvironment(configPath, homePath, workspacePath)).map(([key, value]) => `${key}=${value}`),
-    opencodeBinary
+    ...opencodeLaunchCommand(homePath)
   ];
 }
 
+export function opencodeLaunchCommand(homePath: string): string[] {
+  return ["/bin/bash", posix.join(homePath, opencodeLaunchFile), opencodeBinary];
+}
+
 export const opencodeContainer: RuntimeContainerMeta = {
+  adapterManagedAuthMethods: Object.values(opencodeSubscriptionMethods),
   configFileName: opencodeConfigFile,
+  globalNpmPackages: [MNEME_PACKAGE],
   configPathEnv: "OPENCODE_CONFIG",
   instancePaths: {
     configPathTemplate: "<instance-root>/<config-file>",
@@ -62,10 +71,11 @@ export const opencodeContainer: RuntimeContainerMeta = {
     ...launchArgs("<config-path>", "<home-path>", "<workspace-path>"),
     "serve", "--hostname", "127.0.0.1", "--port", "<port>"
   ],
-  systemDeps: ["bash", "ca-certificates", "curl", "git"]
+  systemDeps: ["bash", "ca-certificates", "curl", "git", "util-linux"]
 };
 
 export const opencodeWiring: RuntimeWiring = {
+  memory: resolveMnemeMcpMemoryWiring,
   legacyAgentSkillRoots: opencodeSkillRoots,
   moltnet: {
     ...createAcpStdioWiring({
