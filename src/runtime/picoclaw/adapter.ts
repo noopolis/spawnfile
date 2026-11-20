@@ -1,4 +1,5 @@
 import { RuntimeAdapterBase } from "../adapterBase.js";
+import { nativeTrainingCapability } from "../nativeTraining.js";
 import { createPicoClawInstallRecipe, picoClawInstallHints } from "./install.js";
 import { picoClawWiring } from "./wiring.js";
 import type { EffectiveModelTarget, ResolvedAgentNode } from "../../compiler/types.js";
@@ -224,6 +225,7 @@ const createContainerTargets = async (
   });
 
 class PicoClawRuntimeAdapter extends RuntimeAdapterBase {
+  readonly training = nativeTrainingCapability("picoclaw", async () => (await import("./training.js")).picoclawTrainingDriver);
   readonly assertSupportedModelTarget = (target: EffectiveModelTarget) => {
     if (target.reasoningEffort !== undefined) {
       throw new SpawnfileError(

@@ -2,6 +2,7 @@ export { createTrialDocker, waitFor, type TrialDocker } from "./docker.js";
 export { captureTrialEvidence, type TrialEvidenceCaptureCall, type TrialEvidenceInput } from "./evidence.js";
 export { createJudgePool } from "./judgePool.js";
 export { TRIAL_INSTRUCTIONS_FILE, writeTrialProject } from "./project.js";
+export { fillMomentVolumes, isolateTrainingVolumes, momentVolumesFor, TRIAL_VOLUME_PREFIX } from "./volumes.js";
 export { createRealmTurns, type RealmTurnOptions, type RealmTurns, type ReleaseRealmTurn } from "./realmTurns.js";
 export { openTrialCacheStore, TRIAL_CACHE_MODES, type TrialCacheMode } from "./cache/index.js";
 export { createTrainingRealmLock, removeStaleRun, type TrainingRealmLock, type TrainingRealmLockOptions } from "./realmLock.js";

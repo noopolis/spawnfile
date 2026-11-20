@@ -90,6 +90,32 @@ Runtime export hooks return canonical relative paths. Each file and private dire
 
 For an ACP agent, use `createAcpStdioWiring({ command, args, workspace })` for `wiring.moltnet`. Moltnet starts that executable in the agent workspace. Arguments retain their boundaries. The adapter should use the emitted client config when its agent explicitly sends a reply. The fixture demonstrates this with a local Node process. Emitting the ACP protocol requires a verified Moltnet release advertising `acp-bridge`, including for handwritten wiring. An adapter can declare additional requirements with `releaseCapability`. The bundled v0.1.19 pin advertises the earlier bridges. The local-development build can verify an ACP-capable Moltnet archive. [Runtime registry](RUNTIMES.md)
 
+### Training a native harness
+
+Use `nativeTrainingCapability` from `spawnfile/adapter` when your harness can
+run a turn inside its compiled Linux container. The container supplies Node.js
+and the normal Spawnfile account. The driver receives the compiled workspace,
+home and config paths, the session ID shared across turns and the current task.
+Return the completed reply and the native observations you can tie to that
+turn. Report how much tool activity the source covers. Spawnfile installs the
+candidate, starts and stops the trial, collects the declared files and writes
+the same portable evaluation file as the built-in adapters.
+
+```ts
+import { nativeTrainingCapability, type NativeTrainingDriver } from "spawnfile/adapter";
+
+// The driver lives alongside this adapter. It speaks the harness's native protocol.
+const loadDriver = async (): Promise<NativeTrainingDriver> =>
+  (await import("./training.js")).driver;
+
+// Set this value on the adapter's training property.
+export const training = nativeTrainingCapability("my-harness", loadDriver);
+```
+
+OpenClaw reads session tool results. PicoClaw correlates tool start and end
+events. A request to use a tool alone never establishes its execution.
+[OpenClaw driver](../src/runtime/openclaw/training.ts) and [PicoClaw driver](../src/runtime/picoclaw/training.ts)
+
 ## Run the custom harness tests
 
 To try the two-harness case from a fresh Spawnfile checkout with Node 22.19 or newer, run the source CLI regression. It compiles the team on the first invocation in a fresh project and checks Word Count's output.

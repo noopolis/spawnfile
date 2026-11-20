@@ -9,21 +9,20 @@ import {
 } from "../../../../compiler/index.js";
 import { trainingMomentSchema } from "../../../../compiler/training/index.js";
 import {
-  captureTrialEvidence, createTrialDocker, waitFor, writeTrialProject,
+  captureTrialEvidence, createTrialDocker, fillMomentVolumes, isolateTrainingVolumes, momentVolumesFor, TRIAL_VOLUME_PREFIX, waitFor, writeTrialProject,
   type BootedTrial, type TrialDocker, type TrialEvidenceCaptureCall
 } from "../../../../compiler/training/trial/index.js";
 import { compiledAgentDigest } from "../../../../compiler/training/trial/cache/index.js";
 import { maskSecrets, SpawnfileError } from "../../../../shared/index.js";
 import { RUNTIME_INSTALL_ROOT } from "../../../index.js";
 import {
-  DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, daimonHelperControlCall, daimonProfileRealmVolume,
+  DAIMON_ORGANIZATION_UID, DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV, daimonHelperControlCall, daimonProfileRealmVolume,
   getDaimonEngineDescriptor, isDaimonGatewayRealmMountId, type DaimonControlCall, type DaimonControlTarget
 } from "../../index.js";
 
 import { createBootedTrial } from "./bootedTrial.js";
 import type { TrainingGatewayAccess } from "./gateway.js";
 import { HOME_LOGIN_FILES, saveHomeLogin, seedHomeLogin, type HomeLogin } from "./homeLogin.js";
-import { fillMomentVolumes, momentVolumesFor } from "./momentVolumes.js";
 import { agentExecutionError } from "./trialReads.js";
 
 export type { BootedTrial, TrialWake } from "../../../../compiler/training/trial/index.js";
@@ -35,19 +34,11 @@ export type { BootedTrial, TrialWake } from "../../../../compiler/training/trial
  */
 export const TRAINING_TRIAL_LINEAGE_NAMESPACE = "training";
 const CONTROL_TOKEN_ENV = "SPAWNFILE_DAIMON_CONTROL_TOKEN";
-/** Every trial volume is named for the trial: no trial ever holds production's, dev's or another trial's state. */
-export const TRIAL_VOLUME_PREFIX = "spawnfile-training-trial-";
+export { TRIAL_VOLUME_PREFIX };
 
-/**
- * Renames every compiled volume except the gatewayed login realms (which a gatewayed trial never mounts)
- * to one of the trial's own, so team resources declared by name and project-derived homes are fresh per trial.
- */
-export const isolateTrialVolumes = (container: { persistent_mounts?: { id: string; volume_name: string }[] } | undefined, slug: string): void => {
-  for (const mount of container?.persistent_mounts ?? []) {
-    if (isDaimonGatewayRealmMountId(mount.id)) continue;
-    mount.volume_name = `${TRIAL_VOLUME_PREFIX}${slug}-${createHash("sha256").update(mount.id).digest("hex").slice(0, 12)}`;
-  }
-};
+/** The trial's gatewayed logins remain under the gateway's own authority. */
+export const isolateTrialVolumes = (container: Parameters<typeof isolateTrainingVolumes>[0], slug: string): void =>
+  isolateTrainingVolumes(container, slug, isDaimonGatewayRealmMountId);
 
 export interface TrialOptions {
   agentManifestPath: string;
@@ -275,7 +266,7 @@ export const prepareTrial = async (options: TrialOptions): Promise<PreparedTrial
       };
       try {
         if (homeLogin) await seedHomeLogin(docker, image, homeLogin);
-        if (moment) await timed(options.phase, "moment-fill", () => fillMomentVolumes(docker, image, momentVolumesFor(moment, compiled.report.container ?? {})));
+        if (moment) await timed(options.phase, "moment-fill", () => fillMomentVolumes(docker, image, momentVolumesFor(moment, compiled.report.container ?? {}), String(DAIMON_ORGANIZATION_UID)));
         await timed(options.phase, "start", () => executeDockerRunWithSupportCleanup(invocation, runDockerContainer));
         await rm(envFilePath, { force: true });
         await timed(options.phase, "ready", () => waitFor(async () => {

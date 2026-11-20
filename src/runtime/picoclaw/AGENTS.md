@@ -10,6 +10,7 @@ src/runtime/picoclaw/
 ├── memory.ts         # PicoClaw Mneme MCP lowering facade
 ├── mcp.ts            # PicoClaw-authored MCP server and config-env binding lowering
 ├── runAuth.ts        # PicoClaw runtime-auth preparation for `spawnfile run`
+├── training.ts       # Native CLI turn delivery and grader evidence from PicoClaw records
 ├── schedules.ts      # PicoClaw cron schedule and Mneme dream-job lowering
 ├── install.ts        # Native install recipe and registry install hints
 ├── scaffold.ts       # PicoClaw-owned `spawnfile init --runtime picoclaw` scaffold

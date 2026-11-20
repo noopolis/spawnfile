@@ -1,14 +1,14 @@
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { DAIMON_ORGANIZATION_UID } from "../../index.js";
-import { SpawnfileError } from "../../../../shared/index.js";
-import { digestDirectory, FEED_IDENTITY_VERSION } from "../../../../volume/index.js";
-import { normalizeBundleMode, ustarHeader } from "../../../../compiler/index.js";
-import type { TrainingMoment, TrainingMomentFill } from "../../../../compiler/training/index.js";
-import type { TrialDocker } from "../../../../compiler/training/trial/index.js";
+import { SpawnfileError } from "../../../shared/index.js";
+import { digestDirectory, FEED_IDENTITY_VERSION } from "../../../volume/index.js";
+import { normalizeBundleMode, ustarHeader } from "../../workspaceBundleTar.js";
+import type { TrainingMoment, TrainingMomentFill } from "../moments.js";
+import type { TrialDocker } from "./docker.js";
 
 const run = promisify(execFile);
 const MAX_FILL_BYTES = 512 * 1024 * 1024;
@@ -68,14 +68,17 @@ const contentOf = async (fill: TrainingMomentFill): Promise<{ tar: Buffer; tree:
  * inline files land at the root), then writes the replacement sentinel the entrypoint verifies.
  */
 export const MOMENT_FILL_PROGRAM = [
-  "const fs = require('node:fs'), path = require('node:path'), { spawnSync } = require('node:child_process');",
-  "const [uidText, root, identity, tree, feedRecord] = process.argv.slice(1); const uid = Number(uidText), privileged = process.getuid() === 0;",
+  "const fs = require('node:fs'), path = require('node:path'), { spawnSync, execFileSync } = require('node:child_process');",
+  "const [account, root, identity, tree, feedRecord] = process.argv.slice(1); const privileged = process.getuid() === 0;",
   "const fail = (message) => { console.error(message); process.exit(3); };",
+  "const numeric = /^[0-9]+$/.test(account);",
+  "const id = (flag) => numeric ? Number(account) : Number(execFileSync('id', [flag, account], { encoding: 'utf8' }).trim());",
+  "const uid = id('-u'), gid = id('-g');",
   "process.chdir(root); const marker = '.spawnfile-volume-init';",
   "const names = fs.readdirSync('.'); if (names.some((name) => name !== marker)) fail('moment volume is not fresh');",
   "if (names.includes(marker)) fs.unlinkSync(marker);",
-  "if (privileged) fs.chownSync('.', uid, uid); fs.chmodSync('.', 0o755);",
-  "const asUid = (command, args, input) => { const result = spawnSync(command, args, { ...(privileged ? { uid, gid: uid } : {}), input, stdio: [input === undefined ? 'ignore' : 'pipe', 'inherit', 'inherit'] }); if (result.status !== 0) fail(`${command} failed`); };",
+  "if (privileged) fs.chownSync('.', uid, gid); fs.chmodSync('.', 0o755);",
+  "const asUid = (command, args, input) => { const result = spawnSync(command, args, { ...(privileged ? { uid, gid } : {}), input, stdio: [input === undefined ? 'ignore' : 'pipe', 'inherit', 'inherit'] }); if (result.status !== 0) fail(`${command} failed`); };",
   "const input = fs.readFileSync(0);",
   "if (input.length > 0) {",
   "  const target = tree ? `trees/${tree}` : '.';",
@@ -84,8 +87,8 @@ export const MOMENT_FILL_PROGRAM = [
   "  for (const name of fs.readdirSync('.')) if (!tree && name.startsWith('.spawnfile-')) fail('moment files may not name a .spawnfile- entry at the volume root');",
   "  if (tree) {",
   "    asUid('chmod', ['-R', 'a-w', target]); asUid('chmod', ['0755', target]);",
-  "    fs.symlinkSync(target, 'current'); if (privileged) fs.lchownSync('current', uid, uid);",
-  "    fs.writeFileSync('.spawnfile-feed.json', feedRecord, { mode: 0o644, flag: 'wx' }); if (privileged) fs.chownSync('.spawnfile-feed.json', uid, uid);",
+  "    fs.symlinkSync(target, 'current'); if (privileged) fs.lchownSync('current', uid, gid);",
+  "    fs.writeFileSync('.spawnfile-feed.json', feedRecord, { mode: 0o644, flag: 'wx' }); if (privileged) fs.chownSync('.spawnfile-feed.json', uid, gid);",
   "  }",
   "}",
   "fs.writeFileSync('.spawnfile-resource-identity', `${identity}\\n`, { mode: 0o644, flag: 'wx' }); if (privileged) fs.chownSync('.spawnfile-resource-identity', 0, 0); fs.chmodSync('.spawnfile-resource-identity', 0o644);"
@@ -104,7 +107,7 @@ const countEntries = (tar: Buffer): number => {
 };
 
 /** Creates and fills each moment volume before the organization boots. Every volume is the trial's own. */
-export const fillMomentVolumes = async (docker: TrialDocker, image: string, volumes: readonly MomentVolume[]): Promise<void> => {
+export const fillMomentVolumes = async (docker: TrialDocker, image: string, volumes: readonly MomentVolume[], account: string): Promise<void> => {
   for (const volume of volumes) {
     const content = await contentOf(volume.fill);
     const feedRecord = content?.tree ? `${JSON.stringify({
@@ -118,7 +121,7 @@ export const fillMomentVolumes = async (docker: TrialDocker, image: string, volu
       "--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER", "--cap-add", "SETUID", "--cap-add", "SETGID",
       "--security-opt", "no-new-privileges", "--entrypoint", "node",
       "--mount", `type=volume,source=${volume.volume},target=${volume.mountPath}`,
-      image, "-e", MOMENT_FILL_PROGRAM, String(DAIMON_ORGANIZATION_UID), volume.mountPath, volume.identity, content?.tree ?? "", feedRecord
+      image, "-e", MOMENT_FILL_PROGRAM, account, volume.mountPath, volume.identity, content?.tree ?? "", feedRecord
     ], { stdin: content?.tar ?? Buffer.alloc(0), timeoutMs: 600_000 });
   }
 };
@@ -137,3 +140,13 @@ export const momentVolumesFor = (
   return { id: resource.id, volume: mount.volume_name, mountPath: mount.mount_path, identity: compiled.resolved_identity!,
     declaredName: mount.declared_volume_name ?? compiled.volume_name ?? mount.volume_name, fill: resource.fill };
 });
+
+export const TRIAL_VOLUME_PREFIX = "spawnfile-training-trial-";
+
+/** Replace even explicitly named production volumes with trial-owned ones before launching. */
+export function isolateTrainingVolumes(container: { persistent_mounts?: { id: string; volume_name: string }[] } | undefined,
+  slug: string, keep?: (id: string) => boolean): void {
+  for (const mount of container?.persistent_mounts ?? []) {
+    if (!keep?.(mount.id)) mount.volume_name = `${TRIAL_VOLUME_PREFIX}${slug}-${createHash("sha256").update(mount.id).digest("hex").slice(0, 12)}`;
+  }
+}
