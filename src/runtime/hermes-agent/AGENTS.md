@@ -12,4 +12,4 @@
 - Verify native routing and access rules before marking a declared capability supported.
 - Record only lifecycle events bound to the current native session and turn. Hermes reports cumulative token counts, so trained turns use confirmed differences between adjacent snapshots.
 - `workspaceAssets.ts` and `workspaceReconciler.ts` seed declared docs, skills and Moltnet files from the immutable image into a reused workspace. Startup preserves local changes and never follows workspace symlinks.
-- `sessionStore.ts` gives each deployed Hermes instance its own native session volume. The stock SQLite database, WAL and transcript recovery files stay together, with image configuration and OAuth grants in their existing homes.
+- `sessionStore.ts` gives each deployed Hermes instance its own native session volume. Launches point `HERMES_HOME` at the mounted profile so stock SQLite, WAL and transcript recovery files stay together. Its fixed links reach the current compiler config and the separate OAuth and cron stores.

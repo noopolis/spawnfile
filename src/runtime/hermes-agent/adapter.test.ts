@@ -31,6 +31,7 @@ describe("Hermes Agent adapter", () => {
     expect(adapter).toBe(hermesAgentAdapter);
     expect(adapter.training?.adapterId).toBe(adapter.name);
     expect(adapter.training?.run).toBeTypeOf("function");
+    expect(adapter.container.startCommand).toContain("hermes-session-home");
     expect(adapter.container.startCommand.slice(-4)).toEqual(["gateway", "run", "--no-supervise", "--external-supervisor"]);
     expect(adapter.container.port).toBeUndefined();
   });
@@ -94,6 +95,7 @@ describe("Hermes Agent adapter", () => {
     expect(bridge.args).toEqual(expect.arrayContaining([
       "HOME=/one home", "HERMES_HOME=/one home", "HERMES_WRITE_SAFE_ROOT=/workspace one", "XDG_RUNTIME_DIR=/one home"
     ]));
+    expect(bridge.args).toContain("hermes-session-home");
     expect(bridge.args?.slice(-2)).toEqual(["/opt/hermes/.venv/bin/hermes", "acp"]);
     expect(() => wiring.bridge({ ...context, homePath: "/another home" })).toThrow(/outside the native home/);
   });
