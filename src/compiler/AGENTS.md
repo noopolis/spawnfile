@@ -41,7 +41,7 @@ src/compiler/
 ├── containerBackedMountRender.ts # Fail-closed `require_backed_mount` guard for durable mount paths
 ├── containerPersistentMounts.ts # Durable-mount merge across sources + volume-name uniqueness
 ├── deploymentLineage.ts        # Dev/production lineage namespacing + declared-volume refusal
-├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
+├── containerEntrypointShell.ts # Per-instance environment for service startup and training, shell quoting and CLI credential materialization
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics

@@ -5,11 +5,12 @@ import path from "node:path";
 
 import type { ResolvedAuthProfile } from "../auth/index.js";
 import { buildCompiledProject, compileProject, createDockerRunInvocation, executeDockerRunWithSupportCleanup,
-  resolveDeploymentLineage, runDockerContainer } from "../compiler/index.js";
+  resolveDeploymentLineage, runDockerContainer, runtimeInstanceEnvironment } from "../compiler/index.js";
 import { trainingMomentSchema, type TrainingContext } from "../compiler/training/index.js";
 import { createTrialDocker, fillMomentVolumes, isolateTrainingVolumes, momentVolumesFor, waitFor, writeTrialProject, type TrialDocker } from "../compiler/training/trial/index.js";
 import type { SubjectStart } from "./trainingTypes.js";
 import { ensureNoopolisRunId } from "./common.js";
+import { createRuntimeContainerEnv } from "./container.js";
 import { nativeInputSync, readNativeFile } from "./nativeTrainingFiles.js";
 import type { NativeTrainingTrial } from "./nativeTrainingSubject.js";
 import { getRuntimeAdapter } from "./registry.js";
@@ -47,13 +48,13 @@ export async function bootNativeTrainingTrial(context: TrainingContext, profile:
       throw new Error(`Expected one compiled training instance for ${context.agent.id}`);
     }
     const { config_path: configPath, home_path: homePath, workspace_path: workspacePath } = instance;
-    const adapter = getRuntimeAdapter(context.agent.runtime);
-    const meta = adapter.container;
-    const environment: Record<string, string> = { ...meta.staticEnv, HOME: homePath };
-    if (meta.homeEnv) environment[meta.homeEnv] = homePath;
-    if (meta.configPathEnv) environment[meta.configPathEnv] = configPath;
-    if (instance.internal_port && meta.portEnv) environment[meta.portEnv] = String(instance.internal_port);
-    if (Object.values(instance.model_auth_methods).includes("codex")) environment.CODEX_HOME = path.posix.join(homePath, ".codex");
+    const environment = {
+      ...Object.fromEntries(runtimeInstanceEnvironment({
+        instancePaths: { configPath, homePath, workspacePath }, meta: getRuntimeAdapter(context.agent.runtime).container,
+        modelAuthMethods: instance.model_auth_methods, port: instance.internal_port ?? undefined
+      })),
+      ...createRuntimeContainerEnv()
+    };
     input.signal?.throwIfAborted();
     await buildCompiledProject(project.manifestPath, compiled, { imageTag: image });
     built = true;

@@ -5,6 +5,24 @@ import { CLI_CREDENTIAL_SECRET_NAME, modelAuthMethodNeedsCliCredential } from ".
 
 export const shellQuote = (value: string): string => `'${value.replace(/'/g, `'"'"'`)}'`;
 
+/** The same per-instance process environment applies to service startup and native training turns. */
+export function runtimeInstanceEnvironment(
+  { instancePaths: { homePath, configPath }, meta, modelAuthMethods, port }:
+    Pick<RuntimeTargetPlan, "instancePaths" | "meta" | "modelAuthMethods" | "port">
+): [string, string][] {
+  const values: [string, string][] = [];
+  if (homePath) {
+    values.push(["HOME", homePath]);
+    if (Object.values(modelAuthMethods).some(modelAuthMethodNeedsCliCredential)) {
+      values.push(["CODEX_HOME", path.posix.join(homePath, ".codex")]);
+    }
+    if (meta.homeEnv) values.push([meta.homeEnv, homePath]);
+  }
+  if (meta.configPathEnv) values.push([meta.configPathEnv, configPath]);
+  if (meta.portEnv && port) values.push([meta.portEnv, String(port)]);
+  return values.concat(Object.entries(meta.staticEnv ?? {}).sort(([left], [right]) => left.localeCompare(right)));
+}
+
 export const createRecipeEnvAssignments = (
   recipeEnv: Record<string, string> | undefined
 ): string[] =>

@@ -34,7 +34,8 @@ export async function runNativeTraining(runtime: string, driver: NativeTrainingD
 
 /** A judge or optimizer can run on a different harness. Open its host only on an actual inference call. */
 export function nativeTrainingJudges(
-  composition: TrainingInferenceComposition, options: RuntimeTrainingRunOptions, out: string
+  composition: TrainingInferenceComposition,
+  options: Pick<RuntimeTrainingRunOptions, "authProfile" | "controls" | "signal" | "streams">, out: string
 ) {
   const hosts = new Map<string, Promise<{ close(): Promise<void> }>>();
   const providers: Record<string, InferenceProviderDescriptor> = {};
