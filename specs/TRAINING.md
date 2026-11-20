@@ -4,12 +4,27 @@
 training core in-process. Spawnfile owns canonical source resolution, training
 authoring, native compilation, evaluation, cost planning, optimization and isolated trials.
 
-Actual training is production-booted: every trial is the subject agent's own
-compiled organization, booted with production's entrypoint and Docker security
-arguments, and all trials of one run share one Daimon auth gateway sidecar that
-holds the login of `--auth-profile` (see `src/runtime/daimon/training/trial/AGENTS.md`).
-The training core and graders run in the parent process. Only Daimon subjects
-train; dry-run remains a host-only estimate.
+Spawnfile trains Daimon, OpenClaw and PicoClaw in isolated containers compiled
+from the selected agent and candidate instructions. Daimon uses its wake API and
+a shared auth gateway for subscription access. OpenClaw and PicoClaw receive
+tasks through their native agent commands with the compiled configuration.
+Spawnfile owns the grader and the evaluation file. Each adapter translates the
+evidence its runtime actually recorded. A dry run estimates costs on the host.
+
+Each stored trial writes one private `.eval` file in the training output's
+`evals/` directory, including trials that failed. The file contains the task,
+observed actions, replies, selected files, coverage and grades. Copy a file to
+another machine with Spawnfile installed and run
+`spawnfile train --regrade sample.eval --out graded` to score its final checks.
+The result is in `graded/REGRADE.json`. Add `--train criteria.yaml` to apply
+different final checks or a configured judge to the saved evidence. Missing
+observations stay unknown. Live and per-turn checks retain their original
+results. [Portable trial files](../src/training/experiments/replay/README.md#portable-trial-files)
+
+OpenClaw can confirm a tool's result from its session. PicoClaw can match a
+tool start and finish. Daimon's Codex engine can report command and MCP tool
+activity. Its Grok and AGY engines can report which tools the model requested.
+Only recorded executions establish that a tool ran.
 
 ```sh
 spawnfile train ./Spawnfile --agent agent:writer \
@@ -292,8 +307,9 @@ context capture, training estimator, auth contents, Docker, hooks, output alloca
 writes. `--plan` continues printing only the deterministic authoring plan. Without
 any authored targets the existing explicit dataset dry-run remains the training estimator.
 
-Actual training hands the lowered `args` to production-booted training
-(`--auth-profile` is required). `trainingExecutionSchema` validates the strict
+Actual training hands the lowered `args` to the selected runtime. Supply
+`--auth-profile` for a Daimon subject, a subscription judge or model credentials
+held in a profile. `trainingExecutionSchema` validates the strict
 public receipt shape: `version`, `authoring`, `datasetPins`, `optimizer`, `args`
 and `output`.
 

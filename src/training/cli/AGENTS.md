@@ -64,3 +64,6 @@ report and preserve scores/evidence. Legacy inline report blobs remain readable.
 
 Fixed graders with explicit identity calibration have no labeled corpus and need no
 calibration exclusions. Keep definition/mode digests and dataset split guards intact.
+
+regrade.ts binds a captured case to its supplied dataset's final stages. Use the
+normal grader and judge factories. Never construct a subject or optimizer here.

@@ -3,3 +3,4 @@ export type { CliIO, CliDependencies, InvocationIndex, SpawnfileCliIntegration, 
 export type { SpawnfileTrainingContext } from './spawnfile/index.js';
 export { launch } from './launch.js';
 
+export { regradeWithDataset } from './regrade.js';

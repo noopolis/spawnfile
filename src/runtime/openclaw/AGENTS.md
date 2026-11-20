@@ -12,6 +12,7 @@ src/runtime/openclaw/
 ├── schedules.ts      # OpenClaw native cron-store lowering for Mneme dream jobs
 ├── surfaces.ts       # OpenClaw surface lowering and surface-support validation
 ├── runAuth.ts        # OpenClaw runtime-auth preparation for `spawnfile run`
+├── training.ts       # Pinned local agent CLI and turn-bound training observations
 ├── install.ts        # Native install recipe and registry install hints
 ├── scaffold.ts       # OpenClaw-owned `spawnfile init --runtime openclaw` scaffold
 ├── image/            # Repository image context and build metadata
@@ -28,3 +29,4 @@ Keep the emitted structure obvious and faithful to what OpenClaw expects. If low
 - Keep capability reporting explicit when a feature maps only approximately.
 - Portable HTTP is not part of the v0.1 alpha surface contract. Treat any OpenClaw HTTP/webhook internals as runtime-specific unless a future spec reintroduces portable ingress.
 - Do not add Spawnfile-owned team routing. Team context orientation should use the adapter's system-instruction surface metadata when supported.
+- Training invokes the pinned local agent command with the compiled config and home. Session transcript tool results can prove recorded outcomes. Model tool requests only bind results to the current turn. Coverage stays partial because the transcript omits dispatch events and may omit or truncate evidence.

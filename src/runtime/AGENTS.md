@@ -19,6 +19,11 @@ src/runtime/
 ├── hostSelection.ts        # Select registered host capabilities and launch wrapper
 ├── operations.ts          # Optional live drain, readiness, recording, artifact and usage contracts
 ├── trainingTypes.ts       # Optional live training, provider, login and credential hooks
+├── nativeTraining.ts      # Typed native session driver and public training capability
+├── nativeTrainingRun.ts   # Connects project training and its configured judges
+├── nativeTrainingSubject.ts # Turns, cancellation, replies and evidence coverage
+├── nativeTrainingContainer.ts # Per-trial project, container and storage lifecycle
+├── nativeTrainingFiles.ts # Transfer of selected inputs and outputs
 ├── trainingSelection.ts   # Runtime and credential capability selection
 ├── common.ts              # Shared lowering helpers used by adapters
 ├── mnemeMcp.ts            # Shared Mneme MCP lowering plus the durable memory mount authority

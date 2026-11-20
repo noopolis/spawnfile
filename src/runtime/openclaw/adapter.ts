@@ -41,6 +41,7 @@ import {
 import { MNEME_PACKAGE } from "../mnemeMcp.js";
 import { createOpenClawCronStoreFile } from "./schedules.js";
 import { openClawStatusProbes } from "./statusProbes.js";
+import { nativeTrainingCapability } from "../nativeTraining.js";
 
 const buildEnvSecretRef = (envName: string): Record<string, string> => ({
   id: envName,
@@ -197,6 +198,7 @@ const createContainerTargets = async (
 
 class OpenClawRuntimeAdapter extends RuntimeAdapterBase {
   readonly host = openClawHostIntegration;
+  readonly training = nativeTrainingCapability("openclaw", async () => (await import("./training.js")).openclawTrainingDriver);
   readonly assertSupportedModelTarget = (target: EffectiveModelTarget) => {
     if (target.reasoningEffort !== undefined) {
       throw new SpawnfileError(

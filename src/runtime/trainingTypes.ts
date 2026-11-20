@@ -1,7 +1,12 @@
 import type { ResolvedAuthProfile, SubscriptionRealmBinding } from "../auth/index.js";
 import type { TrainingContext } from "../compiler/training/index.js";
 import type { TrialCacheMode } from "../compiler/training/trial/index.js";
-import type { SubjectAdapterRegistration } from "../training/index.js";
+import type {
+  InferenceProviderDescriptor, Observation, ObservationCoverage, StopReceipt, SubjectAdapter, SubjectAdapterRegistration,
+  SubjectOutput, SubjectStart, Usage
+} from "../training/index.js";
+
+export type { InferenceProviderDescriptor, Observation, ObservationCoverage, StopReceipt, SubjectAdapter, SubjectOutput, SubjectStart, Usage };
 import type { RuntimeTrainingGraderContribution, RuntimeTrainingInferenceContribution } from "./trainingProviderTypes.js";
 
 export type { RuntimeTrainingGraderContribution, RuntimeTrainingInferenceContribution } from "./trainingProviderTypes.js";

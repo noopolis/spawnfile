@@ -4,6 +4,8 @@
   with team inheritance and source-relative paths intact. Trial projects drop
   other members, networks, external participants, schedules and nested training.
 - `docker.ts` runs bounded Docker commands and readiness polling.
+- `volumes.ts` assigns trial-owned volume names and fills declared starting
+  state using the account of the compiled harness.
 - `evidence.ts` streams container logs and diagnostic archives onto the
   operator's disk with byte-preserving secret masking. Bounds, refused paths,
   and capture failures go into the evidence manifest.

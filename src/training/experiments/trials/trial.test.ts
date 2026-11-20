@@ -380,3 +380,12 @@ it('keeps no-argument collectors compatible', async () => {
   expect((await runTrial(task.options)).status).toBe('pass');
   expect(collected).toBeGreaterThan(0);
 });
+
+it('keeps tool counts unknown when one returned wake provides no tool coverage', async () => {
+  const task = await setup(async (_subject, turn) => turn.id === 'second' ? { ...complete, coverage: [] } : complete);
+  task.options.record.turns = ['first', 'second'].map(id => ({ id, input: { prompt: id } }));
+  task.options.record.effectiveStages = [{ id: 'final', checks: [{ id: 'none', eval: 'tool-count', tool: 'search', exactly: 0 }] }];
+  const report = await runTrial(task.options);
+  expect(report.evaluation.checks.none!.status).toBe('unknown');
+  expect(report.turns[1]!.native.coverage).toEqual([]);
+});

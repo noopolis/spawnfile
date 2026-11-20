@@ -1,13 +1,17 @@
-import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, rename, rm, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { composeTrainingInference, type TrainingInferenceComposition } from "./trainingComposition.js";
+import { composeTrainingInference, withRuntimeTrainingGraders, type TrainingInferenceComposition } from "./trainingComposition.js";
 import { SpawnfileError } from "../shared/index.js";
-import { createEvaluationRegistry, inferenceProviderDescriptor, regradeManifestSchema, regradeRecordedOutputs,
+import { regradeWithDataset, createEvaluationRegistry, inferenceProviderDescriptor, regradeManifestSchema, regradeTrialEval, regradeRecordedOutputs,
   renderQuestionnaireMarkdown, type InferenceProvider, type JudgeRoute, type CriticReview, type RegradeReport, type RegradedOutput } from "../training/index.js";
 
 export interface RegradeTrainingOptions {
   manifest: string;
+  train?: string;
+  judges?: readonly string[];
+  citationRepairs?: readonly string[];
   out: string;
   /** Outputs judged at once (default 1). */
   concurrency?: number;
@@ -51,6 +55,26 @@ export const renderRegradeMarkdown = (report: RegradeReport): string => {
  */
 export const regradeTraining = async (options: RegradeTrainingOptions): Promise<number> => {
   const manifestPath = path.resolve(options.manifest);
+  if (manifestPath.endsWith(".eval")) {
+    const report = options.train === undefined ? await regradeTrialEval(manifestPath, options.signal)
+      : await withRuntimeTrainingGraders(async () => {
+        const composition = await composeTrainingInference();
+        return regradeWithDataset(manifestPath, options.train!, { ...options.streams, cwd: process.cwd(), signal: options.signal },
+          { inferenceProviders: composition.registry, modelInference: options.provider },
+          async providers => options.openJudges?.(providers, composition),
+          { judge: options.judges ?? [], "judge-citation-repairs": options.citationRepairs ?? [] }, options.judgeTimeoutMs ?? 900_000);
+      });
+    const out = path.resolve(options.out);
+    await mkdir(out, { recursive: true, mode: 0o700 });
+    const result = path.join(out, "REGRADE.json");
+    const temporary = result + "." + randomUUID() + ".tmp";
+    try {
+      await writeFile(temporary, JSON.stringify(report, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+      await rename(temporary, result);
+    } finally { await rm(temporary, { force: true }); }
+    options.streams.stdout(JSON.stringify({ result, status: report.status, scope: report.scope }));
+    return report.status === "pass" || report.status === "fail" ? 0 : 1;
+  }
   const base = path.dirname(await realpath(manifestPath).catch(() => invalid(`Regrade manifest does not exist: ${options.manifest}`)));
   const parsed = regradeManifestSchema.safeParse(JSON.parse(await readFile(manifestPath, "utf8")));
   if (!parsed.success) return invalid(`Regrade manifest: ${parsed.error.issues[0]!.path.join(".")}: ${parsed.error.issues[0]!.message}`);

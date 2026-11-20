@@ -5,6 +5,7 @@ import { maskSecrets, SpawnfileError } from "../../../../shared/index.js";
 import type { BootedTrial, TrialWake } from "./boot.js";
 import type { TrialDocker } from "../../../../compiler/training/trial/index.js";
 import { agentExecutionError, agentSettled, readLedger, readRequestLedger, readTranscript, requestUsage } from "./trialReads.js";
+import { wakeToolEvidence } from "./nativeToolEvidence.js";
 import { renderMomentWake, type TrainingMoment } from "../../../../compiler/training/index.js";
 
 const WAKE_VERSION = "noopolis.daimon.wake.v2";
@@ -39,6 +40,7 @@ export const createBootedTrial = (input: {
         ? { version: WAKE_VERSION, kind: "message", text: renderMomentWake(input.moment.wake), occurred_at: input.moment.at }
         : { version: WAKE_VERSION, kind: "manual", text, occurred_at: new Date().toISOString() };
       const body = { agent_id: input.agentId, delivery_id: options.deliveryId, event };
+      const evidenceSince = Date.now();
       const accepted = await input.call(input.target, "POST", "/v2/wakes", body);
       const acceptance = JSON.parse(accepted.body) as { state?: string; acceptance_id?: string; code?: string };
       if (accepted.status !== 202 || acceptance.state !== "accepted" || !acceptance.acceptance_id) {
@@ -46,6 +48,8 @@ export const createBootedTrial = (input: {
       }
       const id = acceptance.acceptance_id;
       const startedMs = Date.now() - 5_000;
+      const evidenceWakeIds = new Set([options.deliveryId]);
+      const batchedExecutions = new Set<string>();
       let receipt: { state?: string; execution_id?: string; code?: string; text?: string; deferred?: boolean } = {};
       const deadline = Date.now() + options.timeoutMs;
       // The subject may end its turn by deferring the delivery: Daimon returns it to `accepted`, marked deferred,
@@ -54,7 +58,10 @@ export const createBootedTrial = (input: {
       while (!ended() && Date.now() < deadline && !options.signal?.aborted) {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
         const response = await input.call(input.target, "GET", `/v2/wake-receipts/${id}`);
-        if (response.status === 200) receipt = JSON.parse(response.body) as typeof receipt;
+        if (response.status === 200) {
+          receipt = JSON.parse(response.body) as typeof receipt;
+          if (receipt.execution_id) evidenceWakeIds.add(receipt.execution_id);
+        }
       }
       // A delivery can be disposed mid-turn (attention's disposition tool), so its receipt ends before its turn
       // does; the turn's usage and transcript land when the execution ends, which only the activity shows. A
@@ -62,7 +69,12 @@ export const createBootedTrial = (input: {
       const execution = receipt.execution_id;
       while (Date.now() < deadline && !options.signal?.aborted) {
         const activity = await input.call(input.target, "GET", "/v2/activity");
-        const executions = activity.status === 200 ? (JSON.parse(activity.body) as { executions?: { execution_id?: string; delivery_ids?: string[] }[] }).executions ?? [] : [];
+        const executions = activity.status === 200 ? (JSON.parse(activity.body) as { executions?: { agent_id?: string; execution_id?: string; delivery_ids?: string[] }[] }).executions ?? [] : [];
+        for (const active of executions) {
+          if (active.agent_id !== input.agentId || !active.execution_id || !active.delivery_ids?.includes(options.deliveryId)) continue;
+          if (active.delivery_ids.length === 1) evidenceWakeIds.add(active.execution_id);
+          else batchedExecutions.add(active.execution_id);
+        }
         if (!executions.some((entry) => entry.execution_id === execution || entry.delivery_ids?.includes(options.deliveryId))) break;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
@@ -78,6 +90,9 @@ export const createBootedTrial = (input: {
       const failure = reported === null ? null : maskSecrets(reported, input.secrets);
       const rows = await readLedger(input.docker, input.container);
       const requests = await readRequestLedger(input.docker, input.container);
+      for (const batched of batchedExecutions) evidenceWakeIds.delete(batched);
+      const nativeToolEvents = evidenceWakeIds.size > 16 ? [] : await wakeToolEvidence(input.docker, input.container, input.sessionsPath, requests,
+        { agent: input.agentId, wakeIds: evidenceWakeIds, since: evidenceSince, until: Date.now(), secrets: input.secrets });
       const fresh = requests.slice(seenRequests).filter((row) => row.agent === input.agentId);
       const turnUsage = rows.slice(seenRows).filter((row) => row.agent === input.agentId);
       const usage = turnUsage.length ? turnUsage : requestUsage(fresh, input.agentId);
@@ -88,6 +103,7 @@ export const createBootedTrial = (input: {
         state: TERMINAL.has(receipt.state ?? "") ? receipt.state as TrialWake["state"] : ended() ? "deferred" : "timeout",
         text: receipt.text ?? "",
         failure,
+        ...(nativeToolEvents.length === 0 ? {} : { nativeToolEvents }),
         requestToolCalls: fresh.filter((row) => row.wake === options.deliveryId).map((row) => row.tool_calls ?? null),
         transcript: input.sessionsPath === null ? null : await readTranscript(input.docker, input.container, input.sessionsPath, startedMs)
       };

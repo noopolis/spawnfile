@@ -58,3 +58,6 @@ Verify codec, replay, checkpoint and CLI report tests; mutation-check inline siz
 regression and same-length valid-JSON corruption.
 Publication retries compare hydrated legacy/compact payloads after integrity checks,
 preserving original bytes and duplicate-event/evaluation idempotence across formats.
+
+portable-file.ts publishes private immutable trial files in the output's evals
+directory using the same safe path and atomic publication primitives as the store.

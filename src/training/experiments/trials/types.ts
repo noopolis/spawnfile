@@ -47,6 +47,8 @@ export interface TrialReport {
   id: string;
   phase: TrialOptions['phase'];
   candidateId: string;
+  /** Portable evaluator-owned capture relative to the output directory. */
+  evalFile?: string;
   /** Exact evaluated bundle, including proposals rejected by the optimizer. */
   candidate?: CandidateManifest;
   round?: number;

@@ -1,4 +1,5 @@
 import type { UsageRecord } from "../../../runtime/usageLedger.js";
+import type { Observation } from "../../../runtime/trainingTypes.js";
 
 export interface TrialWake {
   /** `deferred`: the subject deferred the delivery, or the runtime deferred a failed retry when `failure` is set. */
@@ -13,6 +14,8 @@ export interface TrialWake {
   transcript: string | null;
   /** Per model request of this wake, the tool-call names its response carried; null where the runtime could not say. */
   requestToolCalls: (readonly string[] | null)[];
+  /** Native evidence before the subject adapter binds it to the current trial and turn. */
+  nativeToolEvents?: readonly Omit<Observation, "trialId" | "wakeId">[];
   /** Set only on a replay from the run's trial cache: the trial that measured this wake. */
   reusedFrom?: string;
   /**
