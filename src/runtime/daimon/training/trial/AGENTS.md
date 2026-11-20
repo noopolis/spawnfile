@@ -64,9 +64,8 @@ cache storage live under `src/compiler/training/trial/`.
   engine's session records since a wake began, the agent's execution error and
   whether its queue has settled.
 - `nativeToolEvidence.ts` binds request rows to the delivered wake or its
-  confirmed execution ID. A unique
-  Codex request batch identifies its fresh thread. `codexToolEvidence.ts` reads
-  the matching bounded rollout, checks session identity and timestamps, and
+  confirmed execution ID. A unique Codex request batch identifies its fresh thread.
+  The reader opens the matching bounded rollout, checks session identity and timestamps, and
   retains only tool lifecycle facts. Grok and AGY rows can record tool requests.
 - `gateway.ts` places Daimon's auth gateway as a sidecar
   (`renderDaimonGatewaySidecarScript`): production Docker security args, the
