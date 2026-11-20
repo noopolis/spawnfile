@@ -11,5 +11,5 @@
 - `nativeFeatures.ts` lowers authored MCP and scoped awake Mneme access. `schedules.ts` and `cronBootstrap.ts` reconcile the declared cron job under the gateway's scheduler.
 - Verify native routing and access rules before marking a declared capability supported.
 - Record only lifecycle events bound to the current native session and turn. Hermes reports cumulative token counts, so trained turns use confirmed differences between adjacent snapshots.
-- `workspaceAssets.ts` and `workspaceReconciler.ts` seed declared docs, skills and Moltnet files from the immutable image into a reused workspace. Startup preserves local changes and never follows workspace symlinks.
+- `workspaceAssets.ts` and `workspaceReconciler.ts` seed declared docs, skills and Moltnet files from the immutable image into a reused workspace. Startup refreshes managed membership, preserves local edits to instructions and skills, and never follows workspace symlinks.
 - `sessionStore.ts` gives each deployed Hermes instance its own native session volume. Launches point `HERMES_HOME` at the mounted profile so stock SQLite, WAL and transcript recovery files stay together. Its fixed links reach the current compiler config and the separate OAuth and cron stores.

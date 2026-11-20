@@ -130,19 +130,22 @@ def capture(root, manifest, seed):
 
 
 def reconcile_one(root, name, prior, desired):
+    # Moltnet rewrites its active client config, including the bridge's runtime ID.
+    managed_network = name == MOLTNET[0] and prior is not None
+    install_missing = desired is not None and (prior is None or managed_network)
     try:
-        with parent_dir(root, name, create=prior is None and desired is not None) as (parent, leaf):
+        with parent_dir(root, name, create=install_missing) as (parent, leaf):
             try:
                 contents, previous = read_file(parent, leaf)
             except FileNotFoundError:
-                if prior is None and desired is not None:
+                if install_missing:
                     publish(parent, leaf, desired, 0o600 if name == MOLTNET[0] else 0o644)
                     return digest(desired)
                 return prior if desired is not None else None
             current = digest(contents)
             if desired is not None and current == digest(desired):
                 return current
-            if current != prior:
+            if current != prior and not managed_network:
                 return prior if desired is not None else None
             if desired is None:
                 if unchanged(parent, leaf, previous):

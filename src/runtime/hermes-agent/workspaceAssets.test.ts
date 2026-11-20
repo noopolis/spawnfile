@@ -53,6 +53,8 @@ describe("Hermes durable workspace assets", () => {
       expect(await read("AGENTS.md")).toBe("preexisting local instructions");
       expect(await read("draft.md")).toBe("operator work");
 
+      // The native bridge rewrites the compiled attachment when it starts.
+      await put(live, moltnet, JSON.stringify({ rooms: ["test"], runtime: "acp" }, null, 2));
       await put(image, moltnet, '{"rooms":["relay"]}');
       await put(image, skill, "compiler skill 2");
       await put(live, skill, "operator skill update");
@@ -61,6 +63,10 @@ describe("Hermes durable workspace assets", () => {
       expect(await read(moltnet)).toBe('{"rooms":["relay"]}');
       expect(await read(skill)).toBe("operator skill update");
 
+      await rm(path.join(live, ".moltnet"), { recursive: true });
+      restore();
+      expect(await read(moltnet)).toBe('{"rooms":["relay"]}');
+      await put(live, moltnet, JSON.stringify({ rooms: ["relay"], runtime: "acp" }, null, 2));
       await rm(path.join(image, moltnet));
       await rm(path.join(image, moltnetSkill));
       capture([]);
