@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { modelAuthMethodSchema } from "../manifest/executionSchemas.js";
 import { RUNTIME_ADAPTER_NAME_PATTERN } from "../manifest/adapterSchemas.js";
 import { parseImageReference } from "../distribution/imageRef.js";
 import { SpawnfileError } from "../shared/index.js";
@@ -53,6 +54,7 @@ const catalogSchema = z.strictObject({
 
 const containerSchema = z.object({
   configFileName: text,
+  adapterManagedAuthMethods: z.array(modelAuthMethodSchema).optional(),
   rawHomeAuthImports: z.array(z.enum(["claude-code", "codex"])).optional(),
   standaloneBaseImage: text.refine((image) => parseImageReference(image) !== null),
   instancePaths: z.object({

@@ -168,7 +168,7 @@ export const upProject = async (
   const authProfile = resolvedOptions.authProfile
     ? await requireAuthProfile(resolvedOptions.authProfile)
     : null;
-  const cliCredential = await resolveHostCliCredential(buildResult.report.container!);
+  const cliCredential = await resolveHostCliCredential(buildResult.report.container!, authProfile);
   const imageTag = resolvedOptions.imageTag ?? buildResult.imageTag;
   const invocation = await createDockerRunInvocation(buildResult, imageTag, {
     authProfile,

@@ -13,6 +13,15 @@ import {
 } from "./modelEnv.js";
 
 describe("modelEnv", () => {
+  it("only collects credential secrets which the adapter leaves to the compiler", () => {
+    const execution: ExecutionBlock = { model: {
+      primary: { provider: "openai", name: "gpt", auth: { method: "codex" } },
+      fallback: [{ provider: "anthropic", name: "claude", auth: { method: "api_key" } }]
+    } };
+    expect(listExecutionModelSecretNames(execution, ["codex"])).toEqual(["ANTHROPIC_API_KEY"]);
+    expect(listExecutionModelSecretNames(execution)).toEqual(["ANTHROPIC_API_KEY", "SPAWNFILE_CLI_AUTH_JSON"]);
+  });
+
   it("defaults built-in providers to api_key auth", () => {
     const execution: ExecutionBlock = {
       model: {

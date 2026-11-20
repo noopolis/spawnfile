@@ -1,6 +1,7 @@
 import path from "node:path";
 
-import type { ResolvedAuthProfile } from "../auth/index.js";
+import { loadImportedClaudeCodeCredential, loadImportedCodexCredential, type ResolvedAuthProfile } from "../auth/index.js";
+import { fileExists } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/errors.js";
 import { getRuntimeAdapter, hasRuntimeAdapter, isBundledRuntimeAdapter } from "./registry.js";
 import type { RuntimeHomeAuthMethod } from "./types.js";
@@ -20,7 +21,7 @@ export interface RuntimeHomeImport {
 
 const methods = ["claude-code", "codex"] as const;
 
-const requestedBy = (instance: RuntimeImportInstance, method: RuntimeHomeAuthMethod): boolean => {
+export const requestsRuntimeHomeImport = (instance: RuntimeImportInstance, method: RuntimeHomeAuthMethod): boolean => {
   if (!hasRuntimeAdapter(instance.runtime)) return false;
   const supported = getRuntimeAdapter(instance.runtime).container.rawHomeAuthImports;
   const declared = instance.model_auth_methods;
@@ -48,7 +49,7 @@ export const resolveRuntimeHomeImports = (
 ): RuntimeHomeImport[] => methods.flatMap((method) => {
   const imported = authProfile?.imports[method];
   if (!imported) return [];
-  const recipients = instances.filter((instance) => requestedBy(instance, method));
+  const recipients = instances.filter((instance) => requestsRuntimeHomeImport(instance, method));
   if (recipients.length === 0) return [];
   if (imported.kind !== method || typeof imported.path !== "string" || !path.isAbsolute(imported.path) || /[:\u0000-\u001f\u007f]/u.test(imported.path)) {
     throw new SpawnfileError("validation_error", `Invalid source path for ${method} credential import`);
@@ -74,3 +75,26 @@ export const resolveRuntimeHomeImports = (
   });
   return [{ method, source: imported.path, targets: [...new Set(destinations)] }];
 });
+
+export const prepareRuntimeHomeImports = async (
+  instances: readonly RuntimeImportInstance[], authProfile: ResolvedAuthProfile | null
+): Promise<{ imports: RuntimeHomeImport[]; mountArgs: string[] }> => {
+  const imports = resolveRuntimeHomeImports(instances, authProfile);
+  const mountArgs: string[] = [];
+  for (const { method, source, targets } of imports) {
+    if (!(await fileExists(source))) {
+      throw new SpawnfileError("validation_error", `Imported auth path for ${method} does not exist: ${source}`);
+    }
+    const credential = method === "claude-code"
+      ? await loadImportedClaudeCodeCredential(source)
+      : await loadImportedCodexCredential(source);
+    if (!credential) {
+      throw new SpawnfileError(
+        "validation_error",
+        `Imported ${method} auth at ${source} has no usable credential. Re-run the ${method} login (or re-import).`
+      );
+    }
+    for (const target of targets) mountArgs.push("-v", `${source}:${target}`);
+  }
+  return { imports, mountArgs };
+};

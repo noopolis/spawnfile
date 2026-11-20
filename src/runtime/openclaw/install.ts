@@ -2,7 +2,7 @@ import { SpawnfileError } from "../../shared/index.js";
 
 import type { RuntimeInstallRecipe } from "../container.js";
 import type { NativeInstallRecipeInput, NativeInstallHintProfile } from "../containerRecipe.js";
-import { createRuntimeImageCopyCommand, resolveRuntimeImageRef } from "../containerRecipe.js";
+import { createRuntimeImageCopyCommand, globalNpmInstallCommand, resolveRuntimeImageRef } from "../containerRecipe.js";
 
 export const openClawInstallHints = {
   container_image: {
@@ -52,7 +52,7 @@ export const createOpenClawInstallRecipe = ({
 
   return {
     commands: [
-      `npm install -g --omit=dev --no-fund --no-audit ${selection.packageName}@${selection.version}`
+      globalNpmInstallCommand([`${selection.packageName}@${selection.version}`])
     ],
     copyCommands: [],
     env: containerEnv,

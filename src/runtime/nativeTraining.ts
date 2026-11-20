@@ -5,6 +5,8 @@ export interface NativeTrainingInstance {
   configPath: string;
   homePath: string;
   workspacePath: string;
+  /** Loopback port assigned to the native service in this trial container. */
+  port?: number;
   exec(argv: readonly string[], options?: {
     env?: Readonly<Record<string, string>>;
     signal?: AbortSignal;
@@ -32,6 +34,8 @@ export interface NativeTrainingReply {
 
 /** Adapters implement their native delivery and decode only evidence belonging to this turn. */
 export interface NativeTrainingDriver {
+  /** Settings needed by the native service before the first training turn. */
+  serviceEnvironment?: Record<string, string>;
   run(instance: NativeTrainingInstance, turn: NativeTrainingTurn): Promise<NativeTrainingReply>;
 }
 

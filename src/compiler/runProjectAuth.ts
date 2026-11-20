@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
+import { createLoginVolumeReservation } from "../runtime/nativeLogin.js";
 
 import { parseEnvFile } from "../auth/index.js";
 import type { ImportedAuthKind, ResolvedAuthProfile } from "../auth/index.js";
@@ -11,9 +12,9 @@ import {
 import type { ContainerReport } from "../report/index.js";
 import { SpawnfileError } from "../shared/index.js";
 import { getRuntimeAdapter } from "../runtime/index.js";
-import { resolveRuntimeHomeImports } from "../runtime/runtimeHomeImports.js";
-import { selectRuntimeGeneratedSecrets } from "../runtime/hostSelection.js";
-import type { RuntimeAuthPreparationResult } from "../runtime/types.js";
+import { prepareRuntimeHomeImports, requestsRuntimeHomeImport, resolveRuntimeHomeImports, type RuntimeHomeImport } from "../runtime/runtimeHomeImports.js";
+import { adapterManagedAuthMethods, selectRuntimeGeneratedSecrets } from "../runtime/hostSelection.js";
+import type { RuntimeAuthPreparationResult, RuntimeHomeAuthMethod } from "../runtime/types.js";
 import {
   CLI_CREDENTIAL_SECRET_NAME,
   modelAuthMethodNeedsCliCredential
@@ -34,10 +35,15 @@ const MODEL_AUTH_IMPORT_KINDS: Record<string, ImportedAuthKind | null> = {
 };
 
 export const resolveHostCliCredential = async (
-  containerReport: ContainerReport
+  containerReport: ContainerReport,
+  authProfile: ResolvedAuthProfile | null = null
 ): Promise<{ name: string; sourcePath: string; value: string } | null> => {
+  if (!containerReport.runtime_instances.some((instance) => uncoveredCliMethods(instance, []).length > 0)) {
+    return null;
+  }
+  const imports = resolveRuntimeHomeImports(containerReport.runtime_instances, authProfile);
   const needsCredential = containerReport.runtime_instances.some((instance) =>
-    Object.values(instance.model_auth_methods).some(modelAuthMethodNeedsCliCredential)
+    uncoveredCliMethods(instance, imports).length > 0
   );
   if (!needsCredential) {
     return null;
@@ -78,6 +84,15 @@ export const resolveHostCliCredential = async (
   }
 };
 
+const uncoveredCliMethods = (
+  instance: ContainerReport["runtime_instances"][number], imports: RuntimeHomeImport[]
+): RuntimeHomeAuthMethod[] => Object.values(instance.model_auth_methods).filter(
+  (method): method is RuntimeHomeAuthMethod =>
+    (method === "codex" || method === "claude-code") &&
+    modelAuthMethodNeedsCliCredential(method, adapterManagedAuthMethods(instance.runtime)) &&
+    !(requestsRuntimeHomeImport(instance, method) && imports.some((imported) => imported.method === method))
+);
+
 const addCoveredModelSecrets = (
   coveredModelSecrets: Set<string>,
   instanceId: string,
@@ -97,6 +112,7 @@ export const prepareRuntimeAuthMounts = async (
   containerCredentialUid?: number
 ): Promise<PreparedRunAuth> => {
   // Adapters receive null profiles so they can handle runtime-owned credentials.
+  const reserveLoginVolume = createLoginVolumeReservation();
   const coveredModelSecrets = new Set<string>();
   let launchIdentity: RuntimeAuthPreparationResult["launchIdentity"];
   let credentialRuntime: string | undefined;
@@ -110,6 +126,7 @@ export const prepareRuntimeAuthMounts = async (
 
     const prepared = await adapter.prepareRuntimeAuth({
       authProfile,
+      reserveLoginVolume,
       ...(containerCredentialUid === undefined ? {} : { containerCredentialUid }),
       env,
       instance,
@@ -147,6 +164,7 @@ export const assertDeclaredModelAuthSatisfied = (
 
   for (const instance of containerReport.runtime_instances) {
     for (const method of Object.values(instance.model_auth_methods)) {
+      if (adapterManagedAuthMethods(instance.runtime)?.includes(method)) continue;
       const importKind = MODEL_AUTH_IMPORT_KINDS[method];
       if (importKind) {
         requiredImportKinds.add(importKind);
@@ -339,16 +357,20 @@ export const readRunEnvFile = async (
   }
 };
 
-export const resolveAuthMountArgs = async (
+export const prepareRunHomeAuth = async (
   containerReport: ContainerReport,
-  authProfile: ResolvedAuthProfile | null
-): Promise<string[]> => {
-  const args: string[] = [];
-  for (const { method, source, targets } of resolveRuntimeHomeImports(containerReport.runtime_instances, authProfile)) {
-    if (!(await fileExists(source))) {
-      throw new SpawnfileError("validation_error", `Imported auth path for ${method} does not exist: ${source}`);
+  authProfile: ResolvedAuthProfile | null,
+  env: Record<string, string>
+): Promise<Pick<PreparedRunAuth, "coveredModelSecrets" | "mountArgs">> => {
+  assertDeclaredModelAuthSatisfied(containerReport, authProfile, hasEnvValue(env, CLI_CREDENTIAL_SECRET_NAME));
+  const { imports, mountArgs } = await prepareRuntimeHomeImports(containerReport.runtime_instances, authProfile);
+  const coveredModelSecrets = new Set<string>();
+  for (const instance of containerReport.runtime_instances) {
+    if (instance.model_secrets_required.includes(CLI_CREDENTIAL_SECRET_NAME) &&
+        imports.some(({ method }) => requestsRuntimeHomeImport(instance, method)) &&
+        uncoveredCliMethods(instance, imports).length === 0) {
+      addCoveredModelSecrets(coveredModelSecrets, instance.id, [CLI_CREDENTIAL_SECRET_NAME]);
     }
-    for (const target of targets) args.push("-v", `${source}:${target}`);
   }
-  return args;
+  return { coveredModelSecrets, mountArgs };
 };

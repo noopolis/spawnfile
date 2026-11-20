@@ -687,7 +687,7 @@ Rules:
   - `auth`
   - `endpoint`
 - `execution.model.fallback` is OPTIONAL and declares an ordered list of fallback model targets.
-- Supported auth methods in v0.1 are: `api_key`, `claude-code`, `codex`, `none`.
+- The model auth methods are `api_key`, `claude-code`, `codex`, `grok`, `subscription`, and `none`. With `subscription`, the adapter selects a native login for the declared provider. Each adapter validates the provider and method together.
 - If a model target declares `auth`, it MUST declare `auth.method`.
 - `auth.key` is OPTIONAL and MAY only be used with `auth.method: api_key`.
 - For built-in providers, if inline `auth` is omitted, the effective auth method defaults to `api_key`.

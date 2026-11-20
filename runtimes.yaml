@@ -48,15 +48,24 @@ runtimes:
 
   hermes-agent:
     remote: git@github.com:NousResearch/hermes-agent.git
-    ref: v2026.6.5
+    ref: v0.23.3
     default_branch: main
-    status: exploratory
+    install:
+      kind: container_image
+      image: docker.io/nousresearch/hermes-agent
+      tag: v0.23.3
+      digest: sha256:3e9fe4c6ef36490f43aa0d0d80f9df64e9c92a576eee3042f1a97c8813c05355
+    status: active
 
   opencode:
     remote: git@github.com:anomalyco/opencode.git
-    ref: v1.16.2
+    ref: v1.19.6
     default_branch: dev
-    status: exploratory
+    install:
+      kind: npm
+      package: opencode-ai
+      version: 1.19.6
+    status: active
 
   openfang:
     remote: git@github.com:RightNow-AI/openfang.git

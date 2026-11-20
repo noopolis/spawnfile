@@ -14,7 +14,7 @@ export type { RuntimeInstallSelection } from "./install.js";
 export type { RuntimeInstallRecipe } from "./container.js";
 export type {
   AdapterCompileResult, ContainerTarget, ContainerTargetInput, EmittedFile,
-  RuntimeAdapter, RuntimeAgentScaffold, RuntimeContainerMeta, RuntimeWiring
+  RuntimeAdapter, RuntimeAgentScaffold, RuntimeCompileContext, RuntimeContainerMeta, RuntimeWiring
 } from "./types.js";
 export type { EffectiveModelTarget, ResolvedAgentNode, ResolvedTeamNode } from "../compiler/types.js";
 export { createAcpStdioWiring, createMoltnetWorkspace, type AcpStdioWiringOptions } from "./portableMoltnetWiring.js";
@@ -25,6 +25,7 @@ export type {
 } from "./wiringTypes.js";
 export type { RuntimeHostIntegration } from "./hostTypes.js";
 export type { RuntimeTrainingCapability, RuntimeTrainingRunOptions, RuntimeTrainingJudgeOptions } from "./trainingTypes.js";
+export { nativeLoginCapability, nativeLoginVolume, type NativeLoginFlow } from "./nativeLogin.js";
 export { nativeTrainingCapability } from "./nativeTraining.js";
 export type { NativeTrainingDriver, NativeTrainingInstance, NativeTrainingReply, NativeTrainingTurn } from "./nativeTraining.js";
 export type { RuntimeOperations, RuntimeRecordingOperations, RuntimeRecordingReader } from "./operations.js";

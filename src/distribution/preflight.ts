@@ -1,4 +1,5 @@
-import { runtimeHost } from "../runtime/hostSelection.js";
+import { adapterManagedAuthMethods, runtimeHost } from "../runtime/hostSelection.js";
+import { requestsRuntimeHomeImport } from "../runtime/runtimeHomeImports.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type {
@@ -7,9 +8,10 @@ import type {
 } from "./types.js";
 
 const ENV_BASED_AUTH_METHODS = new Set(["api_key", "none"]);
+const CLI_CREDENTIAL_SECRET = "SPAWNFILE_CLI_AUTH_JSON";
 // Import-based auth methods are satisfiable sourceless when the consumer has the
 // matching local credential import (their logged-in Claude Code / Codex session).
-const IMPORT_AUTH_METHOD_KINDS: Record<string, string> = {
+const IMPORT_AUTH_METHOD_KINDS: Record<string, "claude-code" | "codex"> = {
   "claude-code": "claude-code",
   codex: "codex"
 };
@@ -32,17 +34,30 @@ const collectUnsupportedAuth = (
   const unsupported: Array<{ instance: string; method: string; provider: string; runtime: string }> = [];
   for (const instance of report.runtime_instances) {
     for (const [provider, method] of Object.entries(instance.model_auth_methods)) {
-      if (ENV_BASED_AUTH_METHODS.has(method) || runtimeHost(instance.runtime)?.handlesImageModelAuth?.(method)) {
+      if (ENV_BASED_AUTH_METHODS.has(method) || adapterManagedAuthMethods(instance.runtime)?.includes(method) || runtimeHost(instance.runtime)?.handlesImageModelAuth?.(method)) {
         continue;
       }
       const importKind = IMPORT_AUTH_METHOD_KINDS[method];
-      if (importKind && availableImports.has(importKind)) {
+      if (importKind && availableImports.has(importKind) && requestsRuntimeHomeImport(instance, importKind)) {
         continue;
       }
       unsupported.push({ instance: instance.id, method, provider, runtime: instance.runtime });
     }
   }
   return unsupported;
+};
+
+const importsCoverCliSecret = (report: DistributionReport, availableImports: Set<string>): boolean => {
+  const recipients = report.runtime_instances.filter((instance) =>
+    instance.model_secrets_required.includes(CLI_CREDENTIAL_SECRET));
+  return recipients.length > 0 && recipients.every((instance) => {
+    if (!instance.home_path) return false;
+    const methods = Object.values(instance.model_auth_methods)
+      .filter((method) => !adapterManagedAuthMethods(instance.runtime)?.includes(method))
+      .flatMap((method) => IMPORT_AUTH_METHOD_KINDS[method] ?? []);
+    return methods.length > 0 && methods.every((method) =>
+      availableImports.has(method) && requestsRuntimeHomeImport(instance, method));
+  });
 };
 
 export const runImagePreflight = (input: PreflightInput): PreflightResult => {
@@ -71,7 +86,8 @@ export const runImagePreflight = (input: PreflightInput): PreflightResult => {
         generatedSecrets.add(entry.name);
         continue;
       }
-      if (entry.required) {
+      if (entry.required && !(category === "model" && entry.name === CLI_CREDENTIAL_SECRET &&
+          importsCoverCliSecret(report, availableImports))) {
         requiredSecrets.add(entry.name);
       }
     }

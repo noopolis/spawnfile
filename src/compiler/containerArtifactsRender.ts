@@ -10,8 +10,7 @@ import {
 import { createRuntimeInstallRecipe } from "../runtime/index.js";
 import type {
   EmittedFile,
-  RuntimeContainerPackageOverrides,
-  RuntimeInstallRecipe
+  RuntimeContainerPackageOverrides
 } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -22,6 +21,7 @@ import type {
 import type { EntrypointOptions } from "./containerEntrypointRender.js";
 export { renderEntrypoint } from "./containerEntrypointRender.js";
 export type { EntrypointOptions } from "./containerEntrypointRender.js";
+import { selectContainerBaseImage } from "./containerBaseImage.js";
 import { createStateOwnershipCommand } from "./containerStateOwnershipRender.js";
 import type { BackedMountRequirement } from "./containerBackedMountRender.js";
 import { MOLTNET_BIN_DIRECTORY, MOLTNET_BINARY_NAMES } from "./moltnetBinaries.js";
@@ -41,34 +41,6 @@ const GATEWAY_PORT_PLACEHOLDER = "<gateway-port>";
 const WORKSPACE_PLACEHOLDER = "<workspace-path>";
 const RUNTIME_ROOT_PLACEHOLDER = "<runtime-root>";
 const shellQuote = (value: string): string => `'${value.replace(/'/g, `'\"'\"'`)}'`;
-
-const extractNodeMajorVersion = (image: string): number =>
-  Number(image.match(/^node:(\d+)/)?.[1] ?? "0");
-
-const selectBaseImage = (
-  runtimePlans: RuntimeTargetPlan[],
-  runtimeRecipes: RuntimeInstallRecipe[]
-): string => {
-  const recipeBaseImages = [
-    ...new Set(runtimeRecipes.flatMap((recipe) => recipe.baseImage ? [recipe.baseImage] : []))
-  ];
-  if (recipeBaseImages.length === 1 && runtimePlans.length === runtimeRecipes.length) {
-    return recipeBaseImages[0]!;
-  }
-
-  const firstRuntimeMeta = runtimePlans[0]?.meta;
-
-  if (runtimePlans.length <= 1) {
-    return firstRuntimeMeta?.standaloneBaseImage ?? "debian:bookworm-slim";
-  }
-
-  const nodeBaseImages = runtimePlans
-    .map((plan) => plan.meta.standaloneBaseImage)
-    .filter((image) => image.startsWith("node:"))
-    .sort((left, right) => extractNodeMajorVersion(right) - extractNodeMajorVersion(left));
-
-  return nodeBaseImages[0] ?? "debian:bookworm-slim";
-};
 
 export const renderEnvExample = (variables: ContainerEnvVariable[]): string => {
   if (variables.length === 0) {
@@ -129,7 +101,11 @@ export const renderDockerfile = async (
   const recipeByRuntimeName = new Map(
     runtimeRecipes.map((recipe) => [recipe.runtimeName, recipe])
   );
-  const baseImage = selectBaseImage(runtimePlans, runtimeRecipes);
+  const baseImage = selectContainerBaseImage(runtimePlans.map(plan => plan.meta.standaloneBaseImage), runtimeRecipes);
+  const usesPrebuiltBase = (runtime: string) => {
+    const recipe = recipeByRuntimeName.get(runtime);
+    return (recipe?.requiredBaseImage ?? recipe?.baseImage) === baseImage;
+  };
   const needsJsonEnvWriter = runtimePlans.some(
     (plan) => (plan.configEnvBindings?.length ?? 0) > 0
   ) || (options.moltnet?.nodePlans.length ?? 0) > 0
@@ -141,7 +117,7 @@ export const renderDockerfile = async (
   const checksManagedServer = options.moltnet?.serverPlans.some((plan) =>
     plan.mode === "managed" && plan.configPath && plan.port);
   const baseIncludesCurl = runtimePlans.some((plan) =>
-    recipeByRuntimeName.get(plan.runtimeName)?.baseImage === baseImage && plan.meta.systemDeps.includes("curl"));
+    usesPrebuiltBase(plan.runtimeName) && plan.meta.systemDeps.includes("curl"));
   const needsGit = runtimePlans.some((plan) =>
     (plan.resources ?? []).some((resource) => resource.kind === "git")
   );
@@ -149,7 +125,7 @@ export const renderDockerfile = async (
   const systemDeps = [
     ...new Set([
       ...runtimePlans.flatMap((plan) =>
-        recipeByRuntimeName.get(plan.runtimeName)?.baseImage
+        usesPrebuiltBase(plan.runtimeName)
           ? plan.meta.systemDeps.filter((dependency) =>
               runtimeHost(plan.runtimeName)?.prebuiltSystemDeps?.includes(dependency) ?? false
             )

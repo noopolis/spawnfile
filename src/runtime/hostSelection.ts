@@ -5,6 +5,9 @@ import type { RuntimeHostIntegration, RuntimeHostSecret } from "./hostTypes.js";
 export const runtimeHost = (name: string): RuntimeHostIntegration | undefined =>
   hasRuntimeAdapter(name) ? getRuntimeAdapter(name).host : undefined;
 
+export const adapterManagedAuthMethods = (name: string) =>
+  hasRuntimeAdapter(name) ? getRuntimeAdapter(name).container.adapterManagedAuthMethods : undefined;
+
 export const selectedRuntimeHosts = (names: Iterable<string>) =>
   [...new Set(names)].flatMap((name) => {
     const host = runtimeHost(name);

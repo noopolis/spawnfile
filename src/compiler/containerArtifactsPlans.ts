@@ -1,7 +1,7 @@
 import type { Secret } from "../manifest/index.js";
 import { createRuntimeInstallRecipe, getRuntimeAdapter } from "../runtime/index.js";
 import { resolveNoopolisRunId } from "../runtime/index.js";
-import { runtimeHost } from "../runtime/hostSelection.js";
+import { adapterManagedAuthMethods, runtimeHost } from "../runtime/hostSelection.js";
 import type { ContainerTargetInput } from "../runtime/index.js";
 
 import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
@@ -71,7 +71,8 @@ export const createEnvVariableMap = (
     if (node.value.kind === "agent") {
       for (const secret of node.value.secrets) registerSecret(secret);
       if (node.runtimeName === null || !runtimeHost(node.runtimeName)?.ownsModelCredentials) {
-        for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
+        const adapterMethods = node.runtimeName ? adapterManagedAuthMethods(node.runtimeName) : undefined;
+        for (const secretName of listExecutionModelSecretNames(node.value.execution, adapterMethods)) {
           register(secretName, true, `Model provider auth for ${secretName}`, "model");
         }
       }
@@ -176,8 +177,8 @@ export const createRuntimeTargetPlans = async (
         instancePaths,
         meta: adapter.container,
         modelAuthMethods: adapter.host?.ownsModelCredentials ? {} : resolveTargetModelAuthMethods(target, targetInputs),
-        modelSecretsRequired: adapter.host?.ownsModelCredentials ? [] : resolveTargetModelSecrets(target, targetInputs),
-        ...(target.opaqueMountTargets ? { opaqueMountTargets: [...target.opaqueMountTargets].sort() } : {}),
+        modelSecretsRequired: adapter.host?.ownsModelCredentials ? [] : resolveTargetModelSecrets(target, targetInputs, adapter.container.adapterManagedAuthMethods),
+        ...(target.opaqueMountTargets ? { opaqueMountTargets: target.opaqueMountTargets.map(mount => mount.replaceAll("<instance-root>", instancePaths.instanceRoot)).sort() } : {}),
         ...(target.persistentMounts ? { persistentMounts: target.persistentMounts.map((mount) => ({
           id: mount.id,
           ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),
