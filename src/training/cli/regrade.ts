@@ -2,11 +2,20 @@ import { randomUUID } from 'node:crypto';
 import { graderProvider } from '../contracts/index.js';
 import { createEvaluationRegistry, validateJudgeTemplate } from '../evaluation/index.js';
 import { readTrialEval, rescoreWithCriteria } from '../experiments/replay/index.js';
-import { decisionModels } from '../graders/index.js';
+import { decisionModels, type Grader } from '../graders/index.js';
+import type { AtomicGrader } from '../graders/atomic/index.js';
 import { judgeCitationRepairs, pairs } from './arguments.js';
 import { CliDatasets } from './datasets.js';
 import { authoredArguments, createTrainingInference, judgeVersions } from './training/index.js';
 import type { CliDependencies, CliIO } from './types.js';
+
+/** Only teachers used for a decision or reachable through escalation need their host. */
+export function graderHostProviders(grader: Grader | Pick<AtomicGrader, 'extractor'>, escalation: boolean): string[] {
+  if ('extractor' in grader) return [graderProvider(grader.extractor.provider).inferenceProviderId];
+  const teachers = new Set(decisionModels(grader).flatMap(model => model.backend === 'teacher' ? [model.teacher] : []));
+  if (escalation) teachers.add(grader.escalate.to);
+  return grader.teachers.filter(teacher => teachers.has(teacher.id)).map(teacher => graderProvider(teacher.provider).inferenceProviderId);
+}
 
 /** Bind only the grading services needed by the selected captured record. */
 export async function regradeWithDataset(file: string, criteria: string, io: CliIO,
@@ -33,12 +42,7 @@ export async function regradeWithDataset(file: string, criteria: string, io: Cli
   }
   const graders = await loader.buildGraders();
   for (const runtime of Object.values(graders)) {
-    if ('kind' in runtime) providers.add(graderProvider(runtime.grader.extractor.provider).inferenceProviderId);
-    else {
-      const teachers = new Set(decisionModels(runtime.grader).flatMap(model => model.backend === 'teacher' ? [model.teacher] : []));
-      if (runtime.teacher) teachers.add(runtime.grader.escalate.to);
-      for (const teacher of runtime.grader.teachers) if (teachers.has(teacher.id)) providers.add(graderProvider(teacher.provider).inferenceProviderId);
-    }
+    for (const id of graderHostProviders(runtime.grader, 'teacher' in runtime && Boolean(runtime.teacher))) providers.add(id);
   }
   const host = await openJudges([...providers]);
   try {

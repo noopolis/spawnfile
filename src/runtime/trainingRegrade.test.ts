@@ -10,6 +10,7 @@ import { writeTrialEval } from "../training/experiments/replay/index.js";
 import { runCli } from "../cli/runCli.js";
 import { contentDigest, openExperimentStore, readTrialEval, runStoredTrial, snapshotCandidate, storedJsonDigest } from "../training/index.js";
 import { complete, setup } from "../training/experiments/trials/fixture.js";
+import { fixture as atomicFixture } from "../../fixtures/support/training/graderAtomicFixtures.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -240,22 +241,66 @@ it('grades the implicit reply through the authored grader and original tool evid
   expect(fetch).toHaveBeenCalledOnce();
 });
 
-it('uses only the named judge with the captured reply and refuses a missing subscription profile', async () => {
+it.each([false, true])('uses the named judge and requires its subscription profile, with fallback %s', async fallback => {
   const f = await recorded();
   await writeFile(f.dataset, criteria([trace, { id: 'reader', eval: 'llm-rubric', input: 'artifact:reply#/headline',
     judge: 'editor', rubric: { prompt: 'Grade the headline.' }, minimum: 0.8 }], {
-    models: { reader: { provider: 'codex-subscription', model: 'test-reader' }, writer: { provider: 'ollama', model: 'unused' } },
-    judges: { editor: { model: 'reader' } }, optimizer: { model: 'writer' } }));
+    models: { reader: { provider: 'codex-subscription', model: 'test-reader' }, backup: { provider: 'ollama', model: 'backup' },
+      writer: { provider: 'ollama', model: 'unused' } },
+    judges: { editor: { model: 'reader', ...(fallback ? { fallbacks: ['backup'], template: { language: 'jinja', text: '{{ rubric }}' } } : {}) } },
+    optimizer: { model: 'writer' } }));
   const generate = vi.fn(async () => ({ model: 'test-reader', route: 'fixture', usage: null, text: JSON.stringify({
     score: 1, verdict: 'pass', reasons: ['Accurate'], citations: [{ source: 'input', quote: 'ARTICLE' }] }) }));
   const provider = vi.fn(() => ({ id: 'fixture', capabilities: { tools: 'disabled' as const, billing: 'subscription' as const,
     temperature: false, seed: false }, generate }));
-  expect(await runCli(f.args, { ...f, handlers: { ...f.handlers, runTrainingRegrade: options => regradeTraining({ ...options, provider }) } }),
+  const close = vi.fn(async () => {});
+  const openJudges = vi.fn(async () => ({ close }));
+  expect(await runCli(f.args, { ...f, handlers: { ...f.handlers, runTrainingRegrade: options => regradeTraining({ ...options, provider, openJudges }) } }),
     f.lines.join('\n')).toBe(0);
-  expect(provider).toHaveBeenCalledTimes(1);
+  expect(provider).toHaveBeenCalledTimes(fallback ? 2 : 1);
   expect(provider).toHaveBeenCalledWith(expect.objectContaining({ model: 'test-reader' }), expect.any(Number));
+  expect(openJudges).toHaveBeenCalledWith(fallback ? ['codex-subscription', 'ollama'] : ['codex-subscription'], expect.anything());
+  expect(close).toHaveBeenCalledOnce();
   expect(generate).toHaveBeenCalledOnce();
   expect(f.forbidden).not.toHaveBeenCalled();
   expect(await runCli(f.args, f)).not.toBe(0);
   expect(f.lines.join('\n')).toContain('--auth-profile');
+});
+
+it('binds a command-line judge to the configured default host before any inference', async () => {
+  const f = await recorded();
+  await writeFile(f.dataset, criteria([{ id: 'grade', eval: 'llm-rubric', input: 'output.text',
+    judge: 'editor', rubric: { prompt: 'Grade the answer.' }, minimum: 0.5 }]));
+  const discovered = vi.fn<NonNullable<Parameters<typeof regradeTraining>[0]['openJudges']>>(async (ids, composition) => {
+    expect(ids).toEqual([composition.registry.defaultProviderId]);
+    throw new Error('Host selection verified');
+  });
+  await expect(regradeTraining({ manifest: f.file, train: f.dataset, out: f.out, judges: ['editor=local-fixture'],
+    streams: f.streams, signal: new AbortController().signal, openJudges: discovered })).rejects.toThrow('Host selection verified');
+  expect(discovered).toHaveBeenCalledOnce();
+  expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it('opens only the declared atomic extractor host for a captured artifact', async () => {
+  const f = await recorded(), { templates } = await atomicFixture();
+  await writeFile(path.join(f.root, 'templates.yaml'), JSON.stringify(templates));
+  await writeFile(path.join(f.root, 'atomic.json'), JSON.stringify({
+    schema: 'spawnfile.training.atomic-grader.v1', id: 'atomic', templates: 'templates.yaml',
+    extractor: { provider: 'codex', model: 'fixture' }, decision: { backend: 'typesafe', model: 'jev-1.0.0', max_spend_usd: 1 },
+    missing: 'unknown', aggregation: { method: 'gates-times-coverage-times-quality', critical_pass_at: 0.8, pass_at: 0.5,
+      obligation_kinds: ['claim'], dimensions: { facts: { weight: 1, budget: 2 } }, penalties: { critical: 1, major: 0.5, minor: 0.1 } }
+  }));
+  await writeFile(f.dataset, criteria([{ id: 'atomic', eval: 'grader', grader: 'atomic.json', input: 'artifact:reply',
+    context: { evidence: 'context:origin' } }]));
+  vi.stubEnv('TYPESAFE_API_KEY', 'offline-test');
+  const fetch = vi.fn(() => { throw Error('Unexpected model request'); });
+  vi.stubGlobal('fetch', fetch);
+  const openJudges = vi.fn<NonNullable<Parameters<typeof regradeTraining>[0]['openJudges']>>(async ids => {
+    expect(ids).toEqual(['codex-subscription']);
+    throw Error('Extractor host selected');
+  });
+  await expect(regradeTraining({ manifest: f.file, train: f.dataset, out: f.out, streams: f.streams, openJudges }))
+    .rejects.toThrow('Extractor host selected');
+  expect(openJudges).toHaveBeenCalledOnce();
+  expect(fetch).not.toHaveBeenCalled();
 });
