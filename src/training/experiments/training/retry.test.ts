@@ -32,7 +32,8 @@ async function fixture(editable = true): Promise<{ options: TrainingOptions; eve
   const events: { type: string; payload: unknown }[] = [];
   const options: TrainingOptions = {
     id: 'training', baseline, train: dataset('train', [['Alpha', 'a'], ['Beta', 'b']]), test: dataset('test', [['Gamma', 'c']]),
-    native: { store, storeRoot, root: join(root, 'trials'), model: 'test-model', timeoutMs: 2_000,
+    // Deadline cases set their own short limit. Allow the suite's full 15 seconds for other trials.
+    native: { store, storeRoot, root: join(root, 'trials'), model: 'test-model', timeoutMs: 15_000,
       registry: createEvaluationRegistry(), evaluation: { judges: {}, embeddings: {}, readText: async () => '' },
       adapter: { id: 'deterministic-test', capabilities: { toolTrace: 'none', liveObservations: true, cancellation: 'native-handle',
         multiTurn: false, resources: ['instructions'], isolation: 'test facade', readIsolation: 'declared-paths', protectedPaths: true },
