@@ -157,7 +157,7 @@ Support levels:
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
 | `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit nonempty tool allowlists; stdio commands must be absolute and remote bearer secrets remain env-name references |
-| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Degraded/declared only in Phase A; no Spawnfile memory lowering enters the public config |
+| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Direct Mneme tools on one durable file-backed bank per agent |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; the generic runtime image and physical roots provide isolation |
 | `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; the public host runs listed agents independently |
 
@@ -195,17 +195,39 @@ persisted, searchable, and policy-enforced.
 
 | Dimension | OpenClaw | PicoClaw | Daimon |
 |-----------|----------|----------|--------|
-| Store lowering (`sqlite`, `json`) | Supported through generated Mneme MCP servers | Supported through generated Mneme MCP servers | Declared only in Phase A; no memory tool is lowered |
+| Store lowering (`sqlite`, `json`) | Supported through generated Mneme MCP servers | Supported through generated Mneme MCP servers | One selected durable bank mounted as the agent's Mneme home |
 | Store lowering (`postgres`) | Reported by DSN secret name only; runtime tools are not wired in v0.1 | Reported by DSN secret name only; generated Mneme MCP is not emitted in v0.1 | Reported by DSN secret name only; runtime tools are not wired in v0.1 |
 | Durable persistent mounts | Compiler-owned | Compiler-owned | Compiler-owned |
-| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported through generated PicoClaw MCP for file stores in awake and dream modes | Not lowered in Phase A |
-| Principal/scope enforcement | Enforced by Mneme MCP context generated from runtime config | Enforced by Mneme MCP context generated from runtime config | Not lowered in Phase A |
+| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported through generated PicoClaw MCP for file stores in awake and dream modes | The Pi harness installs Mneme tools for the active wake mode |
+| Principal/scope enforcement | Enforced by Mneme MCP context generated from runtime config | Enforced by Mneme MCP context generated from runtime config | Mneme checks the active agent, bank, and scope on each tool call |
 | Lexical index | Reported | Supported/default through Mneme | Supported/default through Mneme |
-| Vector index | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Mneme MCP when `provider: ollama` is configured | Declared only in Phase A |
+| Vector index | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Mneme MCP when `provider: ollama` is configured | Degraded to lexical recall |
 | Graph/temporal index | Optional/degraded unless configured | Optional/degraded unless configured | Optional/degraded unless configured |
-| Scheduled consolidation / dream mode | Supported through generated isolated OpenClaw cron jobs and dream-mode Mneme MCP for file stores | Supported through generated PicoClaw cron jobs and dream-mode Mneme MCP for file stores | Not lowered in Phase A |
+| Scheduled consolidation / dream mode | Supported through generated isolated OpenClaw cron jobs and dream-mode Mneme MCP for file stores | Supported through generated PicoClaw cron jobs and dream-mode Mneme MCP for file stores | Independent native dream schedule on the selected bank when supported by the image |
 | Activity/audit events | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Daimon host activity only; no Spawnfile memory activity lowering |
 | Raw memory visibility to runtime files | Must be denied | Must be denied | Must be denied |
+
+For example, this declaration requests a daily dream at 03:00 UTC on a Daimon
+agent's bank. An interval such as `6h` also works.
+
+```yaml
+memory:
+  - id: notes
+    store:
+      kind: json
+      path: /var/lib/spawnfile/memory/notes/events.jsonl
+      persistence: { mode: durable }
+    consolidation:
+      mode: scheduled
+      schedule: "0 3 * * *"
+```
+
+Each dream opens a fresh Mneme session on that bank. The agent's top-level
+`schedule` continues to control its normal work. The published Daimon 0.2.25
+image supports ordinary work and awake memory. Its compile report marks
+scheduled consolidation as degraded. Selecting a local image built from the
+dream-capable Daimon source enables both schedules. Isolated training trials
+retain the bank and disable scheduled consolidation.
 
 If a runtime exposes a live memory tool but cannot preserve scope/principal
 enforcement, the memory bank is `unsupported`, not merely degraded. A runtime

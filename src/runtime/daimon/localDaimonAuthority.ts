@@ -4,7 +4,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { SpawnfileError } from "../../shared/index.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
+import { isSupportedDaimonManifestDigest, type DaimonManifestDigest } from "./contractManifest.js";
 
 export const DAIMON_LOCAL_RUNTIME_IDENTITY_ENV =
   "SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY";
@@ -50,7 +50,7 @@ export interface LocalDaimonRuntimeIdentity {
   imageConfigDigest: string;
   imageManifestDigest: string;
   imageReference: string;
-  manifestSha256: string;
+  manifestSha256: DaimonManifestDigest;
   registryAuthority: string;
 }
 
@@ -83,7 +83,7 @@ export const loadLocalDaimonRuntimeIdentity = async (
   }
 
   const parsed = localDaimonRuntimeIdentitySchema.safeParse(value);
-  if (!parsed.success || parsed.data.manifest_sha256 !== DAIMON_CONTRACT_MANIFEST_SHA256) {
+  if (!parsed.success || !isSupportedDaimonManifestDigest(parsed.data.manifest_sha256)) {
     return fail("Local Daimon runtime identity is invalid or incomplete");
   }
 

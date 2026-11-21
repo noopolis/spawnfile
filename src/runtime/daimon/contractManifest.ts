@@ -12,6 +12,13 @@ export const DAIMON_CONTRACT_MANIFEST_VERSION =
   "noopolis.daimon.runtime-contract-manifest.v7" as const;
 export const DAIMON_CONTRACT_MANIFEST_SHA256 =
   "sha256:534ed1b375f7cc97056c16cea61cd89659b5d6286370f10c81871f8a1c1916bd" as const;
+/** The compatible v2 manifest that also declares memory.dreamSchedule. */
+export const DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256 =
+  "sha256:69a165a93bb1b82e2f83957c56ba851cf17e622fdf0769341615b36fbbac387f" as const;
+
+export type DaimonManifestDigest = typeof DAIMON_CONTRACT_MANIFEST_SHA256 | typeof DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256;
+export const isSupportedDaimonManifestDigest = (value: string | undefined): value is DaimonManifestDigest =>
+  value === DAIMON_CONTRACT_MANIFEST_SHA256 || value === DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256;
 export const DAIMON_CONTRACT_MANIFEST_FILE = "contract-manifest.json";
 export const DAIMON_CONTRACT_MANIFEST_DIGEST_FILE = "contract-manifest.sha256";
 export const DAIMON_RUNTIME_HOME_ROOT = "/var/lib/spawnfile/instances/daimon";

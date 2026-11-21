@@ -32,6 +32,7 @@ import { DAIMON_ENGINE_DESCRIPTORS, DAIMON_BROKER_ENGINE_ID, getDaimonEngineDesc
 import { resolveDaimonGrokModel } from "./grokModel.js";
 import { prepareDaimonRuntimeAuth } from "./runAuth.js";
 import { hasDaimonScheduleAuthority } from "./scheduleAuthority.js";
+import { resolveDaimonMemoryConsolidation } from "./memory.js";
 import { resolveDaimonAttention } from "./attention.js";
 import { resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
 import { daimonOperations } from "./operations.js";
@@ -214,24 +215,27 @@ class DaimonRuntimeAdapter extends RuntimeAdapterBase {
     const scheduleCapability = await scheduleCapabilityFor(node);
     const memorySelectionWarning = daimonMemorySelectionWarning(node);
     const memoryVectorWarning = daimonMemoryVectorRecallWarning(node);
+    const consolidation = await resolveDaimonMemoryConsolidation(node);
     const workspaceRestrictionWarning = daimonWorkspaceRestrictionWarning(node);
     const codexPolicyError = daimonCodexPolicyError(node);
     const grokSkillsError = daimonGrokSkillsError(node, resolveDaimonEngine(node));
     return {
-      capabilities: createAgentCapabilities(node, {
+      capabilities: [...createAgentCapabilities(node, {
         mcpOutcome: "supported",
         moltnetMessage: "Daimon exposes one scoped authenticated send tool during real cognition turns",
         moltnetOutcome: "supported",
         ...daimonMemoryCapabilityFor(node),
         scheduleMessage: scheduleCapability.message,
         scheduleOutcome: scheduleCapability.outcome
-      }),
+      }), ...consolidation.capabilities],
       diagnostics: [
         ...(node.execution?.sandbox
           ? [createDiagnostic("warn", "Daimon runtime isolation is enforced by the selected runtime image")]
           : []),
         ...(memorySelectionWarning ? [createDiagnostic("warn", memorySelectionWarning)] : []),
         ...(memoryVectorWarning ? [createDiagnostic("warn", memoryVectorWarning)] : []),
+        ...consolidation.capabilities.filter(({ outcome }) => outcome === "degraded")
+          .map(({ message }) => createDiagnostic("warn", message)),
         ...(workspaceRestrictionWarning ? [createDiagnostic("warn", workspaceRestrictionWarning)] : []),
         ...(codexPolicyError ? [createDiagnostic("error", codexPolicyError)] : []),
         ...(grokSkillsError ? [createDiagnostic("error", grokSkillsError)] : [])

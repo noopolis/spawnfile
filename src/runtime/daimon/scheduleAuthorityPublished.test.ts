@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256 } from "./contractManifest.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 const selection = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -9,7 +9,7 @@ vi.mock("../install.js", () => ({
   resolveRuntimeInstallSelection: async () => selection.current
 }));
 
-const { hasDaimonScheduleAuthority, assertDaimonScheduleAuthority } = await import("./scheduleAuthority.js");
+const { hasDaimonScheduleAuthority, hasDaimonDreamScheduleAuthority, assertDaimonScheduleAuthority } = await import("./scheduleAuthority.js");
 const { assertDaimonAttentionAuthority } = await import("./attention.js");
 const { daimonAdapter } = await import("./adapter.js");
 const { createDaimonTestNode } = await import("./testHelpers.js");
@@ -36,6 +36,17 @@ describe("published Daimon image authority", () => {
     await expect(hasDaimonScheduleAuthority()).resolves.toBe(true);
     selection.current = published({ capabilityReceipts: undefined, capabilityReceipt: digest("d") });
     await expect(hasDaimonScheduleAuthority()).resolves.toBe(true);
+  });
+
+  it.each([
+    [DAIMON_CONTRACT_MANIFEST_SHA256, false],
+    [DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256, true]
+  ] as const)("uses the memory schedule capability attested by %s", async (contractManifestSha256, canDream) => {
+    selection.current = published({ contractManifestSha256 });
+    await expect(hasDaimonScheduleAuthority()).resolves.toBe(true);
+    await expect(hasDaimonDreamScheduleAuthority()).resolves.toBe(canDream);
+    selection.current = published({ contractManifestSha256, capabilityReceipts: undefined });
+    await expect(hasDaimonDreamScheduleAuthority()).resolves.toBe(false);
   });
 
   it.each([

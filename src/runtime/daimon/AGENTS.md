@@ -149,8 +149,9 @@ AGY shares one native keyring authority.
 Memory lowering is `memory.ts`'s `resolveDaimonAgentMemory` (split out of
 `config.ts` to stay inside the 400-line source bound, and re-exported from
 `config.ts` so existing importers are unaffected). Daimon accepts one
-`memory` block per agent (`{ runtimeHomePath, source?, tokenBudget? }`, camelCase,
-no unknown keys), so this adapter picks a single declared bank deterministically
+`memory` block per agent with `runtimeHomePath`, optional `source` and `tokenBudget`,
+and optional `dreamSchedule` on a supporting v2 image. The adapter picks
+a single declared bank deterministically
 and emits it only when `resolveMnemeDurableMemoryMountPath` (`../mnemeMcp.ts`)
 says the compiler mounts a durable volume for it. That predicate is shared with
 `src/compiler/memoryArtifacts.ts` on purpose: a runtime home with no persistent
@@ -158,6 +159,11 @@ mount is absent or root-owned inside the container, so an in-process Mneme
 runtime pointed at one fails its first write. Everything else -- postgres,
 in-process `memory` stores, ephemeral persistence, or a second declared bank --
 stays a `degraded` memory capability with no emitted block.
+
+The selected bank's scheduled consolidation is independent of the agent's
+ordinary work schedule. `schedules.ts` normalizes intervals and cron expressions.
+`scheduleAuthority.ts` checks the selected image's manifest digest before the
+compiler emits a dream schedule. Keep the known earlier image on awake memory.
 
 That block carries no embedding configuration, and Daimon's CLI harness never
 sets `memory.embeddingProvider`, so vector recall does not exist on this
