@@ -4,9 +4,9 @@
 training core in-process. Spawnfile owns canonical source resolution, training
 authoring, native compilation, evaluation, cost planning, optimization and isolated trials.
 
-Spawnfile trains Daimon, OpenClaw and PicoClaw in isolated containers compiled
+Spawnfile trains Daimon, Hermes Agent, OpenClaw, OpenCode and PicoClaw in isolated containers compiled
 from the selected agent and candidate instructions. Daimon uses its wake API and
-a shared auth gateway for subscription access. OpenClaw and PicoClaw receive
+a shared auth gateway for subscription access. The other four runtimes receive
 tasks through their native agent commands with the compiled configuration.
 Spawnfile owns the grader and the evaluation file. Each adapter translates the
 evidence its runtime actually recorded. A dry run estimates costs on the host.
@@ -22,7 +22,8 @@ observations stay unknown. Live and per-turn checks retain their original
 results. [Portable trial files](../src/training/experiments/replay/README.md#portable-trial-files)
 
 OpenClaw can confirm a tool's result from its session. PicoClaw can match a
-tool start and finish. Daimon's Codex engine can report command and MCP tool
+tool start and finish. Hermes Agent emits structured events from `hermes chat`.
+OpenCode emits tool results from `opencode run --format json`. Daimon's Codex engine can report command and MCP tool
 activity. Its Grok and AGY engines can report which tools the model requested.
 Only recorded executions establish that a tool ran.
 

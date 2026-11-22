@@ -36,13 +36,12 @@ import {
 } from "./runProjectDocker.js";
 import { executeDockerRunWithSupportCleanup } from "./runProjectLifecycle.js";
 import {
-  assertDeclaredModelAuthSatisfied,
   assertMoltnetCredentialValuesDistinct,
   assertRunEnvironmentSatisfied,
+  prepareRunHomeAuth,
   prepareRuntimeAuthMounts,
   readRunEnvFile,
   renderDockerEnvFile,
-  resolveAuthMountArgs,
   resolveRunEnvironment
 } from "./runProjectAuth.js";
 
@@ -113,11 +112,6 @@ export const createDockerRunInvocation = async (
   const envFilePath = path.join(supportDirectory, "run.env");
 
   try {
-    assertDeclaredModelAuthSatisfied(
-      containerReport,
-      options.authProfile ?? null,
-      options.cliCredential !== undefined
-    );
     const env = resolveRunEnvironment(
       containerReport,
       options.authProfile ?? null,
@@ -126,7 +120,7 @@ export const createDockerRunInvocation = async (
         ...(options.cliCredential ? { [options.cliCredential.name]: options.cliCredential.value } : {})
       }
     );
-    const importedAuthMounts = await resolveAuthMountArgs(containerReport, options.authProfile ?? null);
+    const importedAuth = await prepareRunHomeAuth(containerReport, options.authProfile ?? null, env);
     const preparedRuntimeAuth = await prepareRuntimeAuthMounts(
       compileResult.outputDirectory,
       containerReport,
@@ -135,7 +129,7 @@ export const createDockerRunInvocation = async (
       supportDirectory,
       options.containerCredentialUid
     );
-    assertRunEnvironmentSatisfied(containerReport, env, preparedRuntimeAuth.coveredModelSecrets);
+    assertRunEnvironmentSatisfied(containerReport, env, new Set([...importedAuth.coveredModelSecrets, ...preparedRuntimeAuth.coveredModelSecrets]));
     assertMoltnetCredentialValuesDistinct(containerReport, env);
     const hosts = selectedRuntimeHosts(containerReport.runtime_instances.map((instance) => instance.runtime));
     const credentialHost = preparedRuntimeAuth.credentialRuntime
@@ -218,7 +212,7 @@ export const createDockerRunInvocation = async (
     if (deploymentLabels) appendDockerLabelArgs(args, deploymentLabels);
 
     args.push("--env-file", envFilePath);
-    args.push(...importedAuthMounts);
+    args.push(...importedAuth.mountArgs);
     args.push(...preparedRuntimeAuth.mountArgs);
     args.push(imageTag, ...(options.command ?? []));
 

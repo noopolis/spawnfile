@@ -20,6 +20,10 @@ export interface RuntimeInstallCapability {
   createRecipe(input: NativeInstallRecipeInput): RuntimeInstallRecipe | Promise<RuntimeInstallRecipe>;
 }
 
+/** Keep npm's executable and module paths stable on bases with a private Node prefix. */
+export const globalNpmInstallCommand = (specs: readonly string[]): string =>
+  `npm install -g --prefix /usr/local --omit=dev --no-fund --no-audit ${specs.join(" ")}`;
+
 export const createRuntimeImageCopyCommand = (
   imageRef: string,
   runtimeRoot: string

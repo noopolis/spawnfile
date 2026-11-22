@@ -3,33 +3,34 @@ import { describe, expect, it } from "vitest";
 import { assertRuntimeSupportsExecutionModelAuth } from "../compiler/modelAuth.js";
 import { executionSchema } from "../manifest/executionSchemas.js";
 
-import { getRuntimeAdapter, listRuntimeAdapters } from "./registry.js";
-
-const otherRuntimes = listRuntimeAdapters().filter((runtime) => runtime !== "daimon");
+import { getRuntimeAdapter } from "./registry.js";
 
 const codexTarget = {
   auth: { method: "codex" as const },
   name: "gpt-5.4-codex",
   provider: "openai"
 };
+const clawEffortError = /does not support reasoning_effort; only Daimon Codex and Grok engines support it on test-agent/u;
 
-describe.each(otherRuntimes)("%s reasoning effort boundary", (runtime) => {
+const effortCases = [
+  { runtime: "openclaw", primary: codexTarget, error: clawEffortError },
+  { runtime: "picoclaw", primary: codexTarget, error: clawEffortError }
+];
+
+describe.each(effortCases)("$runtime reasoning effort boundary", ({ runtime, primary, error }) => {
   it.each(["primary", "fallback"])("refuses reasoning_effort on the %s model", (slot) => {
     const withEffort = { ...codexTarget, reasoning_effort: "high" };
     const execution = executionSchema.parse({
       model: slot === "primary"
         ? { primary: withEffort }
-        : { primary: codexTarget, fallback: [withEffort] }
+        : { primary, fallback: [withEffort] }
     });
     expect(() => assertRuntimeSupportsExecutionModelAuth(runtime, execution, "test-agent"))
-      .toThrow(expect.objectContaining({
-        code: "validation_error",
-        message: expect.stringMatching(/does not support reasoning_effort; only Daimon Codex and Grok engines support it on test-agent/u)
-      }));
+      .toThrow(expect.objectContaining({ code: "validation_error", message: expect.stringMatching(error) }));
   });
 
-  it("keeps Codex targets without effort supported", () => {
-    expect(() => getRuntimeAdapter(runtime).assertSupportedModelTarget(codexTarget)).not.toThrow();
+  it("accepts the supported primary credential without effort", () => {
+    expect(() => getRuntimeAdapter(runtime).assertSupportedModelTarget(primary)).not.toThrow();
   });
 
   it("refuses effort before endpoint auth can return early", () => {
@@ -39,6 +40,15 @@ describe.each(otherRuntimes)("%s reasoning effort boundary", (runtime) => {
       name: "local-model",
       provider: "local",
       reasoningEffort: "low"
-    })).toThrow(/does not support reasoning_effort/u);
+    })).toThrow(/reasoning_effort/u);
   });
+});
+
+
+it.each(["hermes-agent", "opencode"])("%s accepts explicit supported Codex effort on its native route", runtime => {
+  const execution = executionSchema.parse({ model: { primary: { ...codexTarget, reasoning_effort: "high" } } });
+  expect(() => assertRuntimeSupportsExecutionModelAuth(runtime, execution, "test-agent")).not.toThrow();
+  expect(() => getRuntimeAdapter(runtime).assertSupportedModelTarget({
+    ...codexTarget, auth: { method: "api_key" }, reasoningEffort: "high"
+  })).toThrow(/reasoning_effort/u);
 });

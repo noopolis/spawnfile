@@ -86,6 +86,16 @@ describe("initProject", () => {
     expect(loadedManifest.manifest.execution?.sandbox).toBeUndefined();
   });
 
+  it.each(["hermes-agent", "opencode"])("scaffolds %s with its native ChatGPT route", async runtime => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-native-init-"));
+    temporaryDirectories.push(directory);
+    await initProject({ directory, runtime });
+    const { manifest } = await loadManifest(path.join(directory, "Spawnfile"));
+    expect(manifest).toMatchObject({ runtime, workspace: { docs: { system: "AGENTS.md" } },
+      execution: { model: { auth: { method: "codex" }, primary: { provider: "openai", name: "gpt-5.4" } } } });
+    await expect(readUtf8File(path.join(directory, "AGENTS.md"))).resolves.toContain("Agent instructions");
+  });
+
   it("scaffolds a team project", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-team-init-"));
     temporaryDirectories.push(directory);

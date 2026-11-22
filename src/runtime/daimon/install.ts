@@ -6,7 +6,7 @@ import { createRuntimeImageCopyCommand } from "../containerRecipe.js";
 import type { RuntimeInstallSelection } from "../install.js";
 import type { RuntimeCapabilityReceipts } from "../registry.js";
 import { DAIMON_WAKE_FUSE_DIRECTORY, DAIMON_WAKE_FUSE_DIRECTORY_ENV } from "./config.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256 } from "./contractManifest.js";
+import { isSupportedDaimonManifestDigest, type DaimonManifestDigest } from "./contractManifest.js";
 import { createDaimonInstallCommands } from "./daimonInstall.js";
 import { DAIMON_LOCAL_RUNTIME_IDENTITY_ENV, loadLocalDaimonRuntimeIdentity } from "./localDaimonAuthority.js";
 
@@ -42,7 +42,7 @@ const LEGACY_DAIMON_RUNTIME_CAPABILITY_RECEIPT_ENV =
  */
 const resolveDaimonRuntimeImageRef = async (
   selection: RuntimeInstallSelection
-): Promise<{ capabilityReceipt: string | RuntimeCapabilityReceipts; image: string }> => {
+): Promise<{ capabilityReceipt: string | RuntimeCapabilityReceipts; image: string; manifestSha256: DaimonManifestDigest }> => {
   if (
     selection.kind !== "container_image" ||
     !selection.digest ||
@@ -68,9 +68,9 @@ const resolveDaimonRuntimeImageRef = async (
   const identityPath = process.env[DAIMON_LOCAL_RUNTIME_IDENTITY_ENV]?.trim();
   if (identityPath) {
     const identity = await loadLocalDaimonRuntimeIdentity(identityPath);
-    return { capabilityReceipt: identity.capabilityReceipt, image: identity.imageReference };
+    return { capabilityReceipt: identity.capabilityReceipt, image: identity.imageReference, manifestSha256: identity.manifestSha256 };
   }
-  if (selection.contractManifestSha256 !== DAIMON_CONTRACT_MANIFEST_SHA256) {
+  if (!isSupportedDaimonManifestDigest(selection.contractManifestSha256)) {
     throw new SpawnfileError(
       "runtime_error",
       "Selected Daimon runtime image does not attest the compiler's exact contract manifest; build and select a matching local artifact or pin a published compatible release"
@@ -78,7 +78,8 @@ const resolveDaimonRuntimeImageRef = async (
   }
   return {
     capabilityReceipt: selection.capabilityReceipts ?? selection.capabilityReceipt as string,
-    image: pinnedImage
+    image: pinnedImage,
+    manifestSha256: selection.contractManifestSha256
   };
 };
 
@@ -90,7 +91,7 @@ export const createDaimonInstallRecipe = async ({
 }: NativeInstallRecipeInput): Promise<RuntimeInstallRecipe> => {
   const daimonRuntime = await resolveDaimonRuntimeImageRef(selection);
   return {
-    commands: createDaimonInstallCommands(installRoot, daimonRuntime.capabilityReceipt),
+    commands: createDaimonInstallCommands(installRoot, daimonRuntime.capabilityReceipt, daimonRuntime.manifestSha256),
     copyCommands: [createRuntimeImageCopyCommand(daimonRuntime.image, installRoot)],
     env: {
       ...containerEnv,

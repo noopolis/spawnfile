@@ -131,14 +131,15 @@ export const resolveInstancePaths = (
 
 export const resolveTargetModelSecrets = (
   target: ContainerTarget,
-  inputs: ContainerTargetInput[]
+  inputs: ContainerTargetInput[],
+  adapterMethods?: readonly ModelAuthMethod[]
 ): string[] => {
   const sourceIds = new Set(target.sourceIds ?? []);
   if (sourceIds.size === 0) return [];
   const secretNames = new Set<string>();
   for (const input of inputs) {
     if (!sourceIds.has(input.id) || input.value.kind !== "agent") continue;
-    for (const secretName of listExecutionModelSecretNames(input.value.execution)) {
+    for (const secretName of listExecutionModelSecretNames(input.value.execution, adapterMethods)) {
       secretNames.add(secretName);
     }
   }

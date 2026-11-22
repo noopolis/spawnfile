@@ -288,7 +288,7 @@ describe("renderDockerfile", () => {
       "RUN apt-get update && apt-get install -y --no-install-recommends jq=1.7.1 pipx && rm -rf /var/lib/apt/lists/*"
     );
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit npm openapi-typescript@6.7.4"
+      "RUN npm install -g --prefix /usr/local --omit=dev --no-fund --no-audit npm openapi-typescript@6.7.4"
     );
     expect(dockerfile).toContain("RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install cowsay==0.4.0");
   });
@@ -329,7 +329,7 @@ describe("renderDockerfile", () => {
     ]);
 
     expect(dockerfile).toContain(
-      "RUN npm install -g --omit=dev --no-fund --no-audit @openai/codex@0.128.0 typescript"
+      "RUN npm install -g --prefix /usr/local --omit=dev --no-fund --no-audit @openai/codex@0.128.0 typescript"
     );
     expect(dockerfile).not.toContain("@openai/codex ");
   });

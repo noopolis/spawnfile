@@ -19,8 +19,10 @@ export const createMoltnetWorkspace = (
 
 export interface AcpStdioWiringOptions {
   command: string;
-  args?: readonly string[];
+  args?: readonly string[] | ((context: RuntimeMoltnetBridgeContext) => readonly string[]);
   workspacePath?: string | ((context: RuntimeMoltnetBridgeContext) => string);
+  /** Place Moltnet's conversation mapping beside the harness's durable sessions. */
+  sessionStorePath?: (context: RuntimeMoltnetBridgeContext) => string;
   workspace: RuntimeMoltnetWorkspace;
 }
 
@@ -34,15 +36,19 @@ export const createAcpStdioWiring = (options: AcpStdioWiringOptions): RuntimeMol
   workspace: options.workspace,
   statusFields: ["command", "workspace_path"],
   bridge(context) {
-    const { command, args, workspacePath } = options;
+    const { command, workspacePath } = options;
+    const args = typeof options.args === "function" ? options.args(context) : options.args;
     const workspace = typeof workspacePath === "function"
       ? workspacePath(context)
       : workspacePath ?? context.workspacePath;
+    const store = options.sessionStorePath?.(context);
     if (!command.trim() || command.includes("\0") ||
       !workspace.trim() || workspace.includes("\0") ||
+      (store !== undefined && (!store.trim() || store.includes("\0"))) ||
       args?.some((argument) => argument.includes("\0"))) {
       throw new SpawnfileError("validation_error", `Invalid ACP stdio wiring for agent ${context.agentName}`);
     }
-    return { kind: "acp", command, ...(args ? { args: [...args] } : {}), workspace_path: workspace };
+    return { kind: "acp", command, ...(args ? { args: [...args] } : {}), workspace_path: workspace,
+      ...(store !== undefined ? { session_store_path: store } : {}) };
   }
 });

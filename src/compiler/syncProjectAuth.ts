@@ -6,6 +6,7 @@ import {
   requireAuthProfile,
   setAuthProfileEnv
 } from "../auth/index.js";
+import { adapterManagedAuthMethods } from "../runtime/hostSelection.js";
 import { readUtf8File } from "../filesystem/index.js";
 import { type ModelAuthMethod, SpawnfileError } from "../shared/index.js";
 
@@ -73,11 +74,12 @@ const resolveAuthRequirements = async (
       }
     }
 
+    const nativeMethods = adapterManagedAuthMethods(node.value.runtime.name);
     for (const method of Object.values(resolveExecutionModelAuthMethods(node.value.execution))) {
-      methods.add(method);
+      if (!nativeMethods?.includes(method)) methods.add(method);
     }
 
-    for (const envName of listExecutionModelSecretNames(node.value.execution)) {
+    for (const envName of listExecutionModelSecretNames(node.value.execution, nativeMethods)) {
       if (envName === CLI_CREDENTIAL_SECRET_NAME) {
         continue;
       }

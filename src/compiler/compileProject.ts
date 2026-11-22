@@ -9,7 +9,6 @@ import {
   createCompileReport,
   createDiagnostic,
   writeCompileReport,
-  CapabilityReport,
   CompileReport,
   DiagnosticReport,
   NodeReport
@@ -40,11 +39,14 @@ import {
   type PolicyMode
 } from "./compileProjectPolicy.js";
 import {
+  createSubagentContexts,
+  createTeamCapabilities,
   injectMoltnetWorkspaceFiles,
   injectTeamCompileSupportFiles,
   prepareTeamCompileSupport,
   writeEmittedFiles
 } from "./compileProjectSupport.js";
+import type { RuntimeCompileContext } from "../runtime/types.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
 import {
@@ -107,18 +109,6 @@ interface CompiledNodeResult {
   value: ResolvedAgentNode | ResolvedTeamNode;
 }
 
-const createTeamCapabilities = (
-  outcome: CapabilityReport["outcome"],
-  message: string
-): CapabilityReport[] => [
-  { key: "team.members", message, outcome },
-  { key: "team.mode", message, outcome },
-  { key: "team.lead", message, outcome },
-  { key: "team.external", message, outcome },
-  { key: "team.shared", message, outcome },
-  { key: "team.nested", message, outcome }
-];
-
 const createAgentOutputDirectory = (
   baseDirectory: string,
   node: CompilePlanNode & { value: ResolvedAgentNode }
@@ -132,7 +122,8 @@ const createTeamOutputDirectory = (
 
 const compileAgentNode = async (
   baseDirectory: string,
-  node: CompilePlanNode & { value: ResolvedAgentNode }
+  node: CompilePlanNode & { value: ResolvedAgentNode },
+  context: RuntimeCompileContext
 ): Promise<CompiledNodeResult> => {
   const runtime = await assertRuntimeCanCompile(node.runtimeName ?? node.value.runtime.name);
   const adapter = getRuntimeAdapter(runtime.name);
@@ -147,7 +138,7 @@ const compileAgentNode = async (
     throw new Error(errorDiagnostic.message);
   }
 
-  const result = await adapter.compileAgent(node.value);
+  const result = context.subagents.length ? await adapter.compileAgent(node.value, context) : await adapter.compileAgent(node.value);
   const outputDirectory = createAgentOutputDirectory(baseDirectory, node);
   await writeEmittedFiles(baseDirectory, result.files, path.relative(baseDirectory, outputDirectory));
 
@@ -313,11 +304,12 @@ export const compileProject = async (
 
   const nodeReports: NodeReport[] = [];
   const compiledNodes: CompiledNodeResult[] = [];
+  const contextFor = createSubagentContexts(plan.nodes);
   for (const node of plan.nodes) {
     let compiled: CompiledNodeResult;
 
     if (node.kind === "agent") {
-      compiled = await compileAgentNode(outputDirectory, node as CompilePlanNode & { value: ResolvedAgentNode });
+      compiled = await compileAgentNode(outputDirectory, node as CompilePlanNode & { value: ResolvedAgentNode }, contextFor(node));
       await injectTeamCompileSupportFiles(
         outputDirectory,
         compiled,

@@ -1,3 +1,4 @@
+import { globalNpmInstallCommand } from "../runtime/containerRecipe.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -13,7 +14,7 @@ export const createPackageInstallCommand = (packages: string[]): string =>
   `RUN apt-get update && apt-get install -y --no-install-recommends ${packages.join(" ")} && rm -rf /var/lib/apt/lists/*`;
 
 export const createNpmPackageInstallCommand = (packages: string[]): string =>
-  `RUN npm install -g --omit=dev --no-fund --no-audit ${packages.join(" ")}`;
+  `RUN ${globalNpmInstallCommand(packages)}`;
 
 export const createPipxPackageInstallCommand = (packages: string[]): string =>
   `RUN PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ${packages.join(" ")}`;

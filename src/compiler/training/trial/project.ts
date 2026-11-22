@@ -16,6 +16,13 @@ export interface TrialProject {
 
 const fail = (message: string): never => { throw new SpawnfileError("validation_error", message); };
 
+const withoutScheduledConsolidation = (memory: NonNullable<Manifest["memory"]>): NonNullable<Manifest["memory"]> =>
+  memory.map((bank) => {
+    if (bank.consolidation?.mode !== "scheduled") return bank;
+    const { schedule: _schedule, ...consolidation } = bank.consolidation;
+    return { ...bank, consolidation: { ...consolidation, mode: "disabled" } };
+  });
+
 /** The member chain from a team down to the subject's manifest, by referenced members. */
 const chainTo = async (teamPath: string, subjectPath: string, seen = new Set<string>()): Promise<{ manifestPath: string; manifest: Manifest; memberId?: string }[] | null> => {
   if (seen.has(teamPath)) return null;
@@ -35,9 +42,10 @@ const chainTo = async (teamPath: string, subjectPath: string, seen = new Set<str
 /**
  * The trial's organization is the subject's own project, compiled from its own files so every team
  * inheritance (shared environment, MCP servers, workspace resources, docs) and every relative path holds,
- * with two manifests replaced in memory: each team on the way down keeps only the member leading to the
+ * with manifests replaced in memory: each team on the way down keeps only the member leading to the
  * subject and no networks or external participants; the subject loses its surfaces (federation), schedule
- * and training block and takes the candidate prompt as its system document. Nothing else changes.
+ * and training block and takes the candidate prompt as its system document. Memory banks remain available
+ * with scheduled consolidation disabled so trial wakes come only from the training caller.
  */
 export const writeTrialProject = async (
   projectManifestPath: string, agentManifestPath: string, instructions: string, directory: string
@@ -56,11 +64,16 @@ export const writeTrialProject = async (
     const { networks: _networks, external_participants: _participants, ...team } = link.manifest;
     overrides.set(link.manifestPath, {
       ...team, members: (team.members ?? []).filter((member) => member.id === link.memberId),
+      ...(team.memory === undefined ? {} : { memory: withoutScheduledConsolidation(team.memory) }),
       ...(team.lead === undefined ? {} : { lead: link.memberId! })
     } as Manifest);
   }
   const { schedule: _schedule, surfaces: _surfaces, training: _training, ...kept } = agent;
   const system = path.relative(path.dirname(subject), instructionsPath).split(path.sep).join("/");
-  overrides.set(subject, { ...kept, workspace: { ...kept.workspace, docs: { ...kept.workspace?.docs, system } } } as Manifest);
+  overrides.set(subject, {
+    ...kept,
+    ...(kept.memory === undefined ? {} : { memory: withoutScheduledConsolidation(kept.memory) }),
+    workspace: { ...kept.workspace, docs: { ...kept.workspace?.docs, system } }
+  } as Manifest);
   return { manifestPath: root, manifestOverrides: overrides };
 };

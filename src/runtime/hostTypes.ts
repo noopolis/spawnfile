@@ -38,6 +38,7 @@ export interface RuntimeHostSecret {
 }
 
 export interface RuntimeImageMountInput {
+  reserveLoginVolume?(volume: string): void;
   authProfile: ResolvedAuthProfile | null;
   containerCredentialUid?: number;
   sourceEnvironment: Record<string, string | undefined>;

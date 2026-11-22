@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -7,6 +7,7 @@ import type { ResolvedAuthProfile } from "../auth/index.js";
 import { buildCompiledProject, compileProject, createDockerRunInvocation, executeDockerRunWithSupportCleanup,
   resolveDeploymentLineage, runDockerContainer, runtimeInstanceEnvironment } from "../compiler/index.js";
 import { trainingMomentSchema, type TrainingContext } from "../compiler/training/index.js";
+import { renderDockerEnvFile } from "../compiler/runProjectAuth.js";
 import { createTrialDocker, fillMomentVolumes, isolateTrainingVolumes, momentVolumesFor, waitFor, writeTrialProject, type TrialDocker } from "../compiler/training/trial/index.js";
 import type { SubjectStart } from "./trainingTypes.js";
 import { ensureNoopolisRunId } from "./common.js";
@@ -18,7 +19,7 @@ import { getRuntimeAdapter } from "./registry.js";
 const probePort = "const s = require('node:net').connect(Number(process.argv[1]), '127.0.0.1'); s.setTimeout(1000); s.on('connect', () => s.end()); s.on('error', () => process.exit(1)); s.on('timeout', () => process.exit(1));";
 
 export async function bootNativeTrainingTrial(context: TrainingContext, profile: ResolvedAuthProfile | null, input: SubjectStart,
-  docker: TrialDocker = createTrialDocker()): Promise<NativeTrainingTrial> {
+  docker: TrialDocker = createTrialDocker(), serviceEnvironment?: Record<string, string>): Promise<NativeTrainingTrial> {
   input.signal?.throwIfAborted();
   const moment = input.setup?.moment === undefined ? undefined : trainingMomentSchema.parse(input.setup.moment);
   const slug = randomUUID(), container = `spawnfile-training-${slug}`, image = `spawnfile-training:${slug}`;
@@ -63,8 +64,11 @@ export async function bootNativeTrainingTrial(context: TrainingContext, profile:
     volumes = (report.persistent_mounts ?? []).map(mount => mount.volume_name);
     // The harness is reached from inside its container. Parallel trials need no host ports.
     report.ports = [];
+    const envFilePath = path.join(directory, "trial.env");
+    if (serviceEnvironment) await writeFile(envFilePath, renderDockerEnvFile(serviceEnvironment), { mode: 0o600 });
     const invocation = await createDockerRunInvocation(compiled, image, {
-      authProfile: profile, containerName: container, deploymentName: slug, detach: true
+      authProfile: profile, containerName: container, deploymentName: slug, detach: true,
+      ...(serviceEnvironment ? { envFilePath } : {})
     });
     supportDirectory = invocation.supportDirectory;
     if (moment) await fillMomentVolumes(docker, image, momentVolumesFor(moment, report), "spawnfile");
@@ -89,7 +93,7 @@ export async function bootNativeTrainingTrial(context: TrainingContext, profile:
     const outputRoots = [workspacePath, ...(report.workspace_resources ?? []).map(resource => resource.backing_path)];
     return {
       instance: {
-        configPath, homePath, workspacePath,
+        configPath, homePath, workspacePath, ...(port ? { port } : {}),
         exec: (argv, options = {}) => {
           const env = Object.entries({ ...environment, ...options.env }).flatMap(([name, value]) => ["--env", `${name}=${value}`]);
           return docker(["exec", "--user", "spawnfile", "--workdir", workspacePath, ...env, container, ...argv],

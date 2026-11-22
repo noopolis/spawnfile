@@ -1,13 +1,13 @@
 import type { EffectiveModelTarget, ResolvedAgentNode } from "../compiler/types.js";
 import { SpawnfileError } from "../shared/index.js";
 import {
-  createRuntimeImageCopyCommand,
+  createRuntimeImageCopyCommand, globalNpmInstallCommand,
   type RuntimeInstallCapability
 } from "./containerRecipe.js";
 import {
   createVendorCopyCommand, needsVendorCopyCommand, resolveInstallPackageSpec
 } from "./containerPackageOverrides.js";
-import type { AdapterCompileResult, RuntimeAdapter, RuntimeContainerMeta } from "./types.js";
+import type { AdapterCompileResult, RuntimeAdapter, RuntimeCompileContext, RuntimeContainerMeta } from "./types.js";
 
 export const standardRuntimeInstall: RuntimeInstallCapability = Object.freeze({
   hints: {
@@ -21,7 +21,7 @@ export const standardRuntimeInstall: RuntimeInstallCapability = Object.freeze({
       case "npm": {
         const spec = resolveInstallPackageSpec(selection.packageName, selection.version, packageOverrides);
         return {
-          commands: [`npm install -g --omit=dev --no-fund --no-audit ${spec}`],
+          commands: [globalNpmInstallCommand([spec])],
           copyCommands: needsVendorCopyCommand([selection.packageName], packageOverrides) ? [createVendorCopyCommand()] : [],
           env: containerEnv,
           runtimeName,
@@ -47,7 +47,7 @@ export const standardRuntimeInstall: RuntimeInstallCapability = Object.freeze({
 export abstract class RuntimeAdapterBase implements RuntimeAdapter {
   abstract readonly name: string;
   abstract readonly container: RuntimeContainerMeta;
-  abstract compileAgent(node: ResolvedAgentNode): Promise<AdapterCompileResult>;
+  abstract compileAgent(node: ResolvedAgentNode, context?: RuntimeCompileContext): Promise<AdapterCompileResult>;
   readonly install: RuntimeInstallCapability = standardRuntimeInstall;
 
   /** Override for model or auth restrictions specific to the runtime. */

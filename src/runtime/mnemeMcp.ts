@@ -61,7 +61,7 @@ export const resolveMnemeMcpMemoryWiring = (bank: ResolvedMemoryBank): RuntimeMe
 const memoryAccessKey = (access: MnemeMemoryAccess): string =>
   `${access.source}:${access.bank.id}`;
 
-const sourceDiscriminatorFor = (access: MnemeMemoryAccess): string => {
+export const mnemeMemorySourceDiscriminator = (access: MnemeMemoryAccess): string => {
   const nameSlug = slugify(`${access.declaringKind}-${access.bank.declaredName}`) || access.declaringKind;
   const sourceHash = createHash("sha256").update(access.source).digest("hex").slice(0, 8);
   return `${nameSlug}-${sourceHash}`;
@@ -82,7 +82,7 @@ export const mnemeMemoryServerBaseName = (
   access: MnemeMemoryAccess
 ): string => {
   const bankSlug = slugify(access.bank.id) || "memory";
-  const sourceSuffix = hasDuplicateBankId(node, access) ? `-${sourceDiscriminatorFor(access)}` : "";
+  const sourceSuffix = hasDuplicateBankId(node, access) ? `-${mnemeMemorySourceDiscriminator(access)}` : "";
   return `mneme-${bankSlug}${sourceSuffix}`;
 };
 

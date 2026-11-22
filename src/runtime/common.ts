@@ -126,6 +126,7 @@ export const createAgentCapabilities = (
     sandboxOutcome?: CapabilityReport["outcome"];
     scheduleMessage?: string;
     scheduleOutcome?: CapabilityReport["outcome"];
+    subagentMessage?: string;
     subagentOutcome?: CapabilityReport["outcome"];
   } = {}
 ): CapabilityReport[] => {
@@ -207,7 +208,7 @@ export const createAgentCapabilities = (
 
   if (node.subagents.length > 0) {
     capabilities.push(
-      createCapability("agent.subagents", options.subagentOutcome ?? "supported")
+      createCapability("agent.subagents", options.subagentOutcome ?? "supported", options.subagentMessage)
     );
   }
 

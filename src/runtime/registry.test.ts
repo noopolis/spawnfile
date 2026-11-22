@@ -13,7 +13,7 @@ import {
 
 describe("runtime registry", () => {
   it("lists available runtime adapters", () => {
-    expect(listRuntimeAdapters()).toEqual(["daimon", "openclaw", "picoclaw"]);
+    expect(listRuntimeAdapters()).toEqual(["daimon", "hermes-agent", "openclaw", "opencode", "picoclaw"]);
   });
 
   it("loads runtimes from runtimes.yaml", async () => {

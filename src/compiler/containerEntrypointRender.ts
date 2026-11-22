@@ -13,7 +13,6 @@ import {
   createConfigEnvMaterializationFunction,
   createConfigEnvWrites
 } from "./containerConfigEnvRender.js";
-import { CLI_CREDENTIAL_SECRET_NAME } from "./modelEnv.js";
 import {
   createCliCredentialMaterialization,
   runtimeInstanceEnvironment,
@@ -110,12 +109,7 @@ export const renderEntrypoint = (
   const hosts = selectedRuntimeHosts(runtimeNames);
   const entrypoint = selectRuntimeEntrypoint(runtimeNames)?.entrypoint;
   const cliCredentialMaterialization = createCliCredentialMaterialization(runtimePlans);
-  const renderedRequiredSecrets = [
-    ...new Set([
-      ...requiredSecrets,
-      ...(cliCredentialMaterialization.length > 0 ? [CLI_CREDENTIAL_SECRET_NAME] : [])
-    ])
-  ];
+  const renderedRequiredSecrets = [...new Set(requiredSecrets)];
   const lines = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",

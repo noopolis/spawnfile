@@ -60,7 +60,7 @@ it("projects scoped catalog metadata, preserves the adapter receiver, and resolv
     await expect(assertRuntimeCanCompile("fixture-one")).resolves.toMatchObject({ ref: "v1", status: "active" });
     expect(getRuntimeAdapter("fixture-one")).toBe(scoped.adapter);
     const recipe = await createRuntimeInstallRecipe("fixture-one");
-    expect(recipe.commands).toEqual(["npm install -g --omit=dev --no-fund --no-audit fixture-runtime@1.0.0"]);
+    expect(recipe.commands).toEqual(["npm install -g --prefix /usr/local --omit=dev --no-fund --no-audit fixture-runtime@1.0.0"]);
     expect(recipe.runtimeRoot).toBe("/usr/local/lib/node_modules/fixture-runtime");
     const adapter = getRuntimeAdapter("fixture-one") as Adapter;
     await expect(adapter.compileAgent()).resolves.toMatchObject({ files: [{ content: '{"configured":true}', path: "config.json" }] });

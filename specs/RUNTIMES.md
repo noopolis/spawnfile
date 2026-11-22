@@ -71,8 +71,71 @@ The active v0.1 adapters are:
 | Runtime | Install Strategy | Adapter Shape |
 |---------|------------------|---------------|
 | `daimon` | Immutable generic runtime image | One public `noopolis.daimon.organization-runtime.v1` host for up to 32 agents |
+| `hermes-agent` | Upstream multi-architecture image pinned by digest | One Hermes workspace, native session and configuration per agent |
 | `openclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
+| `opencode` | Pinned `opencode-ai` npm package | One OpenCode server and workspace per agent |
 | `picoclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
+
+Hermes Agent and OpenCode can run standalone or as team members. Both use their native commands for training and the shared ACP stdio bridge for Moltnet rooms and direct messages. Each agent uses its own bearer token with the `attach`, `observe`, and `write` scopes so it can read history and send replies. The checked-in Moltnet release predates ACP. The adapter guide explains how to supply an ACP-capable build. [Runtime adapters](RUNTIME_ADAPTERS.md)
+
+### Use a model subscription
+
+Declare the provider and auth method on the agent's primary model. The same selection applies to service startup, ACP and native training. A login uses the pinned harness in Docker and starts its native sign-in flow in the terminal. The profile stores a Docker volume name. The credential stays on the selected Docker engine.
+
+| Harness | Account | Model provider | Model auth method | Login name |
+|---|---|---|---|---|
+| Hermes Agent or OpenCode | ChatGPT | `openai` | `codex` | `chatgpt` |
+| Hermes Agent or OpenCode | SuperGrok | `xai` | `grok` | `supergrok` |
+| Hermes Agent | Nous Portal | `nous` | `subscription` | `nous` |
+| Hermes Agent | MiniMax OAuth | `minimax` | `subscription` | `minimax` |
+| OpenCode | GitHub Copilot | `github-copilot` | `subscription` | `copilot` |
+| OpenCode | OpenCode Go | `opencode-go` | `api_key` | Use the plan key from OpenCode Go |
+
+Start a ChatGPT-backed agent from an empty directory. Substitute `hermes-agent` in both commands that select a runtime to start Hermes.
+
+```sh
+mkdir opencode-agent
+cd opencode-agent
+spawnfile init --runtime opencode
+spawnfile auth login chatgpt --runtime opencode --profile research
+spawnfile up . --auth-profile research
+```
+
+A complete agent can also declare the auth method directly on its primary model. Choose a model available to your account. For SuperGrok, put `auth: { method: grok }` and `reasoning_effort: medium` directly on the `xai` target.
+
+```yaml
+spawnfile_version: "0.1"
+kind: agent
+name: researcher
+runtime: opencode
+workspace:
+  docs: { system: AGENTS.md }
+execution:
+  model:
+    primary:
+      provider: openai
+      name: gpt-5.4
+      auth: { method: codex }
+```
+
+Pass `--instance <id>` to the login command to assign an account to a team member. Find the id under `container.runtime_instances` in the compile report. Pass `--image <reference>` to log in with an already built organization image, including one with a different runtime UID. Use the same Docker engine for login and deployment. A dry run prepares the volume and shows the native command. A successful interactive login binds the volume to the profile. Select the same profile when launching an image or training an agent. Use separate logins for simultaneous OpenCode deployments.
+
+Hermes and OpenCode both require a login created for the selected harness. Each harness refreshes the credential in its own writable volume. OpenCode uses one process per subscription for Moltnet and its HTTP service. Each training trial starts its own service and attaches to that service. Stop a deployment before running a trial with its OpenCode login, or give the trial a separate login profile. Both harnesses accept Anthropic API keys. Claude base-plan usage requires the official Claude client. [Hermes providers](https://hermes-agent.nousresearch.com/docs/integrations/providers) [OpenCode providers](https://opencode.ai/docs/providers/) [Claude Code terms](https://code.claude.com/docs/en/legal-and-compliance)
+
+### Hermes Agent and OpenCode capabilities
+
+| Feature | Hermes Agent | OpenCode |
+|---|---|---|
+| Training | Captures the native reply, tool completions and measured usage in a portable `.eval`. | Binds the reply, tool completions and measured usage to the exact native session and current prompt. Writes the same portable `.eval`. |
+| Chat | Moltnet rooms and DMs over ACP. Telegram supports pairing and user or chat allowlists. Discord supports user allowlists. Slack supports user allowlists with optional channel limits. All three support explicitly open access. | Moltnet rooms and DMs over ACP. A subscription instance can attach to one Moltnet network, with multiple rooms and DMs. |
+| MCP and memory | Native stdio, HTTP and SSE servers, bearer credentials and exact tool allowlists. Supports scoped file-backed Mneme access while awake. | Native stdio and remote MCP, including bearer credentials. Remote servers negotiate HTTP or SSE. Exact MCP tool allowlists are rejected. Supports scoped file-backed Mneme access while awake. |
+| Scheduling | Five-field cron with an IANA timezone and zero jitter. The gateway preserves the declared job across restarts. Interval schedules are reported as degraded. | The harness has no scheduler. |
+| Helpers | Native delegation inherits the parent's tools. Spawnfile reports independently declared helpers as degraded. | Eligible OpenCode helpers run as text-only roles on the parent's exact API-key or local-model route. The report identifies any child needing its own credentials, tools or workspace. |
+| Models | Supports model fallbacks. A single agent can select one native subscription route. | Selects one model. Subscription startup checks the model and any declared reasoning effort against the native catalog. |
+
+Hermes rejects WhatsApp, Discord guild or channel allowlists, Slack or Discord pairing, and outbound webhooks. Its upstream gateway cannot enforce those declarations with the compiled credentials. For both harnesses, training reports tool coverage as partial. A captured completion can support a tool-call grade. Missing events alone cannot establish that a tool never ran.
+
+Each deployment keeps the agent's native conversation history in a per-instance volume. Replacing the container can resume the same Moltnet conversation. On startup, Hermes refreshes the Moltnet membership it installed from the current Spawnfile, including when the bridge has rewritten its client configuration. Local edits to instructions and skills, and unrelated workspace files, survive this refresh.
 
 ### Active Runtime Capability Matrix
 
@@ -94,7 +157,7 @@ Support levels:
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
 | `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit nonempty tool allowlists; stdio commands must be absolute and remote bearer secrets remain env-name references |
-| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Degraded/declared only in Phase A; no Spawnfile memory lowering enters the public config |
+| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Direct Mneme tools on one durable file-backed bank per agent |
 | `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; the generic runtime image and physical roots provide isolation |
 | `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; the public host runs listed agents independently |
 
@@ -132,17 +195,38 @@ persisted, searchable, and policy-enforced.
 
 | Dimension | OpenClaw | PicoClaw | Daimon |
 |-----------|----------|----------|--------|
-| Store lowering (`sqlite`, `json`) | Supported through generated Mneme MCP servers | Supported through generated Mneme MCP servers | Declared only in Phase A; no memory tool is lowered |
+| Store lowering (`sqlite`, `json`) | Supported through generated Mneme MCP servers | Supported through generated Mneme MCP servers | One selected durable bank mounted as the agent's Mneme home |
 | Store lowering (`postgres`) | Reported by DSN secret name only; runtime tools are not wired in v0.1 | Reported by DSN secret name only; generated Mneme MCP is not emitted in v0.1 | Reported by DSN secret name only; runtime tools are not wired in v0.1 |
 | Durable persistent mounts | Compiler-owned | Compiler-owned | Compiler-owned |
-| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported through generated PicoClaw MCP for file stores in awake and dream modes | Not lowered in Phase A |
-| Principal/scope enforcement | Enforced by Mneme MCP context generated from runtime config | Enforced by Mneme MCP context generated from runtime config | Not lowered in Phase A |
+| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported through generated PicoClaw MCP for file stores in awake and dream modes | The Pi harness installs Mneme tools for the active wake mode |
+| Principal/scope enforcement | Enforced by Mneme MCP context generated from runtime config | Enforced by Mneme MCP context generated from runtime config | Mneme checks the active agent, bank, and scope on each tool call |
 | Lexical index | Reported | Supported/default through Mneme | Supported/default through Mneme |
-| Vector index | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Mneme MCP when `provider: ollama` is configured | Declared only in Phase A |
+| Vector index | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Mneme MCP when `provider: ollama` is configured | Degraded to lexical recall |
 | Graph/temporal index | Optional/degraded unless configured | Optional/degraded unless configured | Optional/degraded unless configured |
-| Scheduled consolidation / dream mode | Supported through generated isolated OpenClaw cron jobs and dream-mode Mneme MCP for file stores | Supported through generated PicoClaw cron jobs and dream-mode Mneme MCP for file stores | Not lowered in Phase A |
+| Scheduled consolidation / dream mode | Supported through generated isolated OpenClaw cron jobs and dream-mode Mneme MCP for file stores | Supported through generated PicoClaw cron jobs and dream-mode Mneme MCP for file stores | Independent native dream schedule on the selected bank when supported by the image |
 | Activity/audit events | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Daimon host activity only; no Spawnfile memory activity lowering |
 | Raw memory visibility to runtime files | Must be denied | Must be denied | Must be denied |
+
+For example, this declaration requests a daily dream at 03:00 UTC on a Daimon
+agent's bank. An interval such as `6h` also works.
+
+```yaml
+memory:
+  - id: notes
+    store:
+      kind: json
+      path: /var/lib/spawnfile/memory/notes/events.jsonl
+      persistence: { mode: durable }
+    consolidation:
+      mode: scheduled
+      schedule: "0 3 * * *"
+```
+
+Each dream opens a fresh Mneme session on that bank. The agent's top-level
+`schedule` controls its normal work. Daimon image `0.2.26-4bdb427` supports
+both schedules. The earlier `0.2.25-232078f` image supports awake memory and
+reports scheduled consolidation as degraded. Isolated training trials retain
+the bank and disable scheduled consolidation.
 
 If a runtime exposes a live memory tool but cannot preserve scope/principal
 enforcement, the memory bank is `unsupported`, not merely degraded. A runtime
@@ -432,3 +516,17 @@ Pi emits a bounded in-memory activity buffer and SSE stream through its generate
 - `SURFACES.md` defines the current portable communication-surface contract and runtime support matrix
 - `STATUS.md` defines the adapter-owned live status probe contract
 - `research/RUNTIME-NOTES.md` contains the per-runtime research that informs adapter design
+
+## Provider-issued plan keys for Hermes Agent and OpenCode
+
+Use `auth.method: api_key` and set `auth.key` to the secret name shown below. For a custom endpoint on Hermes Agent, set `endpoint.compatibility: openai` and `endpoint.base_url` to the plan endpoint. OpenCode uses its pinned catalog for the listed models, with `provider` and `name` declared separately.
+
+| Plan | Secret name | OpenCode provider and name | Hermes Agent endpoint and name |
+| --- | --- | --- | --- |
+| Poe | `POE_API_KEY` | `poe`, `anthropic/claude-sonnet-4.6` | `https://api.poe.com/v1`, `Claude-Sonnet-4.6` |
+| Alibaba Coding Plan (international) | `ALIBABA_CODING_PLAN_API_KEY` | `alibaba-coding-plan`, `qwen3.6-plus` | `https://coding-intl.dashscope.aliyuncs.com/v1`, `qwen3.6-plus` |
+| Alibaba Token Plan (Singapore) | `ALIBABA_TOKEN_PLAN_API_KEY` | `alibaba-token-plan`, `qwen3.6-plus` | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`, `qwen3.6-plus` |
+
+Use the [Poe API key](https://creator.poe.com/docs/external-applications/openai-compatible-api) to draw from Poe points. Use the dedicated keys from the [Coding Plan](https://www.alibabacloud.com/help/en/model-studio/coding-plan) or [Token Plan](https://www.alibabacloud.com/help/en/model-studio/token-plan-usage-quota) with their corresponding endpoints. Alibaba limits Coding Plan use to interactive coding tools.
+
+OpenCode can also use `provider: gitlab`, `name: duo-chat-sonnet-4-6` and `auth.key: GITLAB_TOKEN` with an `api`-scoped personal access token and `auth.method: api_key`. GitLab Duo Agentic Chat consumes GitLab Credits and can draw from billable on-demand credits under the namespace's billing settings. [GitLab usage billing](https://docs.gitlab.com/subscriptions/gitlab_credits/)

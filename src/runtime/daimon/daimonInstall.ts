@@ -1,6 +1,6 @@
 import type { RuntimeCapabilityReceipts } from "../registry.js";
 export type { RuntimeCapabilityReceipts as DaimonCapabilityReceipts } from "../registry.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER } from "./contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_GROK_ENGINE_BROKER, type DaimonManifestDigest } from "./contractManifest.js";
 
 /**
  * A published multi-architecture Daimon index embeds a different receipt per
@@ -19,10 +19,11 @@ const createDaimonReceiptCheck = (receiptPath: string, receipt: string | Runtime
 /** Shared install verification and launchers for organization and training images. */
 export const createDaimonInstallCommands = (
   installRoot: string,
-  capabilityReceipt: string | RuntimeCapabilityReceipts
+  capabilityReceipt: string | RuntimeCapabilityReceipts,
+  manifestSha256: DaimonManifestDigest = DAIMON_CONTRACT_MANIFEST_SHA256
 ): string[] => [
   createDaimonReceiptCheck(`${installRoot}/capability-receipt.json`, capabilityReceipt),
-  `test -f ${installRoot}/contract-manifest.json && test -f ${installRoot}/contract-manifest.sha256 && manifest="$(cat ${installRoot}/contract-manifest.sha256)" && test "$manifest" = ${JSON.stringify(DAIMON_CONTRACT_MANIFEST_SHA256)} && test "$(sha256sum ${installRoot}/contract-manifest.json | awk '{print "sha256:" $1}')" = "$manifest" && node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.manifest_sha256!==process.argv[2])process.exit(1)' ${installRoot}/capability-receipt.json "$manifest"`,
+  `test -f ${installRoot}/contract-manifest.json && test -f ${installRoot}/contract-manifest.sha256 && manifest="$(cat ${installRoot}/contract-manifest.sha256)" && test "$manifest" = ${JSON.stringify(manifestSha256)} && test "$(sha256sum ${installRoot}/contract-manifest.json | awk '{print "sha256:" $1}')" = "$manifest" && node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.manifest_sha256!==process.argv[2])process.exit(1)' ${installRoot}/capability-receipt.json "$manifest"`,
   `ln -sf ${installRoot}/bin/daimon-runtime /usr/local/bin/daimon-runtime`,
   `ln -sf ${installRoot}/bin/codex /usr/local/bin/codex`,
   `install -o root -g root -m 0555 ${installRoot}/bin/grok /usr/local/bin/grok && arch="$(dpkg --print-architecture)" && case "$arch" in amd64) expected=${DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.x64.sha256} ;; arm64) expected=${DAIMON_GROK_ENGINE_BROKER.grokCliArtifacts.arm64.sha256} ;; *) exit 1 ;; esac && test "$(sha256sum /usr/local/bin/grok | awk '{print $1}')" = "$expected"`,
