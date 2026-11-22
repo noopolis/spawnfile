@@ -1,6 +1,12 @@
 name: Deploy Website
 
 on:
+  pull_request:
+    paths:
+      - "website/**"
+      - "examples/research-org/**"
+      - "runtimes.yaml"
+      - ".github/workflows/deploy-website.yml"
   push:
     branches:
       - main
@@ -11,21 +17,12 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  pages: write
-
-concurrency:
-  group: github-pages
-  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: deploy spawnfile.com
+  build:
+    name: build and verify website
     timeout-minutes: 15
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Check out
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -35,25 +32,51 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: website/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            website/package-lock.json
 
-      - name: Install dependencies
+      - name: Install compiler dependencies
+        run: npm ci
+
+      - name: Install website dependencies
         working-directory: website
         run: npm ci
 
-      - name: Build
+      - name: Build and verify the homepage against the compiler
         working-directory: website
-        run: npm run build
+        run: |
+          npm run build
+          ../node_modules/.bin/tsc --noEmit --project tsconfig.json
+          npm run test:homepage
 
+      - name: Upload GitHub Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
+        with:
+          path: website/dist
+
+  deploy:
+    name: deploy spawnfile.com
+    if: github.event_name != 'pull_request'
+    needs: build
+    permissions:
+      contents: read
+      id-token: write
+      pages: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
         with:
           enablement: true
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
-        with:
-          path: website/dist
 
       - name: Deploy to GitHub Pages
         id: deployment
