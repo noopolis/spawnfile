@@ -1,6 +1,6 @@
 import type { CompileReport, ContainerMemoryReport, RecordingReport } from "../report/index.js";
 import { maxRecordingKeepMs } from "../shared/index.js";
-import { daimonRecordingMountId } from "../runtime/daimon/recording.js";
+import { recordingOperationFor } from "./recordingCapability.js";
 import { resolveRecordingAgentFacts } from "./recordingAgentFacts.js";
 
 import type { CompilePlan } from "./types.js";
@@ -20,7 +20,7 @@ export const resolveRecordingReport = (
       ? [memory.store.persistent_mount_id] : []);
   return {
     keep_ms: keepMs, memory_mount_ids: [...new Set(memoryMountIds)].sort(),
-    recording_mount_ids: agents.filter((agent) => agent.runtimeName === "daimon").map((agent) => daimonRecordingMountId(agent.slug)).sort(),
+    recording_mount_ids: agents.map((agent) => recordingOperationFor(agent).facts(agent).mountId).sort(),
     agents: resolveRecordingAgentFacts(plan, gitPins)
   };
 };

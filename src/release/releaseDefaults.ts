@@ -17,7 +17,7 @@ import { acquireHomeDeploymentLock, resolveDockerDeploymentTarget, verifyDockerD
 import { consumeImageUp, createConsumerDockerRunner, extractImageReport, resolveDockerBaseArgs } from "../distribution/index.js";
 import type { DockerCommandRunner } from "../distribution/dockerRunner.js";
 
-import { helperControlCall, requestDrain, requestResume, waitForDrained } from "./drainControl.js";
+import { requireDrainOperations, waitForRuntimeDrain } from "./drainControl.js";
 import { sendNotification } from "./notify.js";
 import { runPostDeployCommand } from "./postDeploy.js";
 import { inspectUnit, pruneReleaseImages, settleUnit } from "./releaseDocker.js";
@@ -104,7 +104,7 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
     });
     return inspection.report.runtime_instances.map((instance) => instance.runtime);
   },
-  requestDrain: (target) => requestDrain(target, helperControlCall),
+  requestDrain: (target) => requireDrainOperations(target).drain(target),
   async pinTarget(request) {
     // Not the deployment record's target: image-mode `up` runs Docker against
     // the explicit context or the CLI's own default and only records a target,
@@ -118,8 +118,8 @@ export const createDefaultReleaseDependencies = (): ReleaseDependencies => ({
   async verifyTarget(request, target) {
     await verifyDockerDeploymentTarget(target, { dockerCommand: request.dockerCommand });
   },
-  requestResume: (target) => requestResume(target, helperControlCall),
+  requestResume: (target) => requireDrainOperations(target).resume(target),
   runPostDeploy: (request, hook, context) => runPostDeployCommand(hook, context, request.signal),
   settle: (request, containerRef) => settleUnit(dockerFor(request), containerRef, request.settle),
-  waitForDrained: (target, options) => waitForDrained(target, { call: helperControlCall, ...options })
+  waitForDrained: (target, options) => waitForRuntimeDrain(() => requireDrainOperations(target).availability(target), options)
 });

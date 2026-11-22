@@ -89,17 +89,19 @@ function boundaryViolations(filename: string, source: string, resolve = importTa
   const relative = path.relative(root, filename).split(path.sep).join('/');
   // Only the composition entry points and their adjacent tests may reach across owners.
   const integration = /^src\/runtime\/[^/]+\/training\//u.test(relative) ||
-    /^src\/runtime\/training(?:Subjects|Cli|Providers|GraderProviders|Regrade)(?:\.test)?\.ts$/u.test(relative);
+    /^src\/runtime\/training(?:Subjects|Cli|Providers|GraderProviders|Regrade|Composition)(?:\.test)?\.ts$/u.test(relative);
   const runtimeTraining = /^src\/runtime\/[^/]+\/training\//u.test(relative);
   const forbidden = fromTraining ? [owners.runtime, owners.compiler] : integration ? [] : [owners.training];
   const violations: string[] = [];
   const imports = ts.preProcessFile(source, true, true);
-  const parsed = relative === 'src/runtime/registry.ts' || needsSyntaxTree(source, imports, fromTraining)
+  const typesOnly = relative === 'src/runtime/registry.ts' ||
+    relative === 'src/runtime/trainingTypes.ts' || relative === 'src/runtime/trainingProviderTypes.ts';
+  const parsed = typesOnly || needsSyntaxTree(source, imports, fromTraining)
     ? ts.createSourceFile(filename, source, { languageVersion: ts.ScriptTarget.Latest,
       jsDocParsingMode: ts.JSDocParsingMode.ParseNone }, false) : undefined;
   const specifiers = importSpecifiers(imports, parsed, fromTraining ? violations : undefined);
   return [...violations, ...specifiers.filter(({ specifier, typeOnly }) => {
-    if (relative === 'src/runtime/registry.ts' && typeOnly) return false;
+    if (typeOnly && typesOnly) return false;
     let target = specifier;
     if (target.startsWith('file:')) target = fileURLToPath(target);
     if (!target.startsWith('.') && !path.isAbsolute(target)) return false;

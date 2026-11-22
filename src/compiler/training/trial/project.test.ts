@@ -4,8 +4,9 @@ import path from "node:path";
 
 import { afterEach, expect, it } from "vitest";
 
+import { buildCompilePlan } from "../../buildCompilePlan.js";
 import { compileProject } from "../../compileProject.js";
-import { isolateTrialVolumes, TRIAL_VOLUME_PREFIX } from "./boot.js";
+import { isolateTrialVolumes, TRIAL_VOLUME_PREFIX } from "../../../runtime/daimon/training/trial/boot.js";
 import { TRIAL_INSTRUCTIONS_FILE, writeTrialProject } from "./project.js";
 
 const roots: string[] = [];
@@ -70,6 +71,76 @@ it("compiles one team member with its team context, the candidate prompt and not
   expect(declared).toBeDefined();
   isolateTrialVolumes(container, "trial-a");
   expect(container.persistent_mounts!.every((mount) => mount.volume_name.startsWith(TRIAL_VOLUME_PREFIX) || mount.id.includes("realm"))).toBe(true);
+});
+
+it("preserves subject and inherited memory without scheduling maintenance in repeated trials", async () => {
+  const root = await team();
+  const subject = path.join(root, "agents/writer/Spawnfile");
+  const parent = path.join(root, "Spawnfile");
+  const outer = path.join(root, "outer/Spawnfile");
+  const subjectSource = `${agent("writer")}memory:
+  - id: personal
+    store: { kind: sqlite, persistence: { mode: durable, name: writer-memory } }
+    consolidation: { mode: scheduled, schedule: 5m, summarize_after_events: 12 }
+    retention: { forgetting: ttl, ttl: 7d }
+  - id: threshold
+    store: { kind: json }
+    consolidation: { mode: on_threshold, summarize_after_events: 30 }
+`;
+  const parentSource = `${await readFile(parent, "utf8")}memory:
+  - id: inherited
+    store: { kind: json }
+    access: { members: [writer] }
+    consolidation: { mode: scheduled, schedule: "0 4 * * *" }
+`;
+  const outerSource = `spawnfile_version: "0.1"
+kind: team
+name: newsroom
+mode: swarm
+members: [{ id: desk, ref: .. }]
+memory:
+  - id: ancestor
+    store: { kind: sqlite }
+    consolidation: { mode: scheduled, schedule: 2h }
+`;
+  const originals = [[subject, subjectSource], [parent, parentSource], [outer, outerSource]] as const;
+  await mkdir(path.dirname(outer));
+  await Promise.all(originals.map(([file, source]) => writeFile(file, source)));
+
+  const trial = await writeTrialProject(outer, subject, "First candidate.", path.join(root, "first-trial"));
+  const reprojected = await writeTrialProject(outer, subject, "Second candidate.", path.join(root, "second-trial"));
+  for (const project of [trial, reprojected]) {
+    expect(project.manifestOverrides.get(subject)?.memory).toEqual([
+      expect.objectContaining({
+        id: "personal", store: { kind: "sqlite", persistence: { mode: "durable", name: "writer-memory" } },
+        consolidation: { mode: "disabled", summarize_after_events: 12 }, retention: { forgetting: "ttl", ttl: "7d" }
+      }),
+      expect.objectContaining({ id: "threshold", consolidation: { mode: "on_threshold", summarize_after_events: 30 } })
+    ]);
+    expect(project.manifestOverrides.get(parent)?.memory?.[0]).toMatchObject({
+      id: "inherited", access: { members: ["writer"] }, consolidation: { mode: "disabled" }
+    });
+    expect(project.manifestOverrides.get(outer)?.memory?.[0]).toMatchObject({ id: "ancestor", consolidation: { mode: "disabled" } });
+    expect(project.manifestOverrides.get(parent)?.memory?.[0]?.consolidation).not.toHaveProperty("schedule");
+    expect(project.manifestOverrides.get(outer)?.memory?.[0]?.consolidation).not.toHaveProperty("schedule");
+  }
+  for (const [file, source] of originals) expect(await readFile(file, "utf8")).toBe(source);
+
+  const plan = await buildCompilePlan(reprojected.manifestPath, { manifestOverrides: reprojected.manifestOverrides });
+  expect(plan.memoryAccess?.map(({ bank }) => [bank.id, bank.consolidation.mode])).toEqual([
+    ["inherited", "disabled"], ["personal", "disabled"], ["threshold", "on_threshold"]
+  ]);
+  const output = path.join(root, "trial-out");
+  const compiled = await compileProject(reprojected.manifestPath, { manifestOverrides: reprojected.manifestOverrides, outputDirectory: output });
+  const instance = compiled.report.container!.runtime_instances[0]!;
+  const config = JSON.parse(await readFile(path.join(output, "container/rootfs", instance.config_path), "utf8"));
+  expect(config.version).toBe("noopolis.daimon.organization-runtime.v1");
+  expect(config.agents).toHaveLength(1);
+  expect(config.agents[0].instructions).toContain("Second candidate.");
+  expect(config.agents[0]).not.toHaveProperty("schedule");
+  expect(config.agents[0].memory).toEqual({
+    runtimeHomePath: "/var/lib/spawnfile/memory/writer/personal", source: "spawnfile:agent:personal"
+  });
 });
 
 it("refuses a subject that is not a member of the project", async () => {

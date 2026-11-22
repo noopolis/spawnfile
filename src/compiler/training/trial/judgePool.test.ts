@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import type { TrialWake } from "./boot.js";
+import type { TrialWake } from "./types.js";
 import { createJudgePool } from "./judgePool.js";
 
 const wake: TrialWake = { state: "completed", acceptanceId: "a", executionId: "e", code: null, text: "{}", usage: [], transcript: null, requestToolCalls: [[]], failure: null };

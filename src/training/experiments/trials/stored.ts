@@ -1,8 +1,9 @@
+import { evalContextEventId, publishStoredEval, trialEvalContext } from '../replay/index.js';
 import { canonicalWireId } from '../../contracts/index.js';
 import { randomUUID } from 'node:crypto';
 import type { CandidateManifest } from '../../candidates/index.js';
 import { materializeCandidate, validateCandidate } from '../../candidates/index.js';
-import type { ExperimentStore } from '../../storage/index.js';
+import { trialEvalRelativePath, type ExperimentStore } from '../../storage/index.js';
 import type { TrialOptions, TrialReport, TrialEvent } from './types.js';
 import { runTrial } from './trial.js';
 
@@ -29,6 +30,7 @@ export interface StoredTrialOptions extends Omit<TrialOptions, 'candidateId' | '
 }
 export async function runStoredTrial(options: StoredTrialOptions): Promise<TrialReport> {
   if ('schema' in options.record && canonicalWireId(options.record.schema) === 'spawnfile.training.cost-record.v1') throw new Error('Cost-only records cannot execute trials');
+  options = { ...options, record: structuredClone(options.record) };
   validateCandidate(options.candidate);
   const instructions = options.candidate.resources.filter(resource => resource.destinations.some(destination => destination.kind === 'instructions'));
   if (!instructions.length) throw new Error('Candidate has no native instruction resource');
@@ -43,10 +45,19 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
     metadata: { adapter: options.adapter.id, model: options.model, timeoutMs: options.timeoutMs } });
   await options.store.putBlob(options.id, JSON.stringify(options.candidate), 'evaluator');
   await options.store.putBlob(options.id, JSON.stringify(options.record), 'evaluator');
+  const inputs: { id: string; input: string }[] = [];
+  const sidecars = new Map<string, string>();
   const report = await runTrial({ ...options, candidateId: options.candidate.id,
+    evaluation: { ...options.evaluation, readText: async name => {
+      const text = await options.evaluation.readText(name);
+      if (sidecars.has(name) && sidecars.get(name) !== text) throw new Error('Criterion changed during trial');
+      sidecars.set(name, text);
+      return text;
+    } },
     protectedPaths: [options.storeRoot, ...(options.protectedPaths ?? [])],
     persist: async event => {
       await options.store.appendEvent(options.id, { id: randomUUID(), payload: event }, 'raw');
+      if (event.type === 'turn.input') inputs.push(structuredClone(event.payload as { id: string; input: string }));
       await options.observeEvent?.(event);
     },
     prepare: async (paths, signal) => {
@@ -60,6 +71,11 @@ export async function runStoredTrial(options: StoredTrialOptions): Promise<Trial
     } });
   report.candidate = structuredClone(options.candidate);
   if (options.round !== undefined) report.round = options.round;
+  report.evalFile = trialEvalRelativePath(report.id);
+  await options.store.appendEvent(report.id, { id: evalContextEventId, payload: trialEvalContext(options, inputs, sidecars) }, 'evaluator');
   await options.store.appendEvaluation(options.id, { id: randomUUID(), report }, 'evaluator');
+  const replay = await options.store.readReplay(options.id, { audience: 'evaluator', phase: options.phase === 'test' ? 'test' : 'replay',
+    frozenCandidateIds: [options.candidate.id] });
+  await publishStoredEval(options.storeRoot, replay);
   return report;
 }

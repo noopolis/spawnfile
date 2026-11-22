@@ -16,6 +16,7 @@ export interface BootedWake {
   transcript: string | null;
   /** Per model request, the tool-call names its response carried; null where the runtime could not say. */
   requestToolCalls?: readonly (readonly string[] | null)[];
+  nativeToolEvents?: readonly Omit<Observation, 'trialId' | 'wakeId'>[];
   /** The engine failure Daimon reported for a delivery that did not complete, in full; null when none. */
   failure?: string | null;
   /** Set when the run's trial cache replayed this wake: the trial that measured it. */
@@ -96,7 +97,7 @@ export const bootedUsage = (rows: readonly BootedUsageRow[]): Usage | null => ro
 export function createDaimonBootedAdapter(options: BootedAdapterOptions): SubjectAdapter {
   return {
     id: BOOTED_ADAPTER_ID,
-    capabilities: { toolTrace: 'none', liveObservations: false, cancellation: 'native-handle', multiTurn: true,
+    capabilities: { toolTrace: 'partial', liveObservations: false, cancellation: 'native-handle', multiTurn: true,
       // The container is the isolation: it reaches no host path, so every evaluator-owned file is out of reach.
       resources: ['instructions'], readIsolation: 'declared-paths', protectedPaths: true, trialIsolation: 'per-start',
       // Stopping saves the organization's whole log and engine records before the container is removed.
@@ -137,6 +138,9 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
           const wake = await trial.wake(turn.text, { deliveryId: `${input.trialId}:${turn.id}`, timeoutMs: options.timeoutMs, signal: signal ?? input.signal });
           reply = wake.text;
           const usage = bootedUsage(wake.usage);
+          const tools = wake.nativeToolEvents ?? [];
+          for (const event of tools) await input.onObservation({ ...event, trialId: input.trialId, wakeId: turn.id });
+          const hasToolTrace = tools.some(event => event.type === 'tool.dispatch' || event.type === 'tool.complete');
           if (wake.text) await emit(turn.id, { type: 'output', text: wake.text });
           if (usage) await emit(turn.id, { type: 'usage', usage });
           if (wake.transcript) await emit(turn.id, { type: 'diagnostic', native: { schema: BOOTED_EVIDENCE_SCHEMA, transcript: wake.transcript } });
@@ -160,7 +164,7 @@ export function createDaimonBootedAdapter(options: BootedAdapterOptions): Subjec
             coverage: [
               { channel: 'output', completeness: ended ? 'complete' : 'partial', ordering: 'none' },
               { channel: 'usage', completeness: usage === null ? 'absent' : wake.usage.every((row) => row.complete) ? 'complete' : 'partial', ordering: 'none' },
-              { channel: 'tools', completeness: 'absent', ordering: 'none' },
+              { channel: 'tools', completeness: hasToolTrace ? 'partial' : 'absent', ordering: 'none' },
             ],
             ...(quota === undefined ? {} : { failure: 'quota' as const }),
             ...(limit === undefined ? {} : { limit }),

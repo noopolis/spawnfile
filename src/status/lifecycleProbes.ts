@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { getRuntimeAdapter, RUNTIME_INSTALL_ROOT } from "../runtime/index.js";
+import { findRuntimeWiring, getRuntimeAdapter, RUNTIME_INSTALL_ROOT } from "../runtime/index.js";
 
 import type { LoadedCompileReport, StatusReportNode, StatusReportRuntimeInstance } from "./compileReport.js";
 import type { StatusObservation } from "./types.js";
@@ -24,15 +24,10 @@ export interface CollectLifecycleProbeOptions {
 }
 
 const CONTAINER_ROOTFS_ROOT = "container/rootfs";
-// Operator wake route and its fail-closed gate markers.
-const PI_OPERATOR_ROUTE_MARKER = "/spawnfile/agents/";
-const PI_CONTROL_TOKEN_ENV = "SPAWNFILE_PI_CONTROL_TOKEN";
-const PI_FAIL_CLOSED_MARKER = "no operator token configured (";
 // B93: the recipe env assignment containerEntrypointRender.ts stamps into
 // the compiled entrypoint only when the compile-host process env carried a
 // run id (see src/runtime/common.ts's resolveNoopolisRunId).
 const NOOPOLIS_RUN_ID_MARKER = "NOOPOLIS_RUN_ID=";
-const PI_LIKE_RUNTIMES = new Set(["daimon"]);
 
 const LIFECYCLE_KEYS = [
   "lifecycle.instance.coverage",
@@ -139,9 +134,6 @@ const collectInstancePathsObservations = (
     });
   });
 
-const piAppSourcePath = (outputDirectory: string, runtimeName: string): string =>
-  path.join(outputDirectory, CONTAINER_ROOTFS_ROOT, RUNTIME_INSTALL_ROOT, runtimeName, "app.mjs");
-
 const collectWakeOperatorObservations = async (
   instances: StatusReportRuntimeInstance[],
   outputDirectory: string | null,
@@ -152,10 +144,11 @@ const collectWakeOperatorObservations = async (
   for (const instance of instances) {
     const subject = instanceSubject(instance.id);
 
-    if (!PI_LIKE_RUNTIMES.has(instance.runtime)) {
+    const artifact = findRuntimeWiring(instance.runtime)?.operatorWakeArtifact;
+    if (!artifact) {
       observations.push(createObservation({
         key: "lifecycle.wake.operator",
-        message: `${instance.id} uses runtime ${instance.runtime}; the B62 operator wake route is Daimon-specific and was not checked`,
+        message: `${instance.id} uses runtime ${instance.runtime} and declares no operator wake artifact to check`,
         severity: "unknown",
         subject
       }));
@@ -172,7 +165,9 @@ const collectWakeOperatorObservations = async (
       continue;
     }
 
-    const filePath = piAppSourcePath(outputDirectory, instance.runtime);
+    const filePath = path.join(
+      outputDirectory, CONTAINER_ROOTFS_ROOT, RUNTIME_INSTALL_ROOT, instance.runtime, artifact.filePath
+    );
     const content = await readFile(filePath);
     if (content === null) {
       observations.push(createObservation({
@@ -184,11 +179,9 @@ const collectWakeOperatorObservations = async (
       continue;
     }
 
-    const missing = [
-      !content.includes(PI_OPERATOR_ROUTE_MARKER) ? "operator wake route" : null,
-      !content.includes(PI_CONTROL_TOKEN_ENV) ? `${PI_CONTROL_TOKEN_ENV} reference` : null,
-      !content.includes(PI_FAIL_CLOSED_MARKER) ? "fail-closed gate" : null
-    ].filter((entry): entry is string => entry !== null);
+    const missing = artifact.markers
+      .filter(({ text }) => !content.includes(text))
+      .map(({ label }) => label);
 
     observations.push(createObservation({
       key: "lifecycle.wake.operator",

@@ -31,8 +31,7 @@
  * containing none of those four characters both forms are identical.
  */
 
-import { DAIMON_GATEWAY_URL_ENV } from "../runtime/daimon/gateway.js";
-import { isDaimonGatewayRealmMountId } from "../runtime/daimon/subscriptionRealms.js";
+import { SpawnfileError } from "../shared/errors.js";
 
 export const EPHEMERAL_STATE_OPT_OUT_ENV = "SPAWNFILE_ALLOW_EPHEMERAL_STATE";
 
@@ -88,7 +87,8 @@ export const createBackedMountShellFunction = (): string[] => [
  * rendered entrypoint is a deterministic function of the compile plan.
  */
 export const createBackedMountChecks = (
-  mounts: readonly BackedMountRequirement[]
+  mounts: readonly BackedMountRequirement[],
+  mountEnvironment?: (id: string) => string | undefined
 ): string[] => {
   const byPath = new Map<string, BackedMountRequirement>();
   for (const mount of mounts) {
@@ -96,10 +96,14 @@ export const createBackedMountChecks = (
   }
   return [...byPath.values()]
     .sort((left, right) => left.mount_path.localeCompare(right.mount_path))
-    .map((mount) =>
-      // An organization booted against an external auth gateway mounts no realm.
-      `${isDaimonGatewayRealmMountId(mount.id) ? `[ -n "\${${DAIMON_GATEWAY_URL_ENV}:-}" ] || ` : ""}require_backed_mount ${shellQuote(mount.id)} ${shellQuote(escapeMountInfoPath(mount.mount_path))} ${shellQuote(mount.mount_path)} ${shellQuote(mount.volume_name)}`
-    );
+    .map((mount) => {
+      const env = mountEnvironment?.(mount.id);
+      if (env !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(env)) {
+        throw new SpawnfileError("compile_error", `Invalid external mount environment name for ${mount.id}`);
+      }
+      const condition = env ? `[ -n "\${${env}:-}" ] || ` : "";
+      return `${condition}require_backed_mount ${shellQuote(mount.id)} ${shellQuote(escapeMountInfoPath(mount.mount_path))} ${shellQuote(mount.mount_path)} ${shellQuote(mount.volume_name)}`;
+    });
 };
 
 /**
@@ -107,9 +111,10 @@ export const createBackedMountChecks = (
  * declares no durable mounts.
  */
 export const createBackedMountGuard = (
-  mounts: readonly BackedMountRequirement[]
+  mounts: readonly BackedMountRequirement[],
+  mountEnvironment?: (id: string) => string | undefined
 ): string[] => {
-  const checks = createBackedMountChecks(mounts);
+  const checks = createBackedMountChecks(mounts, mountEnvironment);
   return checks.length === 0 ? [] : [...createBackedMountShellFunction(), "", ...checks, ""];
 };
 

@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({ argv: [] as string[][], dependencies: [] as unknown[], closed: 0, hang: false }));
-vi.mock("./trainingRun.js", () => ({ openTrainingRun: async () => ({ run: {}, close: async () => { calls.closed++; } }) }));
+vi.mock("../runtime/daimon/training/trial/run.js", () => ({ openTrainingRun: async () => ({ run: {}, close: async () => { calls.closed++; } }) }));
 vi.mock("../runtime/daimon/training/booted/index.js", () => ({ createDaimonBootedAdapter: () => ({}) }));
 vi.mock("../runtime/trainingCli.js", () => ({ main: async (argv: string[], io: { signal: AbortSignal }, dependencies: unknown) => {
   calls.argv.push(argv); calls.dependencies.push(dependencies);
@@ -9,7 +9,8 @@ vi.mock("../runtime/trainingCli.js", () => ({ main: async (argv: string[], io: {
   if (calls.hang) await new Promise((resolve) => io.signal.addEventListener("abort", resolve, { once: true }));
   return calls.hang ? 1 : 0; } }));
 
-const { momentPreparation, runBootedTraining } = await import("./trainingBooted.js");
+const { runBootedTraining } = await import("./trainingBooted.js");
+const { momentPreparation } = await import("../compiler/training/trial/index.js");
 
 const run = (args: string[], agent: { model: { name: string } | null; engine: string | null }) => runBootedTraining({
   args, authProfile: "training", dryRun: false, timeoutMs: 1, streams: { stdout: () => undefined, stderr: () => undefined },

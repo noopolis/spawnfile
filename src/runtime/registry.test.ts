@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { listInstallSelectionRuntimes } from "./install.js";
 import {
   createRuntimeLifecycleDiagnostics,
+  resolveImageCredentialUid,
   getRegisteredRuntime,
   getRuntimeAdapter,
   listRuntimeAdapters,
@@ -12,7 +13,7 @@ import {
 
 describe("runtime registry", () => {
   it("lists available runtime adapters", () => {
-    expect(listRuntimeAdapters()).toEqual(["daimon", "openclaw", "picoclaw"]);
+    expect(listRuntimeAdapters()).toEqual(["daimon", "hermes-agent", "openclaw", "opencode", "picoclaw"]);
   });
 
   it("loads runtimes from runtimes.yaml", async () => {
@@ -97,4 +98,23 @@ it('training entry declares its adapter and the runtime engine vocabulary', () =
   const [entry] = parseRuntimeRegistry('runtimes:\n  daimon:\n    default_branch: main\n    ref: v1\n    remote: local\n    status: active\n');
   expect(entry!.training?.adapterId).toBe('daimon-native');
   expect(entry!.training?.engines).toEqual(['agy', 'codex', 'grok']);
+});
+
+it("uses a historical credential UID only for its owning adapter", () => {
+  const legacy = { daimonContainerCredentialUid: 501 };
+  expect(resolveImageCredentialUid("daimon", legacy)).toBe(501);
+  expect(resolveImageCredentialUid("echo-harness", legacy)).toBeUndefined();
+  expect(resolveImageCredentialUid("daimon", { ...legacy, containerCredentialUid: 502 })).toBe(502);
+});
+
+it("keeps the cached install pins independent of a caller's catalog edits", async () => {
+  const catalog = await loadRuntimeRegistry();
+  const native = catalog.find(({ name }) => name === "daimon")!;
+  expect(native.install?.kind).toBe("container_image");
+  if (native.install?.kind !== "container_image") throw new Error("missing image fixture");
+  const originalTag = native.install.tag;
+  native.install.tag = "local-display-only";
+  catalog.length = 0;
+  const fresh = await getRegisteredRuntime("daimon");
+  expect(fresh?.install).toMatchObject({ kind: "container_image", tag: originalTag });
 });

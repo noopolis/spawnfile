@@ -4,3 +4,8 @@ export * from './engines.js';
 export * from './contractManifestSchema.js';
 export { DAIMON_GATEWAY_KEY_ENV, DAIMON_GATEWAY_URL_ENV } from './gateway.js';
 export { daimonProfileRealmVolume, daimonSubscriptionRealmMountId, isDaimonGatewayRealmMountId } from './subscriptionRealms.js';
+export { daimonHelperControlCall, type DaimonControlCall, type DaimonControlTarget } from './control.js';
+export { DAIMON_GATEWAY_PORT, daimonGatewayBootstrapMountPath, daimonGatewayedEngines, daimonGatewayRealmPath } from './gateway.js';
+export { assertSafeDaimonSourceFile } from './runAuth.js';
+export { DAIMON_ORGANIZATION_UID } from './runtimeIdentity.js';
+export { DAIMON_PROFILE_UNLOCK_FILE } from './subscriptionRealms.js';

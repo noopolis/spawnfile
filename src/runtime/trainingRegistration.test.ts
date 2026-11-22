@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { loadRuntimeRegistry, hasRuntimeAdapter } from './registry.js';
+import { loadRuntimeRegistry } from './registry.js';
 import { createTrainingSubjects, main, trainingDependencies } from './trainingSubjects.js';
 
 const loading = vi.hoisted(() => ({ count: 0 }));
@@ -14,7 +14,7 @@ it('leaves training adapters unloaded for compilation and resolves them only at 
   expect(entries.find(entry => entry.name === 'daimon')!.training!.subject).toBeTypeOf('function');
   const subjects = await createTrainingSubjects(entries);
   expect(loading.count).toBe(1);
-  expect(Object.keys(subjects)).toEqual(['daimon']);
+  expect(Object.keys(subjects).sort()).toEqual(['daimon', 'hermes-agent', 'openclaw', 'opencode', 'picoclaw']);
   expect(subjects.daimon!.hostInference).toBeUndefined();
 });
 

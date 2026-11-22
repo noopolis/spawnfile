@@ -6,7 +6,8 @@ import type { RuntimeRegistryEntry } from "./registry.js";
 const loadInstallModule = async (
   registryEntries: RuntimeRegistryEntry[]
 ) => {
-  vi.doMock("./registry.js", () => ({
+  vi.doMock("./registry.js", async (importOriginal) => ({
+    ...await importOriginal<typeof import("./registry.js")>(),
     assertRuntimeCanCompile: vi.fn(async (runtimeName: string) => {
       const runtime = registryEntries.find((entry) => entry.name === runtimeName);
       if (!runtime) {

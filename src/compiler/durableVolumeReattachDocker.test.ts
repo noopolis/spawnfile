@@ -47,7 +47,6 @@ const execFile = promisify(execFileCallback);
  */
 
 const AUTHORIZED_UID = 2000;
-const NON_DAIMON_UID = 1001;
 const DEPLOYMENT_LINEAGE = "newsroom-production";
 
 const readiness: OrganizationReadinessEvidence = {
@@ -554,20 +553,23 @@ describe("durable volumes reattach across container replacement", () => {
     }
   }, 600_000);
 
-  it("preserves non-Daimon state across a docker rm and a new run id at uid 1001", async () => {
+  it.each([
+    { runtimeName: "picoclaw", baseImage: "debian:bookworm-slim", owner: "1000:1000" },
+    { runtimeName: "openclaw", baseImage: "node:24-bookworm-slim", owner: "1001:1001" }
+  ])("preserves $runtimeName state at $owner across container replacement", async ({ runtimeName, baseImage, owner }) => {
     const suffix = uniqueSuffix();
-    const tag = `spawnfile-durable-openclaw-${suffix}`;
+    const tag = `spawnfile-durable-${runtimeName}-${suffix}`;
     const containerName = `${tag}-container`;
-    const dockerDirectory = await mkdtemp(path.join(os.tmpdir(), "spawnfile-durable-openclaw-"));
-    const workspacePath = "/var/lib/spawnfile/instances/openclaw/agent-reporter/home/.openclaw/workspace";
+    const dockerDirectory = await mkdtemp(path.join(os.tmpdir(), `spawnfile-durable-${runtimeName}-`));
+    const instanceRoot = `/var/lib/spawnfile/instances/${runtimeName}/agent-reporter`;
     const instancePaths = {
-      configPath: "/var/lib/spawnfile/instances/openclaw/agent-reporter/config.json",
-      workspacePath
+      configPath: `${instanceRoot}/config.json`,
+      workspacePath: `${instanceRoot}/workspace`
     };
     const meta = {
       configFileName: "config.json",
       instancePaths: { configPathTemplate: "", workspacePathTemplate: "" },
-      standaloneBaseImage: "node:24-bookworm-slim",
+      standaloneBaseImage: baseImage,
       startCommand: ["bash", "/opt/spawnfile/durable-probe.sh"],
       systemDeps: ["bash"]
     } as unknown as RuntimeContainerMeta;
@@ -576,7 +578,7 @@ describe("durable volumes reattach across container replacement", () => {
       const plan = {
         configEnvBindings: [],
         envFiles: [],
-        id: "openclaw-reporter",
+        id: `${runtimeName}-reporter`,
         instancePaths,
         meta,
         modelAuthMethods: {},
@@ -584,10 +586,10 @@ describe("durable volumes reattach across container replacement", () => {
         packages: [],
         recipeEnv: {},
         resources: resolveDurableResources(
-          "reporter", "openclaw", "clank-edition-state", instancePaths, meta
+          "reporter", runtimeName, "clank-edition-state", instancePaths, meta
         ),
-        runtimeName: "openclaw",
-        runtimeRoot: "/opt/spawnfile/runtime-installs/openclaw",
+        runtimeName,
+        runtimeRoot: `/opt/spawnfile/runtime-installs/${runtimeName}`,
         sourceIds: [],
         targetFiles: [{ content: "{}\n", path: "config.json" }]
       } as unknown as RuntimeTargetPlan;
@@ -621,11 +623,11 @@ describe("durable volumes reattach across container replacement", () => {
       vi.resetModules();
       vi.doMock("../runtime/index.js", () => ({
         createRuntimeInstallRecipe: vi.fn(async () => ({
-          baseImage: "node:24-bookworm-slim",
+          baseImage,
           commands: [],
           copyCommands: [],
-          runtimeName: "openclaw",
-          runtimeRoot: "/opt/spawnfile/runtime-installs/openclaw"
+          runtimeName,
+          runtimeRoot: plan.runtimeRoot
         }))
       }));
       const { createRootfsFiles, renderDockerfile, renderEntrypoint } =
@@ -671,11 +673,17 @@ describe("durable volumes reattach across container replacement", () => {
       const firstState = /state=(\S+) inode=(\d+) owner=(\S+) marker=(\S+)/u.exec(first.stdout);
       expect(firstState, first.stdout + first.stderr).not.toBeNull();
       expect(firstState![1]).toBe("edition-one");
-      // `prepare_volume_resource` authenticates the marker as
-      // `volume_bootstrap_uid`:`volume_bootstrap_gid` 1001:1001 for a
-      // non-Daimon runtime, then removes it.
-      expect(firstState![3]).toBe(`${NON_DAIMON_UID}:${NON_DAIMON_UID}`);
+      expect(firstState![3]).toBe(owner);
       expect(firstState![4]).toBe("absent");
+
+      // This marker has the wrong group on Debian and the wrong user on Node.
+      await expect(execFile("docker", [
+        "run", "--rm", "--network", "none", "--user", "0", "--mount", `type=volume,target=${backingPath}`,
+        "--env", "volume_bootstrap_uid=1000", "--env", "volume_bootstrap_gid=1001",
+        "--entrypoint", "bash", tag, "-ceu",
+        'chown 1000:1001 "$1/.spawnfile-volume-init" && exec /opt/spawnfile/entrypoint.sh',
+        "check-owner", backingPath
+      ])).rejects.toThrow(/bootstrap marker mismatch/u);
 
       await execFile("docker", ["rm", "--force", containerName]);
 

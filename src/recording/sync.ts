@@ -2,14 +2,15 @@ import path from "node:path";
 
 import { deployResourcesAt, type DeployResources } from "../deployment/index.js";
 import type { RecordingAgentReport } from "../report/index.js";
+import { listRuntimeOperations } from "../runtime/registry.js";
+import type { RuntimeRecordingReader } from "../runtime/operations.js";
 import type { UsageLedgerExec } from "../runtime/usageLedgerRead.js";
 import type { FeedLanding } from "../volume/index.js";
 import { composeMomentRecord } from "./compose.js";
 import { readRecordingDeployHistory, recordingHistoryAt, type RecordingHistory } from "./history.js";
-import { createMemoryLedgerParser, createWakeMomentsParser } from "./parse.js";
-import { readRecordingJsonl } from "./read.js";
+import { createMemoryLedgerParser } from "./parse.js";
 import { newestMomentInstant, pruneMomentRecords, withMomentStore, writeMomentRecord } from "./store.js";
-import type { MemoryLedgerRead, WakeMomentRow } from "./types.js";
+import { WAKE_MOMENT_VERSION, type MemoryLedgerRead, type RecordedWakeMoment } from "./types.js";
 
 export interface SyncMomentRecordsOptions {
   recordPath: string;
@@ -29,6 +30,13 @@ export interface SyncMomentRecordsResult {
   warnings: string[];
 }
 
+const readerFor = (format: string): RuntimeRecordingReader => {
+  const candidates = listRuntimeOperations().flatMap(({ recording }) =>
+    recording?.reader?.format === format ? [recording.reader] : []);
+  if (candidates.length !== 1) throw new Error(`Expected one runtime recording reader for format ${format}, found ${candidates.length}`);
+  return candidates[0]!;
+};
+
 /** Artifact egress only. No turn, snapshot copy, network-history fetch, or source resolution. */
 export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Promise<SyncMomentRecordsResult> => {
   const result: SyncMomentRecordsResult = { written: 0, skipped: 0, nonExact: 0, failures: [], warnings: [] };
@@ -42,18 +50,24 @@ export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Prom
   for (const agent of options.agents) {
     try {
       if (!Number.isSafeInteger(agent.keep_ms) || agent.keep_ms <= 0) throw new Error("Invalid recording retention");
+      const reader = readerFor(agent.wake_format ?? WAKE_MOMENT_VERSION);
       const exec = options.execForAgent(agent);
-      const directories = new Set([agent.directory, ...deploy.entries
-        .filter((entry) => entry.deployment_id === path.resolve(options.recordPath))
-        .flatMap((entry) => entry.recording_agents ?? []).filter((entry) => entry.node_id === agent.node_id)
-        .map((entry) => entry.directory)]);
+      const historyAgents = deploy.entries.filter((entry) => entry.deployment_id === path.resolve(options.recordPath))
+        .flatMap((entry) => entry.recording_agents ?? []).filter((entry) => entry.node_id === agent.node_id);
+      const sources = new Map([agent, ...historyAgents].map(({ directory, wake_format }) => {
+        const format = wake_format ?? WAKE_MOMENT_VERSION;
+        return [JSON.stringify([directory, format]), { directory, format }];
+      }));
       const errors = deploy.errors.map((error) => `Deploy history: ${error}`);
-      const rowsBySlug = new Map<string, { row: WakeMomentRow; directory: string }[]>();
+      const rowsBySlug = new Map<string, { row: RecordedWakeMoment; directory: string }[]>();
       rowsBySlug.set(agent.slug, []);
-      for (const directory of directories) {
+      for (const { directory, format } of sources.values()) {
         // Retention still runs when a log has become empty since the previous sync.
         rowsBySlug.set(path.posix.basename(directory), rowsBySlug.get(path.posix.basename(directory)) ?? []);
-        const wake = await readRecordingJsonl(exec, path.posix.join(directory, "wake-moments.jsonl"), createWakeMomentsParser(), options.readChunkBytes);
+        const sourceReader = format === reader.format ? reader : readerFor(format);
+        const wake = await sourceReader.readJsonl(
+          exec, sourceReader.wakeRowsPath(directory), sourceReader.createWakeMomentsParser(), options.readChunkBytes
+        );
         if (wake.failure) throw new Error(`Wake moments unreadable: ${wake.failure}`);
         errors.push(...wake.errors);
         for (const row of wake.entries) {
@@ -72,12 +86,15 @@ export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Prom
           await newestMomentInstant(directory, agent.node_id));
         for (const { row, directory: sourceDirectory } of rows) {
           const started = Date.parse(row.started_at);
-          // Do not recreate already-pruned attempts on every sync while Daimon retains its row log.
+          // Do not recreate already-pruned attempts on every sync while the runtime retains its row log.
           if (started < now.getTime() - agent.keep_ms && started < newest) { result.skipped += 1; continue; }
           const { agent: historical, deployment } = recordingHistoryAt(deploy.entries, options.recordPath, row.started_at, agent.node_id);
           const rowErrors = [...errors];
           if (deploy.publicationPending && started >= deployPendingSince) rowErrors.push("Deploy history publication pending");
           if (historical && historical.directory !== sourceDirectory) rowErrors.push("Wake row directory differs from activation recording facts");
+          if (historical && row.version !== (historical.wake_format ?? WAKE_MOMENT_VERSION)) {
+            rowErrors.push("Wake row format differs from activation recording facts");
+          }
           const feedLandings: Record<string, FeedLanding[]> = Object.create(null) as Record<string, FeedLanding[]>;
           for (const feed of historical?.feeds ?? []) {
             const key = JSON.stringify([feed.id, feed.volume_name]);
@@ -104,7 +121,7 @@ export const syncMomentRecords = async (options: SyncMomentRecordsOptions): Prom
               continue;
             }
             if (!memoryCache[bank.ledger_path]) {
-              const ledger = await readRecordingJsonl(exec, bank.ledger_path, createMemoryLedgerParser(), options.readChunkBytes);
+              const ledger = await reader.readJsonl(exec, bank.ledger_path, createMemoryLedgerParser(), options.readChunkBytes);
               memoryCache[bank.ledger_path] = ledger.failure || ledger.missing
                 ? { entries: [], errors: [`Ledger unreadable: ${ledger.failure ?? "runtime file is absent"}`] } : ledger;
             }

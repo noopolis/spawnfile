@@ -36,7 +36,7 @@ import {
   rollbackCandidateContainer
 } from "./consumeImageLifecycle.js";
 import { createConsumerDockerRunner } from "./dockerRunner.js";
-import { resolveDaimonRuntimeForImage } from "./consumeImageDaimonDocker.js";
+import { prepareImageHostLaunch, requireImageRuntimeAdapters } from "./imageHost.js";
 import type { DockerCommandRunner } from "./dockerRunner.js";
 import { extractImageReport, resolveDockerBaseArgs } from "./extractImage.js";
 import { parseImageReference } from "./imageRef.js";
@@ -46,11 +46,11 @@ import { normalizeProjectLabelSlug } from "./projectName.js";
 import type { DistributionReport } from "./types.js";
 import type { ResolvedAuthProfile } from "../auth/index.js";
 
-export interface ConsumeImageUpOptions {
+import type { ImageCredentialUidOptions } from "../runtime/registry.js";
+
+export interface ConsumeImageUpOptions extends ImageCredentialUidOptions {
   authProfile?: ResolvedAuthProfile | null;
   authValues?: Record<string, string>;
-  /** See `ImageRuntimeAuthInput.daimonContainerCredentialUid`. */
-  daimonContainerCredentialUid?: number;
   authProfileName?: string | null;
   deploymentName?: string;
   /** Caller owns the home lock across drain and swap; never set this without holding it. */
@@ -194,6 +194,7 @@ const consumeImageUpLocked = async (
     runDocker: options.runDocker
   });
   const report = inspection.report;
+  requireImageRuntimeAdapters(report, `start image ${imageRef}`);
 
   // Resolve the full environment first (auth profile, env file, process-env
   // overrides, and generated runtime tokens), then preflight against it so
@@ -236,19 +237,16 @@ const consumeImageUpLocked = async (
     // config is already baked into the image; this only resolves the credential
     // mounts. Doing it first guarantees an unusable import fails while the live
     // container is still untouched, never mid-swap.
-    const daimonRuntime = await resolveDaimonRuntimeForImage(
+    const runtimePreparations = await prepareImageHostLaunch(
       imageRef, report, runDocker, workDir
     );
     const authMountArgs = (
       await prepareImageRuntimeAuthMounts({
         authProfile: options.authProfile ?? null,
-        ...(options.daimonContainerCredentialUid === undefined
-          ? {}
-          : { daimonContainerCredentialUid: options.daimonContainerCredentialUid }),
         report,
-        daimonEngineDescriptors: daimonRuntime.engineDescriptors,
+        runtimePreparations,
         tempRoot: workDir
-      })
+      }, options)
     ).mountArgs;
 
     volumeReservation = await acquireExclusiveVolumeReservations(
@@ -277,7 +275,7 @@ const consumeImageUpLocked = async (
     }
 
     const runArgs = [
-      "run", "-d", "--name", containerName, ...daimonRuntime.securityArgs, "--env-file", envFilePath
+      "run", "-d", "--name", containerName, ...[...runtimePreparations.values()].flatMap((runtime) => runtime.securityArgs), "--env-file", envFilePath
     ];
     for (const port of report.ports) {
       runArgs.push("-p", `${port}:${port}`);

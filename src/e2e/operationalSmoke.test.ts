@@ -64,6 +64,7 @@ const createUpResult = (outputDirectory: string, imageTag: string): UpProjectRes
 describe("runOperationalSmokeE2E", () => {
   it("runs spawnfile up and checks runtime, Moltnet, schedule, and workspace links", async () => {
     const dockerCalls: string[][] = [];
+    let attachmentPolls = 0;
     const upProject: typeof realUpProject = vi.fn(async (_inputPath, options = {}) =>
       createUpResult(options.outputDirectory ?? "/tmp/out", options.imageTag ?? "image")
     );
@@ -126,18 +127,6 @@ describe("runOperationalSmokeE2E", () => {
               severity: "ok",
               source: "network",
               subject: "network:ops_lab"
-            },
-            {
-              key: "network.room",
-              severity: "ok",
-              source: "network",
-              subject: "room:ops_lab:ops-room"
-            },
-            {
-              key: "network.agent.connected",
-              severity: "ok",
-              source: "network",
-              subject: "agent:pico-scheduled"
             }
           ]
         }));
@@ -163,9 +152,10 @@ describe("runOperationalSmokeE2E", () => {
           dockerCalls.push(args);
           const command = args.join(" ");
           if (command.includes("/v1/agents")) {
+            attachmentPolls += 1;
             return JSON.stringify({
               agents: [
-                { id: "pico-scheduled", rooms: ["ops-room"] }
+                { id: "pico-scheduled", connected: attachmentPolls > 1, rooms: ["ops-room"] }
               ]
             });
           }
@@ -207,6 +197,7 @@ describe("runOperationalSmokeE2E", () => {
       "-f",
       "/var/lib/spawnfile/instances/picoclaw/agent-pico-scheduled/picoclaw/workspace/cron/jobs.json"
     ]));
+    expect(attachmentPolls).toBe(2);
     expect(dockerCalls).toContainEqual(["rm", "-f", "operational-container"]);
     expect(dockerCalls).toContainEqual(["image", "rm", "-f", "operational-image"]);
     expect(dockerCalls).toContainEqual(["volume", "rm", "-f", "spawnfile-ops-lab-state"]);

@@ -1,3 +1,4 @@
+import { DAIMON_SKILL_ROOTS } from "./grokSkillsSupport.js";
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
@@ -57,4 +58,8 @@ describe("Daimon Grok skills release guard", () => {
     expect(() => daimonAdapter.preflightAgent!(grokNode([]), "agent:grokker")).not.toThrow();
     expect(() => daimonAdapter.preflightAgent!(grokNode([skill("bad name")]), "agent:grokker")).toThrow(/skill name/u);
   });
+});
+
+it("emits the workspace skill roots used by native CLI engines", () => {
+  expect(DAIMON_SKILL_ROOTS).toEqual(["workspace/.agents/skills", "workspace/.codex/skills"]);
 });

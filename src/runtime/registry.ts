@@ -1,5 +1,4 @@
-import { daimonTrainingDeclaration } from './daimon/engines.js';
-import type { SubjectAdapterRegistration } from "../training/subjects/index.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { readFile } from "node:fs/promises";
 
 import { parse as parseYaml } from "yaml";
@@ -9,16 +8,25 @@ import type { DiagnosticReport } from "../report/index.js";
 import type { RuntimeLifecycleStatus } from "../shared/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
-import { openClawAdapter } from "./openclaw/adapter.js";
-import { daimonAdapter } from "./daimon/adapter.js";
-import { picoClawAdapter } from "./picoclaw/adapter.js";
+import { builtinRuntimeRegistrations, type LegacyCredentialUidOption } from "./builtinAdapters.generated.js";
+import { type RuntimeAdapterPlugin, validateRuntimeAdapterPlugin } from "./pluginDefinition.js";
 import type { RuntimeAdapter } from "./types.js";
 
-const runtimeAdapters = new Map<string, RuntimeAdapter>([
-  [daimonAdapter.name, daimonAdapter],
-  [openClawAdapter.name, openClawAdapter],
-  [picoClawAdapter.name, picoClawAdapter]
-]);
+const runtimeAdapters = new Map(builtinRuntimeRegistrations.map(({ adapter }) => [adapter.name, adapter]));
+export type ImageCredentialUidOptions = Partial<Record<LegacyCredentialUidOption, number>> & {
+  containerCredentialUid?: number;
+};
+
+export const resolveImageCredentialUid = (name: string, options: ImageCredentialUidOptions): number | undefined => {
+  const legacy = builtinRuntimeRegistrations.find(({ adapter }) => adapter.name === name)?.legacyCredentialUidOption;
+  return options.containerCredentialUid ?? (legacy === undefined ? undefined : options[legacy]);
+};
+
+type AdapterScope = Map<string, { adapter: RuntimeAdapter; entry: RuntimeRegistryEntry }>;
+const adapterScope = new AsyncLocalStorage<AdapterScope>();
+
+const selectedRuntimeAdapter = (name: string): RuntimeAdapter | undefined =>
+  adapterScope.getStore()?.get(name)?.adapter ?? runtimeAdapters.get(name);
 
 const runtimeInstallSchema = z.discriminatedUnion("kind", [
   z
@@ -91,7 +99,7 @@ export type RuntimeRegistryInstall =
   | {
       capabilityReceipt?: string;
       /** Per-architecture receipts embedded in a multi-architecture image index. */
-      capabilityReceipts?: DaimonCapabilityReceipts;
+      capabilityReceipts?: RuntimeCapabilityReceipts;
       contractManifestSha256?: string;
       digest?: string;
       image: string;
@@ -114,10 +122,10 @@ export type RuntimeRegistryInstall =
       kind: "source_repo";
     };
 
-export type DaimonCapabilityReceipts = Partial<Record<"amd64" | "arm64", string>>;
+export type RuntimeCapabilityReceipts = Partial<Record<"amd64" | "arm64", string>>;
 
 export interface RuntimeRegistryEntry {
-  training?: { adapterId?: string; engines?: readonly string[]; subject: () => Promise<SubjectAdapterRegistration> };
+  training?: RuntimeAdapter["training"];
   defaultBranch: string;
   install?: RuntimeRegistryInstall;
   name: string;
@@ -126,13 +134,16 @@ export interface RuntimeRegistryEntry {
   status: RuntimeLifecycleStatus;
 }
 
+const trainingFor = (adapter?: RuntimeAdapter): Pick<RuntimeRegistryEntry, "training"> =>
+  adapter?.training ? { training: adapter.training } : {};
+
 export const parseRuntimeRegistry = (source: string): RuntimeRegistryEntry[] => {
   try {
     const parsed = runtimeRegistrySchema.parse(parseYaml(source));
 
     return Object.entries(parsed.runtimes)
       .map(([name, entry]) => ({
-        ...(name === 'daimon' ? { training: { ...daimonTrainingDeclaration, subject: async () => (await import('./daimon/training/index.js')).daimonTrainingSubject } } : {}),
+        ...trainingFor(runtimeAdapters.get(name)),
         defaultBranch: entry.default_branch,
         install: entry.install?.kind === "container_image"
           ? {
@@ -186,18 +197,103 @@ const readRuntimeRegistry = async (): Promise<RuntimeRegistryEntry[]> => {
   }
 };
 
-export const loadRuntimeRegistry = async (): Promise<RuntimeRegistryEntry[]> => {
+const loadBuiltinCatalog = (): Promise<RuntimeRegistryEntry[]> =>
   runtimeRegistryPromise ??= readRuntimeRegistry();
-  return runtimeRegistryPromise;
+
+export const loadRuntimeRegistry = async (): Promise<RuntimeRegistryEntry[]> => {
+  const catalog = await loadBuiltinCatalog();
+  const scope = adapterScope.getStore();
+  const selected = scope?.size
+    ? [...catalog.filter((entry) => !scope.has(entry.name)), ...[...scope.values()].map(({ entry }) => entry)]
+      .sort((left, right) => left.name.localeCompare(right.name))
+    : catalog;
+  return selected.map((entry) => ({
+    ...entry,
+    ...(entry.install ? { install: structuredClone(entry.install) } : {})
+  }));
 };
+
+const registerScopedPlugins = async (scope: AdapterScope, plugins: readonly RuntimeAdapterPlugin[]): Promise<void> => {
+  const catalog = plugins.length ? await loadBuiltinCatalog() : [];
+  const offset = scope.size;
+  const additions: AdapterScope = new Map();
+  for (const [index, plugin] of plugins.entries()) {
+    const { adapter, catalog: metadata } = validateRuntimeAdapterPlugin(plugin, `#${offset + index + 1}`);
+    const name = adapter.name;
+    if (scope.has(name) || additions.has(name)) {
+      throw new SpawnfileError("validation_error", `Duplicate runtime adapter: ${name}`);
+    }
+    const existing = catalog.find((entry) => entry.name === name);
+    if (runtimeAdapters.has(name) || (existing && existing.status !== "exploratory")) {
+      throw new SpawnfileError("validation_error", `Runtime adapter ${name} cannot shadow a bundled adapter or active catalog entry`);
+    }
+    additions.set(name, { adapter, entry: { ...metadata, ...trainingFor(adapter), name, status: metadata.status ?? "active" } });
+  }
+  for (const [name, registration] of additions) scope.set(name, registration);
+};
+
+export const withRuntimeAdapterPlugins = async <T>(
+  plugins: readonly RuntimeAdapterPlugin[],
+  run: () => T | Promise<T>
+): Promise<T> => {
+  const scope: AdapterScope = new Map();
+  await registerScopedPlugins(scope, plugins);
+  try {
+    return await adapterScope.run(scope, run);
+  } finally {
+    scope.clear();
+  }
+};
+
+/**
+ * Adds plugins to the innermost scope opened by `withRuntimeAdapterPlugins`, with the same
+ * duplicate and shadowing refusals. Validation completes before any plugin becomes visible.
+ */
+export const addRuntimeAdapterPlugins = async (plugins: readonly RuntimeAdapterPlugin[]): Promise<void> => {
+  const scope = adapterScope.getStore();
+  if (!scope) throw new SpawnfileError("runtime_error", "Runtime adapters can only be added inside withRuntimeAdapterPlugins");
+  await registerScopedPlugins(scope, plugins);
+};
+
+/** The adapter object an external plugin registered in this scope, never a bundled one. */
+export const getScopedRuntimeAdapter = (runtimeName: string): RuntimeAdapter | undefined =>
+  adapterScope.getStore()?.get(runtimeName)?.adapter;
 
 export const getRegisteredRuntime = async (
   runtimeName: string
 ): Promise<RuntimeRegistryEntry | undefined> =>
   (await loadRuntimeRegistry()).find((entry) => entry.name === runtimeName);
 
+export const isBundledRuntimeAdapter = (runtimeName: string): boolean => runtimeAdapters.has(runtimeName);
+
 export const hasRuntimeAdapter = (runtimeName: string): boolean =>
-  runtimeAdapters.has(runtimeName);
+  selectedRuntimeAdapter(runtimeName) !== undefined;
+
+/** Runtime names a saved report refers to that this invocation has no adapter for. */
+export const missingRuntimeAdapters = (runtimeNames: Iterable<string | null | undefined>): string[] =>
+  [...new Set([...runtimeNames].filter((name): name is string => typeof name === "string" && name.length > 0))]
+    .filter((name) => !hasRuntimeAdapter(name))
+    .sort();
+
+/**
+ * Refuses an operation on report data naming a runtime with no adapter in this
+ * invocation. A known adapter may have no hooks; only an absent one is refused.
+ * Source project declarations and explicit CLI modules supply the registry for the operation.
+ */
+export const requireRuntimeAdapters = (
+  runtimeNames: Iterable<string | null | undefined>,
+  operation: string
+): void => {
+  const missing = missingRuntimeAdapters(runtimeNames);
+  if (missing.length === 0) return;
+  const listed = missing.map((name) => JSON.stringify(name)).join(", ");
+  throw new SpawnfileError(
+    "runtime_error",
+    `Cannot ${operation}: no runtime adapter is loaded for ${listed}. ` +
+      "Run it from the source project that declares the adapter, or pass --adapter <module>. " +
+      "Spawnfile never loads an adapter named by report data."
+  );
+};
 
 export const assertRuntimeCanCompile = async (
   runtimeName: string
@@ -240,7 +336,7 @@ export const createRuntimeLifecycleDiagnostics = (
     : [];
 
 export const getRuntimeAdapter = (runtimeName: string): RuntimeAdapter => {
-  const adapter = runtimeAdapters.get(runtimeName);
+  const adapter = selectedRuntimeAdapter(runtimeName);
   if (!adapter) {
     throw new SpawnfileError("runtime_error", `Unknown runtime adapter: ${runtimeName}`);
   }
@@ -248,4 +344,23 @@ export const getRuntimeAdapter = (runtimeName: string): RuntimeAdapter => {
   return adapter;
 };
 
-export const listRuntimeAdapters = (): string[] => [...runtimeAdapters.keys()].sort();
+export const listRuntimeAdapters = (): string[] => [...runtimeAdapters.keys(), ...(adapterScope.getStore()?.keys() ?? [])].sort();
+
+/** Saved reports may refer to a runtime that is no longer in this invocation. */
+export const getRuntimeOperations = (runtimeName: string) => selectedRuntimeAdapter(runtimeName)?.operations;
+
+export const listRuntimeOperations = () =>
+  listRuntimeAdapters().flatMap((name) => {
+    const operations = getRuntimeOperations(name);
+    return operations ? [operations] : [];
+  });
+
+export * from "./legacyRegistry.generated.js";
+
+export const defaultScaffoldRuntimeName = (): string => {
+  const scaffold = builtinRuntimeRegistrations.find(({ adapter, defaultScaffoldRuntime }) =>
+    defaultScaffoldRuntime && adapter.scaffoldAgentProject
+  ) ?? builtinRuntimeRegistrations.find(({ adapter }) => adapter.scaffoldAgentProject);
+  if (!scaffold) throw new SpawnfileError("runtime_error", "No bundled runtime supplies an agent scaffold");
+  return scaffold.adapter.name;
+};

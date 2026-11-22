@@ -134,7 +134,7 @@ const createFakeExecFile = (options: { containerAlive?: boolean; missingSourcePa
   const missing = options.missingSourcePaths ?? [];
   return async (_file: string, args: string[]): Promise<{ stderr: string; stdout: string }> => {
     if (args.includes("inspect")) {
-      if (!containerAlive) {
+      if (!containerAlive && args.includes("container")) {
         throw { stderr: "Error: No such container: spawnfile-project" };
       }
       return { stderr: "", stdout: "[]" };
@@ -147,7 +147,7 @@ const createFakeExecFile = (options: { containerAlive?: boolean; missingSourcePa
       const source = args[cpIndex + 1]!;
       const destination = args[cpIndex + 2]!;
       if (missing.some((needle) => source.includes(needle))) {
-        throw new Error(`no such file: ${source}`);
+        throw { stderr: `Error: No such container:path: ${source}` };
       }
       await writeFile(destination, `fixture-content-for(${source})\n`, "utf8");
       return { stderr: "", stdout: "" };

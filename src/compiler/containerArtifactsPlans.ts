@@ -1,6 +1,7 @@
 import type { Secret } from "../manifest/index.js";
 import { createRuntimeInstallRecipe, getRuntimeAdapter } from "../runtime/index.js";
 import { resolveNoopolisRunId } from "../runtime/index.js";
+import { adapterManagedAuthMethods, runtimeHost } from "../runtime/hostSelection.js";
 import type { ContainerTargetInput } from "../runtime/index.js";
 
 import { listAgentSurfaceSecretNames } from "./agentSurfaces.js";
@@ -69,8 +70,9 @@ export const createEnvVariableMap = (
   for (const node of compiledNodes) {
     if (node.value.kind === "agent") {
       for (const secret of node.value.secrets) registerSecret(secret);
-      if (node.runtimeName !== "daimon") {
-        for (const secretName of listExecutionModelSecretNames(node.value.execution)) {
+      if (node.runtimeName === null || !runtimeHost(node.runtimeName)?.ownsModelCredentials) {
+        const adapterMethods = node.runtimeName ? adapterManagedAuthMethods(node.runtimeName) : undefined;
+        for (const secretName of listExecutionModelSecretNames(node.value.execution, adapterMethods)) {
           register(secretName, true, `Model provider auth for ${secretName}`, "model");
         }
       }
@@ -132,7 +134,7 @@ export const createRuntimeTargetPlans = async (
     const recipe = await createRuntimeInstallRecipe(runtimeName);
     const targetInputs = compiledNodes
       .filter((node) =>
-        node.runtimeName === runtimeName && (node.emittedFiles.length > 0 || runtimeName === "daimon")
+        node.runtimeName === runtimeName && (node.emittedFiles.length > 0 || adapter.host?.includeEmptyTargets === true)
       )
       .map((node): ContainerTargetInput => {
         const id = node.id ?? `${node.kind}:${node.slug}`;
@@ -168,17 +170,15 @@ export const createRuntimeTargetPlans = async (
         ) } : {}),
         configEnvBindings: resolveTargetConfigEnvBindings(adapter.container, target) ?? [],
         ...(target.engineByNodeId ? { engineByNodeId: target.engineByNodeId } : {}),
-        ...(target.grokModelByNodeId ? { grokModelByNodeId: target.grokModelByNodeId } : {}),
-        ...(target.grokTurnLimitsByNodeId ? { grokTurnLimitsByNodeId: target.grokTurnLimitsByNodeId } : {}),
-        ...(target.grokSkillsByNodeId ? { grokSkillsByNodeId: target.grokSkillsByNodeId } : {}),
+        ...(target.hostDetails ? { hostDetails: target.hostDetails } : {}),
         envFiles: resolveTargetEnvFiles(instancePaths.configPath, target),
         packages: resolveTargetPackages(target, targetInputs),
         id: target.id,
         instancePaths,
         meta: adapter.container,
-        modelAuthMethods: runtimeName === "daimon" ? {} : resolveTargetModelAuthMethods(target, targetInputs),
-        modelSecretsRequired: runtimeName === "daimon" ? [] : resolveTargetModelSecrets(target, targetInputs),
-        ...(target.opaqueMountTargets ? { opaqueMountTargets: [...target.opaqueMountTargets].sort() } : {}),
+        modelAuthMethods: adapter.host?.ownsModelCredentials ? {} : resolveTargetModelAuthMethods(target, targetInputs),
+        modelSecretsRequired: adapter.host?.ownsModelCredentials ? [] : resolveTargetModelSecrets(target, targetInputs, adapter.container.adapterManagedAuthMethods),
+        ...(target.opaqueMountTargets ? { opaqueMountTargets: target.opaqueMountTargets.map(mount => mount.replaceAll("<instance-root>", instancePaths.instanceRoot)).sort() } : {}),
         ...(target.persistentMounts ? { persistentMounts: target.persistentMounts.map((mount) => ({
           id: mount.id,
           ...(mount.lifecycle ? { lifecycle: mount.lifecycle } : {}),

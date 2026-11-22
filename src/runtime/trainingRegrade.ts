@@ -1,13 +1,17 @@
-import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, rename, rm, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createTrainingProviderRegistry } from "./trainingProviders.js";
+import { composeTrainingInference, withRuntimeTrainingGraders, type TrainingInferenceComposition } from "./trainingComposition.js";
 import { SpawnfileError } from "../shared/index.js";
-import { createEvaluationRegistry, inferenceProviderDescriptor, regradeManifestSchema, regradeRecordedOutputs,
+import { regradeWithDataset, createEvaluationRegistry, inferenceProviderDescriptor, regradeManifestSchema, regradeTrialEval, regradeRecordedOutputs,
   renderQuestionnaireMarkdown, type InferenceProvider, type JudgeRoute, type CriticReview, type RegradeReport, type RegradedOutput } from "../training/index.js";
 
 export interface RegradeTrainingOptions {
   manifest: string;
+  train?: string;
+  judges?: readonly string[];
+  citationRepairs?: readonly string[];
   out: string;
   /** Outputs judged at once (default 1). */
   concurrency?: number;
@@ -15,6 +19,10 @@ export interface RegradeTrainingOptions {
   judgeTimeoutMs?: number;
   streams: { stdout: (line: string) => void; stderr: (line: string) => void };
   signal?: AbortSignal;
+  openJudges?: (
+    providers: readonly string[],
+    composition: TrainingInferenceComposition
+  ) => Promise<{ close(): Promise<void> } | undefined>;
   /** The provider behind each declared judge (tests only); the registered provider otherwise. */
   provider?: (model: { provider: string; model: string; reasoning_effort?: string }) => InferenceProvider;
 }
@@ -47,6 +55,26 @@ export const renderRegradeMarkdown = (report: RegradeReport): string => {
  */
 export const regradeTraining = async (options: RegradeTrainingOptions): Promise<number> => {
   const manifestPath = path.resolve(options.manifest);
+  if (manifestPath.endsWith(".eval")) {
+    const report = options.train === undefined ? await regradeTrialEval(manifestPath, options.signal)
+      : await withRuntimeTrainingGraders(async () => {
+        const composition = await composeTrainingInference();
+        return regradeWithDataset(manifestPath, options.train!, { ...options.streams, cwd: process.cwd(), signal: options.signal },
+          { inferenceProviders: composition.registry, modelInference: options.provider },
+          async providers => options.openJudges?.(providers, composition),
+          { judge: options.judges ?? [], "judge-citation-repairs": options.citationRepairs ?? [] }, options.judgeTimeoutMs ?? 900_000);
+      });
+    const out = path.resolve(options.out);
+    await mkdir(out, { recursive: true, mode: 0o700 });
+    const result = path.join(out, "REGRADE.json");
+    const temporary = result + "." + randomUUID() + ".tmp";
+    try {
+      await writeFile(temporary, JSON.stringify(report, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+      await rename(temporary, result);
+    } finally { await rm(temporary, { force: true }); }
+    options.streams.stdout(JSON.stringify({ result, status: report.status, scope: report.scope }));
+    return report.status === "pass" || report.status === "fail" ? 0 : 1;
+  }
   const base = path.dirname(await realpath(manifestPath).catch(() => invalid(`Regrade manifest does not exist: ${options.manifest}`)));
   const parsed = regradeManifestSchema.safeParse(JSON.parse(await readFile(manifestPath, "utf8")));
   if (!parsed.success) return invalid(`Regrade manifest: ${parsed.error.issues[0]!.path.join(".")}: ${parsed.error.issues[0]!.message}`);
@@ -69,17 +97,23 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
     const review = JSON.parse(await readFile(path.join(reviewsDirectory, file), "utf8")) as CriticReview;
     if (review.verdict !== "error") reviewed[file.slice(0, -5)] = review;
   }
-  const registry = createTrainingProviderRegistry();
+  const composition = await composeTrainingInference();
+  const configured = Object.entries(manifest.judges).map(([name, model]) => {
+    const descriptor = inferenceProviderDescriptor(composition.registry, model.provider);
+    descriptor.validate(model, `judges.${name}`);
+    return { name, model, descriptor };
+  });
+  const run = await options.openJudges?.(configured.map(({ model }) => model.provider), composition);
   const resources = new Map<string, unknown>();
   const closers: (() => Promise<void>)[] = [];
-  const judges: Record<string, JudgeRoute> = Object.fromEntries(Object.entries(manifest.judges).map(([name, model]) => {
-    const descriptor = inferenceProviderDescriptor(registry, model.provider);
-    descriptor.validate(model, `judges.${name}`);
-    const provider = options.provider?.(model) ?? descriptor.create(model, { timeoutMs: options.judgeTimeoutMs ?? 900_000, purpose: "judge", resources,
-      onClose: (close: () => Promise<void>) => { closers.push(close); } });
-    return [name, { provider, model: model.model, ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }];
-  }));
   try {
+    const judges: Record<string, JudgeRoute> = Object.fromEntries(configured.map(({ name, model, descriptor }) => {
+      const provider = options.provider?.(model) ?? descriptor.create(model, {
+        timeoutMs: options.judgeTimeoutMs ?? 900_000, purpose: "judge", resources,
+        onClose: (close: () => Promise<void>) => { closers.push(close); }
+      });
+      return [name, { provider, model: model.model, ...(model.reasoning_effort === undefined ? {} : { effort: model.reasoning_effort }) }];
+    }));
     const report = await regradeRecordedOutputs({ manifest, completed, concurrency: options.concurrency, reviewed, registry: createEvaluationRegistry(), evaluation: { judges }, signal: options.signal,
       read: async (file) => {
         const real = await realpath(path.resolve(base, file)).catch(() => invalid(`Regrade input does not exist: ${file}`));
@@ -103,6 +137,7 @@ export const regradeTraining = async (options: RegradeTrainingOptions): Promise<
       Object.values(report.critic ?? {}).some((review) => review.verdict === "error");
     return unsettled || report.calibration?.ok === false ? 1 : 0;
   } finally {
-    await Promise.all(closers.map((close) => close()));
+    try { await Promise.all(closers.map((close) => close())); }
+    finally { await run?.close(); }
   }
 };

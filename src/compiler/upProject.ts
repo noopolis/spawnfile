@@ -11,7 +11,7 @@ import {
   resolveDeploymentRecordPath,
   type DeploymentActivation,
   type DockerTargetExecFile,
-  writeDeploymentRecord,
+  publishProjectDeploymentRecord,
   writeDockerDeploymentRecordForRun,
 } from "../deployment/index.js";
 import type { UpLifecycleRecovery } from "../deployment/upLifecycleRecoveryState.js";
@@ -168,7 +168,7 @@ export const upProject = async (
   const authProfile = resolvedOptions.authProfile
     ? await requireAuthProfile(resolvedOptions.authProfile)
     : null;
-  const cliCredential = await resolveHostCliCredential(buildResult.report.container!);
+  const cliCredential = await resolveHostCliCredential(buildResult.report.container!, authProfile);
   const imageTag = resolvedOptions.imageTag ?? buildResult.imageTag;
   const invocation = await createDockerRunInvocation(buildResult, imageTag, {
     authProfile,
@@ -311,7 +311,7 @@ export const upProject = async (
       unitId: record.units[0]?.id ?? "invalid-unit"
     });
     const pendingRecord = { ...record, organization_ready: pending };
-    await writeDeploymentRecord(buildResult.outputDirectory, pendingRecord);
+    await publishProjectDeploymentRecord(buildResult.outputDirectory, pendingRecord);
     const organizationReady = await probeDockerOrganizationReadiness({
       dockerCommand: options.dockerCommand,
       evidence: buildResult.organizationReadinessEvidence,
@@ -339,7 +339,7 @@ export const upProject = async (
       await rm(deploymentRecordPath, { force: true });
       throw new SpawnfileError("runtime_error", "Detached deployment failed organization readiness and was rolled back");
     }
-    await writeDeploymentRecord(buildResult.outputDirectory, {
+    await publishProjectDeploymentRecord(buildResult.outputDirectory, {
       ...pendingRecord,
       organization_ready: organizationReady
     });

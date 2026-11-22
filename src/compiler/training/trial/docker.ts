@@ -4,14 +4,21 @@ import { SpawnfileError } from "../../../shared/index.js";
 
 /** Bounded Docker CLI call for trial lifecycle; stdout trimmed, stderr bounded into the error. */
 /** `combined` returns stderr after stdout (container logs write both). */
-export type TrialDocker = (args: readonly string[], options?: { timeoutMs?: number; stdin?: string | Buffer; combined?: boolean }) => Promise<string>;
+export type TrialDocker = (args: readonly string[], options?: {
+  timeoutMs?: number; stdin?: string | Buffer; combined?: boolean; preserveWhitespace?: boolean; signal?: AbortSignal;
+}) => Promise<string>;
 
 export const createTrialDocker = (dockerCommand = "docker"): TrialDocker => (args, options = {}) =>
   new Promise((resolve, reject) => {
-    const child = execFile(dockerCommand, [...args], { maxBuffer: 16 * 1024 * 1024, timeout: options.timeoutMs ?? 120_000 },
-      (error, stdout, stderr) => error
-        ? reject(new SpawnfileError("runtime_error", `docker ${args[0]} ${args[1] ?? ""} failed: ${String(stderr).replace(/\s+/gu, " ").slice(-400)}`))
-        : resolve(`${stdout}${options.combined ? stderr : ""}`.trim()));
+    const child = execFile(dockerCommand, [...args], { maxBuffer: 16 * 1024 * 1024, timeout: options.timeoutMs ?? 120_000, signal: options.signal },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new SpawnfileError("runtime_error", `docker ${args[0]} ${args[1] ?? ""} failed: ${String(stderr).replace(/\s+/gu, " ").slice(-400)}`));
+          return;
+        }
+        const output = `${stdout}${options.combined ? stderr : ""}`;
+        resolve(options.preserveWhitespace ? output : output.trim());
+      });
     if (options.stdin !== undefined) child.stdin?.end(options.stdin); else child.stdin?.end();
   });
 

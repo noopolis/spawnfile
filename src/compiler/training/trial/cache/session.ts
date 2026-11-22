@@ -2,7 +2,7 @@ import { cp, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { SpawnfileError } from "../../../../shared/index.js";
-import type { TrialWake } from "../boot.js";
+import type { TrialWake } from "../types.js";
 import { trialWakeKey, TRIAL_CACHE_VERSION } from "./digest.js";
 import type { ClaimedEntry, TrialCacheEntry, TrialCacheMode, TrialCacheStore } from "./store.js";
 

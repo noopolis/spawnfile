@@ -44,6 +44,7 @@ src/deployment/
 ├── activation.ts    # Clock boundary strictly after old stop and before image start
 ├── recordedMemoryRetention.ts # Refuse deletion of recording agents' durable memory mounts
 ├── dockerManager.ts # Docker deployment record assembly
+├── artifactExportPublication.ts # Validates destination paths and restores files after a failed export retry
 ├── artifactsExportTypes.ts # `spawnfile.export-index.v1` zod schema/type + parser
 ├── artifactsExportPlan.ts  # Pure planning: which durable files to export from a compile report (no Docker/IO)
 ├── artifactsExportDocker.ts # Low-level `docker cp`/volume-read Docker calls for artifacts export
@@ -77,6 +78,7 @@ src/deployment/
   deployment remains live. Callers must not roll back its container behind the persisted record.
   Publication takes predecessor metadata from existing lifecycle reads; recording-off
   without a recorded predecessor uses the original write/rename sequence with no extra I/O.
+  Project lifecycle operations coordinate publication of a tracked run and its export under a separate lock.
   Matching history tails must still fsync file and directory before reconciliation succeeds.
   `candidateRecording.ts` records rolled-back startup intervals as inexact; lookup excludes
   their published snapshots after rollback, and retention keeps the restored predecessor.
@@ -123,7 +125,7 @@ src/deployment/
   `artifactsExport.ts` only preflight-checks the recorded container still exists (and fails
   loudly — never a silent empty export — when it does not) IF the plan actually contains a
   `kind: "container"` file; today that only happens for a legacy pre-Piece-4b compile
-  report (`artifactsExportPlan.ts`'s `planDaimonFiles` container-cp fallback). Per-file
+  report (the runtime adapter's container-copy fallback). Per-file
   misses inside an otherwise-live deployment (e.g. a bank that never wrote `events.jsonl`)
   are not that failure; each planned file in `artifactsExportPlan.ts` carries its own
   `optional` flag for exactly that distinction.

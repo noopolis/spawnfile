@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { adaptersSchema, NESTED_ADAPTERS_MESSAGE } from "./adapterSchemas.js";
 import { agentScheduleSchema } from "./scheduleSchemas.js";
 import { executionSchema } from "./executionSchemas.js";
 import { memoryBanksSchema } from "./memorySchemas.js";
@@ -103,6 +104,7 @@ const environmentSchema = createEnvironmentSchema(mcpServerEntrySchema);
 
 const commonManifestSchema = z
   .object({
+    adapters: adaptersSchema.optional(),
     description: z.string().optional(),
     execution: executionSchema.optional(),
     kind: z.enum(["agent", "team"]),
@@ -155,6 +157,7 @@ const refineAgentMemoryAccess = (
 
 const inlineAgentMemberSchema = z
   .object({
+    adapters: z.unknown().optional(),
     description: z.string().optional(),
     environment: environmentSchema.optional(),
     execution: executionSchema.optional(),
@@ -171,6 +174,9 @@ const inlineAgentMemberSchema = z
   .strict()
   .superRefine((value, context) => {
     refineAgentMemoryAccess(value, context);
+    if (value.adapters !== undefined) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: NESTED_ADAPTERS_MESSAGE, path: ["adapters"] });
+    }
     if (!value.workspace.docs?.system) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -309,6 +315,8 @@ export const manifestSchema = z.discriminatedUnion("kind", [
   teamManifestSchema
 ]);
 
+export type { AdaptersBlock } from "./adapterSchemas.js";
+export { isAdapterSpecifier, isLocalAdapterSpecifier, NESTED_ADAPTERS_MESSAGE, RUNTIME_ADAPTER_NAME_PATTERN } from "./adapterSchemas.js";
 export type AgentManifest = z.infer<typeof agentManifestSchema>;
 export type { AgentSchedule } from "./scheduleSchemas.js";
 export type DocsBlock = z.infer<typeof teamWorkspaceDocsSchema>;

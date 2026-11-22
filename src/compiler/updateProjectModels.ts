@@ -50,7 +50,8 @@ const AUTH_METHOD_PROVIDER_HINTS: Record<ModelAuthMethod, string> = {
   "api_key": "use a model provider like openai or anthropic, then pass --auth api_key",
   "claude-code": "use provider anthropic, then pass --auth claude-code",
   codex: "use provider openai, then pass --auth codex",
-  grok: "use provider xai with a Daimon grok engine agent, then pass --auth grok and declare reasoning_effort",
+  subscription: "select a provider supported by the runtime and pass --auth subscription",
+  grok: "use provider xai with an agent that supports grok authentication, then pass --auth grok and declare reasoning_effort",
   none: "use a model provider like local, then pass --auth none"
 };
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -48,6 +48,10 @@ const surface = {
       "TrainingAuthProvider"
     ]
   },
+  "adapter": {
+    "values": ["nativeTrainingCapability"],
+    "types": ["NativeTrainingDriver", "NativeTrainingInstance", "NativeTrainingReply", "NativeTrainingTurn"]
+  },
   "compiler": {
     "values": [
       "loadTrainingProject",
@@ -86,7 +90,7 @@ const surface = {
   }
 } as const;
 const specifier = (name: string): string => name === 'compiler' ? 'spawnfile/training'
-  : name === 'auth' ? 'spawnfile/auth' : `spawnfile/training/${name}`;
+  : name === 'auth' || name === 'adapter' ? `spawnfile/${name}` : `spawnfile/training/${name}`;
 
 const run = async (command: string, args: string[], cwd: string) => {
   const env = { ...process.env };
@@ -110,6 +114,16 @@ test('installed tarball exposes every integration value and type through explici
     await run('npm', ['install', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund',
       join(directory, packs[0].filename)], directory);
     const installed = join(directory, 'node_modules/spawnfile');
+    const training = join(installed, 'dist/runtime/daimon/training');
+    for (const name of ['trial/boot', 'trial/bootedTrial', 'trial/gateway', 'trial/homeLogin', 'trial/judge',
+      'trial/judgmentCache', 'trial/launcher', 'trial/login', 'trial/momentVolumes', 'trial/trialReads',
+      'trial/run', 'trial/runTraining', 'trial/trainingCodexAuthority', 'trial/trainingGrokWriteback',
+      'graderProviders', 'inferenceProviders']) {
+      for (const extension of ['js', 'd.ts']) {
+        const artifact = join(training, `${name}.${extension}`);
+        assert.ok((await stat(artifact)).size > 0, `Missing native training build artifact: ${name}.${extension}`);
+      }
+    }
     const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8')) as {
       exports: Record<string, { types: string; import: string } | string>;
       dependencies: Record<string, string>;
@@ -132,6 +146,15 @@ for (const [subpath, names] of ${JSON.stringify(Object.entries(surface).map(([na
   }
   if (subpath.startsWith('spawnfile/training/')) assert.deepEqual(Object.keys(api).sort(), names.toSorted());
 }
+const volumes = await import('spawnfile/dist/runtime/daimon/training/trial/momentVolumes.js');
+assert.deepEqual(Object.keys(volumes).sort(), ['MOMENT_FILL_PROGRAM', 'fillMomentVolumes', 'momentVolumesFor', 'tarOf']);
+const commands = [];
+await volumes.fillMomentVolumes(async args => { commands.push(args); return ''; }, 'trial-image', [{
+  id: 'corpus', volume: 'trial-corpus', mountPath: '/corpus', identity: 'trial', declaredName: 'corpus', fill: { kind: 'empty' }
+}]);
+const fill = commands.find(args => args[0] === 'run');
+assert.ok(fill && fill.includes(volumes.MOMENT_FILL_PROGRAM));
+assert.equal(fill[fill.indexOf(volumes.MOMENT_FILL_PROGRAM) + 1], '2000');
 assert.deepEqual(['SIGINT', 'SIGTERM'].map(name => process.listenerCount(name)), before);
 assert.equal(process.exitCode, undefined);
 console.log('public-imports-ok');

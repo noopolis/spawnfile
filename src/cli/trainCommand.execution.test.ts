@@ -40,14 +40,16 @@ it("refuses an explicit dataset override of authored training", async () => {
   expect(stderr.join("\n")).toContain("do not apply");
   expect(delegate).not.toHaveBeenCalled();
 });
-it("refuses actual training for a subject that is not a Daimon agent", async () => {
+it.each(["openclaw", "picoclaw"])("sends authored training to the selected %s harness", async runtime => {
   const root = await executionFixture(), stderr: string[] = [];
   const spawnfile = path.join(root, "Spawnfile");
-  await writeTrainingFile(root, "Spawnfile", (await readFile(spawnfile, "utf8")).replace("runtime: daimon", "runtime: openclaw"));
+  await writeTrainingFile(root, "Spawnfile", (await readFile(spawnfile, "utf8")).replace("runtime: daimon", `runtime: ${runtime}`));
   const delegate = vi.fn(async () => 0);
   expect(await runCli(["train", root, "--agent", "writer", "--out", path.join(root, "out")], {
     handlers: { runTraining: delegate }, streams: { stdout() {}, stderr: value => stderr.push(value) }
-  })).toBe(2);
-  expect(stderr.join("\n")).toContain("boots Daimon trials");
-  expect(delegate).not.toHaveBeenCalled();
+  })).toBe(0);
+  expect(stderr).toEqual([]);
+  expect(delegate).toHaveBeenCalledWith(expect.objectContaining({ context: expect.objectContaining({
+    agent: expect.objectContaining({ runtime })
+  }) }));
 });

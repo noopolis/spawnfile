@@ -119,6 +119,26 @@ describe("runImagePreflight", () => {
     ).not.toThrow();
   });
 
+  it("waives the shared model secret only when the import covers every recipient", () => {
+    const report = importReport();
+    const secret = { generated: false, name: "SPAWNFILE_CLI_AUTH_JSON", required: true };
+    report.secrets.model = [secret];
+    const recipient = report.runtime_instances[0]!;
+    recipient.home_path = "/agent/home";
+    recipient.model_secrets_required = [secret.name];
+    const input = { authValues: { DIST_REQUIRED_TOKEN: "y" }, availableImports: ["claude-code"], report };
+    expect(runImagePreflight(input).requiredSecrets).toEqual(["DIST_REQUIRED_TOKEN"]);
+
+    report.runtime_instances.push({
+      ...recipient, id: "other", home_path: "/other/home", model_auth_methods: { anthropic: "api_key" }
+    });
+    expect(() => runImagePreflight(input)).toThrow(/Missing required secrets.*SPAWNFILE_CLI_AUTH_JSON/u);
+
+    report.runtime_instances.pop();
+    report.secrets.project.push(secret);
+    expect(() => runImagePreflight(input)).toThrow(/Missing required secrets.*SPAWNFILE_CLI_AUTH_JSON/u);
+  });
+
   it("treats Daimon-owned grok auth as satisfied by the runtime's own credential slot", () => {
     const base = importReport();
     const report = {
@@ -127,5 +147,17 @@ describe("runImagePreflight", () => {
       runtime_instances: base.runtime_instances.map((instance) => ({ ...instance, model_auth_methods: { xai: "grok" as const }, runtime: "daimon" }))
     };
     expect(() => runImagePreflight({ authValues: { DIST_REQUIRED_TOKEN: "y" }, report })).not.toThrow();
+  });
+
+  it("rejects runtime-owned auth when the selected adapter has no matching credential slot", () => {
+    const base = importReport();
+    const report = {
+      ...base,
+      runtime_instances: base.runtime_instances.map((instance) => ({
+        ...instance, model_auth_methods: { xai: "grok" as const }
+      }))
+    };
+    expect(() => runImagePreflight({ authValues: { DIST_REQUIRED_TOKEN: "y" }, report }))
+      .toThrow(/openclaw\/agent-coordinator \(xai: grok\)/u);
   });
 });

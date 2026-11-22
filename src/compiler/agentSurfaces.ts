@@ -144,6 +144,13 @@ export const resolveAgentSurfaces = (
     };
   }
 
+  if (surfaces.webhook) {
+    resolved.webhook = {
+      url: surfaces.webhook.url,
+      ...(surfaces.webhook.signing_secret ? { signingSecret: surfaces.webhook.signing_secret } : {})
+    };
+  }
+
   return Object.keys(resolved).length > 0 ? resolved : undefined;
 };
 

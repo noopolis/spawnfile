@@ -4,14 +4,13 @@ import type { z } from "zod";
 import { momentRecordSchema, parseMomentRecord, parseWakeMoments, type MomentRecord, type WakeMomentRow } from "../../../recording/index.js";
 import { deployResourceLogPath, deployResourcesAt, deployResourcesSchema, type DeployResources } from "../../../deployment/index.js";
 import { readFeedLandings, type FeedLanding } from "../../../volume/index.js";
+import { safeSegment } from "./historyIdentity.js";
+
+export { safeSegment } from "./historyIdentity.js";
 
 export const inside = (root: string, target: string): boolean => {
   const relative = path.relative(root, target);
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
-};
-export const safeSegment = (value: string): string => {
-  if (!value || value === "." || value === ".." || /[/\\\0]/u.test(value)) throw new Error(`Unsafe history identity ${JSON.stringify(value)}`);
-  return value;
 };
 export const historyKey = (identity: { declaredBy: string; id: string }): string =>
   `${safeSegment(encodeURIComponent(identity.declaredBy))}/${safeSegment(identity.id)}`;

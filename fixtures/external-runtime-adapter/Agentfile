@@ -1,0 +1,15 @@
+spawnfile_version: "0.1"
+kind: agent
+name: echo
+runtime:
+  name: echo-harness
+execution:
+  model:
+    primary:
+      provider: local
+      name: echo
+      endpoint:
+        base_url: http://127.0.0.1:9/v1
+        compatibility: openai
+      auth:
+        method: none

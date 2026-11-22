@@ -44,7 +44,7 @@ type AuthCommandHandlers = Pick<
 const formatAuthProfileSummary = (profile: ResolvedAuthProfile): string[] => {
   const envKeys = Object.keys(profile.env).sort();
   const importedKinds = Object.keys(profile.imports).sort();
-  const realms = Object.keys(profile.realms ?? {}).sort();
+  const realms = [...Object.keys(profile.realms ?? {}), ...Object.keys(profile.nativeLogins ?? {})].sort();
 
   return [
     `profile: ${profile.name}`,
@@ -149,19 +149,25 @@ export const registerAuthCommands = (
 
   authCommand
     .command("login")
-    .description("Sign an auth profile into its own volume-held login (AGY) from this terminal")
-    .argument("<engine>", "Daimon engine whose login lives in a keyring realm, e.g. agy")
+    .description("Sign an auth profile into a runtime engine from this terminal")
+    .argument("<engine>", "Engine with a volume-held login")
     .option("-p, --profile <name>", "Auth profile name", "default")
+    .option("--runtime <name>", "Runtime that owns the engine")
+    .option("--image <reference>", "Use this built organization image for a native login")
+    .option("--instance <id>", "Bind a native login to one runtime instance")
     .option("--dry-run", "Prepare the login volumes and print the login command without running it")
-    .action(async (engine: string, options: { dryRun?: boolean; profile: string }) => {
+    .action(async (engine: string, options: { dryRun?: boolean; image?: string; instance?: string; profile: string; runtime?: string }) => {
       if (!options.dryRun && process.stdin.isTTY !== true) {
         throw new Error("spawnfile auth login is interactive; run it from a terminal");
       }
-      const result = await handlers.loginSubscriptionRealm({ engine, profileName: options.profile, dryRun: options.dryRun === true });
+      const result = await handlers.loginSubscriptionRealm({ engine, profileName: options.profile, dryRun: options.dryRun === true,
+        ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
+        ...(options.image ? { image: options.image } : {}), ...(options.instance ? { instance: options.instance } : {}) });
       emitLines(streams, [
         ...formatAuthProfileSummary(result.profile),
-        `realm volume: ${result.binding.realmVolume}`,
-        `unlock volume: ${result.binding.unlockVolume}`,
+        ...("nativeVolume" in result ? [`login volume: ${result.nativeVolume}`] : [
+          `realm volume: ${result.binding.realmVolume}`, `unlock volume: ${result.binding.unlockVolume}`
+        ]),
         ...(options.dryRun ? [`login command: ${result.command.join(" ")}`] : [])
       ]);
     });

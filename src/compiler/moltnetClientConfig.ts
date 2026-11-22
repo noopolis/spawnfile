@@ -1,4 +1,4 @@
-import type { EmittedFile } from "../runtime/index.js";
+import { requireMoltnetWiring, type EmittedFile, type RuntimeMoltnetWorkspace } from "../runtime/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
 import { resolveMoltnetClientAuth } from "./moltnetConfigLowering.js";
@@ -7,9 +7,6 @@ import type {
   ResolvedAgentNode,
   ResolvedMoltnetAttachment
 } from "./types.js";
-
-const GENERATED_SKILL_NAME = "moltnet";
-const GENERATED_CONFIG_PATH = ".moltnet/config.json";
 
 interface MoltnetClientAttachmentConfig {
   agent_name: string;
@@ -34,13 +31,6 @@ interface MoltnetClientAttachmentConfig {
     visibility?: "public" | "private";
     write_policy?: "members" | "operators" | "registered_agents";
   }>;
-}
-
-export interface MoltnetWorkspaceLayout {
-  clientConfigPath: string;
-  cliRuntime: string;
-  skillPaths: string[];
-  workspaceRootPath: string;
 }
 
 const createConfigContent = (
@@ -149,34 +139,8 @@ const createAttachmentConfig = (
 
 export const resolveMoltnetWorkspaceLayout = (
   runtimeName: string,
-  _agentName: string
-): MoltnetWorkspaceLayout => {
-  if (runtimeName === "daimon") {
-    return {
-      clientConfigPath: `workspace/.moltnet/config.json`,
-      cliRuntime: "codex",
-      skillPaths: [
-        `workspace/.agents/skills/${GENERATED_SKILL_NAME}/SKILL.md`,
-        `workspace/.codex/skills/${GENERATED_SKILL_NAME}/SKILL.md`
-      ],
-      workspaceRootPath: "workspace"
-    };
-  }
-
-  if (runtimeName === "openclaw" || runtimeName === "picoclaw") {
-    return {
-      clientConfigPath: `workspace/${GENERATED_CONFIG_PATH}`,
-      cliRuntime: runtimeName,
-      skillPaths: [`workspace/skills/${GENERATED_SKILL_NAME}/SKILL.md`],
-      workspaceRootPath: "workspace"
-    };
-  }
-
-  throw new SpawnfileError(
-    "compile_error",
-    `Moltnet client config does not know how to emit files for runtime ${runtimeName}`
-  );
-};
+  agentName: string
+): RuntimeMoltnetWorkspace => requireMoltnetWiring(runtimeName, agentName).workspace;
 
 export const createMoltnetClientConfigFiles = (
   node: ResolvedAgentNode,

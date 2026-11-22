@@ -1,7 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
-import { DAIMON_GROK_TURN_USAGE_LEDGER } from "../runtime/daimon/contractManifest.js";
 import type {
   RuntimeProbeExecResult,
   RuntimeProbeGateway,
@@ -14,20 +13,8 @@ import { dockerContextNameForTarget } from "./target.js";
 
 const execFile = promisify(execFileCallback);
 
-/**
- * The ledger this gateway reads (`spawnfile usage`) rotates once a generation
- * reaches `DAIMON_GROK_TURN_USAGE_LEDGER.rotateBytes`, and rotation happens on
- * the append *after* that threshold is crossed — so a rotated generation is
- * always at least the bound and the crossing line pushes it over. A maxBuffer
- * merely equal to the bound therefore rejects the exact read this feature
- * exists to perform (Node's `execFile` accepts a payload of exactly
- * `maxBuffer` bytes and fails the next one with
- * `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`). Doubling the bound leaves a full
- * generation of headroom, and is derived from the ledger constant rather than
- * restated so the two cannot drift apart.
- */
-export const DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES =
-  2 * DAIMON_GROK_TURN_USAGE_LEDGER.rotateBytes;
+/** Upper bound for generic probe output. Callers reading native logs can set their own bound. */
+export const DEFAULT_DOCKER_PROBE_MAX_BUFFER_BYTES = 128 * 1024 * 1024;
 
 export type DockerProbeExecFile = (
   file: string,

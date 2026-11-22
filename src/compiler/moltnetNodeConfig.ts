@@ -1,4 +1,5 @@
 import type { TeamNetworkServer } from "../manifest/index.js";
+import type { RuntimeMoltnetBridgeConfig } from "../runtime/index.js";
 
 import { resolveMoltnetClientAuth, type MoltnetClientAuthPlan } from "./moltnetConfigLowering.js";
 import { resolveRuntimeConfig } from "./moltnetRuntimeConfig.js";
@@ -21,9 +22,10 @@ export interface MoltnetNodeConfigResult {
   clientAuth: MoltnetClientAuthPlan;
   content: string;
   usesPerAttachmentOpenToken: boolean;
+  runtime: RuntimeMoltnetBridgeConfig;
 }
 
-export const createMoltnetNodeConfigContent = ({
+const resolveMoltnetConnection = ({
   agentNode,
   attachment,
   networkServer,
@@ -37,7 +39,7 @@ export const createMoltnetNodeConfigContent = ({
   nodeSlug: string;
   plan: CompilePlan;
   serverPlan: MoltnetNodeConfigServerPlan;
-}): MoltnetNodeConfigResult => {
+}) => {
   const clientAuth = resolveMoltnetClientAuth(
     networkServer,
     attachment.network,
@@ -51,80 +53,89 @@ export const createMoltnetNodeConfigContent = ({
     clientAuth.staticToken !== true &&
     Boolean(clientAuth.tokenEnv || clientAuth.tokenPath);
 
+  const runtime = resolveRuntimeConfig(plan, agentNode, nodeSlug, attachment.network, attachment.memberId);
   return {
     clientAuth,
-    content:
-      `${JSON.stringify(
-        {
-          version: "moltnet.node.v1",
-          moltnet: {
-            base_url: serverPlan.baseUrl,
-            network_id: attachment.network,
-            ...(clientAuth.mode === "none" ? {} : { auth_mode: clientAuth.mode }),
-            ...(clientAuth.registration ? { registration: clientAuth.registration } : {}),
-            ...(clientAuth.staticToken ? { static_token: true } : {}),
-            ...(!usesPerAttachmentOpenToken && clientAuth.tokenEnv
-              ? { token_env: clientAuth.tokenEnv }
-              : {}),
-            ...(!usesPerAttachmentOpenToken && clientAuth.tokenPath
-              ? { token_path: clientAuth.tokenPath }
-              : {})
-          },
-          attachments: [
-            {
-              agent: {
-                id: attachment.memberId,
-                name: agentNode.name
-              },
-              ...(usesPerAttachmentOpenToken
+    usesPerAttachmentOpenToken,
+    runtime,
+    moltnet: {
+      base_url: serverPlan.baseUrl,
+      network_id: attachment.network,
+      ...(clientAuth.mode === "none" ? {} : { auth_mode: clientAuth.mode }),
+      ...(clientAuth.registration ? { registration: clientAuth.registration } : {}),
+      ...(clientAuth.staticToken ? { static_token: true } : {})
+    },
+    credentials: {
+      ...(clientAuth.tokenEnv ? { token_env: clientAuth.tokenEnv } : {}),
+      ...(clientAuth.tokenPath ? { token_path: clientAuth.tokenPath } : {})
+    },
+    agentAttachment: {
+      agent: {
+        id: attachment.memberId,
+        name: agentNode.name
+      },
+      runtime,
+      ...(attachment.rooms
+        ? {
+            rooms: Object.entries(attachment.rooms)
+              .sort(([left], [right]) => left.localeCompare(right))
+              .map(([roomId, policy]) => {
+                const room = serverPlan.rooms.find((entry) => entry.id === roomId);
+                return {
+                  id: roomId,
+                  ...(room?.visibility ? { visibility: room.visibility } : {}),
+                  ...(room?.write_policy ? { write_policy: room.write_policy } : {}),
+                  ...(policy.wake ? { wake: policy.wake } : {})
+                };
+              })
+          }
+        : {}),
+      ...(attachment.dms
+        ? {
+            dms: {
+              enabled: attachment.dms.enabled,
+              ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {}),
+              ...(attachment.dms.allowedWakeSenders !== undefined
                 ? {
-                    moltnet: {
-                      ...(clientAuth.tokenEnv ? { token_env: clientAuth.tokenEnv } : {}),
-                      ...(clientAuth.tokenPath ? { token_path: clientAuth.tokenPath } : {})
-                    }
-                  }
-                : {}),
-              runtime: resolveRuntimeConfig(
-                plan,
-                agentNode,
-                nodeSlug,
-                attachment.network,
-                attachment.memberId
-              ),
-              ...(attachment.rooms
-                ? {
-                    rooms: Object.entries(attachment.rooms)
-                      .sort(([left], [right]) => left.localeCompare(right))
-                      .map(([roomId, policy]) => {
-                        const room = serverPlan.rooms.find((entry) => entry.id === roomId);
-                        return {
-                          id: roomId,
-                          ...(room?.visibility ? { visibility: room.visibility } : {}),
-                          ...(room?.write_policy ? { write_policy: room.write_policy } : {}),
-                          ...(policy.wake ? { wake: policy.wake } : {})
-                        };
-                      })
-                  }
-                : {}),
-              ...(attachment.dms
-                ? {
-                    dms: {
-                      enabled: attachment.dms.enabled,
-                      ...(attachment.dms.wake ? { wake: attachment.dms.wake } : {}),
-                      ...(attachment.dms.allowedWakeSenders !== undefined
-                        ? {
-                            allowed_wake_senders: [...attachment.dms.allowedWakeSenders]
-                          }
-                        : {})
-                    }
+                    allowed_wake_senders: [...attachment.dms.allowedWakeSenders]
                   }
                 : {})
             }
-          ]
-        },
-        null,
-        2
-      )}\n`,
-    usesPerAttachmentOpenToken
+          }
+        : {})
+    }
   };
+};
+
+type MoltnetConnectionInput = Parameters<typeof resolveMoltnetConnection>[0];
+
+export const createMoltnetNodeConfigContent = (input: MoltnetConnectionInput): MoltnetNodeConfigResult => {
+  const { clientAuth, usesPerAttachmentOpenToken, runtime, moltnet, credentials, agentAttachment } =
+    resolveMoltnetConnection(input);
+  const { agent, ...attachment } = agentAttachment;
+  return {
+    clientAuth,
+    runtime,
+    usesPerAttachmentOpenToken,
+    content: `${JSON.stringify({
+      version: "moltnet.node.v1",
+      moltnet: { ...moltnet, ...(!usesPerAttachmentOpenToken ? credentials : {}) },
+      attachments: [{
+        agent,
+        ...(usesPerAttachmentOpenToken ? { moltnet: credentials } : {}),
+        ...attachment
+      }]
+    }, null, 2)}\n`
+  };
+};
+
+/** Render the same attachment for the standalone Moltnet bridge command. */
+export const createMoltnetBridgeConfigContent = (input: MoltnetConnectionInput): string => {
+  const { moltnet, credentials, agentAttachment: { agent, ...attachment } } = resolveMoltnetConnection(input);
+  return `${JSON.stringify({
+    version: "moltnet.bridge.v1",
+    agent,
+    moltnet: { ...moltnet, ...credentials },
+    ...attachment
+  }, null, 2)}\n`;
 };

@@ -54,14 +54,16 @@ These runtimes have working adapters:
 1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, native `mcp.servers`, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
 3. **[Daimon](/runtimes/daimon/)** -- Noopolis-native generated harness app backed by Pi, grouped team agents, subscription auth support, local model endpoints, shared workspace resources.
+4. **Hermes Agent** supports ChatGPT, SuperGrok, Nous Portal and MiniMax logins. Its adapter lowers cron schedules, MCP servers, and supported Telegram, Discord and Slack access rules. [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+5. **OpenCode** supports ChatGPT, SuperGrok and GitHub Copilot logins, plus the OpenCode Go plan key. Its adapter supports MCP servers and text-only helpers. [OpenCode](https://github.com/anomalyco/opencode)
+
+Both harnesses export a portable `.eval` from training and use ACP for Moltnet rooms and direct messages. The bundled Moltnet v0.1.22 release predates ACP. Standalone agents and training work independently of Moltnet. [Subscription setup and feature details](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIMES.md#use-a-model-subscription)
 
 ## Exploratory Runtimes
 
 These runtimes are tracked as adapter research targets but have no bundled adapter yet:
 
-5. **[OpenFang](https://github.com/RightNow-AI/openfang)** -- declarative config and agent templates, not mapped to a Spawnfile adapter yet.
-6. **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** -- active harness candidate; config, workspace, and skill surfaces still need research.
-7. **[OpenCode](https://github.com/anomalyco/opencode)** -- active coding-agent harness candidate; long-running runtime behavior still needs research.
+OpenFang provides declarative configuration and agent templates. Its Spawnfile adapter is exploratory. [OpenFang](https://github.com/RightNow-AI/openfang)
 
 ## Version Pinning
 

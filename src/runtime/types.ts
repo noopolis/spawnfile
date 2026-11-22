@@ -1,3 +1,4 @@
+import type { RuntimeHostIntegration } from "./hostTypes.js";
 import type {
   EffectiveModelTarget,
   ResolvedAgentNode,
@@ -11,10 +12,18 @@ import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 import type { ContainerRuntimeInstanceReport } from "../report/index.js";
 import type { DeploymentRecord, DockerUnitInspection } from "../deployment/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
+import type { RuntimeInstallCapability } from "./containerRecipe.js";
+import type { RuntimeTrainingCapability } from "./trainingTypes.js";
+import type { RuntimeWiring } from "./wiringTypes.js";
+
+export type { RuntimeWiring } from "./wiringTypes.js";
+
+import type { RuntimeOperations } from "./operations.js";
 
 export interface EmittedFile {
   content: string;
   mode?: number;
+  /** Canonical slash-separated file path relative to this output scope. */
   path: string;
 }
 
@@ -59,12 +68,8 @@ export interface ContainerTarget {
   /** Adapter-resolved engine kinds by node id, carried into the compile report. */
   engineByNodeId?: Record<string, string>;
   envFiles?: ContainerTargetEnvFile[];
-  /** Daimon only: each brokered Grok agent's declared model and reasoning effort, which select its pinned worker config. */
-  grokModelByNodeId?: Record<string, { model: string; reasoningEffort: string }>;
-  /** Daimon only: each brokered Grok agent's declared per-turn budget, for its broker registration. */
-  grokTurnLimitsByNodeId?: Record<string, { maxRequests?: number; maxTokens?: number; timeoutMs?: number }>;
-  /** Daimon only: each brokered Grok agent's declared skills (absent for none), rendered into its worker `$GROK_HOME/skills`. */
-  grokSkillsByNodeId?: Record<string, { name: string; files: { path: string; content: string }[] }[]>;
+  /** In-memory details interpreted by the adapter that produced this target. */
+  hostDetails?: object;
   files: EmittedFile[];
   id: string;
   opaqueMountTargets?: string[];
@@ -89,7 +94,13 @@ export interface RuntimeContainerConfigEnvBinding {
   transform?: RuntimeContainerConfigValueTransform;
 }
 
+export type RuntimeHomeAuthMethod = "claude-code" | "codex";
+
 export interface RuntimeContainerMeta {
+  /** These model logins are prepared per instance by the adapter for project and image launches. */
+  adapterManagedAuthMethods?: readonly ModelAuthMethod[];
+  /** Supported profile imports mounted into a home only for an explicit matching method. */
+  rawHomeAuthImports?: readonly RuntimeHomeAuthMethod[];
   configFileName: string;
   configEnvBindings?: RuntimeContainerConfigEnvBinding[];
   configPathEnv?: string;
@@ -128,6 +139,8 @@ export interface RuntimeAuthInstance {
 }
 
 export interface RuntimeAuthPreparationInput {
+  /** Claim a rotating grant that cannot be shared by concurrent instances. */
+  reserveLoginVolume?(volume: string): void;
   /**
    * The Spawnfile-managed auth profile (`--auth-profile`), or `null` when the
    * run/up invocation did not select one. Host-credential staging that does
@@ -153,7 +166,7 @@ export interface RuntimeAuthPreparationInput {
 export interface RuntimeAuthPreparationResult {
   coveredModelSecrets: string[];
   launchIdentity?: {
-    kind: "daimon";
+    kind: string;
     uid: number;
   };
   mountArgs: string[];
@@ -221,14 +234,21 @@ export interface AdapterCompileResult {
   files: EmittedFile[];
 }
 
+export interface RuntimeCompileContext {
+  readonly subagents: readonly { id: string; slug: string; node: ResolvedAgentNode }[];
+}
+
 export interface RuntimeAdapter {
   assertSupportedModelTarget(target: EffectiveModelTarget): void;
   assertSupportedSurfaces?(surfaces: ResolvedAgentSurfaces | undefined): void;
   container: RuntimeContainerMeta;
-  compileAgent(node: ResolvedAgentNode): Promise<AdapterCompileResult>;
+  compileAgent(node: ResolvedAgentNode, context?: RuntimeCompileContext): Promise<AdapterCompileResult>;
   compileTeam?(node: ResolvedTeamNode): Promise<AdapterCompileResult>;
   createContainerTargets?(inputs: ContainerTargetInput[]): Promise<ContainerTarget[]>;
   name: string;
+  install: RuntimeInstallCapability;
+  host?: RuntimeHostIntegration;
+  operations?: RuntimeOperations;
   /** Throws a SpawnfileError for what compile would refuse for this agent; run by `spawnfile validate`. */
   preflightAgent?(node: ResolvedAgentNode, nodeId: string): void;
   prepareRuntimeAuth?(
@@ -237,5 +257,7 @@ export interface RuntimeAdapter {
   scaffoldAgentProject?(): RuntimeAgentScaffold;
   statusProbes?: RuntimeStatusProbe[];
   systemInstructionSurface?: RuntimeSystemInstructionSurface;
+  training?: RuntimeTrainingCapability;
   validateRuntimeOptions?(options: Record<string, unknown>): DiagnosticReport[];
+  wiring?: RuntimeWiring;
 }

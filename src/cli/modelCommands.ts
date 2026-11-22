@@ -1,3 +1,4 @@
+import type { ModelAuthMethod } from "../shared/index.js";
 import { Command } from "commander";
 
 import type { CliHandlers, CliStreams } from "./runCli.js";
@@ -28,7 +29,7 @@ export const registerModelCommands = (
         name: string,
         inputPath: string,
         options: {
-          auth?: "api_key" | "claude-code" | "codex" | "none";
+          auth?: ModelAuthMethod;
           baseUrl?: string;
           compat?: "anthropic" | "openai";
           key?: string;
@@ -69,7 +70,7 @@ export const registerModelCommands = (
         name: string,
         inputPath: string,
         options: {
-          auth?: "api_key" | "claude-code" | "codex" | "none";
+          auth?: ModelAuthMethod;
           baseUrl?: string;
           compat?: "anthropic" | "openai";
           key?: string;

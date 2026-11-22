@@ -1,5 +1,5 @@
-import { resolveMnemeDurableMemoryMountPath } from "../runtime/mnemeMcp.js";
-import { createExclusiveReattachVolumeName, SpawnfileError } from "../shared/index.js";
+import { findRuntimeWiring } from "../runtime/index.js";
+import { createExclusiveReattachVolumeName, isContainerMountTarget, SpawnfileError } from "../shared/index.js";
 
 import { slugify } from "./helpers.js";
 import type {
@@ -36,55 +36,6 @@ const safeSlug = (value: string): string =>
 
 const createMountId = (mountPath: string): string =>
   `memory-${safeSlug(mountPath)}`;
-
-const isFileBackedMemoryStore = (bank: ResolvedMemoryAccess["bank"]): boolean =>
-  bank.store.kind === "sqlite" || bank.store.kind === "json";
-
-const transportFromRuntime = (
-  runtimeName: string | null | undefined,
-  bank: ResolvedMemoryAccess["bank"]
-): ContainerMemoryTransport => {
-  switch (runtimeName) {
-    case "daimon":
-      // Mneme runs in-process for these runtimes (no MCP subprocess), but
-      // whether that in-process runtime is reachable -- and whether it
-      // persists anything -- depends on the store:
-      //   - sqlite/json WITH a durable mount: a real runtime home backed by
-      //     a persistent volume this same module emits.
-      //   - sqlite/json WITHOUT one (persistence.mode "ephemeral", or no
-      //     resolvable path at all): no volume is mounted and Daimon emits no
-      //     memory block, so recall lasts at most the container's lifetime --
-      //     exactly the "memory" kind's situation, and reported the same way.
-      //   - memory: Mneme still runs in-process against a synthesized runtime
-      //     home path, but no persistent volume is emitted for this kind.
-      //   - postgres: no runtime home path at all; the in-process runtime
-      //     gets no memory whatsoever.
-      //
-      // The durable/ephemeral half of that decision is NOT re-derived here:
-      // it comes from resolveMnemeDurableMemoryMountPath, the same authority
-      // that decides the mount below, so the report cannot disagree with what
-      // was actually emitted.
-      switch (bank.store.kind) {
-        case "sqlite":
-        case "json":
-          return resolveMnemeDurableMemoryMountPath(bank) === null ? "degraded" : "direct";
-        case "memory":
-          return "degraded";
-        default:
-          return "unsupported";
-      }
-    case "picoclaw":
-    case "openclaw":
-      return isFileBackedMemoryStore(bank) ? "mcp" : "degraded_mcp";
-    default:
-      return "unsupported";
-  }
-};
-
-// The mount decision itself lives in runtime/mnemeMcp.ts so that runtime config
-// emitters (which must only point an in-process Mneme runtime at a path this
-// module actually mounts) and this module cannot drift apart.
-const memoryMountPath = resolveMnemeDurableMemoryMountPath;
 
 const summarizeMemoryStore = (bank: ResolvedMemoryAccess["bank"], mountId?: string) => {
   const persistenceMode = bank.store.kind === "sqlite" || bank.store.kind === "json"
@@ -222,22 +173,33 @@ export const createMemoryArtifactBundle = (
 
       const transportByNodeId: Record<string, ContainerMemoryTransport> = {};
       const accessibleNodeIds = new Set<string>();
+      const mountPaths = new Set<string>();
 
       for (const access of entry.accesses) {
         const agentNode = sourceToNode.get(access.agentSource);
         if (!agentNode || agentNode.value.kind !== "agent") {
           continue;
         }
-        const transport = transportFromRuntime(agentNode.runtimeName, entry.bank);
-        transportByNodeId[agentNode.id] = transport;
+        const runtimeName = agentNode.runtimeName ?? agentNode.value.runtime.name;
+        const memory = findRuntimeWiring(runtimeName)?.memory?.(entry.bank);
+        transportByNodeId[agentNode.id] = memory?.transport ?? "unsupported";
+        if (memory && memory.mountPath !== null) {
+          if (!isContainerMountTarget(memory.mountPath)) {
+            throw new SpawnfileError("validation_error", `Runtime ${runtimeName} returned an invalid memory mount target for bank ${entry.bank.id}`);
+          }
+          mountPaths.add(memory.mountPath);
+        }
         accessibleNodeIds.add(agentNode.id);
       }
 
       const declaringNodeId = declaringNode.id;
-      const mountPath = memoryMountPath(entry.bank);
+      if (mountPaths.size > 1) {
+        throw new SpawnfileError("validation_error", `Memory bank ${entry.bank.id} resolves to conflicting runtime mount paths`);
+      }
+      const mountPath = [...mountPaths][0];
       let persistentMountId: string | undefined;
 
-      if (mountPath !== null) {
+      if (mountPath !== undefined) {
         const mountId = createMountId(mountPath);
         const declaredVolumeName = entry.bank.store.persistence?.name?.trim();
         const volumeName = durableMemoryVolumeName(

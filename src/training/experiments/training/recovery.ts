@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { EvaluationResult } from '../../contracts/evaluation.js';
 import type { ResolvedDataset } from '../../contracts/dataset.js';
-import { capturedTrial, rescoreStoredTrial, type RescoreReport } from '../replay/index.js';
+import { capturedTrial, publishStoredEval, rescoreStoredTrial, type RescoreReport } from '../replay/index.js';
 import type { StoredTrialOptions, TrialReport } from '../trials/index.js';
 import type { TrainingOptions } from './training.js';
 
@@ -60,5 +60,6 @@ export async function recoverStoredReport(options: Pick<TrainingOptions, 'baseli
     throw new Error(`Pending native trial ${id} lacks verified terminal execution and shutdown; recovery is blocked`);
   }
   if (expected && !isDeepStrictEqual(report, JSON.parse(JSON.stringify(expected)))) throw new Error('Cached native report differs from immutable trial evidence');
+  if (report.evalFile) await publishStoredEval(options.native.storeRoot, replay, true);
   return report;
 }

@@ -21,6 +21,16 @@ test("Daimon capability probe represents the complete required runtime contract"
   assert.equal(path.isAbsolute(attachment.runtime.receipt_store_path), true);
 });
 
+test("ACP capability probe carries an argument array and absolute workspace", () => {
+  const config = createCapabilityProbeConfig("acp", "/work/probe/agent.json");
+  assert.deepEqual(config.attachments[0]?.runtime, {
+    kind: "acp",
+    command: "true",
+    args: ["literal argument with spaces"],
+    workspace_path: "/work/probe"
+  });
+});
+
 test("source hashing accepts contained CLAUDE symlinks deterministically", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "spawnfile-source-hash-"));
   writeFileSync(path.join(root, "AGENTS.md"), "# Guide\n");

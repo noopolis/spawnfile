@@ -1,0 +1,55 @@
+spawnfile_version: "0.1"
+kind: team
+name: adapter-proof
+adapters:
+  echo-harness: "@spawnfile-fixtures/echo-adapter"
+  word-count: ./word-count/adapter.mjs
+members:
+  - id: echo
+    runtime:
+      name: echo-harness
+    workspace:
+      docs:
+        system: AGENTS.md
+    execution:
+      model:
+        primary:
+          provider: local
+          name: echo
+          endpoint:
+            base_url: http://127.0.0.1:9/v1
+            compatibility: openai
+          auth:
+            method: none
+    surfaces:
+      moltnet:
+        - network: adapter_net
+          rooms:
+            adapter-proof:
+              wake: mentions
+          dms:
+            enabled: true
+            wake: all
+  - id: counter
+    runtime: { name: word-count, options: { text: "one small custom harness" } }
+    workspace: { docs: { system: AGENTS.md } }
+mode: swarm
+networks:
+  - id: adapter_net
+    name: Adapter Proof
+    provider: moltnet
+    server:
+      mode: managed
+      listen:
+        bind: 0.0.0.0
+        port: 19986
+      store:
+        kind: sqlite
+        path: /var/lib/spawnfile/moltnet/networks/adapter_net/adapter.sqlite
+      auth:
+        mode: none
+      direct_messages: true
+      human_ingress: true
+    rooms:
+      - id: adapter-proof
+        members: [echo]

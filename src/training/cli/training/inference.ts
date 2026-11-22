@@ -16,7 +16,7 @@ import type { CliDependencies } from '../types.js';
 
 /** Construct only after dry-run and schema preflight have finished. */
 export function createTrainingInference(args: CliArguments, dependencies: CliDependencies, timeoutMs: number,
-  judges: Record<string, string>, repairs: Record<string, 0 | 1>) {
+  judges: Record<string, string>, repairs: Record<string, 0 | 1>, judgesOnly = false) {
   const config = args.training;
   const registry = dependencies.inferenceProviders ?? defaultInferenceProviders;
   const executionIdentity = dependencies.spawnfile?.inferenceExecutionIdentity;
@@ -29,12 +29,12 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
     }
   };
   for (const name of Object.keys(judges)) admit(config?.judges?.[name], `judge ${name}`);
-  if (!config?.comparison) admit(config?.optimizer, 'optimizer');
+  if (!judgesOnly && !config?.comparison) admit(config?.optimizer, 'optimizer');
   const resources = new Map<string, unknown>();
   const cleanup: (() => Promise<void>)[] = [];
   const context = (purpose: 'judge' | 'optimizer', timeoutMs: number) => ({ timeoutMs, purpose, resources, onClose: (close: () => Promise<void>) => { cleanup.push(close); } });
   const legacy = () => dependencies.inference?.(timeoutMs) ?? inferenceProviderDescriptor(registry, registry.defaultProviderId)
-    .create({ provider: registry.defaultProviderId, model: '' }, context('optimizer', timeoutMs));
+    .create({ provider: registry.defaultProviderId, model: '' }, context(judgesOnly ? 'judge' : 'optimizer', timeoutMs));
   const providers = new Map<string, InferenceProvider>();
   function provider(name: string, purpose: 'judge' | 'optimizer', routeTimeoutMs: number): InferenceProvider {
     const model = config!.models[name]!;
@@ -76,7 +76,7 @@ export function createTrainingInference(args: CliArguments, dependencies: CliDep
   }));
   const optimizer = config?.optimizer;
   const identity = optimizer === undefined ? undefined : createHash('sha256').update(JSON.stringify({ optimizer, models: config!.models, providerPolicies: trainingRoutePolicies(config!, optimizer, executionIdentity, registry) })).digest('hex');
-  const inference = config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `${OPTIMIZER_ROUTE_PREFIX}${identity}`, 'optimizer');
+  const inference = judgesOnly || config?.comparison ? undefined : optimizer === undefined ? getLegacy() : route(optimizer, `${OPTIMIZER_ROUTE_PREFIX}${identity}`, 'optimizer');
   return { get inference() {
     if (inference === undefined) throw new Error('Authored comparison has no optimizer inference');
     return inference;

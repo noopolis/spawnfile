@@ -6,8 +6,10 @@ import type { CompileReport } from "../report/index.js";
 import { REPORT_FILENAME, SpawnfileError } from "../shared/index.js";
 
 import { exportRunArtifacts } from "./artifactsExport.js";
+import { requireCompileReportAdapters } from "./artifactsExportPlan.js";
 import {
   assertDeploymentLifecycleCorrelation,
+  createDeploymentLifecycleCorrelation,
   type DeploymentLifecycleCorrelation,
 } from "./deploymentLifecycleCorrelation.js";
 import {
@@ -158,7 +160,7 @@ const readCompileReport = async (
 
 const explainRefusal = (deploymentName: string): string =>
   `Deployment "${deploymentName}" has no export-index: its durable artifacts (moltnet ` +
-  "causal log, mneme bank ledgers, daimon telemetry) have not been exported yet, and " +
+  "causal log, mneme bank ledgers, runtime telemetry) have not been exported yet, and " +
   "`spawnfile down` would destroy the container they live in before anyone reads them. " +
   `Run \`spawnfile artifacts export --deployment ${deploymentName} --out <dir>\` first, ` +
   "or pass `--export-to <dir>` to export-then-down in one call, or `--force` to " +
@@ -172,6 +174,7 @@ const explainRefusal = (deploymentName: string): string =>
 const ensureExported = async (
   record: DeploymentRecord,
   options: DownDeploymentOptions,
+  report: CompileReport | null,
 ): Promise<DeploymentRecord> => {
   if (record.export_index || options.force) {
     return record;
@@ -183,11 +186,15 @@ const ensureExported = async (
       explainRefusal(options.deploymentName),
     );
   }
+  // Refuse before any export or teardown effect: an absent adapter would plan none of
+  // its files, and the container holding them would then be removed.
+  if (report) requireCompileReportAdapters(report, "export artifacts before teardown");
 
-  await exportRunArtifacts({
+  const exported = await exportRunArtifacts({
     compiledOutputDirectory: options.compiledOutputDirectory,
     deploymentName: options.deploymentName,
     destinationDirectory: exportTo,
+    expectedLifecycleCorrelation: createDeploymentLifecycleCorrelation(record),
     dockerCommand: options.dockerCommand,
     // Structurally identical exec-call shape as DockerArtifactExecFile (see
     // artifactsExportDocker.ts) — forwarded so an injected fake/override execFile covers
@@ -196,6 +203,14 @@ const ensureExported = async (
     readerImage: options.readerImage,
     timeoutMs: options.timeoutMs,
   });
+  if (exported.failedFiles.length > 0) {
+    throw new SpawnfileError(
+      "runtime_error",
+      `Deployment "${options.deploymentName}" was not torn down: required artifacts failed to ` +
+        `export (${exported.failedFiles.join(", ")}). Its container was kept; retry the export, ` +
+        "or pass `--force` to deliberately discard them.",
+    );
+  }
   return readDeploymentRecordFromOutput(
     options.compiledOutputDirectory,
     options.deploymentName,
@@ -276,10 +291,10 @@ export const downDeployment = async (
   const record = await ensureExported(initialRecord, {
     ...options,
     compiledOutputDirectory,
-  });
+  }, report);
   assertDeploymentLifecycleCorrelation(
     record,
-    options.expectedLifecycleCorrelation,
+    createDeploymentLifecycleCorrelation(initialRecord),
   );
   await closeOrganizationHandoff(record);
 

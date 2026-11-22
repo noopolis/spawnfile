@@ -57,7 +57,7 @@ describe("runtime container install recipe fallbacks", () => {
     expect(recipe.runtimeRoot).toBe("/usr/local/lib/node_modules/openclaw");
     expect(recipe.copyCommands).toEqual([]);
     expect(recipe.commands).toEqual([
-      "npm install -g --omit=dev --no-fund --no-audit openclaw@2026.6.11"
+      "npm install -g --prefix /usr/local --omit=dev --no-fund --no-audit openclaw@2026.6.11"
     ]);
   });
 

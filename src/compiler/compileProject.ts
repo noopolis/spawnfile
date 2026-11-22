@@ -1,15 +1,14 @@
+import { assertMoltnetBridgeCapabilities } from "./moltnetBridgeCapabilities.js";
 import { cleanCompileOutput } from "./cleanCompileOutput.js";
 import { assertRecordingCapability } from "./recordingCapability.js";
-import type { DaimonContractManifest } from "../runtime/daimon/contractManifest.js";
 import path from "node:path";
 import { chmod } from "node:fs/promises";
 
-import { ensureDirectory, removeDirectory } from "../filesystem/index.js";
+import { ensureDirectory, removeDirectory, resolveOutputRoot } from "../filesystem/index.js";
 import {
   createCompileReport,
   createDiagnostic,
   writeCompileReport,
-  CapabilityReport,
   CompileReport,
   DiagnosticReport,
   NodeReport
@@ -19,7 +18,8 @@ import {
   assertRuntimeCanCompile,
   createRuntimeLifecycleDiagnostics,
   getRuntimeAdapter,
-  resolveNoopolisRunId
+  resolveNoopolisRunId,
+  type RuntimeRecordingOptions
 } from "../runtime/index.js";
 
 import { buildCompilePlan, type BuildCompilePlanOptions } from "./buildCompilePlan.js";
@@ -39,11 +39,14 @@ import {
   type PolicyMode
 } from "./compileProjectPolicy.js";
 import {
+  createSubagentContexts,
+  createTeamCapabilities,
   injectMoltnetWorkspaceFiles,
   injectTeamCompileSupportFiles,
   prepareTeamCompileSupport,
   writeEmittedFiles
 } from "./compileProjectSupport.js";
+import type { RuntimeCompileContext } from "../runtime/types.js";
 import { CompilePlanNode, ResolvedAgentNode, ResolvedTeamNode } from "./types.js";
 import { generateMoltnetArtifacts } from "./moltnetArtifacts.js";
 import {
@@ -65,9 +68,7 @@ export type {
   OrganizationReadinessEvidence
 } from "./organizationReadyEvidence.js";
 
-export interface CompileProjectOptions {
-  /** Test seam for the receipt-bound manifest; normal compilation uses the verified vendored bytes. */
-  daimonContractManifest?: DaimonContractManifest;
+export interface CompileProjectOptions extends RuntimeRecordingOptions {
   /** Docker CLI for dependency installs and image-run generated bundle steps; defaults to `docker`. */
   bundleDockerCommand?: string;
   /** Cache for built workspace bundles; defaults to `$SPAWNFILE_HOME/cache/workspace-bundles`. */
@@ -108,18 +109,6 @@ interface CompiledNodeResult {
   value: ResolvedAgentNode | ResolvedTeamNode;
 }
 
-const createTeamCapabilities = (
-  outcome: CapabilityReport["outcome"],
-  message: string
-): CapabilityReport[] => [
-  { key: "team.members", message, outcome },
-  { key: "team.mode", message, outcome },
-  { key: "team.lead", message, outcome },
-  { key: "team.external", message, outcome },
-  { key: "team.shared", message, outcome },
-  { key: "team.nested", message, outcome }
-];
-
 const createAgentOutputDirectory = (
   baseDirectory: string,
   node: CompilePlanNode & { value: ResolvedAgentNode }
@@ -133,7 +122,8 @@ const createTeamOutputDirectory = (
 
 const compileAgentNode = async (
   baseDirectory: string,
-  node: CompilePlanNode & { value: ResolvedAgentNode }
+  node: CompilePlanNode & { value: ResolvedAgentNode },
+  context: RuntimeCompileContext
 ): Promise<CompiledNodeResult> => {
   const runtime = await assertRuntimeCanCompile(node.runtimeName ?? node.value.runtime.name);
   const adapter = getRuntimeAdapter(runtime.name);
@@ -148,9 +138,9 @@ const compileAgentNode = async (
     throw new Error(errorDiagnostic.message);
   }
 
-  const result = await adapter.compileAgent(node.value);
+  const result = context.subagents.length ? await adapter.compileAgent(node.value, context) : await adapter.compileAgent(node.value);
   const outputDirectory = createAgentOutputDirectory(baseDirectory, node);
-  await writeEmittedFiles(outputDirectory, result.files);
+  await writeEmittedFiles(baseDirectory, result.files, path.relative(baseDirectory, outputDirectory));
 
   return {
     emittedFiles: result.files,
@@ -250,7 +240,7 @@ const compileTeamNode = async (
 
   const result = await adapter.compileTeam(node.value);
   const outputDirectory = createTeamOutputDirectory(baseDirectory, runtime.name, node);
-  await writeEmittedFiles(outputDirectory, result.files);
+  await writeEmittedFiles(baseDirectory, result.files, path.relative(baseDirectory, outputDirectory));
 
   return {
     emittedFiles: result.files,
@@ -278,7 +268,7 @@ export const compileProject = async (
   options: CompileProjectOptions = {}
 ): Promise<CompileProjectResult> => {
   const plan = await buildCompilePlan(inputPath, options.manifestOverrides ? { manifestOverrides: options.manifestOverrides } : {});
-  await assertRecordingCapability(plan, options.daimonContractManifest);
+  await assertRecordingCapability(plan, options);
   const worldBindings = options.worldBindingsPath === undefined
     ? undefined
     : await loadWorldBindingsForCompile(
@@ -286,12 +276,12 @@ export const compileProject = async (
         options.worldBindingsPath,
         resolveNoopolisRunId(process.env)
       );
-  // The default output directory lives under the resolved project root, not the
-  // process working directory, so `spawnfile compile ./org` writes ./org/.spawn.
-  const outputDirectory = options.outputDirectory
+  // `spawnfile compile ./org` defaults to ./org/.spawn.
+  const requestedOutputDirectory = options.outputDirectory
     ? path.resolve(options.outputDirectory)
     : path.join(path.dirname(plan.root), DEFAULT_OUTPUT_DIRECTORY);
 
+  const outputDirectory = await resolveOutputRoot(requestedOutputDirectory);
   if (options.clean ?? true) {
     await cleanCompileOutput(outputDirectory);
   }
@@ -314,11 +304,12 @@ export const compileProject = async (
 
   const nodeReports: NodeReport[] = [];
   const compiledNodes: CompiledNodeResult[] = [];
+  const contextFor = createSubagentContexts(plan.nodes);
   for (const node of plan.nodes) {
     let compiled: CompiledNodeResult;
 
     if (node.kind === "agent") {
-      compiled = await compileAgentNode(outputDirectory, node as CompilePlanNode & { value: ResolvedAgentNode });
+      compiled = await compileAgentNode(outputDirectory, node as CompilePlanNode & { value: ResolvedAgentNode }, contextFor(node));
       await injectTeamCompileSupportFiles(
         outputDirectory,
         compiled,
@@ -348,6 +339,7 @@ export const compileProject = async (
         architecture: options.containerArchitecture
       })
     : undefined;
+  assertMoltnetBridgeCapabilities(moltnetArtifacts?.nodePlans ?? [], moltnetRelease);
   await injectMoltnetWorkspaceFiles(outputDirectory, compiledNodes, moltnetArtifacts);
 
   const resolvedRuntimePackageOverrides = await stageRuntimePackageOverrides(
@@ -378,13 +370,14 @@ export const compileProject = async (
   const report = createCompileReport(plan.root, nodeReports, [], containerArtifacts.report, {
     compileFingerprint: containerArtifacts.distribution.fingerprint,
     generatedAt,
-    outputDirectory,
+    outputDirectory: requestedOutputDirectory,
     projectName: containerArtifacts.distribution.report.organization.project
   });
   if (workspaceBundles.report.length > 0) report.workspace_bundles = workspaceBundles.report;
   if (workspaceGitPins.report.length > 0) report.workspace_git_resources = workspaceGitPins.report;
   if (containerArtifacts.distribution.report.recording) report.recording = containerArtifacts.distribution.report.recording;
-  const reportPath = await writeCompileReport(outputDirectory, report);
+  const writtenReport = await writeCompileReport(outputDirectory, report);
+  const reportPath = path.join(requestedOutputDirectory, path.basename(writtenReport));
   const organizationReadinessEvidence = createOrganizationReadinessEvidence({
     compileVersion: report.spawnfile_version,
     containerArtifacts,
@@ -393,5 +386,5 @@ export const compileProject = async (
     ...(worldBindings ? { worldBindings } : {})
   });
 
-  return { organizationReadinessEvidence, outputDirectory, report, reportPath };
+  return { organizationReadinessEvidence, outputDirectory: requestedOutputDirectory, report, reportPath };
 };

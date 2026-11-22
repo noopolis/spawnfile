@@ -1,5 +1,5 @@
 export { parseDatasetYaml } from './parser.js';
-export { resolveDataset, resolveDatasetForCost } from './resolver.js';
+export { resolveDataset, resolveCapturedCriteria, resolveDatasetForCost } from './resolver.js';
 export { validateDatasetSplit, validateCostDatasetSplit, selectedFiles } from './splits.js';
 export { normalizeStages } from './plans.js';
 export { builtinEvaluatorDefinitions } from './builtin-evaluators.js';

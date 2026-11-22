@@ -15,13 +15,10 @@ const MODEL_PROVIDER_ENV_VARS = new Map<string, string>([
 
 export const CLI_CREDENTIAL_SECRET_NAME = "SPAWNFILE_CLI_AUTH_JSON";
 
-/**
- * Only the host-imported CLI logins travel as `SPAWNFILE_CLI_AUTH_JSON`. `grok`
- * is a Daimon-owned subscription: its credential is the broker's bootstrap
- * slot (`runtime/daimon/runAuth.ts`), never this secret.
- */
-export const modelAuthMethodNeedsCliCredential = (method: ModelAuthMethod): boolean =>
-  method === "claude-code" || method === "codex";
+/** Host-imported CLI credentials use the shared credential secret. */
+export const modelAuthMethodNeedsCliCredential = (
+  method: ModelAuthMethod, adapterMethods: readonly ModelAuthMethod[] = []
+): boolean => (method === "claude-code" || method === "codex") && !adapterMethods.includes(method);
 
 const resolveLegacyModelAuthMethod = (
   execution: ExecutionBlock | undefined,
@@ -166,12 +163,12 @@ export const resolveExecutionModelAuthMethods = (
 };
 
 export const listExecutionModelSecretNames = (
-  execution: ExecutionBlock | undefined
+  execution: ExecutionBlock | undefined, adapterMethods?: readonly ModelAuthMethod[]
 ): string[] => {
   const secretNames = new Set<string>();
 
   for (const target of listEffectiveExecutionModelTargets(execution)) {
-    if (modelAuthMethodNeedsCliCredential(target.auth.method)) {
+    if (modelAuthMethodNeedsCliCredential(target.auth.method, adapterMethods)) {
       secretNames.add(CLI_CREDENTIAL_SECRET_NAME);
       continue;
     }

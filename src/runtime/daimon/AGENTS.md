@@ -12,6 +12,18 @@ application per agent. It permits only compiler-owned Moltnet public-wake
 attachments; Daimon consumes a generic 0700 private ingress itself. `runtime:
 pi` remains the legacy generated Pi path.
 
+The `image/` directory owns the generic image context, local builder, and pinned publisher.
+`package-assets.json` lists the contract files copied into the installed CLI.
+
+`recordingIo.ts` owns live Node byte transport and wake ledger decoding.
+`recordingSnapshot.ts` owns the released snapshot history layout and manifest decoder.
+Rewind supplies the contained history reader and verifies copied trees.
+
+`install.ts` owns the registry install hints and builds the native container recipe.
+`daimonInstall.ts` verifies the selected architecture's image receipt, manifest,
+and executables. `localDaimonAuthority.ts` validates the explicit non-production
+loopback image identity shared with schedule authority.
+
 The consumed Daimon manifest declares stable Codex, AGY and Grok host-realm volumes
 plus their opaque bootstrap slots. This adapter renders those resources but
 never starts a provider CLI, D-Bus, or a turn.
@@ -30,7 +42,7 @@ directory is missing or unreadable (`ensureUsageLedgerReadable` in Daimon's
 is the volume identity and renaming it orphans existing data. The container
 entrypoint also fixes this directory group-writable (`0770`, not `0750`):
 Codex and AGY write from the organization-uid runtime process
-(`renderDaimonUsageLedgerProvisioning` in `containerDaimonBrokerRender.ts`),
+(`renderDaimonUsageLedgerProvisioning` in `src/runtime/daimon/host/brokerRender.ts`),
 not the Grok-only broker, so a mode granting the group only read+execute lets
 that process list the directory but not create `usage.jsonl` inside it. The
 file itself is handed to broker:organization at `0660` on every start: Daimon's
@@ -137,8 +149,9 @@ AGY shares one native keyring authority.
 Memory lowering is `memory.ts`'s `resolveDaimonAgentMemory` (split out of
 `config.ts` to stay inside the 400-line source bound, and re-exported from
 `config.ts` so existing importers are unaffected). Daimon accepts one
-`memory` block per agent (`{ runtimeHomePath, source?, tokenBudget? }`, camelCase,
-no unknown keys), so this adapter picks a single declared bank deterministically
+`memory` block per agent with `runtimeHomePath`, optional `source` and `tokenBudget`,
+and optional `dreamSchedule` on a supporting v2 image. The adapter picks
+a single declared bank deterministically
 and emits it only when `resolveMnemeDurableMemoryMountPath` (`../mnemeMcp.ts`)
 says the compiler mounts a durable volume for it. That predicate is shared with
 `src/compiler/memoryArtifacts.ts` on purpose: a runtime home with no persistent
@@ -146,6 +159,11 @@ mount is absent or root-owned inside the container, so an in-process Mneme
 runtime pointed at one fails its first write. Everything else -- postgres,
 in-process `memory` stores, ephemeral persistence, or a second declared bank --
 stays a `degraded` memory capability with no emitted block.
+
+The selected bank's scheduled consolidation is independent of the agent's
+ordinary work schedule. `schedules.ts` normalizes intervals and cron expressions.
+`scheduleAuthority.ts` checks the selected image's manifest digest before the
+compiler emits a dream schedule. Keep the known earlier image on awake memory.
 
 That block carries no embedding configuration, and Daimon's CLI harness never
 sets `memory.embeddingProvider`, so vector recall does not exist on this
@@ -175,7 +193,7 @@ adapter change.
 `runtimeIdentity.ts` is the single source of truth for the fixed container-side
 uids a compiled Daimon image runs under (`DAIMON_ORGANIZATION_UID`,
 `DAIMON_BROKER_UID`, `DAIMON_FIRST_WORKER_UID`);
-`src/compiler/containerDaimonBrokerRender.ts` re-exports them so the compiler and
+`src/runtime/daimon/host/brokerRender.ts` re-exports them so the compiler and
 the deploy path cannot drift apart. They are compiler-wide constants, not
 per-organization values: the rendered entrypoint pins `uid=2000` and drops to it
 with `setpriv --reuid`.
@@ -277,3 +295,11 @@ It reads the optional per-agent CLI turn bound the same way: a manifest whose
 `consumedConfigFields` ends in `agents[].engine.turnTimeoutMs` (after the wake
 text field when both are present) must publish that integer in its v2 agent
 engine schema, and its minimum and maximum become `turnTimeoutMsBounds`.
+
+`operations.ts` registers optional drain, compiled readiness, recording, usage
+and artifact evidence. `drain.ts` implements the running host's admission
+protocol. `readiness.ts` pairs the emitted receipt path with strict verification.
+`artifactEvidence.ts` preserves historical mount ids, paths and rotation
+limits. Native ledger parsing lives in `usageLedger.ts` and
+`usageRequestLedger.ts`. Release sequencing, deployment reconciliation and
+artifact egress remain in their shared callers.

@@ -47,14 +47,16 @@ npm run build
 
 ## Adding a runtime
 
-Runtime adapters live in `src/runtime/`. Each adapter lowers the resolved graph into runtime-native output and reports per-capability support.
+For an independently maintained harness, register its module in your project's root Spawnfile. The adapter guide includes a complete class and a working two-harness team. [Writing a runtime adapter](specs/RUNTIME_ADAPTERS.md)
+
+Bundled runtime adapters live in `src/runtime/`. Each adapter lowers the resolved graph into runtime-native output and reports per-capability support.
 
 - Start from [`specs/SPEC.md`](specs/SPEC.md) to understand the source shape.
 - Read [`specs/COMPILER.md`](specs/COMPILER.md) for the adapter contract.
 - Check [`specs/RUNTIMES.md`](specs/RUNTIMES.md) for the live matrix and pinned versions.
 - Use [`blueprints/`](blueprints/) as frozen reference layouts per pinned runtime version.
 
-When adding a runtime, also update `runtimes.yaml` with the pinned version and status.
+When adding a bundled runtime, also update `runtimes.yaml` with the pinned version and status.
 
 ## Docs and guides
 

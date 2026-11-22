@@ -1,11 +1,9 @@
 import path from "node:path";
-import { CLI_ENGINE_SKILL_BASE_DIRECTORIES } from "../common.js";
-import { daimonGrokSkillsError } from "./grokSkillsSupport.js";
+import { createDaimonWorkerDetails } from "./host/targetDetails.js";
+import { DAIMON_SKILL_ROOTS, daimonGrokSkillsError } from "./grokSkillsSupport.js";
 import { daimonAgentSkillsFromResolved } from "./grokWorkerSkills.js";
 import { daimonGatewayedSubscriptionRealms, daimonSubscriptionRealmMountId } from "./subscriptionRealms.js";
-
 import type { ResolvedAgentNode } from "../../compiler/types.js";
-import { parseEveryScheduleMs } from "../scheduleUtils.js";
 import { SpawnfileError } from "../../shared/index.js";
 import type { ContainerTarget, ContainerTargetInput, EmittedFile } from "../types.js";
 
@@ -19,14 +17,17 @@ import {
   daimonMemoryCapabilityFor,
   daimonMemorySelectionWarning,
   daimonMemoryVectorRecallWarning,
-  resolveDaimonAgentMemory
+  resolveDaimonAgentMemory,
+  resolveDaimonMemoryConsolidation
 } from "./memory.js";
 import { assertDaimonScheduleAuthority } from "./scheduleAuthority.js";
+import { normalizeDaimonSchedule } from "./schedules.js";
 import { assertDaimonAttentionAuthority, resolveDaimonAttention } from "./attention.js";
 import { resolveDaimonGrokTurnLimits } from "./grokTurnLimits.js";
 import { assertDaimonTurnTimeoutBound, resolveDaimonCliTurnTimeoutMs } from "./turnTimeout.js";
 import { assertDaimonWakeTextBound, resolveDaimonWakeTextBytes } from "./wakeTextBound.js";
 import { resolveDaimonGrokModel } from "./grokModel.js";
+import { DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY, daimonReadinessReceiptPath } from "./readiness.js";
 import { assertDaimonRecordingIsolation, daimonRecordingMountId, resolveDaimonAgentRecording } from "./recording.js";
 
 import { DAIMON_PINNED_PORTABLE_DESCRIPTOR } from "./engineDescriptorSchema.js";
@@ -45,8 +46,9 @@ export {
 export const DAIMON_CONFIG_FILE = "daimon-organization-runtime.json";
 export const DAIMON_CONTROL_PORT = 19700;
 export const DAIMON_MAX_AGENTS = 32;
+export const DAIMON_USAGE_MOUNT_ID = "daimon-grok-usage-ledger";
 export const DAIMON_ORGANIZATION_TARGET_ID = "daimon-organization";
-export const DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY = "state/wake-acceptance";
+export { DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY };
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_ENV = "DAIMON_RUNTIME_ACCEPTANCE_STORE";
 export const DAIMON_RUNTIME_ACCEPTANCE_STORE_MOUNT_ID = "daimon-organization-acceptance-store";
 export const DAIMON_RUNTIME_READINESS_RECEIPT_ENV = "DAIMON_RUNTIME_READINESS_RECEIPT";
@@ -60,26 +62,6 @@ const DAIMON_MAX_INSTRUCTION_CODEPOINTS = 16_384;
 import { DAIMON_ENGINES, DAIMON_DEFAULT_ENGINE, DAIMON_SECRET_SERVICE_ENGINE_ID, getDaimonEngineDescriptor, daimonEngineHasBroker } from "./engines.js";
 export { DAIMON_ENGINES } from "./engines.js";
 type DaimonEngine = typeof DAIMON_ENGINES[number];
-
-const normalizeSchedule = (node: ResolvedAgentNode): Record<string, unknown> | undefined => {
-  const schedule = node.schedule;
-  if (!schedule || schedule.kind === "disabled") return schedule ? { kind: "disabled" } : undefined;
-  if (schedule.kind === "every") {
-    const interval_ms = parseEveryScheduleMs(schedule.every);
-    if (interval_ms === null) throw new SpawnfileError("validation_error", `invalid every schedule for ${node.name}`);
-    return {
-      kind: "every", interval_ms, prompt: schedule.prompt ?? "Scheduled work",
-      ...(schedule.jitter_seconds === undefined ? {} : { jitter_seconds: schedule.jitter_seconds })
-    };
-  }
-  return {
-    cron: schedule.cron.trim().replace(/\s+/gu, " "),
-    kind: "cron",
-    prompt: schedule.prompt ?? "Scheduled work",
-    timezone: schedule.timezone ?? "UTC",
-    ...(schedule.jitter_seconds === undefined ? {} : { jitter_seconds: schedule.jitter_seconds })
-  };
-};
 
 const formatInstructions = (node: ResolvedAgentNode): string =>
   node.docs.map((document) => `# ${document.role}\n\n${document.content}`).join("\n\n").trim() ||
@@ -165,7 +147,7 @@ const renderStartScript = (agents: Array<{
   workspacePath: string;
 }>): string => {
   const acceptanceStorePath = `<instance-root>/${DAIMON_RUNTIME_ACCEPTANCE_STORE_DIRECTORY}`;
-  const readinessReceiptPath = `${acceptanceStorePath}/runtime-readiness.json`;
+  const readinessReceiptPath = daimonReadinessReceiptPath("<instance-root>");
   const setup = agents.flatMap((agent) => {
     const material = getDaimonEngineDescriptor(agent.engine.kind)?.credentialMaterial;
     const credential = material?.sourceRelativePath ? material as typeof DAIMON_ENGINE_CREDENTIALS[keyof typeof DAIMON_ENGINE_CREDENTIALS] : undefined;
@@ -226,6 +208,8 @@ export const createDaimonContainerTargets = async (
   const hasAttention = [...attentionById.values()].some((attention) => attention !== undefined);
   if (hasAttention) await assertDaimonAttentionAuthority();
   if (hasSchedules) await assertDaimonScheduleAuthority();
+  const dreamSchedules = await Promise.all(agents.map(({ value }) => resolveDaimonMemoryConsolidation(value)));
+  const usesV2 = hasSchedules || hasAttention || dreamSchedules.some(({ schedule }) => schedule !== undefined);
   const declaredWakeText = agents.map((input) => resolveDaimonWakeTextBytes(input.value.runtime.options.max_wake_text_bytes, input.id)).filter((bytes) => bytes !== undefined);
   const maxWakeTextBytes = declaredWakeText.length ? Math.max(...declaredWakeText) : undefined;
   if (maxWakeTextBytes !== undefined) await assertDaimonWakeTextBound(maxWakeTextBytes);
@@ -234,8 +218,9 @@ export const createDaimonContainerTargets = async (
     if (timeoutMs !== undefined) await assertDaimonTurnTimeoutBound(input.id, timeoutMs);
   }
   const configAgents = agents
-    .map((input) => {
+    .map((input, index) => {
       const memory = resolveDaimonAgentMemory(input.value);
+      const dreamSchedule = dreamSchedules[index]?.schedule;
       const recording = resolveDaimonAgentRecording(input, DAIMON_ORGANIZATION_TARGET_ID, agents.length);
       return {
       engine: resolveDaimonEngineConfig(input.id, input.value),
@@ -247,7 +232,7 @@ export const createDaimonContainerTargets = async (
         ...(server.command ? { command: server.command } : {}), ...(server.url ? { url: server.url } : {}),
         ...(server.auth?.mode === "bearer" ? { authSecretEnv: server.auth.secret } : {})
       })) }),
-      ...(memory ? { memory } : {}),
+      ...(memory ? { memory: dreamSchedule ? { ...memory, dreamSchedule } : memory } : {}),
       ...(recording ? { recording } : {}),
       ...(attentionById.get(input.id) === undefined ? {} : { attention: attentionById.get(input.id) }),
       ...(input.value.surfaces?.moltnet?.length ? { moltnet: {
@@ -257,7 +242,7 @@ export const createDaimonContainerTargets = async (
       } } : {}),
       runtimeHomePath: `<instance-root>/${DAIMON_RUNTIME_HOMES_DIRECTORY}/${input.slug}`,
       workspacePath: `<workspace-path>/agents/${input.slug}`,
-      ...(hasSchedules || hasAttention ? { schedule: normalizeSchedule(input.value) ?? { kind: "disabled" } } : {})
+      ...(usesV2 ? { schedule: normalizeDaimonSchedule(input.value.schedule, input.value.name) ?? { kind: "disabled" } } : {})
       };
     })
     .sort((left, right) => left.id.localeCompare(right.id));
@@ -315,7 +300,7 @@ export const createDaimonContainerTargets = async (
       ...(maxWakeTextBytes === undefined ? {} : { maxWakeTextBytes }),
       port: DAIMON_CONTROL_PORT
     },
-    version: hasSchedules || hasAttention
+    version: usesV2
       ? "noopolis.daimon.organization-runtime.v2"
       : "noopolis.daimon.organization-runtime.v1"
   };
@@ -327,13 +312,15 @@ export const createDaimonContainerTargets = async (
   return [{
     agentPathsByNodeId: Object.fromEntries(configAgents.map((agent) => [agent.id, {
       workspacePath: agent.workspacePath, homePath: agent.runtimeHomePath,
-      skillRoots: CLI_ENGINE_SKILL_BASE_DIRECTORIES.map(
+      skillRoots: DAIMON_SKILL_ROOTS.map(
         (root) => path.posix.join(agent.workspacePath, path.posix.relative("workspace", root)))
     }])),
     engineByNodeId,
-    ...(hasGrok ? { grokModelByNodeId } : {}),
-    ...(hasGrok && Object.keys(grokTurnLimitsByNodeId).length > 0 ? { grokTurnLimitsByNodeId } : {}),
-    ...(Object.keys(grokSkillsByNodeId).length > 0 ? { grokSkillsByNodeId } : {}),
+    ...(hasGrok ? { hostDetails: createDaimonWorkerDetails({
+      modelByNodeId: grokModelByNodeId,
+      turnLimitsByNodeId: grokTurnLimitsByNodeId,
+      skillsByNodeId: grokSkillsByNodeId
+    }) } : {}),
     files: [
       ...agents.flatMap((input) => input.emittedFiles.map((file) => moveWorkspaceFile(file, input.slug))),
       { content: serializedConfig, path: DAIMON_CONFIG_FILE },
@@ -375,7 +362,7 @@ export const createDaimonContainerTargets = async (
         // `ensureUsageLedgerReadable`), and Codex also writes here
         // (`engineDispatcher.ts`'s `onTurnUsage`) even in a codex-only
         // organization with no Grok or AGY agent at all.
-        id: "daimon-grok-usage-ledger",
+        id: DAIMON_USAGE_MOUNT_ID,
         lifecycle: "exclusive-reattach" as const,
         mountPath: DAIMON_GROK_TURN_USAGE_LEDGER.directoryPath,
         reason: "Daimon per-turn engine usage ledger"

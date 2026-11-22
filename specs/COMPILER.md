@@ -603,10 +603,11 @@ Rules:
   OpenClaw and PicoClaw v0.1 use `mneme-<memory-id>` for file-backed banks in
   awake mode when the id is unique for that agent, and append a compiler-owned
   source discriminator when two declaring manifests expose the same memory id.
-- Daimon `engine: pi` agents use direct Mneme tools. The generated app switches
-  between awake and dream Mneme instruction/tool mode per wake. Scheduled
-  consolidation lowers to dream wakes only when the runtime supports the
-  declared schedule expression.
+- Daimon connects one durable file-backed bank per agent through its in-process
+  Mneme tools. A supported `memory[].consolidation.schedule` becomes a separate
+  `memory.dreamSchedule` on the selected bank when the image attests that
+  capability. Ordinary work uses the agent's own schedule. The compile report
+  identifies scheduled consolidation that the image or bank cannot support.
 - `status` may report memory capability, mount presence, index mode, and last
   probe status, but it MUST NOT read message bodies or raw memory content.
 

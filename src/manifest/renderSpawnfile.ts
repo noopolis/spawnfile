@@ -1,5 +1,7 @@
 import YAML from "yaml";
 
+import { sortedAdapterEntries } from "./adapterSchemas.js";
+
 import type {
   AgentManifest,
   AgentSchedule,
@@ -163,6 +165,10 @@ const orderMember = (member: ManifestMember): Record<string, unknown> => {
   ]);
 };
 
+/** Stable runtime-id order keeps rewrites deterministic. */
+const orderAdapters = (adapters: Record<string, string> | undefined): Record<string, string> | undefined =>
+  adapters && Object.fromEntries(sortedAdapterEntries(adapters));
+
 const renderSections = (sections: Record<string, unknown>[]): string =>
   sections
     .filter(hasEntries)
@@ -176,6 +182,7 @@ const orderAgentManifestSections = (manifest: AgentManifest): Record<string, unk
     ["name", manifest.name],
     ["expose", manifest.expose]
   ]),
+  withDefinedEntries([["adapters", orderAdapters(manifest.adapters)]]),
   withDefinedEntries([["runtime", orderRuntimeBinding(manifest.runtime)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
   withDefinedEntries([["schedule", orderAgentSchedule(manifest.schedule)]]),
@@ -193,6 +200,7 @@ const orderTeamManifestSections = (manifest: TeamManifest): Record<string, unkno
     ["kind", manifest.kind],
     ["name", manifest.name]
   ]),
+  withDefinedEntries([["adapters", orderAdapters(manifest.adapters)]]),
   withDefinedEntries([["execution", orderExecution(manifest.execution)]]),
   withDefinedEntries([["shared", orderSharedSurface(manifest.shared)]]),
   withDefinedEntries([["networks", orderTeamNetworks(manifest.networks)]]),

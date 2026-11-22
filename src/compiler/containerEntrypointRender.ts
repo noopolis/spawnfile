@@ -1,3 +1,4 @@
+import { selectedRuntimeHosts, selectRuntimeEntrypoint } from "../runtime/hostSelection.js";
 import path from "node:path";
 
 import type { RuntimeTargetPlan } from "./containerArtifactsTypes.js";
@@ -13,11 +14,8 @@ import {
   createConfigEnvWrites
 } from "./containerConfigEnvRender.js";
 import {
-  CLI_CREDENTIAL_SECRET_NAME,
-  modelAuthMethodNeedsCliCredential
-} from "./modelEnv.js";
-import {
   createCliCredentialMaterialization,
+  runtimeInstanceEnvironment,
   createRecipeEnvAssignments,
   mergeRecipeEnv,
   shellQuote
@@ -45,42 +43,10 @@ const MOLTNET_SERVER_DATA_DIRECTORY = "/var/lib/spawnfile/moltnet/servers";
 // previous e2e-capture-only precedent).
 const moltnetCausalEventsPath = createMoltnetCausalEventsPath;
 
-const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => {
-  const envAssignments: string[] = [];
-
-  if (plan.instancePaths.homePath) {
-    envAssignments.push(`HOME=${shellQuote(plan.instancePaths.homePath)}`);
-  }
-
-  if (
-    plan.instancePaths.homePath &&
-    Object.values(plan.modelAuthMethods).some(modelAuthMethodNeedsCliCredential)
-  ) {
-    envAssignments.push(`CODEX_HOME=${shellQuote(path.posix.join(plan.instancePaths.homePath, ".codex"))}`);
-  }
-
-  if (plan.meta.homeEnv && plan.instancePaths.homePath) {
-    envAssignments.push(`${plan.meta.homeEnv}=${shellQuote(plan.instancePaths.homePath)}`);
-  }
-
-  if (plan.meta.configPathEnv) {
-    envAssignments.push(`${plan.meta.configPathEnv}=${shellQuote(plan.instancePaths.configPath)}`);
-  }
-
-  if (plan.meta.portEnv && plan.port) {
-    envAssignments.push(`${plan.meta.portEnv}=${shellQuote(String(plan.port))}`);
-  }
-
-  for (const [name, value] of Object.entries(plan.meta.staticEnv ?? {}).sort(([left], [right]) =>
-    left.localeCompare(right)
-  )) {
-    envAssignments.push(`${name}=${shellQuote(value)}`);
-  }
-
-  envAssignments.push(...createRecipeEnvAssignments(plan.recipeEnv));
-
-  return envAssignments;
-};
+const createEnvironmentAssignments = (plan: RuntimeTargetPlan): string[] => [
+  ...runtimeInstanceEnvironment(plan).map(([name, value]) => `${name}=${shellQuote(value)}`),
+  ...createRecipeEnvAssignments(plan.recipeEnv)
+];
 
 const createEnvFileWrites = (plan: RuntimeTargetPlan): string[] =>
   plan.envFiles.map(
@@ -139,30 +105,18 @@ export const renderEntrypoint = (
   requiredSecrets: string[],
   options: EntrypointOptions = {}
 ): string => {
-  const usesDaimonRuntime = runtimePlans.some((plan) => plan.runtimeName === "daimon");
+  const runtimeNames = runtimePlans.map((plan) => plan.runtimeName);
+  const hosts = selectedRuntimeHosts(runtimeNames);
+  const entrypoint = selectRuntimeEntrypoint(runtimeNames)?.entrypoint;
   const cliCredentialMaterialization = createCliCredentialMaterialization(runtimePlans);
-  const renderedRequiredSecrets = [
-    ...new Set([
-      ...requiredSecrets,
-      ...(cliCredentialMaterialization.length > 0 ? [CLI_CREDENTIAL_SECRET_NAME] : [])
-    ])
-  ];
+  const renderedRequiredSecrets = [...new Set(requiredSecrets)];
   const lines = [
     "#!/usr/bin/env bash",
     "set -euo pipefail",
-    ...(usesDaimonRuntime ? [
-      'if [ "$#" -ne 3 ] || [ "$1" != "--spawnfile-runtime-identity" ]; then echo "Missing trusted Daimon runtime identity" >&2; exit 1; fi',
-      'volume_bootstrap_uid="$2"',
-      'volume_bootstrap_gid="$3"',
-      'if ! [[ "$volume_bootstrap_uid" =~ ^[1-9][0-9]{0,9}$ ]] || [ "$volume_bootstrap_uid" -gt 2147483647 ]; then echo "Invalid trusted Daimon runtime UID" >&2; exit 1; fi',
-      'if ! [[ "$volume_bootstrap_gid" =~ ^[1-9][0-9]{0,9}$ ]] || [ "$volume_bootstrap_gid" -gt 2147483647 ]; then echo "Invalid trusted Daimon runtime GID" >&2; exit 1; fi',
-      "shift 3"
-    ] : [
-      "volume_bootstrap_uid=1001",
-      "volume_bootstrap_gid=1001"
-    ]),
+    ...(entrypoint?.prelude ?? []),
     "",
-    ...createBackedMountGuard(options.persistentMounts ?? []),
+    ...createBackedMountGuard(options.persistentMounts ?? [], (id) =>
+      hosts.map(({ host }) => host.externalMountEnvironment?.(id)).find((env) => env !== undefined)),
     "require_env() {",
     '  local name=\"$1\"',
     '  if [ -z \"${!name:-}\" ]; then',
@@ -191,15 +145,10 @@ export const renderEntrypoint = (
     "",
     ...createConfigEnvMaterializationFunction(),
     "",
-    ...createWorkspaceResourceShellFunctions()
+    ...createWorkspaceResourceShellFunctions(entrypoint !== undefined)
   ];
 
-  lines.push(
-    'if [ -n "${OPENCLAW_GATEWAY_TOKEN:-}" ] && [ -z "${OPENCLAW_HOOKS_TOKEN:-}" ]; then',
-    '  export OPENCLAW_HOOKS_TOKEN="hooks-${OPENCLAW_GATEWAY_TOKEN}"',
-    "fi",
-    ""
-  );
+  lines.push(...hosts.flatMap(({ host }) => host.environmentPrelude ?? []));
 
   for (const secretName of renderedRequiredSecrets) {
     lines.push(`require_env ${shellQuote(secretName)}`);

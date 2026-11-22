@@ -72,16 +72,10 @@ New `spawnfile.status.v1` observation keys (all `source: "compile_report"`):
   (`src/runtime/registry.ts`). Unknown adapter name → `error`.
 - `lifecycle.instance.paths` (subject: `runtime-instance:<id>`) — `configPath`
   missing → `error`; `homePath`/`workspacePath` missing → `warn`.
-- `lifecycle.wake.operator` (subject: `runtime-instance:<id>`, B62) — for
-  daimon instances only, reads the emitted `runtime/app.mjs` under
-  `<out>/container/rootfs${RUNTIME_INSTALL_ROOT}/<runtime>/app.mjs`
-  (`src/runtime/container.ts`'s `RUNTIME_INSTALL_ROOT`, a runtime-scoped —
-  not per-instance install root) and
-  asserts it contains the `/spawnfile/agents/` operator route,
-  `SPAWNFILE_PI_CONTROL_TOKEN`, and the fail-closed rejection text
-  Unreadable file → `error`;
-  non-daimon runtime → `unknown` ("not checked"); no compiled output
-  directory at all → `unknown`.
+- `lifecycle.wake.operator` (subject `runtime-instance:<id>`, B62) reads
+  the adapter's declared operator wake source under its runtime install root.
+  It checks the source for every adapter-declared marker. Missing source is an
+  error. Missing adapter capability or output directory is unknown.
 - `lifecycle.run_id` (subject: `compile`, B93) — the compiled
   `container/entrypoint` script (`entrypointPath` on the loaded report)
   contains a `NOOPOLIS_RUN_ID=` assignment

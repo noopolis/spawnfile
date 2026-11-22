@@ -12,7 +12,7 @@ vi.mock("./runProject.js", async (importOriginal) => ({
 vi.mock("../deployment/index.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("../deployment/index.js")>(),
   probeDockerOrganizationReadiness: vi.fn(), readDeploymentRecord: vi.fn(),
-  resolveDockerDeploymentTarget: vi.fn(), writeDeploymentRecord: vi.fn(), writeDockerDeploymentRecordForRun: vi.fn(), initializeOrganizationHandoffAuthorityStore: vi.fn()
+  resolveDockerDeploymentTarget: vi.fn(), publishProjectDeploymentRecord: vi.fn(), writeDockerDeploymentRecordForRun: vi.fn(), initializeOrganizationHandoffAuthorityStore: vi.fn()
 }));
 vi.mock("../filesystem/index.js", async (importOriginal) => ({
   ...await importOriginal<typeof import("../filesystem/index.js")>(), fileExists: vi.fn()
@@ -29,7 +29,7 @@ import {
 } from "./runProject.js";
 import { upProject } from "./upProject.js";
 import {
-  probeDockerOrganizationReadiness, readDeploymentRecord, writeDeploymentRecord,
+  probeDockerOrganizationReadiness, readDeploymentRecord, publishProjectDeploymentRecord,
   writeDockerDeploymentRecordForRun, createOrganizationHandoff, createDockerDeploymentRecord, initializeOrganizationHandoffAuthorityStore, parseCanonicalSha256Digest, resolveDockerDeploymentTarget,
   type DeploymentRecord
 } from "../deployment/index.js";
@@ -346,7 +346,7 @@ describe("upProject organization handoff", () => {
     }), handle);
     existing.units[0] = { ...existing.units[0]!, container_id: runMetadata.containerId, id: "football-container", image_id: runMetadata.imageId };
     vi.mocked(readDeploymentRecord).mockResolvedValue(existing);
-    vi.mocked(writeDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
+    vi.mocked(publishProjectDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
     vi.mocked(probeDockerOrganizationReadiness).mockImplementation(async (input) => input.record.organization_ready!);
     const run = vi.fn(async () => runMetadata);
     await upProject("/tmp/project", { ...complete, runRunner: run });
@@ -395,7 +395,7 @@ describe("upProject organization handoff", () => {
     });
     existing.export_index = { exported_at: "2026-07-24T00:00:00.000Z", path: "/tmp/export.json", run_id: "run-from-host" };
     vi.mocked(readDeploymentRecord).mockResolvedValue(existing);
-    vi.mocked(writeDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
+    vi.mocked(publishProjectDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
     vi.mocked(probeDockerOrganizationReadiness).mockImplementation(async (input) => input.record.organization_ready!);
     await upProject("/tmp/project", { ...complete, runRunner: vi.fn() });
     expect(writeDockerDeploymentRecordForRun).not.toHaveBeenCalled();
@@ -460,7 +460,7 @@ describe("upProject organization handoff", () => {
       return "/tmp/spawnfile-handoff/deployments/football.json";
     });
     vi.mocked(readDeploymentRecord).mockResolvedValue(handoffRecord);
-    vi.mocked(writeDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
+    vi.mocked(publishProjectDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
     vi.mocked(probeDockerOrganizationReadiness).mockImplementation(async (input) => ({
       ...input.record.organization_ready!, code: "probe_unavailable", state: "pending"
     }));
@@ -481,7 +481,7 @@ describe("upProject organization handoff", () => {
     expect(run.mock.invocationCallOrder[0]).toBeLessThan(finalizeAuthority.mock.invocationCallOrder[0]!);
     expect(finalizeAuthority.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(writeDockerDeploymentRecordForRun).mock.invocationCallOrder[0]!);
     expect(disposeAuthority).toHaveBeenCalledOnce();
-    const writes = vi.mocked(writeDeploymentRecord).mock.calls.map((call) => call[1]);
+    const writes = vi.mocked(publishProjectDeploymentRecord).mock.calls.map((call) => call[1]);
     expect(writes).toHaveLength(2);
     expect(writes[0]?.organization_handoff).toEqual(handoffRecord.organization_handoff);
     expect(writes[1]?.organization_handoff).toEqual(handoffRecord.organization_handoff);
@@ -522,13 +522,13 @@ describe("upProject organization handoff", () => {
       }), handoffHandle);
       vi.mocked(writeDockerDeploymentRecordForRun).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
       vi.mocked(readDeploymentRecord).mockResolvedValue(stored);
-      vi.mocked(writeDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
+      vi.mocked(publishProjectDeploymentRecord).mockResolvedValue("/tmp/spawnfile-handoff/deployments/football.json");
       vi.mocked(probeDockerOrganizationReadiness).mockImplementation(async (input) => ({
         ...input.record.organization_ready!, code, state
       }));
       const operation=upProject("/tmp/project", { ...complete, runRunner: async () => runMetadata });
       if(state==="failed"||state==="cancelled")await expect(operation).rejects.toMatchObject({code:"runtime_error"});else await operation;
-      for (const [, written] of vi.mocked(writeDeploymentRecord).mock.calls) {
+      for (const [, written] of vi.mocked(publishProjectDeploymentRecord).mock.calls) {
         expect(written.organization_handoff).toEqual(stored.organization_handoff);
         expect(written.organization_handoff_handle).toEqual(handoffHandle);
       }

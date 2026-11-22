@@ -4,9 +4,9 @@ import type { FeedLanding } from "../volume/index.js";
 export const WAKE_MOMENT_VERSION = "noopolis.daimon.wake-moment.v1";
 export const MOMENT_RECORD_VERSION = "spawnfile.moment-record.v1";
 
-/** The public, data-only row written by Daimon before each turn attempt. */
-export interface WakeMomentRow {
-  version: typeof WAKE_MOMENT_VERSION;
+/** Common recording facts. The version stays in the hashed row identity. */
+export interface RecordedWakeMoment {
+  version: string;
   agent_id: string;
   execution_id: string;
   started_at: string;
@@ -15,11 +15,16 @@ export interface WakeMomentRow {
   error?: string;
 }
 
+/** The historical v1 wake-row wire contract. */
+export interface WakeMomentRow extends RecordedWakeMoment {
+  version: typeof WAKE_MOMENT_VERSION;
+}
+
 export interface MemoryLedgerEntry { seq: number; createdAt: string }
 export interface MemoryLedgerRead { entries: readonly MemoryLedgerEntry[]; errors?: readonly string[] }
 
 export interface ComposeMomentRecordInput {
-  row: WakeMomentRow;
+  row: RecordedWakeMoment;
   agentNodeId: string;
   deploymentRecordPath: string;
   feedLandings: Readonly<Record<string, readonly FeedLanding[]>>;

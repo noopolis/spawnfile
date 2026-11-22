@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveTargetResources } from "../../compiler/containerTargetResources.js";
 import { resolveInstancePaths } from "../../compiler/containerTargetPlanResolution.js";
-import { resolveDaimonUidEntrypointOwnershipPlan } from "../../compiler/containerDaimonUidEntrypointRender.js";
+import { resolveDaimonUidEntrypointOwnershipPlan } from "./host/uidEntrypointRender.js";
 import type { RuntimeTargetPlan } from "../../compiler/containerArtifactsTypes.js";
 import type { ResolvedWorkspaceResource } from "../../compiler/workspaceResources.js";
 import type { ResolvedAgentNode } from "../../compiler/types.js";

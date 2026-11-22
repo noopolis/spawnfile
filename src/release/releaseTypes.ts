@@ -7,7 +7,7 @@ import type { NotifierConfig, NotifyResult, ReleaseNotification } from "./notify
 import type { PostDeployContext, PostDeployHook, PostDeployResult } from "./postDeploy.js";
 import type { PruneResult, RunningUnit, SettleOptions } from "./releaseDocker.js";
 
-export const DAIMON_CONTROL_TOKEN_ENV = "SPAWNFILE_DAIMON_CONTROL_TOKEN";
+export * from "../runtime/legacyReleaseTypes.generated.js";
 
 export interface ReleaseRequest {
   authProfile?: ResolvedAuthProfile | null;

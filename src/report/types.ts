@@ -1,4 +1,4 @@
-import type { RuntimeLifecycleStatus } from "../shared/index.js";
+import type { MoltnetBridgeCapabilities, RuntimeLifecycleStatus } from "../shared/index.js";
 import type { ModelAuthMethod } from "../shared/index.js";
 import type { RecordingAgentReport } from "./recording.js";
 
@@ -241,7 +241,7 @@ export interface ContainerMoltnetPlanSummary {
     architecture: "amd64" | "arm64";
     asset: string;
     asset_sha256: `sha256:${string}`;
-    capabilities: readonly ["pi-bridge"] | readonly ["daimon-bridge", "pi-bridge"];
+    capabilities: MoltnetBridgeCapabilities;
     development?: {
       mode: "local-development";
       non_production: true;
@@ -269,16 +269,18 @@ export interface NodeReport {
   source: string;
 }
 
+export interface ContainerLocalRuntimeIdentity {
+  capability_receipt_sha256: string;
+  image_reference: string;
+  registry_authority: string;
+}
+
 export interface ContainerReport {
   dockerfile: string;
   entrypoint: string;
   env_example: string;
   internal_ports?: number[];
-  local_daimon_runtime?: {
-    capability_receipt_sha256: string;
-    image_reference: string;
-    registry_authority: string;
-  };
+  [key: `local_${string}_runtime`]: ContainerLocalRuntimeIdentity | undefined;
   model_secrets_required: string[];
   moltnet?: ContainerMoltnetPlanSummary;
   memory?: ContainerMemoryReport[];

@@ -43,6 +43,17 @@ export function hasSubjectBehavior(evidence: {
       event.type === 'usage' || event.type === 'output' && !!event.text);
 }
 
+/** A complete channel on one wake cannot certify an unobserved channel on another. */
+function trialCoverage(turns: readonly TurnReport[]): ObservationCoverage[] {
+  const rows = turns.flatMap(turn => turn.native.coverage);
+  for (const channel of new Set(rows.map(row => row.channel))) {
+    if (turns.some(turn => !turn.native.coverage.some(row => row.channel === channel))) {
+      rows.push({ channel, completeness: 'partial', ordering: 'none' });
+    }
+  }
+  return rows;
+}
+
 export async function runTrial(options: TrialOptions): Promise<TrialReport> {
   const started = performance.now();
   const { adapter, registry } = options;
@@ -177,7 +188,7 @@ export async function runTrial(options: TrialOptions): Promise<TrialReport> {
       const turnReport: TurnReport = { id: turn.id, native, checks: [] };
       turns.push(turnReport);
       output = native.text;
-      coverage = turns.flatMap(prior => prior.native.coverage);
+      coverage = trialCoverage(turns);
       await persist('turn.native-result', { id: turn.id, native });
       await control.owned(observationTail);
       if (observationFailure) throw new Error(observationFailure);

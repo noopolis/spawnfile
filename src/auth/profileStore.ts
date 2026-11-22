@@ -1,13 +1,13 @@
+import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
 
 import {
   ensurePrivateDirectory,
-  fileExists,
   readUtf8File,
   removeDirectory,
-  writePrivateUtf8File
+  writeDurableFile
 } from "../filesystem/index.js";
 import { SpawnfileError } from "../shared/index.js";
 
@@ -18,6 +18,7 @@ import {
   resolveProfilePath,
   resolveProfilesRoot
 } from "./paths.js";
+import { acquireTrainingGrokWritebackLock } from "./training/index.js";
 import type { AuthProfile, ImportedAuthKind, ResolvedAuthProfile, SubscriptionRealmBinding } from "./types.js";
 
 const importedAuthEntrySchema = z.object({
@@ -27,6 +28,7 @@ const importedAuthEntrySchema = z.object({
 
 const authProfileSchema = z.object({
   env: z.record(z.string(), z.string()).default({}),
+  nativeLogins: z.record(z.string(), z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/u)).optional(),
   imports: z
     .object({
       "claude-code": importedAuthEntrySchema.optional(),
@@ -54,6 +56,7 @@ export const createResolvedAuthProfile = (
 ): ResolvedAuthProfile => ({
   authHome: resolveAuthHome(),
   env: { ...profile.env },
+  ...(profile.nativeLogins ? { nativeLogins: { ...profile.nativeLogins } } : {}),
   imports: Object.fromEntries(
     Object.entries(profile.imports).map(([kind, entry]) => [
       kind,
@@ -70,28 +73,15 @@ export const createResolvedAuthProfile = (
   version: 1
 });
 
-/** The stored form of a resolved profile: import paths relative to its directory again. */
-const storedProfile = (current: ResolvedAuthProfile): AuthProfile => ({
-  env: { ...current.env },
-  imports: Object.fromEntries(
-    Object.entries(current.imports).map(([kind, entry]) => [
-      kind,
-      { kind: entry.kind, relativePath: path.relative(current.profileDirectory, entry.path) }
-    ])
-  ) as AuthProfile["imports"],
-  ...(current.realms ? { realms: structuredClone(current.realms) } : {}),
-  version: 1
-});
-
-export const loadAuthProfile = async (
-  profileName: string
-): Promise<ResolvedAuthProfile | null> => {
-  const profilePath = resolveProfilePath(profileName);
-  if (!(await fileExists(profilePath))) {
-    return null;
+const readStoredProfile = async (profileName: string, profilePath: string): Promise<AuthProfile | null> => {
+  let fileContent: string;
+  try {
+    fileContent = await readUtf8File(profilePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
 
-  const fileContent = await readUtf8File(profilePath);
   let raw: unknown;
   try {
     raw = JSON.parse(fileContent) as unknown;
@@ -109,7 +99,12 @@ export const loadAuthProfile = async (
     );
   }
 
-  return createResolvedAuthProfile(profileName, parsed.data);
+  return parsed.data;
+};
+
+export const loadAuthProfile = async (profileName: string): Promise<ResolvedAuthProfile | null> => {
+  const stored = await readStoredProfile(profileName, resolveProfilePath(profileName));
+  return stored && createResolvedAuthProfile(profileName, stored);
 };
 
 export const requireAuthProfile = async (
@@ -126,65 +121,69 @@ export const requireAuthProfile = async (
 export const ensureAuthProfile = async (
   profileName: string
 ): Promise<ResolvedAuthProfile> => {
-  const existing = await loadAuthProfile(profileName);
-  if (existing) {
-    return existing;
-  }
-
-  return writeProfile(profileName, createEmptyProfile());
+  return (await loadAuthProfile(profileName)) ?? updateProfile(profileName, current => current);
 };
 
-const writeProfile = async (profileName: string, profile: AuthProfile): Promise<ResolvedAuthProfile> => {
+const updateProfile = async (
+  profileName: string,
+  mutate: (profile: AuthProfile) => AuthProfile | Promise<AuthProfile>
+): Promise<ResolvedAuthProfile> => {
   const profileDirectory = resolveProfileDirectory(profileName);
+  const profileFile = path.basename(resolveProfilePath(profileName));
   await ensurePrivateDirectory(resolveAuthHome());
   await ensurePrivateDirectory(resolveProfilesRoot());
   await ensurePrivateDirectory(profileDirectory);
-  await writePrivateUtf8File(resolveProfilePath(profileName), `${JSON.stringify(profile, null, 2)}\n`);
-  return createResolvedAuthProfile(profileName, profile);
+  const profilePath = path.join(await realpath(profileDirectory), profileFile);
+  // The SQLite lock is keyed by profile.json, separate from any imported credential lock.
+  const release = await acquireTrainingGrokWritebackLock(profilePath, 5_000).catch((error: unknown) => {
+    if ((error as { errcode?: number }).errcode !== 5) throw error;
+    throw new SpawnfileError("runtime_error", `Auth profile ${profileName} is busy. Retry the update.`);
+  });
+  try {
+    const stored = await readStoredProfile(profileName, profilePath);
+    const next = await mutate(stored ?? createEmptyProfile());
+    if (next !== stored || ((await stat(profilePath)).mode & 0o777) !== 0o600) {
+      await writeDurableFile(profilePath, `${JSON.stringify(next, null, 2)}\n`);
+    }
+    return createResolvedAuthProfile(profileName, next);
+  } finally {
+    release();
+  }
 };
 
 export const setAuthProfileEnv = async (
   profileName: string,
   env: Record<string, string>
-): Promise<ResolvedAuthProfile> => {
-  const current = (await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName));
-  const stored = storedProfile(current);
-  return writeProfile(profileName, { ...stored, env: { ...stored.env, ...env } });
-};
+): Promise<ResolvedAuthProfile> =>
+  updateProfile(profileName, current => ({ ...current, env: { ...current.env, ...env } }));
 
 /** Records an engine's volume-held login on the profile (names only, never login bytes). */
 export const registerSubscriptionRealm = async (
   profileName: string,
   engine: string,
   binding: SubscriptionRealmBinding
-): Promise<ResolvedAuthProfile> => {
-  const stored = storedProfile((await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName)));
-  return writeProfile(profileName, { ...stored, realms: { ...stored.realms, [engine]: { ...binding } } });
-};
+): Promise<ResolvedAuthProfile> =>
+  updateProfile(profileName, current => ({ ...current, realms: { ...current.realms, [engine]: { ...binding } } }));
+
+export async function registerNativeLogin(profile: string, key: string, volume: string): Promise<ResolvedAuthProfile> {
+  return updateProfile(profile, current => ({ ...current, nativeLogins: { ...current.nativeLogins, [key]: volume } }));
+}
 
 export const registerImportedAuth = async (
   profileName: string,
   kind: ImportedAuthKind
 ): Promise<{ directory: string; profile: ResolvedAuthProfile }> => {
-  const current = (await loadAuthProfile(profileName)) ?? (await ensureAuthProfile(profileName));
   const importDirectory = resolveImportedAuthDirectory(profileName, kind);
-  await ensurePrivateDirectory(path.dirname(importDirectory));
-  // Grok import and writeback share a persistent lock inside this directory.
-  // Removing it would let another writer lock a different inode concurrently.
-  if (kind !== "grok") await removeDirectory(importDirectory);
-  await ensurePrivateDirectory(importDirectory);
-
-  const stored = storedProfile(current);
-  const nextProfile: AuthProfile = {
-    ...stored,
-    imports: {
-      ...stored.imports,
-      [kind]: { kind, relativePath: path.relative(current.profileDirectory, importDirectory) }
-    }
-  };
-
-  return {
-    directory: importDirectory,
-    profile: await writeProfile(profileName, nextProfile)
-  };
+  const relativePath = path.relative(resolveProfileDirectory(profileName), importDirectory);
+  const profile = await updateProfile(profileName, async current => {
+    await ensurePrivateDirectory(path.dirname(importDirectory));
+    // Grok import and writeback share a persistent lock inside this directory.
+    // Removing it would let another writer lock a different inode concurrently.
+    if (kind !== "grok") await removeDirectory(importDirectory);
+    await ensurePrivateDirectory(importDirectory);
+    const existing = current.imports[kind];
+    if (existing?.kind === kind && existing.relativePath === relativePath) return current;
+    return { ...current, imports: { ...current.imports, [kind]: { kind, relativePath } } };
+  });
+  return { directory: importDirectory, profile };
 };

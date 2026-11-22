@@ -1,7 +1,11 @@
-import type { ResolvedAgentNode } from "../../compiler/types.js";
+import type { ResolvedAgentNode, ResolvedMemoryBank } from "../../compiler/types.js";
 import type { CapabilityReport } from "../../report/index.js";
-import { resolveMnemeDurableMemoryMountPath } from "../mnemeMcp.js";
+import { mnemeMemorySourceDiscriminator, resolveMnemeDurableMemoryMountPath } from "../mnemeMcp.js";
 import { SpawnfileError } from "../../shared/index.js";
+import { createCapability } from "../common.js";
+import type { RuntimeMemoryWiring } from "../wiringTypes.js";
+import { hasDaimonDreamScheduleAuthority } from "./scheduleAuthority.js";
+import { normalizeDaimonDreamSchedule } from "./schedules.js";
 
 /**
  * Memory lowering for the Daimon organization runtime, split out of
@@ -22,6 +26,14 @@ type DaimonMemoryAccess = NonNullable<ResolvedAgentNode["memoryAccess"]>[number]
  */
 const memoryAccessKey = (access: DaimonMemoryAccess): string =>
   `${access.source}:${access.bank.id}`;
+
+const hasDuplicateMemoryId = (node: ResolvedAgentNode, access: DaimonMemoryAccess): boolean =>
+  (node.memoryAccess ?? []).some((other) => other.bank.id === access.bank.id && memoryAccessKey(other) !== memoryAccessKey(access));
+
+const describeMemoryAccess = (node: ResolvedAgentNode, access: DaimonMemoryAccess): string =>
+  hasDuplicateMemoryId(node, access)
+    ? `${access.bank.id} declared by ${access.declaringKind} ${access.bank.declaredName} (${access.source})`
+    : access.bank.id;
 
 const selectDaimonMemoryAccess = (
   node: ResolvedAgentNode
@@ -46,12 +58,20 @@ const selectDaimonMemoryAccess = (
  */
 export const DAIMON_INSTANCE_STATE_ROOT = "/var/lib/spawnfile/instances";
 
+export const resolveDaimonMemoryWiring = (bank: ResolvedMemoryBank): RuntimeMemoryWiring => {
+  const mountPath = resolveMnemeDurableMemoryMountPath(bank);
+  return {
+    mountPath,
+    transport: bank.store.kind === "postgres" ? "unsupported" : mountPath === null ? "degraded" : "direct"
+  };
+};
+
 export const resolveDaimonAgentMemory = (
   node: ResolvedAgentNode
 ): { runtimeHomePath: string; source: string } | undefined => {
   const access = selectDaimonMemoryAccess(node);
   if (!access) return undefined;
-  const runtimeHomePath = resolveMnemeDurableMemoryMountPath(access.bank);
+  const runtimeHomePath = resolveDaimonMemoryWiring(access.bank).mountPath;
   if (runtimeHomePath === null) return undefined;
   if (
     runtimeHomePath === DAIMON_INSTANCE_STATE_ROOT ||
@@ -67,6 +87,48 @@ export const resolveDaimonAgentMemory = (
     runtimeHomePath,
     source: `spawnfile:${access.declaringKind}:${access.bank.id}`
   };
+};
+
+export const resolveDaimonMemoryConsolidation = async (node: ResolvedAgentNode): Promise<{
+  schedule?: ReturnType<typeof normalizeDaimonDreamSchedule>;
+  capabilities: CapabilityReport[];
+}> => {
+  const requests = new Map((node.memoryAccess ?? [])
+    .filter(({ bank }) => bank.consolidation.mode === "scheduled")
+    .map((access) => [memoryAccessKey(access), access]));
+  if (requests.size === 0) return { capabilities: [] };
+
+  const selected = selectDaimonMemoryAccess(node)!;
+  const capabilities: CapabilityReport[] = [];
+  let schedule: ReturnType<typeof normalizeDaimonDreamSchedule>;
+  for (const [key, access] of requests) {
+    const { bank } = access;
+    const discriminator = hasDuplicateMemoryId(node, access) ? `.${mnemeMemorySourceDiscriminator(access)}` : "";
+    const capabilityKey = `memory.${bank.id}${discriminator}.consolidation`;
+    const message = `Daimon scheduled consolidation for memory bank ${describeMemoryAccess(node, access)}`;
+    const declared = bank.consolidation.schedule;
+    let reason: string | undefined;
+    if (key !== memoryAccessKey(selected)) {
+      reason = `the agent selected memory bank ${describeMemoryAccess(node, selected)}`;
+    } else if (resolveDaimonMemoryWiring(bank).mountPath === null) {
+      reason = "the bank has no durable file-backed mount";
+    } else if (!declared) {
+      reason = "consolidation.schedule is required";
+    } else {
+      const normalized = normalizeDaimonDreamSchedule(declared, node.name);
+      if (!normalized) {
+        reason = "consolidation.schedule must be a supported positive duration or five-field numeric UTC cron expression";
+      } else if (!await hasDaimonDreamScheduleAuthority()) {
+        reason = "the selected image capability receipt does not attest dream schedules";
+      } else {
+        schedule = normalized;
+      }
+    }
+    capabilities.push(reason === undefined
+      ? createCapability(capabilityKey, "supported", `${message} runs as an independent memory maintenance schedule`)
+      : createCapability(capabilityKey, "degraded", `${message} is unavailable because ${reason}`));
+  }
+  return { schedule, capabilities };
 };
 
 /**
@@ -90,10 +152,10 @@ export const daimonMemorySelectionWarning = (
   const ignored = [...new Set(
     accesses
       .filter((access) => memoryAccessKey(access) !== selectedKey)
-      .map((access) => access.bank.id)
+      .map((access) => describeMemoryAccess(node, access))
   )].sort();
   if (ignored.length === 0) return undefined;
-  return `Daimon organization runtime v1 lowers one memory bank per agent: ${node.name} wires memory bank ${selected.bank.id} and ignores ${ignored.join(", ")}. The wired bank is the lexicographically first declared one, so adding a bank that sorts earlier re-points this agent's memory home and orphans ${selected.bank.id}'s data.`;
+  return `Daimon organization runtime v1 lowers one memory bank per agent: ${node.name} wires memory bank ${describeMemoryAccess(node, selected)} and ignores ${ignored.join(", ")}. The wired bank is the lexicographically first declared one, so adding a bank that sorts earlier re-points this agent's memory home and orphans the previously wired bank's data.`;
 };
 
 /**

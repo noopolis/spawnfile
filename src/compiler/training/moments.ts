@@ -65,10 +65,10 @@ const roles = ["train", "validation", "test"] as const;
 const hash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const invalid = (message: string): never => { throw new SpawnfileError("validation_error", message); };
 
-/** How production Moltnet renders a room message for Daimon (`moltnet/internal/bridge/render.go`). */
+/** Canonical Moltnet room text in the authored moment dataset v1. */
 export const renderMomentWake = (wake: TrainingMoment["wake"]): string => `[room ${wake.room}] ${wake.from}\n${wake.text}`.trim();
 
-/** Daimon wakes carry an exact millisecond UTC instant. */
+/** The authored moment dataset v1 stores UTC instants at millisecond precision. */
 const wakeInstant = (at: string): string => {
   const nanos = instantNanos(at);
   return new Date(Number((nanos - ((nanos % 1_000_000n) + 1_000_000n) % 1_000_000n) / 1_000_000n)).toISOString();

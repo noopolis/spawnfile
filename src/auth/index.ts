@@ -12,5 +12,4 @@ export * from "./targetSecretSourceLifecycle.js";
 export * from "./targetSecretSourceResolver.js";
 export { stageTrainingAuth } from "./trainingAuth.js";
 export type { TrainingAuthStageOptions, TrainingAuthProvider } from "./trainingAuth.js";
-export { writeBackTrainingGrokCredential } from "./trainingGrokWriteback.js";
-export { prepareTrainingCodexAuthority } from './trainingCodexAuthority.js';
+export { prepareTrainingCodexAuthority, writeBackTrainingGrokCredential } from "./trainingCredentialCompatibility.js";

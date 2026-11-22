@@ -1,45 +1,18 @@
 import { readFile } from "node:fs/promises";
 
-import { SpawnfileError } from "../shared/index.js";
+import { parseMoltnetBridgeCapabilities, SpawnfileError, type MoltnetBridgeCapabilities } from "../shared/index.js";
+
+export {
+  MOLTNET_ACP_BRIDGE_CAPABILITIES,
+  MOLTNET_DUAL_BRIDGE_CAPABILITIES,
+  MOLTNET_PI_ONLY_CAPABILITIES,
+  parseMoltnetBridgeCapabilities,
+  type MoltnetBridgeCapabilities
+} from "../shared/index.js";
 
 export const MOLTNET_RELEASE_AUTHORITY_VERSION =
   "spawnfile.moltnet-release-authority.v1" as const;
 export type MoltnetTargetArchitecture = "amd64" | "arm64";
-
-/**
- * The bridge capabilities a Moltnet build can advertise.
- *
- * CANONICAL ORDERING: `daimon-bridge` before `pi-bridge`. Several places
- * compare this list by exact equality (`upReceipt.ts`, `localMoltnetAuthority.ts`)
- * rather than as a set, so a differently ordered but equivalent list is
- * rejected as a different release. The local builder
- * (`scripts/build-local-moltnet.ts`) already writes this order; every producer
- * must match it, and `moltnetReleaseAuthority.test.ts` asserts it.
- *
- * This is a UNION, never a replacement: an older pi-only release must keep
- * pinning cleanly after a dual-capability one is published.
- */
-export const MOLTNET_PI_ONLY_CAPABILITIES = ["pi-bridge"] as const;
-export const MOLTNET_DUAL_BRIDGE_CAPABILITIES = ["daimon-bridge", "pi-bridge"] as const;
-export type MoltnetBridgeCapabilities =
-  | typeof MOLTNET_PI_ONLY_CAPABILITIES
-  | typeof MOLTNET_DUAL_BRIDGE_CAPABILITIES;
-
-/**
- * The single runtime check for an advertised capability list. Every producer
- * and parser funnels through this so the type and the runtime check can never
- * drift apart — widening one without the other is precisely how a release
- * becomes typecheck-green and runtime-rejected.
- */
-export const parseMoltnetBridgeCapabilities = (
-  value: unknown
-): MoltnetBridgeCapabilities | null => {
-  if (!Array.isArray(value)) return null;
-  const joined = value.join("\0");
-  if (joined === MOLTNET_PI_ONLY_CAPABILITIES.join("\0")) return MOLTNET_PI_ONLY_CAPABILITIES;
-  if (joined === MOLTNET_DUAL_BRIDGE_CAPABILITIES.join("\0")) return MOLTNET_DUAL_BRIDGE_CAPABILITIES;
-  return null;
-};
 
 export interface TrustedMoltnetReleaseAsset {
   readonly architecture: MoltnetTargetArchitecture;

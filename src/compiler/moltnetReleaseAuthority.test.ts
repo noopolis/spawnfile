@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MOLTNET_ACP_BRIDGE_CAPABILITIES,
   MOLTNET_DUAL_BRIDGE_CAPABILITIES,
   parseMoltnetBridgeCapabilities,
   parseTrustedMoltnetReleaseAuthority,
@@ -13,17 +14,17 @@ describe("trusted Moltnet release authority", () => {
     const authority = await readTrustedMoltnetReleaseAuthority();
     expect(authority).toMatchObject({
       version: "spawnfile.moltnet-release-authority.v1",
-      release_version: "v0.1.19",
-      source_revision: "7f9900dfd89166e5ebb46ee82c0dc1492c4a89aa",
+      release_version: "v0.1.22",
+      source_revision: "a8afc6b27a8011c3ba14691169989d0b9e198d57",
       capabilities: ["daimon-bridge", "pi-bridge"]
     });
     expect(trustedMoltnetReleaseAsset(authority, "arm64")).toMatchObject({
       asset: "moltnet_linux_arm64.tar.gz",
-      asset_sha256: `sha256:${"f40e9ab6190bb05e8a536baefe5fe0f4f7b7aa58d5475e7b6546abfad3c950a2"}`
+      asset_sha256: `sha256:${"6edb75a7bc18b4b97f6f038ff973637113e4cba70b479f9328039f9fac6d26ff"}`
     });
     expect(trustedMoltnetReleaseAsset(authority, "amd64")).toMatchObject({
       asset: "moltnet_linux_amd64.tar.gz",
-      asset_sha256: `sha256:${"e0564bccdf7adb92936f2c39b7491a465ae0799bf3de697fb594ea4244daf9c6"}`
+      asset_sha256: `sha256:${"a05adc3a45ccf97505f057a221479e295f4a173198f3bfc19bba0a86b897ae20"}`
     });
   });
 
@@ -67,7 +68,11 @@ describe("trusted Moltnet release authority", () => {
     expect(MOLTNET_DUAL_BRIDGE_CAPABILITIES).toEqual(["daimon-bridge", "pi-bridge"]);
     expect(authority.capabilities).toEqual([...MOLTNET_DUAL_BRIDGE_CAPABILITIES]);
     expect(parseMoltnetBridgeCapabilities(["daimon-bridge", "pi-bridge"])).toEqual(["daimon-bridge", "pi-bridge"]);
+    expect(parseTrustedMoltnetReleaseAuthority({ ...authority, capabilities: MOLTNET_ACP_BRIDGE_CAPABILITIES }).capabilities)
+      .toEqual(["acp-bridge", "daimon-bridge", "pi-bridge"]);
     for (const rejected of [
+      ["daimon-bridge", "pi-bridge", "acp-bridge"],
+      ["acp-bridge", "pi-bridge"],
       ["pi-bridge", "daimon-bridge"],
       ["daimon-bridge"],
       ["pi-bridge", "pi-bridge"],

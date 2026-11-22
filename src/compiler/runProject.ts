@@ -20,14 +20,13 @@ import {
   verifyDockerDeploymentTarget,
   writeDockerDeploymentRecordForRun
 } from "../deployment/index.js";
-import { DAIMON_DOCKER_RUNTIME_SECURITY_ARGS, DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
-import { ensureNoopolisRunId, resolveNoopolisRunId } from "../runtime/index.js";
-import { DAIMON_GATEWAY_URL_ENV, daimonProfileRealmVolume, isDaimonGatewayRealmMountId } from "../runtime/daimon/index.js";
+import { DEFAULT_OUTPUT_DIRECTORY, SpawnfileError } from "../shared/index.js";
+import { ensureNoopolisRunId, isBundledRuntimeAdapter, listRuntimeAdapters, resolveNoopolisRunId } from "../runtime/index.js";
+import { runtimeHost, selectedRuntimeHosts } from "../runtime/hostSelection.js";
 
 import { compileProject, type CompileProjectOptions, type CompileProjectResult } from "./compileProject.js";
 import { createDefaultImageTag, resolveDockerBuildArchitecture } from "./buildProject.js";
 import { slugify } from "./helpers.js";
-import { resolveDaimonCodexNativeSandboxDockerSecurityOptions } from "./runProjectDaimonCodexDocker.js";
 import {
   inspectDetachedContainer as recoverDetachedDockerRun,
   runDockerContainer,
@@ -37,13 +36,12 @@ import {
 } from "./runProjectDocker.js";
 import { executeDockerRunWithSupportCleanup } from "./runProjectLifecycle.js";
 import {
-  assertDeclaredModelAuthSatisfied,
   assertMoltnetCredentialValuesDistinct,
   assertRunEnvironmentSatisfied,
+  prepareRunHomeAuth,
   prepareRuntimeAuthMounts,
   readRunEnvFile,
   renderDockerEnvFile,
-  resolveAuthMountArgs,
   resolveRunEnvironment
 } from "./runProjectAuth.js";
 
@@ -114,11 +112,6 @@ export const createDockerRunInvocation = async (
   const envFilePath = path.join(supportDirectory, "run.env");
 
   try {
-    assertDeclaredModelAuthSatisfied(
-      containerReport,
-      options.authProfile ?? null,
-      options.cliCredential !== undefined
-    );
     const env = resolveRunEnvironment(
       containerReport,
       options.authProfile ?? null,
@@ -127,6 +120,7 @@ export const createDockerRunInvocation = async (
         ...(options.cliCredential ? { [options.cliCredential.name]: options.cliCredential.value } : {})
       }
     );
+    const importedAuth = await prepareRunHomeAuth(containerReport, options.authProfile ?? null, env);
     const preparedRuntimeAuth = await prepareRuntimeAuthMounts(
       compileResult.outputDirectory,
       containerReport,
@@ -135,12 +129,16 @@ export const createDockerRunInvocation = async (
       supportDirectory,
       options.containerCredentialUid
     );
-    assertRunEnvironmentSatisfied(containerReport, env, preparedRuntimeAuth.coveredModelSecrets);
+    assertRunEnvironmentSatisfied(containerReport, env, new Set([...importedAuth.coveredModelSecrets, ...preparedRuntimeAuth.coveredModelSecrets]));
     assertMoltnetCredentialValuesDistinct(containerReport, env);
-    const hasDaimon = containerReport.runtime_instances.some(
-      (instance) => instance.runtime === "daimon"
-    );
-    const opaqueDaimonCredentials = preparedRuntimeAuth.launchIdentity?.kind === "daimon";
+    const hosts = selectedRuntimeHosts(containerReport.runtime_instances.map((instance) => instance.runtime));
+    const credentialHost = preparedRuntimeAuth.credentialRuntime
+      ? runtimeHost(preparedRuntimeAuth.credentialRuntime)
+      : undefined;
+    const prepareCredentialDocker = credentialHost?.prepareCredentialDocker?.bind(credentialHost);
+    if (preparedRuntimeAuth.launchIdentity && !prepareCredentialDocker) {
+      throw new SpawnfileError("validation_error", "Runtime credential launch is missing a Docker endpoint guard");
+    }
 
     await ensureDirectory(supportDirectory);
     await writeUtf8File(envFilePath, renderDockerEnvFile(env));
@@ -166,11 +164,8 @@ export const createDockerRunInvocation = async (
     args.push("--name", containerName);
     if (options.network) args.push("--network", options.network);
 
-    if (hasDaimon) {
-      args.push(
-        ...DAIMON_DOCKER_RUNTIME_SECURITY_ARGS,
-        ...(await resolveDaimonCodexNativeSandboxDockerSecurityOptions(compileResult))
-      );
+    for (const { host } of hosts) {
+      if (host.projectSecurityArgs) args.push(...await host.projectSecurityArgs(compileResult));
     }
 
     for (const port of containerReport.ports) {
@@ -180,19 +175,25 @@ export const createDockerRunInvocation = async (
     // Compiler-owned persistent mounts are mounted WITHOUT `volume-nocopy`.
     // The image is the authority for the bootstrap preimage at these paths:
     // `createStateOwnershipCommand` writes a `.spawnfile-volume-init` marker
-    // into every one of them at build time, and the Daimon ownership guard
-    // (`secureVolumeIdentity`) and `prepare_volume_resource` both REQUIRE that
-    // marker as the fresh-volume preimage. `volume-nocopy` is exactly the flag
-    // that stops Docker copying image content into an empty volume, so it
-    // starved the guard and no Daimon organization with persistent volumes
-    // could bootstrap. Copy-up only ever populates an EMPTY volume, so a
-    // reattached volume that already holds state is untouched by dropping it.
+    // at build time. Native ownership guards and `prepare_volume_resource`
+    // both require that marker on first use. Docker copy-up populates empty
+    // volumes, leaving reattached state intact.
     // (Target/secrets volumes under src/target/* keep `volume-nocopy`: no
     // image content backs those paths and they must stay opaque.)
-    // An external auth gateway holds every gatewayed realm (the org mounts none); a profile-held login reattaches its volume.
-    const persistentMounts = (containerReport.persistent_mounts ?? [])
-      .filter((mount) => !env[DAIMON_GATEWAY_URL_ENV] || !isDaimonGatewayRealmMountId(mount.id))
-      .map((mount) => ({ ...mount, volume_name: daimonProfileRealmVolume(mount.id, options.authProfile) ?? mount.volume_name }));
+    // Older reports can identify a credential realm only by its declared mount.
+    const installed = containerReport.runtimes_installed;
+    const mountHosts = containerReport.runtime_instances.length ? hosts : selectedRuntimeHosts(
+      installed?.length ? installed : listRuntimeAdapters().filter(isBundledRuntimeAdapter)
+    );
+    const persistentMounts = (containerReport.persistent_mounts ?? []).flatMap((mount) => {
+      for (const { host } of mountHosts) {
+        const externalEnv = host.externalMountEnvironment?.(mount.id);
+        if (externalEnv && env[externalEnv]) return [];
+        const volumeName = host.profileVolumeName?.(mount.id, options.authProfile ?? null);
+        if (volumeName) return [{ ...mount, volume_name: volumeName }];
+      }
+      return [mount];
+    });
     for (const mount of persistentMounts) {
       args.push(
         "--mount",
@@ -211,7 +212,7 @@ export const createDockerRunInvocation = async (
     if (deploymentLabels) appendDockerLabelArgs(args, deploymentLabels);
 
     args.push("--env-file", envFilePath);
-    args.push(...(await resolveAuthMountArgs(containerReport, options.authProfile ?? null)));
+    args.push(...importedAuth.mountArgs);
     args.push(...preparedRuntimeAuth.mountArgs);
     args.push(imageTag, ...(options.command ?? []));
 
@@ -233,7 +234,7 @@ export const createDockerRunInvocation = async (
           .sort()
       } : {}),
       imageTag,
-      ...(opaqueDaimonCredentials ? { opaqueDaimonCredentials } : {}),
+      ...(prepareCredentialDocker ? { prepareCredentialDocker } : {}),
       supportDirectory
     };
   } catch (error) {

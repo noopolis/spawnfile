@@ -82,10 +82,13 @@ The [team guide](https://spawnfile.com/guides/teams/) and [examples](https://git
 |---|---|---|
 | **OpenClaw** | OpenAI, Anthropic, custom or local endpoints | ChatGPT or Claude subscription, API key |
 | **PicoClaw** | OpenAI, Anthropic, custom or local endpoints | ChatGPT or Claude subscription, API key |
-| **Daimon** | Codex, Grok and Antigravity engines | ChatGPT, Grok or Antigravity subscription |
-| *More coming soon* | Hermes Agent and OpenCode are in research. | [Request a harness](https://github.com/noopolis/spawnfile/issues) |
+| **Daimon** | Pi, Codex, Claude Code, Grok and Antigravity engines | Subscription or API credentials for the selected engine |
+| **Hermes Agent** | Native providers, custom and local endpoints | ChatGPT, SuperGrok, Nous Portal, MiniMax or API key |
+| **OpenCode** | Native providers, custom and local endpoints | ChatGPT, SuperGrok, GitHub Copilot, OpenCode Go plan key or API key |
 
 Pick a harness per agent and mix them in one team. Exact versions are pinned in [runtimes.yaml](https://github.com/noopolis/spawnfile/blob/main/runtimes.yaml); the full support matrix is in the [runtime specification](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIMES.md).
+
+Hermes Agent and OpenCode use their own logins for deployment and training. Their Moltnet rooms and direct messages require an ACP-capable Moltnet build. The bundled v0.1.22 release predates ACP. [Runtime setup](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIME_ADAPTERS.md)
 
 ## Train it
 
@@ -98,7 +101,7 @@ spawnfile train ./Spawnfile --agent writer \
   --editable agents/writer/AGENTS.md --dry-run
 ```
 
-`--dry-run` estimates the cost first; `--resume` continues a stopped run. Trials can start from recorded moments of real turns. Training covers Daimon agents on the Codex and Grok engines today. See the [training guide](https://spawnfile.com/guides/training/).
+`--dry-run` estimates the cost first; `--resume` continues a stopped run. Trials can start from recorded moments of real turns. All five bundled harnesses support training. Each stored trial writes a portable `.eval` file you can regrade. See the [training guide](https://spawnfile.com/guides/training/).
 
 ## Share it
 
@@ -112,7 +115,10 @@ spawnfile train ./Spawnfile --agent writer \
 | Understand the source format | [Specification](https://github.com/noopolis/spawnfile/blob/main/specs/SPEC.md) |
 | Explore complete projects | [Examples](https://github.com/noopolis/spawnfile/tree/main/examples) |
 | Integrate with deployment tooling | [Target and lifecycle contracts](https://github.com/noopolis/spawnfile/blob/main/specs/TARGETS.md) |
-| Add a harness or contribute | [Contributing](https://github.com/noopolis/spawnfile/blob/main/CONTRIBUTING.md) |
+| Bring your own harness | [Writing an adapter](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIME_ADAPTERS.md) and [two-harness example](https://github.com/noopolis/spawnfile/tree/main/fixtures/external-runtime-adapter) |
+| Regrade a captured trial | [Agent training](https://github.com/noopolis/spawnfile/blob/main/specs/TRAINING.md) |
+| Find a detailed contract | [Specification index](https://github.com/noopolis/spawnfile/blob/main/specs/INDEX.md) |
+| Contribute | [Contributing](https://github.com/noopolis/spawnfile/blob/main/CONTRIBUTING.md) |
 
 Spawnfile is part of [Noopolis](https://github.com/noopolis): [Moltnet](https://moltnet.dev) carries messages between agents, [Daimon](https://github.com/noopolis/daimon-harness) runs one agent on a subscription engine, and [Simfile](https://simfile.org) builds worlds around a team. Spawnfile works on its own.
 

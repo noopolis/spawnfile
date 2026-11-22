@@ -1,7 +1,7 @@
 import { readTrainingBytes } from '../platform/index.js';
 import { realpathSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { parseDatasetYaml, resolveDataset, resolveDatasetForCost, trainingJudgeVersions } from '../cases/index.js';
+import { parseDatasetYaml, resolveDataset, resolveCapturedCriteria, resolveDatasetForCost, trainingJudgeVersions } from '../cases/index.js';
 import type { CostDataset } from '../cases/index.js';
 import type { CheckNode, ResolvedDataset, ResolutionOptions } from '../contracts/index.js';
 import { buildExecutableGradingRuntime, type GraderDependencies } from './grader/index.js';
@@ -56,6 +56,12 @@ export class CliDatasets {
 
   load(file: string, groups: boolean): ResolvedDataset {
     const dataset = this.resolve(file, groups, resolveDataset);
+    this.loaded.set(dataset.sourceName, dataset);
+    return dataset;
+  }
+
+  loadCaptured(file: string, recordId: string, artifacts: readonly string[]): ResolvedDataset {
+    const dataset = this.resolve(file, false, (document, options) => resolveCapturedCriteria(document, options, recordId, artifacts));
     this.loaded.set(dataset.sourceName, dataset);
     return dataset;
   }

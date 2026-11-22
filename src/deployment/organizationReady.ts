@@ -3,6 +3,7 @@ import { types as nodeTypes } from "node:util";
 import { z } from "zod";
 
 import type { OrganizationReadinessEvidence } from "../compiler/organizationReadyEvidence.js";
+import { getRuntimeOperations } from "../runtime/registry.js";
 import type { DockerUnitInspection } from "./dockerInspect.js";
 
 export const ORGANIZATION_READY_VERSION = "spawnfile.organization-ready.v1" as const;
@@ -49,7 +50,7 @@ interface ExactOrganizationReadinessInput {
 }
 
 export interface OrganizationReadinessProbeData {
-  readonly daimonReceipt?: string | null;
+  readonly runtimeReceipts?: ReadonlyMap<string, string>;
   readonly configs: ReadonlyMap<string, string>;
   readonly attachmentReceipts?: ReadonlyMap<string, string>;
   readonly networks: readonly {
@@ -238,13 +239,16 @@ const validBindings = (
   }
 };
 
-const validDaimon = (evidence: OrganizationReadinessEvidence, content: string | null | undefined): boolean => {
-  if (evidence.daimon == null) return content == null;
-  try {
-    const value = exact(JSON.parse(content ?? ""), ["version", "agents"]); if (value?.version !== "noopolis.daimon.readiness-receipt.v1" || !Array.isArray(value.agents)) return false;
-    const agents = value.agents.map((entry) => { const item = exact(entry, ["agent_id", "engine"]); return item && typeof item.agent_id === "string" && typeof item.engine === "string" ? [item.agent_id, item.engine] : null; });
-    return agents.every(Boolean) && JSON.stringify(agents) === JSON.stringify(evidence.daimon.agents.map((agent) => [agent.agentId, agent.engine]));
-  } catch { return false; }
+const validRuntimeReceipts = (
+  evidence: OrganizationReadinessEvidence,
+  receipts: ReadonlyMap<string, string> | undefined
+): boolean => {
+  const expected = evidence.runtimeReceipts ?? [];
+  if (!receipts || receipts.size !== expected.length) return expected.length === 0 && !receipts;
+  return expected.every(({ runtime, receiptPath, expected }) => {
+    const receipt = receipts.get(receiptPath);
+    return receipt !== undefined && getRuntimeOperations(runtime)?.readiness?.validateReceipt(expected, receipt) === true;
+  });
 };
 
 const validAttachmentReceipts = (evidence: OrganizationReadinessEvidence, receipts: ReadonlyMap<string, string> | undefined): boolean => {
@@ -276,7 +280,7 @@ export const reconcileOrganizationReadiness = (
     || identity.unit !== record.unitId || identity.version !== evidence.compileVersion) {
     return correlation(evidence, record, "failed", "identity_mismatch");
   }
-  if (!input.probe || !validDaimon(evidence, input.probe.daimonReceipt) || !validAttachmentReceipts(evidence, input.probe.attachmentReceipts) || input.probe.networks.length !== evidence.networks.length
+  if (!input.probe || !validRuntimeReceipts(evidence, input.probe.runtimeReceipts) || !validAttachmentReceipts(evidence, input.probe.attachmentReceipts) || input.probe.networks.length !== evidence.networks.length
     || !evidence.networks.every((network) => {
       const live = input.probe?.networks.find((candidate) => candidate.id === network.id);
       return live?.healthOk === true;

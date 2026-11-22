@@ -87,8 +87,9 @@ describe("exportPrivateRuntimeArtifacts", () => {
         containerRef: "organization",
         destinationDirectory: root,
         dockerCommand: "docker",
-        execFile: async () => {
-          throw new Error("missing");
+        execFile: async (_file: string, args: string[]) => {
+          if (!args.includes("cp")) return { stderr: "", stdout: "[]" };
+          throw { stderr: `Error: No such container:path: ${args[args.indexOf("cp") + 1]}` };
         },
         report,
         target: {

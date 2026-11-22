@@ -18,6 +18,11 @@ export function capturedTrial(replay: Replay): { report: TrialReport; source: St
     report.snapshot.trialId !== report.id || report.snapshot.recordId !== report.recordId) {
     throw new Error('Stored trial identity does not match its immutable manifest');
   }
+  verifySnapshot(report);
+  return { report, source };
+}
+
+export function verifySnapshot(report: Pick<TrialReport, 'snapshot' | 'id'>): void {
   let events: TrialReport['snapshot']['events'] = [];
   for (const event of report.snapshot.events) {
     if (event.trialId !== report.id) throw new Error('Stored observation belongs to another trial');
@@ -28,5 +33,4 @@ export function capturedTrial(replay: Replay): { report: TrialReport; source: St
   for (const artifact of Object.values(report.snapshot.artifacts)) {
     if (`sha256:${createHash('sha256').update(artifact.bytes).digest('hex')}` !== artifact.digest) throw new Error('Stored artifact digest mismatch');
   }
-  return { report, source };
 }

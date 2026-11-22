@@ -5,6 +5,8 @@ import type { CapabilityReport, DiagnosticReport } from "../report/index.js";
 
 import { EmittedFile } from "./types.js";
 
+export * from "./legacyCommon.generated.js";
+
 const ROLE_FILE_NAMES: Record<string, string> = {
   heartbeat: "HEARTBEAT.md",
   identity: "IDENTITY.md",
@@ -92,35 +94,13 @@ export const createDocumentFiles = (
         : `${baseDirectory}/extras/${document.role.replace(/^extras\./, "")}.md`
   }));
 
-/**
- * Skill roots for the runtimes whose declared skills are read by an external
- * coding-agent CLI engine (`daimon`). `.codex/skills` is Codex's own
- * workspace discovery root; `.agents/skills` is the generic cross-engine root
- * that grok, agy, and every other file-reading CLI engine use. Both entries
- * are required and the two emitted files are byte-identical on purpose — this
- * mirrors the Moltnet skill install, which is the working reference: Spawnfile
- * runs `moltnet skill install --runtime codex` for these runtimes and Moltnet
- * writes the same skill to both roots (`resolveMoltnetWorkspaceLayout` in
- * `src/compiler/moltnetClientConfig.ts`, `installMoltnetSkill` in
- * `moltnet/cmd/moltnet/skill.go`). A plain `workspace/skills/` root is read by
- * no engine these two runtimes can host, so anything emitted there is invisible.
- */
-export const CLI_ENGINE_SKILL_BASE_DIRECTORIES: readonly string[] = [
-  "workspace/.agents/skills",
-  "workspace/.codex/skills"
-];
-
-/**
- * Skill root for the runtimes that own their own skill loader and read the
- * workspace `skills/` directory directly (`openclaw`, `picoclaw`). Moltnet
- * installs its skill to the same place for those runtimes.
- */
+/** Conventional skill directory for workspace-based runtimes. */
 export const WORKSPACE_SKILL_BASE_DIRECTORY = "workspace/skills";
 
 /**
  * Lowers declared skills into emitted `SKILL.md` files. `baseDirectory`
  * accepts a list because a runtime can need the same skill under more than
- * one discovery root (see `CLI_ENGINE_SKILL_BASE_DIRECTORIES`); the emission
+ * one discovery root. The emission
  * order is root-major so a generated workspace lists each root's skills
  * together and stays deterministic.
  */
@@ -146,6 +126,7 @@ export const createAgentCapabilities = (
     sandboxOutcome?: CapabilityReport["outcome"];
     scheduleMessage?: string;
     scheduleOutcome?: CapabilityReport["outcome"];
+    subagentMessage?: string;
     subagentOutcome?: CapabilityReport["outcome"];
   } = {}
 ): CapabilityReport[] => {
@@ -227,7 +208,7 @@ export const createAgentCapabilities = (
 
   if (node.subagents.length > 0) {
     capabilities.push(
-      createCapability("agent.subagents", options.subagentOutcome ?? "supported")
+      createCapability("agent.subagents", options.subagentOutcome ?? "supported", options.subagentMessage)
     );
   }
 

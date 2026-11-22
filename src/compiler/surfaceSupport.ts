@@ -1,4 +1,4 @@
-import { getRuntimeAdapter } from "../runtime/index.js";
+import { getRuntimeAdapter, requireMoltnetWiring } from "../runtime/index.js";
 
 import type { ResolvedAgentSurfaces } from "./types.js";
 
@@ -8,6 +8,7 @@ export const assertRuntimeSupportsAgentSurfaces = (
   nodeName: string
 ): void => {
   const adapter = getRuntimeAdapter(runtimeName);
+  if (surfaces?.moltnet?.length) requireMoltnetWiring(runtimeName, nodeName);
 
   try {
     adapter.assertSupportedSurfaces?.(surfaces);

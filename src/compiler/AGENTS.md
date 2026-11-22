@@ -30,6 +30,7 @@ src/compiler/
 ├── recordingCapability.ts      # Receipt-bound Daimon wake-moment capability gate, before output writes
 ├── recordingAgentFacts.ts      # Portable per-agent recording facts carried into deployment reports
 ├── compileProjectSupport.ts    # Shared compile-time artifact injection and file writing helpers
+├── moltnetSkillInstall.ts      # Confined adapter skill layout and private staging of the native Moltnet skill installer
 ├── dockerBuildContext.ts       # Emitted Docker ignore policy, surviving-file inventory/digest, and COPY/ADD safety checks
 ├── dockerBuildSkip.ts          # Bounded image inspection and ordered context-cache skip decision
 ├── containerArtifactSummaries.ts # Container report summaries for distribution/Moltnet output
@@ -40,17 +41,11 @@ src/compiler/
 ├── containerBackedMountRender.ts # Fail-closed `require_backed_mount` guard for durable mount paths
 ├── containerPersistentMounts.ts # Durable-mount merge across sources + volume-name uniqueness
 ├── deploymentLineage.ts        # Dev/production lineage namespacing + declared-volume refusal
-├── containerEntrypointShell.ts # Shell quoting, recipe env, and CLI credential materialization helpers
-├── containerDaimonBrokerRender.ts # Fixed Daimon broker identities, registrations binary, credential realm, and root-launch provisioning
-├── containerDaimonGrokWorkerRender.ts # Brokered Grok registrations: pinned worker config, sandbox deny list, service.json v2
-├── containerDaimonGrokWorkerProvisioning.ts # Root program lines for the attested worker GROK_HOME layout and canonical-path checks
-├── containerDaimonGatewayRender.ts # Daimon auth gateway placements: in-container (per-start key, realm re-own, launch) or external at boot, and the training sidecar script
-├── containerDaimonStartupSupervision.ts # Root readiness waits and EXIT-trap cleanup shared by broker and gateway startup
+├── containerEntrypointShell.ts # Per-instance environment for service startup and training, shell quoting and CLI credential materialization
 ├── containerArtifactsPlans.ts # Environment inventory and runtime target-plan orchestration
 ├── containerTargetPlanResolution.ts # Per-target paths, packages, auth, secrets, and exposure resolution
 ├── teamRoster.ts               # Context-scoped team roster generation and diagnostics
 ├── runProject.ts               # `spawnfile run` docker-run planning and execution
-├── runProjectDaimonCodexDocker.ts # Daimon Codex strict native-sandbox Docker opt-in
 ├── runProjectDocker.ts         # Docker run process runner and detached container metadata capture
 ├── runProjectLifecycle.ts      # Generated run-env cleanup while preserving detached auth bind sources
 ├── initProject.ts              # `spawnfile init` orchestration around runtime-owned scaffolds
@@ -218,14 +213,14 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
 - Without a strict Codex agent, a Daimon organization with a Grok agent gets
   `--security-opt=seccomp=<pinned profile>` plus `apparmor=unconfined` instead:
   Docker's default seccomp profile with bubblewrap's seven namespace syscalls
-  (`src/shared/daimonGrokSeccompProfile.ts`, sha-pinned, materialized under
+  (`src/runtime/daimon/host/grokSeccompProfile.ts`, sha-pinned, materialized under
   `<output>/container/security/` or the image-up work directory), the narrowest
   combination under which Grok 1.0.34's always-on bubblewrap starts. Codex's
   fully unconfined options are a superset and win when both engines are
   present. The Docker host must allow unprivileged user namespaces
   (`kernel.apparmor_restrict_unprivileged_userns=0`); the Daimon entrypoint
   refuses to start a Grok organization, naming that sysctl, when it is not.
-- Brokered Grok workers (`containerDaimonGrokWorkerRender.ts`) take their
+- Brokered Grok workers (`src/runtime/daimon/host/grokWorkerRender.ts`) take their
   `config.toml` bytes only from Daimon's renderer output vendored in
   `src/runtime/daimon/grokWorkerConfigBytes.ts`, refused unless they hash to the
   manifest pin for the agent's declared model x effort. The sandbox profile's
@@ -239,10 +234,10 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
   directories, the usage ledger and wake fuse, every other worker's home, and
   `/run/{secrets,spawnfile,spawnfile-secrets,world}`. Allowed on purpose: own
   workspace, own worker home, own runtime home directory, own resource
-  backings. Masks never nest; `containerDaimonGrokWorkerDenyCoverage.test.ts`
+  backings. Masks never nest; `src/runtime/daimon/host/grokWorkerDenyCoverage.test.ts`
   enumerates everything the container provisions and fails on any uncovered,
   unjustified path. Provisioning
-  (`containerDaimonGrokWorkerProvisioning.ts`) writes Daimon's attested
+  (`src/runtime/daimon/host/grokWorkerProvisioning.ts`) writes Daimon's attested
   `GROK_HOME` layout — `root:<worker> 1771` home and `sessions/`, `root:root
   0444` config/sandbox/trust/managed/requirements files, events under
   `sessions/` — and refuses any registration or deny path that is missing, a
@@ -281,7 +276,7 @@ link paths — and stays in target placeholder vocabulary (`<instance-root>`,
 - A Daimon organization with a gatewayed engine (descriptor staging
   `portable-realm` or `broker-realm`: Codex and Grok) runs `daimon-runtime
   gateway` in the container as `DAIMON_GATEWAY_UID` (2050) on `127.0.0.1:43200`
-  (`containerDaimonGatewayRender.ts`), before the Grok broker, whose readiness
+  (`src/runtime/daimon/host/gatewayRender.ts`), before the Grok broker, whose readiness
   probes it. Root generates a fresh 32-byte key on every start (never at
   compile time), writes only its sha256 to the key table (`root:2050 0440`),
   re-owns each realm volume tree to the gateway at `0700`, and copies each

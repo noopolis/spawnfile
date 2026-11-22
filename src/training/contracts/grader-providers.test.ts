@@ -42,3 +42,17 @@ it('constructs independent providers for each caller', async () => {
   expect((await second.generate(request)).text).toBe('1');
   expect(first).not.toBe(second);
 });
+it('isolates provider policy between concurrent command scopes and restores the global fallback', async () => {
+  const core = await import('./grader-providers.js');
+  const global = fixture();
+  core.configureGraderProviders(global);
+  const first = fixture(), second = fixture();
+  first.providers[0]!.teacherPolicy = 'fixture.first';
+  second.providers[0]!.teacherPolicy = 'fixture.second';
+  const results = await Promise.all([first, second].map(registry => core.withGraderProviders(registry, async () => {
+    await Promise.resolve();
+    return core.graderProvider('fixture').teacherPolicy;
+  })));
+  expect(results).toEqual(['fixture.first', 'fixture.second']);
+  expect(core.graderProviderRegistry()).toBe(global);
+});
