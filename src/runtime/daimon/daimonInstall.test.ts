@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 
-import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256, type DaimonManifestDigest } from "./contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_PRE_DREAM_MANIFEST_SHA256, type DaimonManifestDigest } from "./contractManifest.js";
 import { createDaimonInstallCommands } from "./daimonInstall.js";
 
 const directories: string[] = [];
@@ -17,11 +17,10 @@ const fixture = (manifestDigest: DaimonManifestDigest = DAIMON_CONTRACT_MANIFEST
   const receipt = JSON.stringify({ manifest_sha256: manifestDigest });
   writeFileSync(path.join(root, "capability-receipt.json"), receipt);
   let manifest = readFileSync(new URL("./contract-manifest.json", import.meta.url), "utf8");
-  if (manifestDigest === DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256) {
+  if (manifestDigest === DAIMON_PRE_DREAM_MANIFEST_SHA256) {
     const contract = JSON.parse(manifest);
     const agent = contract.organizationRuntimeConfigV2Schema.properties.agents.items.properties;
-    // Insert in canonical key order to reproduce the producer's exact contract bytes.
-    agent.memory.properties = { dreamSchedule: agent.schedule, ...agent.memory.properties };
+    delete agent.memory.properties.dreamSchedule;
     manifest = JSON.stringify(contract) + "\n";
   }
   writeFileSync(path.join(root, "contract-manifest.json"), manifest);
@@ -42,7 +41,7 @@ console.log(crypto.createHash('sha256').update(fs.readFileSync(process.argv[2]))
   return { root, commands, run };
 };
 
-it.each([DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256])("executes the receipt and manifest checks for %s", (manifestDigest) => {
+it.each([DAIMON_PRE_DREAM_MANIFEST_SHA256, DAIMON_CONTRACT_MANIFEST_SHA256])("executes the receipt and manifest checks for %s", (manifestDigest) => {
   const { commands, run } = fixture(manifestDigest);
   expect(run(commands[0]!)).toBe(0);
   expect(run(commands[1]!)).toBe(0);

@@ -9,7 +9,7 @@ import type { ResolvedAgentNode } from "../../compiler/types.js";
 import { createDaimonTestNode } from "./testHelpers.js";
 import { daimonAdapter } from "./adapter.js";
 import { DAIMON_CONFIG_FILE } from "./config.js";
-import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256 } from "./contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_PRE_DREAM_MANIFEST_SHA256 } from "./contractManifest.js";
 import { hasDaimonDreamScheduleAuthority } from "./scheduleAuthority.js";
 
 const roots: string[] = [];
@@ -34,14 +34,15 @@ const scheduledTarget = async (kind: "every" | "disabled" = "every") => {
 afterEach(async () => { delete process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY; await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe("Daimon schedule image authority", () => {
-  it("checks dream support on the selected local image even with an older published pin", async () => {
-    process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity();
+  it("checks dream support on the selected local image", async () => {
+    process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity(DAIMON_PRE_DREAM_MANIFEST_SHA256);
     await expect(hasDaimonDreamScheduleAuthority()).resolves.toBe(false);
-    process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity(DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256);
+    process.env.SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY = await identity();
     await expect(hasDaimonDreamScheduleAuthority()).resolves.toBe(true);
   });
 
-  it("accepts the checked-in published pin, whose receipts attest the compiler's contract manifest", async () => {
+  it("accepts work and dream schedules on the checked-in published image", async () => {
+    await expect(hasDaimonDreamScheduleAuthority()).resolves.toBe(true);
     await expect(daimonAdapter.compileAgent(createDaimonTestNode({
       runtime: { name: "daimon", options: {} }, schedule: { every: "1m", kind: "every" }
     }))).resolves.toMatchObject({ capabilities: expect.arrayContaining([

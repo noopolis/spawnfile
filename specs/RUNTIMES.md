@@ -223,11 +223,10 @@ memory:
 ```
 
 Each dream opens a fresh Mneme session on that bank. The agent's top-level
-`schedule` continues to control its normal work. The published Daimon 0.2.25
-image supports ordinary work and awake memory. Its compile report marks
-scheduled consolidation as degraded. Selecting a local image built from the
-dream-capable Daimon source enables both schedules. Isolated training trials
-retain the bank and disable scheduled consolidation.
+`schedule` controls its normal work. Daimon image `0.2.26-4bdb427` supports
+both schedules. The earlier `0.2.25-232078f` image supports awake memory and
+reports scheduled consolidation as degraded. Isolated training trials retain
+the bank and disable scheduled consolidation.
 
 If a runtime exposes a live memory tool but cannot preserve scope/principal
 enforcement, the memory bank is `unsupported`, not merely degraded. A runtime

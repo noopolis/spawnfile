@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256 } from "./contractManifest.js";
+import { DAIMON_CONTRACT_MANIFEST_SHA256, DAIMON_PRE_DREAM_MANIFEST_SHA256 } from "./contractManifest.js";
 
 const digest = (character: string): string => `sha256:${character.repeat(64)}`;
 const selection = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -39,8 +39,8 @@ describe("published Daimon image authority", () => {
   });
 
   it.each([
-    [DAIMON_CONTRACT_MANIFEST_SHA256, false],
-    [DAIMON_DREAM_SCHEDULE_MANIFEST_SHA256, true]
+    [DAIMON_PRE_DREAM_MANIFEST_SHA256, false],
+    [DAIMON_CONTRACT_MANIFEST_SHA256, true]
   ] as const)("uses the memory schedule capability attested by %s", async (contractManifestSha256, canDream) => {
     selection.current = published({ contractManifestSha256 });
     await expect(hasDaimonScheduleAuthority()).resolves.toBe(true);
