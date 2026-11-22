@@ -14,4 +14,6 @@ npm run images   # favicon PNGs from public/favicon.svg
 - `src/content/docs/`: documentation pages.
 - `src/styles/tokens.css`: the palette, shared by the landing page and the docs.
 - `scripts/og-card.html`: source of `public/og.png`; render it at 1200x630 with a
-  headless browser after changing the headline.
+  headless browser after changing the share copy.
+
+With root and website dependencies installed, run `npm run build` and `npm run test:homepage` in `website/`. The check compares the static page with the registry and a fresh compile of `examples/research-org`.

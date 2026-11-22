@@ -7,13 +7,7 @@ Spawnfile compiles agent manifests to **runtime-specific output**. A runtime is 
 
 ## What Makes A Runtime Compatible
 
-A runtime is **Spawnfile-compatible** when it satisfies all of these requirements:
-
-1. **It runs as a long-lived service or daemon.** Spawnfile targets autonomous agent runtimes, not tools invoked per task.
-2. **It uses a markdown workspace as a first-class agent surface.** The runtime reads Markdown documents to define agent identity, behavior, and context.
-3. **It exposes a declarative configuration surface** that a compiler can emit (JSON config, TOML config, etc.).
-
-Systems that are manually invoked per task (coding assistants, chat CLIs, one-shot agent shells) are not Spawnfile targets, even if they use workspace conventions or Markdown control files.
+An adapter translates a resolved agent into the harness's native files and tells the container how to start it. A gateway, a server or a harness with a command-line interface can participate when its adapter supplies those pieces. A project can load additional adapters from local modules or installed packages. [Adding a runtime](/contributing/adding-a-runtime/)
 
 ## The Runtime Registry
 
@@ -53,9 +47,9 @@ These runtimes have working adapters:
 
 1. **[OpenClaw](/runtimes/openclaw/)** -- JSON config, rich workspace layout, native `mcp.servers`, native multi-agent sessions.
 2. **[PicoClaw](/runtimes/picoclaw/)** -- JSON config, workspace-first model, first-class MCP surface, spawned subagents.
-3. **[Daimon](/runtimes/daimon/)** -- Noopolis-native generated harness app backed by Pi, grouped team agents, subscription auth support, local model endpoints, shared workspace resources.
-4. **Hermes Agent** supports ChatGPT, SuperGrok, Nous Portal and MiniMax logins. Its adapter lowers cron schedules, MCP servers, and supported Telegram, Discord and Slack access rules. [Hermes Agent](https://github.com/NousResearch/hermes-agent)
-5. **OpenCode** supports ChatGPT, SuperGrok and GitHub Copilot logins, plus the OpenCode Go plan key. Its adapter supports MCP servers and text-only helpers. [OpenCode](https://github.com/anomalyco/opencode)
+3. **[Daimon](/runtimes/daimon/)** -- one pinned organization host, separate agent workspaces, and Codex, Grok or Antigravity subscriptions.
+4. **[Hermes Agent](/runtimes/hermes-agent/)** supports ChatGPT, SuperGrok, Nous Portal and MiniMax logins. Its adapter lowers cron schedules, MCP servers, and supported Telegram, Discord and Slack access rules. [Hermes Agent](https://github.com/NousResearch/hermes-agent)
+5. **[OpenCode](/runtimes/opencode/)** supports ChatGPT, SuperGrok and GitHub Copilot logins, plus the OpenCode Go plan key. Its adapter supports MCP servers and text-only helpers. [OpenCode](https://github.com/anomalyco/opencode)
 
 Both harnesses export a portable `.eval` from training and use ACP for Moltnet rooms and direct messages. The bundled Moltnet v0.1.22 release predates ACP. Standalone agents and training work independently of Moltnet. [Subscription setup and feature details](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIMES.md#use-a-model-subscription)
 
@@ -117,34 +111,37 @@ Support levels:
 - **Rejected** -- validation fails at compile-plan time.
 - **Compiler-owned** -- implemented by Spawnfile container/startup logic, then mounted or written into the runtime workspace.
 
+For Hermes Agent and OpenCode, see their linked guides above. The following tables cover OpenClaw, PicoClaw and Daimon.
+
 ### Core Manifest Surface
 
 | Spawnfile feature | OpenClaw | PicoClaw | Daimon |
 |-------------------|----------|----------|------------|
-| Adapter shape | One gateway target per agent | One gateway target per agent | One generated app target for all Daimon agents in the compile graph |
+| Adapter shape | One gateway target per agent | One gateway target per agent | One public Daimon organization host target for all Daimon agents (maximum 32) |
 | `workspace.docs` | Supported as role files under the runtime workspace | Supported as role files under the runtime workspace | Supported per concrete agent workspace, plus a harness-owned operating contract |
 | `workspace.skills` | Supported under `workspace/skills` | Supported under `workspace/skills` | Supported per concrete agent workspace |
-| `workspace.resources` `volume` | Compiler-owned symlink/backing directory in each runtime workspace | Compiler-owned symlink/backing directory in each runtime workspace | Compiler-owned symlink/backing directory in each concrete agent workspace |
+| `workspace.resources` `volume` | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory per concrete agent workspace |
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
-| `environment.env` and `environment.secrets` | Compiler-owned env and secret materialization | Compiler-owned env and secret materialization | Compiler-owned env and secret materialization |
-| `environment.packages` | Compiler-owned container package installation | Compiler-owned container package installation | Compiler-owned container package installation |
-| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit tool allowlists; stdio commands must be absolute |
-| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported through Mneme; `engine: pi` uses in-process tools and CLI engines receive pre-turn recall context only |
-| `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
-| `subagents` | Degraded; lowered to routed sessions, not full Spawnfile parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents exist, but parent-owned subagent semantics are not preserved |
+| `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
+| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit nonempty tool allowlists; stdio commands must be absolute and remote bearer secrets remain env-name references |
+| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Direct Mneme tools on one durable file-backed bank per agent |
+| `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; the generic runtime image and physical roots provide isolation |
+| `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; the public host runs listed agents independently |
 
-### Model And Schedule Surface
+### Model, Schedule, And Surface Support
 
 | Spawnfile feature | OpenClaw | PicoClaw | Daimon |
 |-------------------|----------|----------|------------|
-| OpenAI `api_key` auth | Supported | Supported | Supported |
-| OpenAI `codex` auth | Supported | Supported | Supported |
-| Anthropic `api_key` auth | Supported | Supported | Supported |
-| Anthropic `claude-code` auth | Supported | Supported | Supported through Pi's Anthropic OAuth auth store |
-| `custom` or `local` endpoint with `api_key` or `none` | Supported, except subscription-import auth | Supported for supported endpoint/auth combinations | Supported through generated Pi `models.json` |
-| `schedule.kind: cron` | Degraded; no OpenClaw schedule store is emitted in v0.1 | Supported through `workspace/cron/jobs.json` | Supported through the durable native v2 scheduler |
-| `schedule.kind: every` | Degraded; no OpenClaw schedule store is emitted in v0.1 | Degraded; PicoClaw lowering is cron-only in v0.1 | Supported through the durable native v2 scheduler |
+| OpenAI `api_key` / `codex` auth | Supported | Supported | Only optional OpenAI Codex subscription intent; auth stays Daimon-owned |
+| Anthropic `api_key` auth | Supported | Supported | Rejected |
+| Anthropic `claude-code` auth | Supported | Supported | Rejected |
+| `custom` or `local` endpoint | Supported except subscription-import auth | Supported for compatible endpoint/auth pairs | Rejected |
+| `schedule.kind: cron` | Degraded | Supported through `workspace/cron/jobs.json` | Supported through the durable native v2 scheduler |
+| `schedule.kind: every` | Degraded | Degraded | Supported through the durable native v2 scheduler |
 | `schedule.kind: disabled` | Supported, emits no wake registration | Supported, emits no wake registration | Supported, emits no wake registration |
+| `surfaces.moltnet` | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge | Supported for inbound authenticated wakes and an outbound cognition tool constrained to compiled networks, rooms, and DM policy; sends carry deterministic delivery ids and durable per-agent receipts |
+| Discord, Telegram, WhatsApp, Slack | Supported with OpenClaw access-mode coverage | Partial: open and user allowlists; pairing and richer allowlists rejected | Rejected |
+| Webhook | Parsed, not lowered by active adapters in v0.1 | Parsed, not lowered by active adapters in v0.1 | Rejected |
 
 ### Communication Surface
 
@@ -163,7 +160,7 @@ Support levels:
 | Spawnfile feature | OpenClaw | PicoClaw | Daimon |
 |-------------------|----------|----------|------------|
 | `spawnfile compile` | Supported | Supported | Supported |
-| `spawnfile build` / `run` / `up` | Supported with pinned npm install | Supported with pinned GitHub release archive | Supported with pinned Daimon/Pi npm packages and generated app |
+| `spawnfile build` / `run` / `up` | Pinned OpenClaw image | Pinned PicoClaw image | Pinned Daimon organization runtime image |
 | `spawnfile status --live` runtime probes | Supported through OpenClaw status probes | Supported through PicoClaw status probes | Limited: deployment state and logs work; runtime health probes are not implemented yet |
 | Runtime activity stream | Not normalized yet; use status/logs | Not normalized yet; use status/logs | Supported through `spawnfile.activity.v1` buffer and SSE endpoint |
 | Managed Moltnet servers and durable Moltnet state | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent |

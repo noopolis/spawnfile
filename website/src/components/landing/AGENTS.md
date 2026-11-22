@@ -11,6 +11,7 @@ Styles live in `src/styles/landing-*.css`; behavior in `src/scripts/landing/`.
 - `Showcase.astro`: "Built with Spawnfile" strip, one card per real organization.
 - `Cta.astro`: copy-setup-prompt button and install command, used by the hero and closing.
 - `Panel.astro`: a code sample in the bracket frame.
+- `harnesses.ts`: joins the active registry pins to the corresponding runtime guides.
 - `highlight.ts`: build-time highlighters for Spawnfile source and shell transcripts.
 
 The product is the Spawnfile format; copy never calls it YAML. Every harness, engine,

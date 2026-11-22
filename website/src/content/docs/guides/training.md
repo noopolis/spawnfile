@@ -3,15 +3,15 @@ title: Training
 description: Improve an agent's prompt docs against your own train and test cases, in trials that boot your real organization the way production does.
 ---
 
-`spawnfile train` improves one agent's Markdown docs, such as `AGENTS.md` or `SOUL.md`, against cases you write. Every trial boots your real organization with production's images, entrypoint and Docker security settings. Judges score each result, an optimizer proposes better versions of the files you marked editable, and the best candidate is scored on a test set it never saw.
+`spawnfile train` improves one agent's Markdown docs, such as `AGENTS.md` or `SOUL.md`, against cases you write. Each trial runs the selected agent with its compiled configuration in an isolated container. Judges score each result, an optimizer proposes better versions of the files you marked editable, and the best candidate is scored on a test set it never saw.
 
 Training produces a candidate and its evidence. It never deploys the candidate; you review it and commit it like any other change.
 
 ## Requirements
 
-- The agent runs on **Daimon** with the **Codex** or **Grok** engine.
+- Choose **Daimon**, **Hermes Agent**, **OpenClaw**, **OpenCode** or **PicoClaw**. For a Daimon agent, select Codex or Grok.
 - **Docker** is available.
-- An **auth profile** holds the login trials use, passed with `--auth-profile`. All trials of one run share it through one auth gateway.
+- Supply credentials for the selected model. For a subscription route, select the harness login with `--auth-profile`. Daimon uses a shared auth gateway. The other harnesses run their native commands.
 
 A dry run needs none of that: it validates and estimates without Docker, logins or model calls.
 
@@ -111,11 +111,15 @@ Resume checks that the inputs and budgets are unchanged before restoring the opt
 ## How a trial runs
 
 1. Spawnfile compiles the candidate into the agent's native files, exactly as a deploy would.
-2. The organization boots in an isolated container with production's entrypoint and security settings.
+2. The trial opens the compiled runtime in an isolated container.
 3. The case's starting state is installed, and the wake is delivered.
 4. When the turn ends, judges score the output. The container is removed.
 
 Validation scores guide the optimizer. Test cases run only after the best candidate is frozen, so the final score is on unseen cases.
+
+## Regrade a saved trial
+
+Each stored trial writes a private `.eval` file in the output's `evals/` directory. It includes the task, reply, observed actions, selected files, grades and evidence coverage. Run `spawnfile train --regrade sample.eval --out graded` on a saved file to score its final checks again. The new result is `graded/REGRADE.json`. Missing events stay unknown when tool coverage is partial.
 
 ## Learn more
 

@@ -1,13 +1,8 @@
 ---
 // The format: agent and team manifests.
 import Panel from './Panel.astro';
-const AGENT = `kind: agent
-name: coordinator
-runtime: { name: daimon, options: { engine: codex } }
-execution:
-  model: { primary: { provider: openai, name: gpt-5.4-mini } }
-workspace:
-  docs: { system: AGENTS.md }`;
+import agentSource from '../../../../examples/research-org/daimon/Spawnfile?raw';
+const AGENT = agentSource.split('surfaces:')[0].trimEnd();
 ---
 <section class="sec" id="format">
   <div class="wrap grid">
@@ -21,6 +16,6 @@ workspace:
         <li><a href="/spec/spec/">Read the full specification</a></li>
       </ul>
     </div>
-    <Panel lang="spawnfile" title="agents/coordinator/Spawnfile" code={AGENT} />
+    <Panel lang="spawnfile" title="daimon/Spawnfile" code={AGENT} />
   </div>
 </section>

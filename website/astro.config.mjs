@@ -89,6 +89,8 @@ export default defineConfig({
             { label: 'Daimon', slug: 'runtimes/daimon' },
             { label: 'OpenClaw', slug: 'runtimes/openclaw' },
             { label: 'PicoClaw', slug: 'runtimes/picoclaw' },
+            { label: 'Hermes Agent', slug: 'runtimes/hermes-agent' },
+            { label: 'OpenCode', slug: 'runtimes/opencode' },
           ],
         },
         {

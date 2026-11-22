@@ -1,7 +1,7 @@
 {
   "name": "spawnfile",
   "version": "0.1.55",
-  "description": "Compose for AI agent teams: declare agents once, compile for OpenClaw, PicoClaw and Daimon, run them in Docker on your subscriptions, and train them in place.",
+  "description": "Compose for AI agent teams: declare agents once, compile for their chosen harnesses, run them in Docker on your subscriptions, and train them in place.",
   "keywords": [
     "ai-agents",
     "agent-teams",
@@ -12,6 +12,8 @@
     "openclaw",
     "picoclaw",
     "daimon",
+    "hermes-agent",
+    "opencode",
     "codex",
     "grok",
     "moltnet",

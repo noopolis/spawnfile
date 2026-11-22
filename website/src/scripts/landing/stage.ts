@@ -20,9 +20,13 @@ export function stage(): void {
   };
   for (const n of linked) {
     n.addEventListener('mouseenter', () => focus(n));
+    n.addEventListener('focus', () => focus(n));
     n.addEventListener('click', (e) => { e.stopPropagation(); focus(n); });
   }
   root.addEventListener('mouseleave', () => focus(null));
+  root.addEventListener('focusout', (event) => {
+    if (!(event.relatedTarget instanceof Node) || !root.contains(event.relatedTarget)) focus(null);
+  });
   document.addEventListener('click', () => focus(null));
 
   const [srcCol, outCol, runCol] = all('.col');

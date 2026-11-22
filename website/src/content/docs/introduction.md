@@ -7,7 +7,7 @@ Spawnfile is a spec and compiler for **autonomous agent runtimes** -- systems th
 
 ## The Problem
 
-Every autonomous agent runtime has its own config format. OpenClaw, PicoClaw, and generated Daimon apps each expect different runtime config, workspace layout, skill wiring, and model/auth wiring.
+Agent harnesses differ in how they read instructions, configure tools, select a model and store credentials.
 
 Your agent's identity -- its personality, instructions, skills, and tool connections -- gets locked into one runtime's conventions.
 
@@ -51,23 +51,19 @@ After compile, `spawnfile status` gives a read-only view of declared and compile
 
 ## What Spawnfile Targets
 
-Spawnfile targets **autonomous agent runtimes** -- systems that:
-
-- Run as long-lived services or daemons
-- Use a markdown workspace as a first-class agent surface
-- Expose a declarative configuration surface the compiler can emit to
-
-This is not for coding assistants, chat CLIs, or one-shot tools. Those may share conventions like `AGENTS.md`, but they are not the long-lived host runtimes that Spawnfile compiles for.
+Each adapter writes native files and describes how the harness starts. Agents in one team can choose different adapters. Register your own adapter in the root Spawnfile to add another harness. [Adapter guide](/contributing/adding-a-runtime/)
 
 ## Supported Runtimes
 
-| Runtime | Language | Status |
-|---------|----------|--------|
-| [OpenClaw](https://github.com/openclaw/openclaw) | Node.js | Active |
-| [PicoClaw](https://github.com/sipeed/picoclaw) | Go | Active |
-| [OpenFang](https://github.com/RightNow-AI/openfang) | Rust | Exploratory |
-| [Hermes Agent](https://github.com/NousResearch/hermes-agent) | Node.js | Exploratory |
-| [OpenCode](https://github.com/anomalyco/opencode) | TypeScript | Exploratory |
+| Built-in harness | What Spawnfile runs |
+|---|---|
+| [Daimon](/runtimes/daimon/) | One host with a workspace per Daimon agent |
+| [OpenClaw](/runtimes/openclaw/) | An OpenClaw gateway and workspace |
+| [PicoClaw](/runtimes/picoclaw/) | A PicoClaw gateway and workspace |
+| [Hermes Agent](/runtimes/hermes-agent/) | A Hermes workspace with native sessions |
+| [OpenCode](/runtimes/opencode/) | An OpenCode server and workspace |
+
+OpenFang is a research target. [Runtime overview](/runtimes/overview/)
 
 ## Open Source
 

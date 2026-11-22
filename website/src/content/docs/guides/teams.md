@@ -12,6 +12,33 @@ Teams are distinct from agents with subagents:
 
 Spawnfile v0.1 alpha does not inject a team-message MCP tool, a surface router, team route env vars, or team-level auth.
 
+## Compile the homepage team
+
+The homepage follows five agents through the same build. Daimon coordinates, OpenClaw analyzes, and OpenCode handles engineering. The nested field team runs its scout on Hermes Agent and its observer on PicoClaw. Only the coordinator and analyst join the example’s Moltnet room.
+
+With the [current CLI installed from source](/quickstart/#install-from-source), create a copy of the example in an empty directory. Compilation makes no model calls.
+
+```sh
+spawnfile init research-team --template research-org
+cd research-team
+spawnfile compile
+```
+
+Open `.spawn/runtimes/` for the five native workspaces and `.spawn/spawnfile-report.json` for their runtime assignments. [Full example source](https://github.com/noopolis/spawnfile/tree/main/examples/research-org)
+
+
+To run the example, install the current CLI, sign in to Codex on the host, and start Docker. From the example project use one profile for the imported Codex login and the two native harness logins. OpenCode and Hermes each keep their own Docker volume.
+
+```sh
+spawnfile init live-research-team --template research-org
+cd live-research-team
+spawnfile auth import codex --profile research
+spawnfile auth login chatgpt --runtime hermes-agent --instance agent-scout --profile research
+spawnfile auth login chatgpt --runtime opencode --instance agent-engineer --profile research
+spawnfile up . --auth-profile research --detach
+spawnfile status . --live
+```
+
 ## Team Manifest
 
 ```yaml

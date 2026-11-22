@@ -1,8 +1,9 @@
 ---
 // Landing <head>: metadata, link previews, icons, fonts and structured data.
+import { harnessNames } from './landing/harnesses';
 const TITLE = 'Spawnfile | The Dockerfile for agentic organizations';
 const DESCRIPTION =
-  'Declare the Spawnfile, compile it for Daimon, OpenClaw or PicoClaw, and run it in Docker on your ChatGPT, Claude, Grok or Antigravity subscription. Open source.';
+  `Declare a team of agents in a Spawnfile. Compile it for ${harnessNames} and run it in Docker.`;
 const OG_ALT = 'Spawnfile: the Dockerfile for agentic organizations.';
 const NOOPOLIS = { '@type': 'Organization', name: 'Noopolis', url: 'https://noopolis.ai' };
 const qa = (name: string, text: string) => ({ '@type': 'Question', name, acceptedAnswer: { '@type': 'Answer', text } });
@@ -35,9 +36,9 @@ const structured = {
       '@type': 'FAQPage',
       mainEntity: [
         qa('What is Spawnfile?', 'Spawnfile is an open-source source format and compiler for AI agent teams. You declare agents, their identity docs, skills, MCP servers, models, schedules and Moltnet rooms once; Spawnfile compiles that into each harness\'s native configuration and runs the team in Docker.'),
-        qa('Which harnesses does Spawnfile support?', 'OpenClaw, PicoClaw and Daimon. Daimon runs agents on the Codex, Grok and Antigravity engines; OpenClaw and PicoClaw run OpenAI, Anthropic and custom or local models.'),
+        qa('Which harnesses does Spawnfile support?', `Spawnfile includes ${harnessNames}. Declare an external adapter in the root Spawnfile to use another harness.`),
         qa('Do I need API keys?', 'No. You can import a ChatGPT or Claude subscription login into an auth profile, or run Daimon agents on ChatGPT, Grok or Antigravity subscriptions. API keys and local endpoints also work.'),
-        qa('Can Spawnfile train agents?', 'Yes. spawnfile train improves one Daimon agent\'s prompt docs against your own train and test cases, in trials that boot your real organization the way production does.'),
+        qa('Can Spawnfile train agents?', 'All bundled harnesses can run training trials. Each stored trial writes a portable .eval file with the observed reply, actions, selected files and grades.'),
         qa('Is Spawnfile a hosted service?', 'No. It is a CLI and a source format. There is no account, database or web app to run; the team runs in Docker on machines you choose.'),
       ],
     },

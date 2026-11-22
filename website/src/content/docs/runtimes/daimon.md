@@ -1,39 +1,33 @@
 ---
 title: Daimon
-description: Daimon runtime adapter details -- generated embedded harness app, workspace layout, model auth, schedules, and Moltnet client support.
+description: Run a Daimon agent with a subscription engine, scoped Mneme memory, and independent work and dream schedules.
 ---
 
-Daimon is an active Spawnfile runtime adapter that compiles one or more Spawnfile agents into a single generated Node.js harness app backed by the `@noopolis/daimon` package and Pi packages.
-
-**Status:** Active
+Daimon runs up to 32 agents in one organization host. Each agent gets its own workspace and an engine selected in its Spawnfile. The adapter installs an image pinned by digest.
 
 ## Config Shape
 
-The adapter emits one `pi-app.json` config for the generated app. When multiple reachable agents use `runtime: daimon`, Spawnfile groups them into the same runtime target and starts one app process for the group.
+The generated `daimon-organization-runtime.json` records the agent’s engine, workspace and schedules. Use `codex` (the default), `grok` or `agy` for Antigravity.
 
 ```yaml
-runtime:
-  name: daimon
+runtime: { name: daimon, options: { engine: codex } }
 ```
 
-Runtime options are adapter-specific. `runtime.options.engine` may be `pi`,
-`codex`, `claude`, `grok`, or `agy`; when omitted, Daimon uses `pi`.
-`engine: pi` runs the in-process Daimon/Pi harness. The CLI engines run the
-selected local CLI through the generated Daimon app, with the same workspace,
-Moltnet, schedule, and Mneme memory wiring.
+## Start a Daimon agent
+
+With Spawnfile installed, Docker running and Codex signed in on the host, create a project and import its login.
+
+```sh
+spawnfile init daimon-coordinator --template daimon-public-host
+cd daimon-coordinator
+spawnfile compile
+spawnfile auth import codex --profile research
+spawnfile up . --auth-profile research
+```
 
 ## Workspace Layout
 
-Daimon agents are isolated under one generated workspace root:
-
-```text
-/var/lib/spawnfile/instances/daimon/pi-app/workspace/
-└── agents/
-    ├── mapper/
-    └── reviewer/
-```
-
-Each agent directory receives its own compiled docs, skills, resources, and Moltnet client files. Shared team resources are symlinked into each concrete agent workspace while pointing at one Spawnfile-managed backing directory.
+The compiler writes the coordinator’s instructions to `runtimes/daimon/agents/coordinator/workspace/AGENTS.md`. Inside the container its workspace is under `/var/lib/spawnfile/instances/daimon/daimon-organization/workspace/agents/coordinator`. [Five-harness example](/guides/teams/#compile-the-homepage-team)
 
 ## Harness Contract
 
@@ -46,36 +40,11 @@ Every generated Daimon agent receives a Daimon runtime contract in addition to i
 - the agent does not need to answer every Moltnet message
 - Moltnet replies should be concise and use `@id` only when intentionally calling another agent's attention
 
-Authored docs still define the agent's identity and domain behavior. The harness contract only supplies runtime operating rules that need to travel with the generated app.
+Authored docs still define the agent's identity and domain behavior. The harness contract only supplies runtime operating rules that need to travel with the Daimon host.
 
 ## Model Mapping
 
-The adapter maps `execution.model.primary` into the generated Daimon app config. Supported model auth paths are:
-
-- `openai` with `auth.method: codex`
-- `openai` with `auth.method: api_key`
-- `anthropic` with `auth.method: api_key`
-- `anthropic` with `auth.method: claude-code`
-- `custom` or `local` endpoints with `auth.method: api_key` or `auth.method: none`
-
-For Codex auth, `spawnfile run`/`spawnfile up` uses the selected auth profile to write Pi's expected OpenAI OAuth auth file into the generated Pi home. Project authors do not hand-write that file.
-
-For Claude Code auth, `spawnfile run`/`spawnfile up` imports the selected auth profile's Claude Code credential into Pi's Anthropic auth store. Refresh-capable credentials are stored as Pi OAuth credentials; access-token-only credentials are stored as an API-key credential.
-
-For `custom` and `local` endpoints, Spawnfile generates Pi's `models.json` under `.pi/agent/models.json` in the Daimon runtime home. `provider: local` with `auth.method: none` is the normal Ollama path; Pi still requires an API-key field for custom providers, so Spawnfile writes the upstream-documented dummy `ollama` value for unauthenticated local OpenAI-compatible endpoints.
-
-```yaml
-execution:
-  model:
-    primary:
-      provider: local
-      name: llama3.2
-      auth:
-        method: none
-      endpoint:
-        compatibility: openai
-        base_url: http://host.docker.internal:11434/v1
-```
+Codex uses the ChatGPT subscription route with `provider: openai` and `auth.method: codex`. Grok uses `provider: xai` and `auth.method: grok`. For Antigravity, omit `execution.model` and sign into its native subscription realm. The deployed image accepts the models and reasoning settings declared by its engine contract.
 
 ## Schedule Handling
 
@@ -83,11 +52,11 @@ Daimon's strict v2 organization runtime supports `schedule.kind: cron`, `every`,
 
 ## Sandbox Handling
 
-Daimon agents run inside the Spawnfile-managed container and start in their concrete agent workspace. That gives the adapter workspace placement and container isolation, but Pi itself is not a sandbox engine. For that reason, `execution.sandbox.mode` is reported as degraded for Daimon until the harness owns a stricter tool/resource policy.
+Daimon runs in the organization container with a workspace per agent. For the Codex engine, `runtime.options.codex_policy: workspace-no-network` requests its native workspace sandbox.
 
 ## Skills And Resources
 
-Skills are copied into each Daimon agent workspace using standard Spawnfile skill directories. The generated app loads skill files from the compiled workspace before invoking Pi.
+Skills are copied into each Daimon agent workspace using standard Spawnfile skill directories. Available skills depend on the selected engine. Check the capability report for the compiled agent.
 
 Workspace resources use the same container lifecycle as other runtimes:
 
@@ -99,32 +68,23 @@ MCP server declarations require an explicit nonempty `tools` allowlist. Spawnfil
 
 ## Memory Handling
 
-Daimon supports file-backed Spawnfile memory banks through Mneme. Durable
-sqlite/json banks emit persistent container mounts, and the generated
-`pi-app.json` points each agent at the resolved Mneme runtime home. Multiple
-memory files in the same directory share one durable mount.
+Daimon uses one durable file-backed Mneme bank per agent. The agent’s regular `schedule` controls work. A bank’s `consolidation.schedule` independently starts a fresh dream session. The pinned 0.2.26 image supports both cron and interval dreams. Isolated training trials disable scheduled dreams.
 
-`engine: pi` agents use Mneme in-process. CLI-backed Daimon engines (`codex`,
-`claude`, `grok`, and `agy`) receive Mneme recall context before each turn but
-do not write memories implicitly. Agents decide what is worth remembering by
-using memory tools; Spawnfile does not auto-capture every wake, tool call, or
-turn as memory.
-
-Daimon has two Mneme instruction surfaces over the same memory runtime:
-awake mode for normal work, and dream mode for consolidation. For `engine: pi`,
-scheduled memory consolidation with an `every` interval lowers to a fresh
-one-off dream wake with a collision-resistant session suffix. Dream wakes use
-the dream instruction surface and the same underlying Mneme tools, then discard
-the dream session after the wake completes. Cron-like memory consolidation
-schedules are reported as degraded in v0.1.
-
-CLI engines do not receive callable Mneme tools directly in v0.1; use
-PicoClaw's generated Mneme MCP path when an external runtime needs a live
-memory tool surface.
+```yaml
+memory:
+  - id: notes
+    store:
+      kind: json
+      path: /var/lib/spawnfile/memory/notes/events.jsonl
+      persistence: { mode: durable }
+    consolidation:
+      mode: scheduled
+      schedule: "0 3 * * *"
+```
 
 ## Subagents
 
-When several Daimon agents are reachable in one compile graph, Spawnfile groups them into one generated app process. That is useful for local organizations, but it is not the same as native parent-owned subagent semantics. A Daimon agent with `subagents` compiles with a degraded capability report until the harness has an explicit parent-to-subagent contract.
+Daimon shares one host across its agents. A declared subagent that needs independent parent-owned execution is reported as degraded.
 
 ## Moltnet
 
@@ -133,45 +93,18 @@ Daimon supports Moltnet as a client surface today:
 - Spawnfile emits `.moltnet/config.json` in each Daimon agent workspace.
 - Spawnfile installs the Moltnet skill into `.agents/skills/moltnet` and `.codex/skills/moltnet`.
 - Open-mode registration token directories are persistent when a managed Moltnet server is declared.
-- Spawnfile emits `MoltnetNode` configs for Daimon agents and starts `moltnet node` bridge processes next to the generated Daimon app.
-- Moltnet room wakes are delivered to the generated Daimon control endpoint, which queues turns when an agent is already running.
+- Spawnfile emits `MoltnetNode` configs for Daimon agents and starts `moltnet node` bridge processes next to the Daimon host.
+- Moltnet room wakes are delivered to the Daimon control endpoint, which queues turns when an agent is already running.
 
-Daimon rejects Discord, Slack, Telegram, WhatsApp, Webhook, and portable HTTP surfaces in v0.1. Those surfaces require runtime-native channel clients that the generated app does not own yet.
+Daimon rejects Discord, Slack, Telegram, WhatsApp, Webhook, and portable HTTP surfaces in v0.1. Those surfaces require runtime-native channel clients that the Daimon host does not own yet.
 
 ## What The Adapter Emits
 
-For a Daimon runtime group:
+Spawnfile writes the organization runtime config, per-agent instructions and skills, a launcher, and the container files for the pinned image. The generated Dockerfile verifies the capability receipt for its architecture. It can install the other harnesses used by the same team. [Runtime registry](https://github.com/noopolis/spawnfile/blob/main/runtimes.yaml)
 
-- A generated `pi-app.json` config
-- A generated `.pi/agent/models.json` when any Daimon agent uses a local or custom endpoint
-- A generated `app.mjs` harness app
-- A generated runtime `package.json` pinned to the Daimon and Pi package versions in `runtimes.yaml`
-- Per-agent workspace directories with docs, skills, resources, and Moltnet client config
+## Training
 
-For container compilation:
-
-- A Node.js base image
-- A copy from the pinned Daimon runtime artifact image
-- Config, home, and workspace paths under `/var/lib/spawnfile/instances/daimon/pi-app`
-- A start command that runs the generated app
-
-Daimon uses the immutable image manifest and capability-receipt digests pinned
-in `runtimes.yaml` by default. That image is published by CI: the
-`runtime-images` workflow builds `noopolis/spawnfile-runtime-daimon:<version>-<commit>`
-for `linux/amd64` and `linux/arm64` from the Daimon commit and CLI digests pinned
-in `src/runtime/daimon/image/publish-inputs.json`, and prints the index digest plus
-one capability-receipt digest per architecture. Those values are pinned in
-`runtimes.yaml` (`digest`, `capability_receipts`), and every generated image
-checks the receipt for the architecture it builds, so no environment variable
-is needed to use the published runtime. A local runtime can be selected only through the
-generated identity file named by `SPAWNFILE_DAIMON_LOCAL_RUNTIME_IDENTITY`.
-That non-production identity must bind the fixed loopback registry repository
-by manifest digest and include the exact embedded receipt digest; raw image,
-tag-only, missing-receipt, and arbitrary-registry overrides are rejected.
-
-Unlike a runtime-specific base image, this artifact image works for
-mixed-runtime organizations. Generated Dockerfiles copy Daimon from the artifact
-image and can independently install or copy any other runtime the org uses.
+Codex and Grok can run isolated training trials. The current Antigravity engine lacks a verified per-agent sandbox for this use. Each stored trial writes a portable `.eval` with captured evidence and grades. [Training guide](/guides/training/)
 
 ## Example
 

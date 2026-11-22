@@ -1,8 +1,7 @@
 ---
 // Run: auth, up, status, publish.
 import Panel from './Panel.astro';
-const RUN = `$ spawnfile auth import codex
-$ spawnfile up . --detach
+const RUN = `$ spawnfile up . --auth-profile research --detach
 $ spawnfile status . --live
 $ spawnfile publish`;
 ---
@@ -11,7 +10,7 @@ $ spawnfile publish`;
     <div>
       <span class="tag">[ <b>run</b> ]</span>
       <h2>Run it, check it, share it.</h2>
-      <p class="lead">Use a subscription login you already have. The whole team and its rooms start in Docker.</p>
+      <p class="lead">Sign each harness into its account, then start the team and its rooms together. <a href="/guides/teams/#compile-the-homepage-team">Set up the example team</a>.</p>
     </div>
     <Panel lang="shell" code={RUN} />
   </div>

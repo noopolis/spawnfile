@@ -1,0 +1,17 @@
+spawnfile_version: "0.1"
+kind: team
+name: field-team
+mode: hierarchical
+lead: scout
+external: [scout]
+members:
+  - id: scout
+    runtime: hermes-agent
+    workspace: &workspace { docs: { system: TEAM.md } }
+    execution: &execution
+      model:
+        primary: { provider: openai, name: gpt-5.4, auth: { method: codex } }
+  - id: observer
+    runtime: picoclaw
+    workspace: *workspace
+    execution: *execution

@@ -75,11 +75,15 @@ The active v0.1 adapters are:
 
 | Runtime | Install Strategy | Adapter Shape |
 |---------|------------------|---------------|
-| `daimon` | Runtime artifact image | Noopolis-native generated harness app backed by Pi |
+| `daimon` | Pinned image by digest | One organization host with a workspace per agent |
+| [`hermes-agent`](/runtimes/hermes-agent/) | Pinned upstream image by digest | One Hermes workspace and native session per agent |
+| [`opencode`](/runtimes/opencode/) | Pinned npm package | One OpenCode server and workspace per agent |
 | `openclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
 | `picoclaw` | Runtime artifact image | Runtime-native gateway and workspace config |
 
-### Active Runtime Capability Matrix
+### OpenClaw, PicoClaw and Daimon capabilities
+
+For the other bundled adapters, see the [Hermes Agent guide](/runtimes/hermes-agent/) and [OpenCode guide](/runtimes/opencode/).
 
 Support levels:
 
@@ -91,40 +95,40 @@ Support levels:
 #### Core Manifest Surface
 
 | Spawnfile feature | OpenClaw | PicoClaw | Daimon |
-|-------------------|----------|----------|--------|
-| Adapter shape | One gateway target per agent | One gateway target per agent | One generated app target for all Daimon agents in the compile graph |
+|-------------------|----------|----------|------------|
+| Adapter shape | One gateway target per agent | One gateway target per agent | One public Daimon organization host target for all Daimon agents (maximum 32) |
 | `workspace.docs` | Supported as role files under the runtime workspace | Supported as role files under the runtime workspace | Supported per concrete agent workspace, plus a harness-owned operating contract |
 | `workspace.skills` | Supported under `workspace/skills` | Supported under `workspace/skills` | Supported per concrete agent workspace |
 | `workspace.resources` `volume` | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory | Compiler-owned symlink/backing directory per concrete agent workspace |
 | `workspace.resources` `git` | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup | Compiler-owned clone/link at container startup |
 | `environment.env`, `environment.secrets`, `environment.packages` | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior | Compiler-owned container/startup behavior |
-| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit tool allowlists; stdio commands must be absolute |
-| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported through Mneme; `engine: pi` uses in-process tools and CLI engines receive pre-turn recall context only |
-| `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded; container/workspace isolation only, Pi itself is not a sandbox engine |
-| `subagents` | Degraded; routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded; grouped app agents do not preserve parent-owned subagent semantics |
+| `environment.mcp_servers` | Supported through OpenClaw `mcp.servers` config | Supported through PicoClaw MCP config | Supported for explicit nonempty tool allowlists. stdio commands must be absolute and remote bearer secrets remain env-name references |
+| `memory` | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Supported for file-backed banks through compiler-generated Mneme MCP servers in awake mode | Direct Mneme tools on one durable file-backed bank per agent |
+| `execution.sandbox.mode` | Supported through OpenClaw runtime/container workspace behavior | Supported through `restrict_to_workspace` and container workspace behavior | Degraded. the generic runtime image and physical roots provide isolation |
+| `subagents` | Degraded. routed sessions do not preserve full parent-owned semantics | Supported through PicoClaw subagent behavior | Degraded. the public host runs listed agents independently |
 
 #### Model, Schedule, And Surface Support
 
 | Spawnfile feature | OpenClaw | PicoClaw | Daimon |
-|-------------------|----------|----------|--------|
-| OpenAI `api_key` / `codex` auth | Supported | Supported | Supported |
-| Anthropic `api_key` auth | Supported | Supported | Supported |
-| Anthropic `claude-code` auth | Supported | Supported | Supported through Pi's Anthropic OAuth auth store |
-| `custom` or `local` endpoint | Supported except subscription-import auth | Supported for compatible endpoint/auth pairs | Supported for `api_key` and `none` auth through generated Pi `models.json` |
+|-------------------|----------|----------|------------|
+| OpenAI `api_key` / `codex` auth | Supported | Supported | Only optional OpenAI Codex subscription intent. auth stays Daimon-owned |
+| Anthropic `api_key` auth | Supported | Supported | Rejected |
+| Anthropic `claude-code` auth | Supported | Supported | Rejected |
+| `custom` or `local` endpoint | Supported except subscription-import auth | Supported for compatible endpoint/auth pairs | Rejected |
 | `schedule.kind: cron` | Degraded | Supported through `workspace/cron/jobs.json` | Supported through the durable native v2 scheduler |
 | `schedule.kind: every` | Degraded | Degraded | Supported through the durable native v2 scheduler |
 | `schedule.kind: disabled` | Supported, emits no wake registration | Supported, emits no wake registration | Supported, emits no wake registration |
-| `surfaces.moltnet` | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge and Daimon control endpoint |
-| Discord, Telegram, WhatsApp, Slack | Supported with OpenClaw access-mode coverage | Partial: open and user allowlists; pairing and richer allowlists rejected | Rejected |
+| `surfaces.moltnet` | Supported through generated MoltnetNode bridge | Supported through generated MoltnetNode bridge | Supported for inbound authenticated wakes and an outbound cognition tool constrained to compiled networks, rooms, and DM policy. sends carry deterministic delivery ids and durable per-agent receipts |
+| Discord, Telegram, WhatsApp, Slack | Supported with OpenClaw access-mode coverage | Partial: open and user allowlists. pairing and richer allowlists rejected | Rejected |
 | Webhook | Parsed, not lowered by active adapters in v0.1 | Parsed, not lowered by active adapters in v0.1 | Rejected |
 
 #### Operational Support
 
 | Spawnfile feature | OpenClaw | PicoClaw | Daimon |
-|-------------------|----------|----------|--------|
+|-------------------|----------|----------|------------|
 | `spawnfile compile`, `build`, `run`, `up` | Supported | Supported | Supported |
-| `spawnfile status --live` runtime probes | Supported | Supported | Limited; runtime health probes are not implemented yet |
-| Runtime activity stream | Not normalized yet | Not normalized yet | Supported through `spawnfile.activity.v1` buffer and SSE endpoint |
+| `spawnfile status --live` runtime probes | Supported | Supported | Limited. runtime health probes are not implemented yet |
+| Runtime activity stream | Not normalized yet | Not normalized yet | Limited. Daimon exposes its public activity API but Spawnfile has no adapter probe yet |
 | Managed Moltnet servers and durable Moltnet state | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent | Compiler-owned and runtime-independent |
 
 ---
@@ -137,25 +141,44 @@ persisted, searchable, and policy-enforced.
 
 | Dimension | OpenClaw | PicoClaw | Daimon |
 |-----------|----------|----------|--------|
-| Store lowering (`sqlite`, `json`) | Supported through generated Mneme MCP servers | Supported through generated Mneme MCP servers | Supported through the generated Daimon app and Mneme runtime |
-| Store lowering (`postgres`) | Reported by DSN secret name only; runtime tools are not wired in v0.1 | Reported by DSN secret name only; generated Mneme MCP is not emitted in v0.1 | Reported by DSN secret name only; runtime tools are not wired in v0.1 |
+| Store lowering (`sqlite`, `json`) | Supported through generated Mneme MCP servers | Supported through generated Mneme MCP servers | One selected durable bank mounted as the agent's Mneme home |
+| Store lowering (`postgres`) | Reported by DSN secret name only. runtime tools are not wired in v0.1 | Reported by DSN secret name only. generated Mneme MCP is not emitted in v0.1 | Reported by DSN secret name only. runtime tools are not wired in v0.1 |
 | Durable persistent mounts | Compiler-owned | Compiler-owned | Compiler-owned |
-| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported directly for `engine: pi`; CLI engines receive prepared recall but not callable Mneme tools |
-| Principal/scope enforcement | Enforced by Mneme MCP context generated from runtime config | Enforced by Mneme MCP context generated from runtime config | Enforced by generated Daimon memory context before each turn |
+| Tool coverage (`search`, `locate`, `register`, `summarize`, `forget`) | Supported through generated Mneme MCP for file stores in awake and dream modes | Supported through generated PicoClaw MCP for file stores in awake and dream modes | The Daimon host installs Mneme tools for the active wake mode |
+| Principal/scope enforcement | Enforced by Mneme MCP context generated from runtime config | Enforced by Mneme MCP context generated from runtime config | Mneme checks the active agent, bank, and scope on each tool call |
 | Lexical index | Reported | Supported/default through Mneme | Supported/default through Mneme |
-| Vector index | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Daimon memory when `provider: ollama` is configured |
+| Vector index | Supported for generated Mneme MCP when `provider: ollama` is configured | Supported for generated Mneme MCP when `provider: ollama` is configured | Degraded to lexical recall |
 | Graph/temporal index | Optional/degraded unless configured | Optional/degraded unless configured | Optional/degraded unless configured |
-| Scheduled consolidation / dream mode | Supported through generated isolated OpenClaw cron jobs and dream-mode Mneme MCP for file stores | Supported through generated PicoClaw cron jobs and dream-mode Mneme MCP for file stores | Supported for `every` schedules as fresh one-off dream wakes for `engine: pi`; cron-like schedules are degraded |
-| Activity/audit events | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Memory events are recorded by Mneme tools; runtime activity normalization is still runtime-owned | Memory events are recorded by Mneme tools and runtime activity is exposed through `spawnfile.activity.v1` |
+| Scheduled consolidation / dream mode | Supported through generated isolated OpenClaw cron jobs and dream-mode Mneme MCP for file stores | Supported through generated PicoClaw cron jobs and dream-mode Mneme MCP for file stores | Independent native dream schedule on the selected bank when supported by the image |
+| Activity/audit events | Memory events are recorded by Mneme tools. runtime activity normalization is still runtime-owned | Memory events are recorded by Mneme tools. runtime activity normalization is still runtime-owned | Daimon host activity only. no Spawnfile memory activity lowering |
 | Raw memory visibility to runtime files | Must be denied | Must be denied | Must be denied |
+
+For example, this declaration requests a daily dream at 03:00 UTC on a Daimon
+agent's bank. An interval such as `6h` also works.
+
+```yaml
+memory:
+  - id: notes
+    store:
+      kind: json
+      path: /var/lib/spawnfile/memory/notes/events.jsonl
+      persistence: { mode: durable }
+    consolidation:
+      mode: scheduled
+      schedule: "0 3 * * *"
+```
+
+Each dream opens a fresh Mneme session on that bank. The agent's top-level
+`schedule` controls its normal work. Daimon image `0.2.26-4bdb427` supports
+both schedules. The earlier `0.2.25-232078f` image supports awake memory and
+reports scheduled consolidation as degraded. Isolated training trials retain
+the bank and disable scheduled consolidation.
 
 If a runtime exposes a live memory tool but cannot preserve scope/principal
 enforcement, the memory bank is `unsupported`, not merely degraded. A runtime
 may report declared memory as `degraded` when it emits no live memory tool and
 keeps the bank report-only. If it can preserve storage but not a requested
 index or consolidation mode, that specific capability is `degraded`.
-
----
 
 ## Version Pinning
 
@@ -264,7 +287,7 @@ When a runtime adapter exposes activity, it SHOULD normalize events to `spawnfil
 
 Activity streams MUST NOT expose hidden reasoning. They MAY expose assistant-visible output, tool/action metadata, timing, queue state, and failures.
 
-Pi emits a bounded in-memory activity buffer and SSE stream through its generated control server. OpenClaw and PicoClaw may later map their runtime-native session or gateway events into the same event shape; until then, their activity support is limited to status probes and deployment logs.
+The Daimon host emits a bounded in-memory activity buffer and SSE stream through its control server. OpenClaw and PicoClaw may later map their runtime-native session or gateway events into the same event shape; until then, their activity support is limited to status probes and deployment logs.
 
 ---
 

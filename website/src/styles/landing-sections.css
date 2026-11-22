@@ -6,10 +6,13 @@
 
 /* harness table */
 table.spec { width: 100%; margin-top: 2.25rem; border-collapse: collapse; font-size: .9375rem; }
-.spec th { padding: 0 1rem .7rem 0; text-align: left; font: 400 .75rem var(--mono); color: var(--faint); border-bottom: 1px solid var(--line-2); }
+.spec th { padding: 0 1rem .7rem 0; text-align: left; font: 400 .75rem var(--mono); color: var(--mute); border-bottom: 1px solid var(--line-2); }
 .spec td { padding: 1.05rem 1rem 1.05rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
 .spec td:first-child, .isnot b, .org > div > b { font: 650 1.35rem/1.2 var(--display); font-stretch: 88%; letter-spacing: -.02em; color: var(--ink); }
 .spec td:first-child { white-space: nowrap; }
+.spec .mobile-label { display: none; }
+.spec td:first-child a { color: inherit; text-decoration: underline; text-underline-offset: .18em; text-decoration-color: var(--line-2); }
+.spec td:first-child a:hover { text-decoration-color: var(--sig); }
 .spec code { font-size: .8125rem; color: var(--mute); }
 .foot { margin: 1.1rem 0 0; font-size: .9375rem; color: var(--mute); }
 

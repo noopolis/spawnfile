@@ -16,6 +16,19 @@ spawnfile --version
 spawnfile --help
 ```
 
+### Install from source
+
+The npm release `spawnfile@0.1.55` includes Daimon, OpenClaw and PicoClaw. To use Hermes Agent, OpenCode and project-defined adapters with that release still installed, build the current CLI from source with Node.js 22.19 or newer.
+
+```sh
+git clone https://github.com/noopolis/spawnfile.git
+cd spawnfile
+npm ci
+npm run build
+npm link
+spawnfile --version
+```
+
 ## Create an Agent
 
 ```bash

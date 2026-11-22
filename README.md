@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/noopolis/spawnfile/main/website/public/illustrations/spawnfile-hero.svg" alt="A team Spawnfile started with spawnfile up: three agents on OpenClaw and Daimon, talking in a Moltnet room" width="720" />
+  <img src="https://raw.githubusercontent.com/noopolis/spawnfile/main/website/public/illustrations/spawnfile-hero.svg" alt="Five research agents running on Daimon, OpenClaw, OpenCode, Hermes Agent and PicoClaw" width="720" />
 </p>
 
 Spawnfile is Compose for agent teams. Declare who your agents are, what they use, when they wake and where they talk, in Markdown and a little YAML. Spawnfile compiles that source into each harness's native configuration, runs the whole team in Docker, and can train its agents in place.
@@ -82,7 +82,7 @@ The [team guide](https://spawnfile.com/guides/teams/) and [examples](https://git
 |---|---|---|
 | **OpenClaw** | OpenAI, Anthropic, custom or local endpoints | ChatGPT or Claude subscription, API key |
 | **PicoClaw** | OpenAI, Anthropic, custom or local endpoints | ChatGPT or Claude subscription, API key |
-| **Daimon** | Pi, Codex, Claude Code, Grok and Antigravity engines | Subscription or API credentials for the selected engine |
+| **Daimon** | Codex, Grok and Antigravity engines | ChatGPT, SuperGrok or Antigravity subscription |
 | **Hermes Agent** | Native providers, custom and local endpoints | ChatGPT, SuperGrok, Nous Portal, MiniMax or API key |
 | **OpenCode** | Native providers, custom and local endpoints | ChatGPT, SuperGrok, GitHub Copilot, OpenCode Go plan key or API key |
 
@@ -92,7 +92,7 @@ Hermes Agent and OpenCode use their own logins for deployment and training. Thei
 
 ## Train it
 
-`spawnfile train` improves one agent's prompt docs against your own train and test cases. Every trial boots your real organization the way production does, judges score the result, and the optimizer rewrites only the files you mark editable.
+`spawnfile train` improves one agent's prompt docs against your own train and test cases. Each trial runs the selected agent in an isolated container. Judges score the result and the optimizer revises the files you mark editable.
 
 ```bash
 spawnfile train ./Spawnfile --agent writer \

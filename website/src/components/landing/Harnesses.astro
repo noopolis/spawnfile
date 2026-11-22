@@ -1,21 +1,22 @@
 ---
-// Supported harnesses. Versions, models and logins must match specs/RUNTIMES.md and runtimes.yaml.
-const HARNESSES = [
-  { name: 'Daimon', pinned: '0.2.16', models: 'Codex, Grok and Antigravity engines', logins: 'ChatGPT, Grok or Antigravity subscription' },
-  { name: 'OpenClaw', pinned: 'v2026.6.11', models: 'OpenAI, Anthropic, custom or local', logins: 'ChatGPT or Claude subscription, API key' },
-  { name: 'PicoClaw', pinned: 'v0.3.1', models: 'OpenAI, Anthropic, custom or local', logins: 'ChatGPT or Claude subscription, API key' },
-];
+import { harnesses } from './harnesses';
 ---
 <section class="sec" id="harnesses">
   <div class="wrap">
     <span class="tag">[ <b>harnesses</b> ]</span>
-    <h2>Three harnesses, mixed in one team.</h2>
+    <h2>Pick a harness for each agent.</h2>
     <table class="spec">
-      <tr><th>Harness</th><th>Pinned</th><th>Models</th><th>Logins</th></tr>
-      {HARNESSES.map((h) => (
-        <tr><td>{h.name}</td><td><code>{h.pinned}</code></td><td>{h.models}</td><td>{h.logins}</td></tr>
-      ))}
+      <thead><tr><th scope="col">Harness</th><th scope="col">Pinned version</th><th scope="col">Models or engines</th><th scope="col">Logins and keys</th></tr></thead>
+      <tbody>
+        {harnesses.map((h) => (
+          <tr data-harness={h.id}>
+            <td><a href={h.href}>{h.name}</a></td><td><code>{h.pin}</code></td>
+            <td><span class="mobile-label">Models or engines</span>{h.models}</td>
+            <td><span class="mobile-label">Logins and keys</span>{h.logins}</td>
+          </tr>
+        ))}
+      </tbody>
     </table>
-    <p class="foot">More harnesses are in research. <a href="https://github.com/noopolis/spawnfile/issues" rel="noopener">Ask for one</a>. <a href="/runtimes/overview/">Runtime support matrix</a>.</p>
+    <p class="foot"><a href="/runtimes/overview/">Compare runtime features</a> or <a href="/contributing/adding-a-runtime/">connect your own harness</a>.</p>
   </div>
 </section>

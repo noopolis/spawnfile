@@ -1,7 +1,7 @@
 /* Landing base: reset, type, nav, buttons, the bracket frame, footer and toast. */
 :root { --wrap: 77.5rem; --gut: clamp(1rem, 4vw, 2.5rem); --sig-soft: color-mix(in srgb, var(--sig) 11%, transparent); }
 * { box-sizing: border-box; }
-html { background: var(--bg); scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+html { background: var(--bg); scroll-behavior: smooth; scroll-padding-top: 3.75rem; -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 400 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 a { color: inherit; text-decoration: none; }
 b { font-weight: 500; color: var(--ink); }

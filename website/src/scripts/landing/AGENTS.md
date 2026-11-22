@@ -11,4 +11,4 @@ Behavior for the landing page; `index.ts` is the single entry imported by
 - `chrome.ts`: sticky nav rule, copy buttons, toast, GitHub star count.
 - `motion.ts`: reduced-motion check and sleep.
 
-The stage output tree must mirror a real `spawnfile compile` of the example org.
+The stage reads its source from `examples/research-org`. Its output tree and agent labels must match a real compile.

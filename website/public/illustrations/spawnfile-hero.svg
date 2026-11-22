@@ -1,4 +1,4 @@
-<svg xml:space="preserve" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 520" role="img" aria-label="A team Spawnfile compiled and started with spawnfile up: three agents on OpenClaw and Daimon, talking in a Moltnet room">
+<svg xml:space="preserve" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 520" role="img" aria-label="Research team using Daimon, OpenClaw, OpenCode, Hermes Agent and PicoClaw, with a Moltnet room for the coordinator and analyst">
 <style>
 text{white-space:pre}
 .l{opacity:0;animation:show 12s infinite}
@@ -13,19 +13,20 @@ text{white-space:pre}
 <circle cx="62" cy="60" r="5.5" fill="#262b30"/>
 <circle cx="80" cy="60" r="5.5" fill="#262b30"/>
 <circle cx="98" cy="60" r="5.5" fill="#262b30"/>
-<text x="124" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4">research-desk/Spawnfile</text>
+<text x="124" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4">research-org/Spawnfile</text>
 <rect x="428" y="49" width="96" height="22" rx="5" fill="none" stroke="#9aa1a9"/><text x="476" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#9aa1a9" text-anchor="middle">you write</text>
-<text x="68" y="118" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">kind:</tspan><tspan fill="#eef1f4"> team</tspan></text>
-<text x="68" y="148" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">name:</tspan><tspan fill="#eef1f4"> research-desk</tspan></text>
-<text x="68" y="178" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">mode:</tspan><tspan fill="#eef1f4"> hierarchical</tspan></text>
-<text x="68" y="208" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">lead:</tspan><tspan fill="#eef1f4"> lead</tspan></text>
-<text x="68" y="238" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">members:</tspan><tspan fill="#eef1f4"> </tspan></text>
-<text x="68" y="268" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">  - id:</tspan><tspan fill="#eef1f4"> lead</tspan></text>
-<text x="68" y="298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">  - id:</tspan><tspan fill="#eef1f4"> researcher</tspan></text>
-<text x="68" y="328" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">  - id:</tspan><tspan fill="#eef1f4"> writer</tspan></text>
-<text x="68" y="358" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">networks:</tspan><tspan fill="#eef1f4"> </tspan></text>
-<text x="68" y="388" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">  - id:</tspan><tspan fill="#eef1f4"> desk</tspan></text>
-<text x="68" y="418" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17"><tspan fill="#8a929a">    provider:</tspan><tspan fill="#eef1f4"> moltnet</tspan></text>
+<text x="68" y="112" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">kind:</tspan><tspan fill="#eef1f4"> team</tspan></text>
+<text x="68" y="141" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">name:</tspan><tspan fill="#eef1f4"> research-org</tspan></text>
+<text x="68" y="170" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">mode:</tspan><tspan fill="#eef1f4"> hierarchical</tspan></text>
+<text x="68" y="199" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">lead:</tspan><tspan fill="#eef1f4"> coordinator</tspan></text>
+<text x="68" y="228" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">members:</tspan><tspan fill="#eef1f4"></tspan></text>
+<text x="68" y="257" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: coordinator, ref: ./daimon }</tspan></text>
+<text x="68" y="286" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: analyst, ref: ./openclaw }</tspan></text>
+<text x="68" y="315" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: engineer, ref: ./opencode }</tspan></text>
+<text x="68" y="344" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: field-team, ref: ./field }</tspan></text>
+<text x="68" y="373" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">networks:</tspan><tspan fill="#eef1f4"></tspan></text>
+<text x="68" y="402" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - id:</tspan><tspan fill="#eef1f4"> lab</tspan></text>
+<text x="68" y="431" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">    provider:</tspan><tspan fill="#eef1f4"> moltnet</tspan></text>
 <text x="640" y="250" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#1e3a70" text-anchor="middle">··············</text>
 <text class="p" x="566" y="251" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#4f8cff">■</text>
 <text x="640" y="285" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4" text-anchor="middle">spawnfile up</text>
@@ -35,15 +36,15 @@ text{white-space:pre}
 <circle cx="762" cy="60" r="5.5" fill="#262b30"/>
 <circle cx="780" cy="60" r="5.5" fill="#262b30"/>
 <circle cx="798" cy="60" r="5.5" fill="#262b30"/>
-<text x="824" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4">zsh ~/research-desk</text>
+<text x="824" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4">zsh ~/research-org</text>
 <rect x="1128" y="49" width="96" height="22" rx="5" fill="none" stroke="#3ddc84"/><text x="1176" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#3ddc84" text-anchor="middle">docker</text>
-<text class="l" style="animation-delay:1.2s" x="768" y="124" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#eef1f4">$ spawnfile up . --detach</tspan></text>
-<text class="l" style="animation-delay:1.8s" x="768" y="160" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">lead        openclaw  openai</tspan></text>
-<text class="l" style="animation-delay:2.4s" x="768" y="196" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">researcher  daimon    codex</tspan></text>
-<text class="l" style="animation-delay:3.0s" x="768" y="232" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">writer      daimon    grok</tspan></text>
-<text class="l" style="animation-delay:3.6s" x="768" y="268" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">moltnet network desk</tspan></text>
-<text class="l" style="animation-delay:4.2s" x="768" y="304" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">● </tspan><tspan fill="#eef1f4">research-desk running</tspan></text>
-<text class="l" style="animation-delay:4.8s" x="768" y="340" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#8a929a">#general</tspan></text>
-<text class="l" style="animation-delay:5.4s" x="768" y="376" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#f5c451">lead:</tspan><tspan fill="#eef1f4"> @researcher find three sources</tspan></text>
-<text class="l" style="animation-delay:6.0s" x="768" y="412" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#f5c451">researcher:</tspan><tspan fill="#eef1f4"> notes in ./shared/outage.md</tspan></text>
+<text class="l" style="animation-delay:1.20s" x="768" y="120" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84"></tspan><tspan fill="#eef1f4">$ spawnfile up . --detach</tspan></text>
+<text class="l" style="animation-delay:1.75s" x="768" y="157" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">coordinator   Daimon</tspan></text>
+<text class="l" style="animation-delay:2.30s" x="768" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">analyst       OpenClaw</tspan></text>
+<text class="l" style="animation-delay:2.85s" x="768" y="231" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">engineer      OpenCode</tspan></text>
+<text class="l" style="animation-delay:3.40s" x="768" y="268" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">scout         Hermes Agent</tspan></text>
+<text class="l" style="animation-delay:3.95s" x="768" y="305" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">observer      PicoClaw</tspan></text>
+<text class="l" style="animation-delay:4.50s" x="768" y="342" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">● </tspan><tspan fill="#eef1f4">research-org running</tspan></text>
+<text class="l" style="animation-delay:5.05s" x="768" y="379" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84"># </tspan><tspan fill="#eef1f4">mission-control</tspan></text>
+<text class="l" style="animation-delay:5.60s" x="768" y="416" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84"></tspan><tspan fill="#eef1f4">coordinator · analyst</tspan></text>
 </svg>

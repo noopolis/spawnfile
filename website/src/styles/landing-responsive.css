@@ -7,7 +7,7 @@
   .col .row .t { overflow: visible; }
   .box { margin: 0; }
   .cap { padding-left: .5rem; padding-right: .5rem; }
-  .cap span:last-child { display: none; }
+  .cap { flex-wrap: wrap; gap: .25rem 1rem; }
   .isnot { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
 }
 @media (max-width: 44rem) {
@@ -20,7 +20,9 @@
   .sec { padding: 3rem 0; }
   /* harness table becomes stacked rows */
   table.spec { margin-top: 1.25rem; border-top: 1px solid var(--line-2); }
-  .spec tr:first-child { display: none; }
+  .spec thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+  .spec .mobile-label { display: block; font: .75rem/1.6 var(--mono); color: var(--mute); }
+  .spec td:nth-child(n+3) { display: grid; grid-template-columns: 6.5rem 1fr; column-gap: .65rem; padding-top: .45rem; }
   .spec tr { display: block; padding: 1rem 0; border-bottom: 1px solid var(--line); }
   .spec td { display: block; padding: .1rem 0; border: 0; }
   .spec td:first-child { display: inline-block; margin-right: .6rem; font-size: 1.1rem; }

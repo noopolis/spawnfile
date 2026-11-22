@@ -1,0 +1,9 @@
+spawnfile_version: "0.1"
+kind: agent
+name: engineer
+runtime: opencode
+workspace:
+  docs: { system: AGENTS.md }
+execution:
+  model:
+    primary: { provider: openai, name: gpt-5.4, auth: { method: codex } }

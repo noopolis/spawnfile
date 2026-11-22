@@ -3,6 +3,9 @@
 .intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem 3rem; flex-wrap: wrap; margin-top: clamp(1.25rem, 3vh, 2rem); }
 .sub { margin: 0; max-width: 31rem; font-size: clamp(1.05rem, 1.5vw, 1.25rem); line-height: 1.45; }
 
+.sub a { white-space: nowrap; color: var(--ink); font-weight: 600; text-decoration-color: var(--line-2); text-underline-offset: .15em; }
+.sub a:hover { text-decoration-color: var(--sig); }
+
 .stage { margin-top: clamp(1.75rem, 4.5vh, 3rem); font: 400 .8125rem/1.85 var(--mono); }
 .stage.live::before, .stage.live::after { border-color: var(--sig); }
 .cols { display: grid; grid-template-columns: 1.42fr 1.12fr .86fr; }
@@ -36,6 +39,7 @@ button.step:hover .cmd, .step.on .cmd { color: var(--sig); }
 .box > * { margin-bottom: .3rem; }
 .room, .chip { display: flex; align-items: center; gap: .6rem; padding: 0 .5rem; border-radius: 2px; white-space: nowrap; color: var(--ink); transition: background .12s, box-shadow .12s, opacity .2s; }
 :is(.room, .chip, .tn) small { margin-left: auto; font-size: inherit; color: var(--faint); }
+.chip small { color: var(--mute); }
 .room .h { color: var(--sig); }
 .team { position: relative; margin-top: .45rem; padding-left: .9rem; transition: opacity .2s; }
 .team::before { content: ''; position: absolute; left: .68rem; top: 1.85em; bottom: .9em; width: .45rem; border: 1px solid var(--line-2); border-right: 0; }
@@ -48,5 +52,7 @@ button.step:hover .cmd, .step.on .cmd { color: var(--sig); }
 .anim.focus .o.in:not(.hit) { opacity: .32; }
 
 .cap { display: flex; justify-content: space-between; gap: 1rem; margin-top: .25rem; padding: .7rem .25rem .1rem; border-top: 1px solid var(--line); color: var(--mute); }
-.cap span:last-child { color: var(--faint); white-space: nowrap; }
+.cap a { flex: none; color: var(--mute); text-underline-offset: .2em; }
+.chip:focus-visible, .row:focus-visible, .room:focus-visible { outline: 1px solid var(--sig); outline-offset: 1px; }
+.live .dot { background: var(--green); }
 .cap em { font-style: normal; color: var(--sig); }
