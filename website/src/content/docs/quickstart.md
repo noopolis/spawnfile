@@ -29,6 +29,16 @@ npm link
 spawnfile --version
 ```
 
+### Install Moltnet for a managed room
+
+When your team declares a managed room, Spawnfile calls the host Moltnet CLI to generate its network configuration. Install the CLI for your machine and add its directory to your shell’s search path. The compiled container uses Spawnfile’s pinned Linux release. [Moltnet installation](https://github.com/noopolis/moltnet#readme)
+
+```sh
+curl -fsSL https://moltnet.dev/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+moltnet --help
+```
+
 ## Create an Agent
 
 ```bash

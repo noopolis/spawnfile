@@ -43,7 +43,16 @@ jobs:
         working-directory: website
         run: npm ci
 
+      - name: Prepare the pinned Moltnet CLI for the example's managed room
+        run: |
+          node --import tsx --input-type=module <<'JS'
+          import { stageMoltnetBinaries } from './src/compiler/moltnetBinaries.ts';
+          await stageMoltnetBinaries(process.env.RUNNER_TEMP);
+          JS
+
       - name: Build and verify the homepage against the compiler
+        env:
+          SPAWNFILE_MOLTNET_CLI: ${{ runner.temp }}/moltnet-bin/moltnet
         working-directory: website
         run: |
           npm run build

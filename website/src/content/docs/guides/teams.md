@@ -16,7 +16,7 @@ Spawnfile v0.1 alpha does not inject a team-message MCP tool, a surface router, 
 
 The homepage follows five agents through the same build. Daimon coordinates, OpenClaw analyzes, and OpenCode handles engineering. The nested field team runs its scout on Hermes Agent and its observer on PicoClaw. Only the coordinator and analyst join the example’s Moltnet room.
 
-With the [current CLI installed from source](/quickstart/#install-from-source), create a copy of the example in an empty directory. Compilation makes no model calls.
+Install the [current Spawnfile CLI](/quickstart/#install-from-source) and [Moltnet CLI](/quickstart/#install-moltnet-for-a-managed-room). The compiler uses Moltnet to generate the room configuration. Create a copy of the team in an empty directory. Compilation makes no model calls.
 
 ```sh
 spawnfile init research-team --template research-org
