@@ -9,7 +9,7 @@ export default defineConfig({
     sitemap(),
     starlight({
       title: 'Spawnfile',
-      description: 'Declare an AI agent team once, compile it for OpenClaw, PicoClaw and Daimon, run it in Docker on your subscriptions, and train its agents in place.',
+      description: 'Declare an AI agent team once, compile it for its chosen harnesses, run it in Docker on your subscriptions, and train its agents in place.',
       components: {
         ThemeProvider: './src/components/ThemeProvider.astro',
         ThemeSelect: './src/components/EmptyThemeSelect.astro',

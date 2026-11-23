@@ -1,6 +1,4 @@
 ---
-// Hero: the positioning line, calls to action, and the declare-compile-run stage.
-import { harnesses } from './harnesses';
 import Cta from './Cta.astro';
 import Stage from './Stage.astro';
 ---
@@ -8,7 +6,7 @@ import Stage from './Stage.astro';
   <div class="wrap">
     <h1>The Dockerfile for agentic organizations.</h1>
     <div class="intro">
-      <p class="sub">Compile one Spawnfile for {harnesses.map((h, i) => <>{i === 0 ? '' : i === harnesses.length - 1 ? ', and ' : ', '}<a href={h.href}>{h.name}</a></>)} and run the team in Docker.</p>
+      <p class="sub">Define the team in a Spawnfile. Run it in Docker.</p>
       <Cta />
     </div>
     <Stage />

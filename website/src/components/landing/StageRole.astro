@@ -1,0 +1,9 @@
+---
+import type { ResearchRole } from './researchTeam';
+interface Props { role: ResearchRole }
+const { id, guide, lead } = Astro.props.role;
+---
+<li class="demo-role" data-peer={id} data-runtime={guide.id}>
+  <span>{id}{lead && <small class="lead-role"> lead</small>}</span>
+  <a class="runtime" href={guide.href}>{guide.name}</a>
+</li>

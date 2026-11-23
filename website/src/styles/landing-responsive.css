@@ -1,30 +1,43 @@
-/* Narrow layouts. Most traffic is phones: columns stack and code scrolls sideways in place. */
+/* Navigation and the sections below the landing example. */
 @media (max-width: 62rem) {
   .top .wrap, .top nav { gap: .75rem; }
-  .cols, .grid, .built .wrap, .org { grid-template-columns: minmax(0, 1fr); }
-  .col, .col:first-child, .col:last-child { border-left: 0; padding: 0 .5rem 1.25rem; overflow-x: auto; }
-  .col .row { width: max-content; min-width: 100%; margin: 0; }
-  .col .row .t { overflow: visible; }
-  .box { margin: 0; }
-  .cap { padding-left: .5rem; padding-right: .5rem; }
-  .cap { flex-wrap: wrap; gap: .25rem 1rem; }
+  .grid, .built .wrap, .org { grid-template-columns: minmax(0, 1fr); }
   .isnot { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
 }
 @media (max-width: 44rem) {
-  .top nav { display: none; }
   .btn small { display: none; }
   .cta { width: 100%; }
   .btn { flex: 1 1 auto; justify-content: center; }
   .install { flex: 1 1 auto; }
   .install code { flex: 1; }
   .sec { padding: 3rem 0; }
-  /* harness table becomes stacked rows */
+}
+.sec, .end, .built, footer { container: section / inline-size; }
+@container section (max-width: 44rem) {
+  /* Stack each harness and its settings in reading order. */
+  table.spec, .spec tbody, .spec tr, .spec td { display: block; min-width: 0; }
+  .spec td, .spec code { overflow-wrap: anywhere; }
   table.spec { margin-top: 1.25rem; border-top: 1px solid var(--line-2); }
   .spec thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
   .spec .mobile-label { display: block; font: .75rem/1.6 var(--mono); color: var(--mute); }
-  .spec td:nth-child(n+3) { display: grid; grid-template-columns: 6.5rem 1fr; column-gap: .65rem; padding-top: .45rem; }
+  .spec td:nth-child(n+3) { display: grid; grid-template-columns: minmax(0, 6.5rem) minmax(0, 1fr); column-gap: .65rem; padding-top: .45rem; }
   .spec tr { display: block; padding: 1rem 0; border-bottom: 1px solid var(--line); }
   .spec td { display: block; padding: .1rem 0; border: 0; }
-  .spec td:first-child { display: inline-block; margin-right: .6rem; font-size: 1.1rem; }
+  .spec td:first-child { white-space: normal; display: inline-block; margin-right: .6rem; font-size: 1.1rem; }
   .spec td:nth-child(2) { display: inline-block; }
+}
+@container masthead (max-width: 44rem) {
+  .top nav, .top .grow { display: none; }
+  .top .wrap { justify-content: space-between; gap: .4rem; }
+}
+@container masthead (max-width: 17rem) {
+  .top .wrap { flex-wrap: wrap; height: auto; min-height: var(--nav-content); }
+}
+@container section (max-width: 19rem) {
+  .spec td:nth-child(n+3) { display: block; }
+  .cta, .install, .org .links, footer nav { flex-wrap: wrap; max-width: 100%; }
+  .install { height: auto; }
+  .install code { min-width: 0; padding-inline: .4rem; white-space: normal; overflow-wrap: anywhere; }
+  .btn { min-height: 2.75rem; height: auto; line-height: 1.3; align-items: center; }
+  .org a, footer a { overflow-wrap: anywhere; }
 }
