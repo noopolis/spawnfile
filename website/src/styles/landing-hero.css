@@ -105,7 +105,6 @@
   .demo-file pre { font-size: .875rem; }
 }
 @media (min-width: 90rem) and (min-height: 56rem) {
-  .hero .wrap { max-width: 83rem; }
   .hero h1 { font-size: clamp(4.75rem, 6vw, 5.5rem); }
   .hero .intro { margin-top: clamp(1.1rem, 2.2vh, 1.8rem); }
   .team-demo { margin-top: clamp(1.8rem, 4.8vh, 4rem); }

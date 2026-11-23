@@ -12,7 +12,7 @@ test('the first screen shows the Spawnfile and ends where Format begins', async 
 
   for (const [width, height, single] of [
     [320, 320, true], [390, 664, true], [844, 390, true], [744, 1133, true],
-    [768, 1024, false], [1024, 768, false], [1440, 800, false], [2560, 1440, false],
+    [768, 1024, false], [1024, 768, false], [1440, 800, false], [1440, 896, false], [2560, 1440, false],
   ] as const) {
     await t.test(`${width} x ${height}`, async () => {
       const page = await browser.newPage({ viewport: { width, height }, javaScriptEnabled: !single, hasTouch: single });
@@ -26,6 +26,19 @@ test('the first screen shows the Spawnfile and ends where Format begins', async 
         assert.ok(await page.locator('.source-line[data-peer="coordinator"]').isVisible(), 'the excerpt includes a member reference');
         const frame = await page.locator('.team-demo').boundingBox();
         assert.ok(frame && frame.y >= 0 && frame.y + frame.height <= height + 1, 'the whole example fits');
+        const edges = await page.evaluate(() => {
+          const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+          return {
+            header: [rect('.top .logo').left, rect('.top .gh').right],
+            hero: [rect('.hero h1').left, rect('.team-demo').right],
+            format: [rect('#format h2').left, rect('#format .panel').right],
+          };
+        });
+        for (const section of ['hero', 'format'] as const) {
+          const [left, right] = edges[section];
+          assert.ok(Math.abs(left - edges.header[0]) <= 0.5, `${section} left edge ${left}, header ${edges.header[0]}`);
+          assert.ok(Math.abs(right - edges.header[1]) <= 0.5, `${section} right edge ${right}, header ${edges.header[1]}`);
+        }
         const format = await page.locator('#format').boundingBox();
         assert.ok(format && Math.abs(format.y - height) <= 1, 'Format begins at the fold');
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
