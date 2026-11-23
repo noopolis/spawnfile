@@ -1,7 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { preview } from 'astro';
-import { chromium } from 'playwright-core';
+import { chromium, type Page } from 'playwright-core';
+
+async function assertAlignedEdges(page: Page) {
+  const edges = await page.evaluate(() => {
+    const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+    return {
+      header: [rect('.top .logo').left, rect('.top .gh').right],
+      hero: [rect('.hero h1').left, rect('.team-demo').right],
+      format: [rect('#format h2').left, rect('#format .panel').right],
+    };
+  });
+  for (const section of ['hero', 'format'] as const) {
+    const [left, right] = edges[section];
+    assert.ok(Math.abs(left - edges.header[0]) <= 0.5, `${section} left edge ${left}, header ${edges.header[0]}`);
+    assert.ok(Math.abs(right - edges.header[1]) <= 0.5, `${section} right edge ${right}, header ${edges.header[1]}`);
+  }
+}
 
 test('the first screen shows the Spawnfile and ends where Format begins', async (t) => {
   const server = await preview({ server: { host: '127.0.0.1', port: 0 }, logLevel: 'silent' });
@@ -26,19 +42,7 @@ test('the first screen shows the Spawnfile and ends where Format begins', async 
         assert.ok(await page.locator('.source-line[data-peer="coordinator"]').isVisible(), 'the excerpt includes a member reference');
         const frame = await page.locator('.team-demo').boundingBox();
         assert.ok(frame && frame.y >= 0 && frame.y + frame.height <= height + 1, 'the whole example fits');
-        const edges = await page.evaluate(() => {
-          const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
-          return {
-            header: [rect('.top .logo').left, rect('.top .gh').right],
-            hero: [rect('.hero h1').left, rect('.team-demo').right],
-            format: [rect('#format h2').left, rect('#format .panel').right],
-          };
-        });
-        for (const section of ['hero', 'format'] as const) {
-          const [left, right] = edges[section];
-          assert.ok(Math.abs(left - edges.header[0]) <= 0.5, `${section} left edge ${left}, header ${edges.header[0]}`);
-          assert.ok(Math.abs(right - edges.header[1]) <= 0.5, `${section} right edge ${right}, header ${edges.header[1]}`);
-        }
+        await assertAlignedEdges(page);
         const format = await page.locator('#format').boundingBox();
         assert.ok(format && Math.abs(format.y - height) <= 1, 'Format begins at the fold');
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -64,6 +68,12 @@ test('the first screen shows the Spawnfile and ends where Format begins', async 
           await docker.getByRole('button', { name: 'Replay the example startup' }).click();
           assert.equal(await docker.locator('.demo-role a:visible').count(), 5);
         }
+        await page.evaluate(() => {
+          document.documentElement.style.fontSize = '200%';
+          window.scrollTo({ top: document.getElementById('format')!.offsetTop, behavior: 'instant' });
+        });
+        await assertAlignedEdges(page);
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'enlarged text fits horizontally');
       } finally {
         await page.close();
       }

@@ -12,7 +12,6 @@ code, pre { font-family: var(--mono); font-feature-settings: 'calt' 0, 'liga' 0;
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 :focus-visible { outline: 2px solid var(--sig); outline-offset: 3px; border-radius: 2px; }
 .wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding-left: max(var(--gut), env(safe-area-inset-left, 0px)); padding-right: max(var(--gut), env(safe-area-inset-right, 0px)); }
-.grow { flex: 1; }
 
 /* nav */
 .top { container: masthead / inline-size; padding-top: env(safe-area-inset-top, 0px); position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid transparent; transition: border-color .2s; }
@@ -21,7 +20,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .logo { font: 500 .95rem var(--mono); color: var(--faint); letter-spacing: -.01em; white-space: nowrap; }
 .top nav { display: flex; gap: 1.6rem; font-size: .875rem; color: var(--mute); }
 .top nav a:hover, .gh:hover { color: var(--ink); }
-.gh { font: 400 .8125rem var(--mono); color: var(--mute); white-space: nowrap; }
+.gh { margin-inline-start: auto; font: 400 .8125rem var(--mono); color: var(--mute); white-space: nowrap; }
 
 /* headings and running text */
 h1 { margin: 0; font: 700 clamp(2.5rem, 6.1vw, 5.5rem)/.96 var(--display); font-stretch: 90%; letter-spacing: -.022em; color: var(--ink); text-wrap: balance; max-width: 10em; }

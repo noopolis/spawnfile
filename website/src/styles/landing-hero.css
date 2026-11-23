@@ -206,7 +206,7 @@
 @media (width < 47rem), (height <= 39rem) {
   .source-line[data-peer] { padding-inline-start: 4ch; text-indent: -4ch; }
   .source-ref { white-space: nowrap; }
-  .example-views { display: flex; align-items: stretch; gap: .75rem; border-bottom: 1px solid var(--line-2); }
+  .example-views { display: flex; flex-wrap: wrap; align-items: stretch; gap: .75rem; border-bottom: 1px solid var(--line-2); }
   .file-heading, .demo-file .n, .demo-docker-header .demo-command { display: none; }
   .team-demo:has(#example-source-mode:checked) .demo-docker,
   .team-demo:has(#example-source-mode:checked) .demo-foot,
@@ -240,7 +240,6 @@
   .demo-docker { border-left: 0; padding-left: 0; }
 }
 @container landing (max-width: 19rem) {
-  .example-views { flex-wrap: wrap; }
   .example-views label { min-width: 0; overflow-wrap: anywhere; }
   .source-ref { white-space: normal; }
   .hero .wrap { display: block; }
