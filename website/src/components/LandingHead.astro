@@ -1,0 +1,89 @@
+---
+// Landing <head>: metadata, link previews, icons, fonts and structured data.
+import { harnessNames } from './landing/harnesses';
+const TITLE = 'Spawnfile | The Dockerfile for agentic organizations';
+const DESCRIPTION =
+  `Declare a team of agents in a Spawnfile. Compile it for ${harnessNames} and run it in Docker.`;
+const OG_ALT = 'Spawnfile: the Dockerfile for agentic organizations.';
+const NOOPOLIS = { '@type': 'Organization', name: 'Noopolis', url: 'https://noopolis.ai' };
+const qa = (name: string, text: string) => ({ '@type': 'Question', name, acceptedAnswer: { '@type': 'Answer', text } });
+const structured = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    { '@type': 'WebSite', name: 'Spawnfile', url: 'https://spawnfile.com/', description: DESCRIPTION },
+    {
+      '@type': 'SoftwareSourceCode',
+      name: 'Spawnfile',
+      description: 'An open-source source format and compiler for AI agent teams: one Spawnfile compiles to each harness\'s native config and runs the team in Docker.',
+      url: 'https://github.com/noopolis/spawnfile',
+      codeRepository: 'https://github.com/noopolis/spawnfile',
+      license: 'https://opensource.org/licenses/MIT',
+      programmingLanguage: 'TypeScript',
+      author: NOOPOLIS,
+    },
+    {
+      '@type': 'SoftwareApplication',
+      name: 'Spawnfile',
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'macOS, Linux',
+      url: 'https://spawnfile.com/',
+      downloadUrl: 'https://www.npmjs.com/package/spawnfile',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      license: 'https://opensource.org/licenses/MIT',
+      author: NOOPOLIS,
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: [
+        qa('What is Spawnfile?', 'Spawnfile is an open-source source format and compiler for AI agent teams. You declare agents, their identity docs, skills, MCP servers, models, schedules and Moltnet rooms once; Spawnfile compiles that into each harness\'s native configuration and runs the team in Docker.'),
+        qa('Which harnesses does Spawnfile support?', `Spawnfile includes ${harnessNames}. Declare an external adapter in the root Spawnfile to use another harness.`),
+        qa('Do I need API keys?', 'No. You can import a ChatGPT or Claude subscription login into an auth profile, or run Daimon agents on ChatGPT, Grok or Antigravity subscriptions. API keys and local endpoints also work.'),
+        qa('Can Spawnfile train agents?', 'All bundled harnesses can run training trials. Each stored trial writes a portable .eval file with the observed reply, actions, selected files and grades.'),
+        qa('Is Spawnfile a hosted service?', 'No. It is a CLI and a source format. There is no account, database or web app to run; the team runs in Docker on machines you choose.'),
+      ],
+    },
+  ],
+};
+---
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-8ZM3Y7MCD5"></script>
+<script is:inline>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-8ZM3Y7MCD5');</script>
+<title>{TITLE}</title>
+<meta name="description" content={DESCRIPTION} />
+<link rel="canonical" href="https://spawnfile.com/" />
+<link rel="sitemap" href="/sitemap-index.xml" />
+<meta name="theme-color" content="#08090a" />
+<meta name="author" content="Noopolis" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Spawnfile" />
+<meta property="og:title" content={TITLE} />
+<meta property="og:description" content={DESCRIPTION} />
+<meta property="og:url" content="https://spawnfile.com/" />
+<meta property="og:image" content="https://spawnfile.com/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content={OG_ALT} />
+<meta property="og:locale" content="en_US" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={TITLE} />
+<meta name="twitter:description" content={DESCRIPTION} />
+<meta name="twitter:image" content="https://spawnfile.com/og.png" />
+<meta name="twitter:image:alt" content={OG_ALT} />
+
+<!-- Icons -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+<!-- Fonts: self-hosted (styles/fonts.css); preload what the first screen draws. -->
+<link rel="preload" href="/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/geist-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+<script type="application/ld+json" set:html={JSON.stringify(structured)} />

@@ -1,0 +1,14 @@
+---
+// Training runs the selected agent with its compiled workspace.
+import Panel from './Panel.astro';
+---
+<section class="sec" id="train">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">[ <b>train</b> ]</span>
+      <h2>Train an agent on your cases.</h2>
+      <p class="lead"><code>spawnfile train</code> runs your cases on the agent’s own harness. Each stored trial writes a portable <code>.eval</code> with its reply, observed tools and grades. <a href="/guides/training/">Training guide</a></p>
+    </div>
+    <Panel lang="shell" code="$ spawnfile train ./Spawnfile --agent writer --dry-run" />
+  </div>
+</section>

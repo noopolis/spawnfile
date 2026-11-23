@@ -1,0 +1,17 @@
+---
+// Run: auth, up, status, publish.
+import Panel from './Panel.astro';
+const RUN = `$ spawnfile up . --auth-profile research --detach
+$ spawnfile status . --live
+$ spawnfile publish`;
+---
+<section class="sec" id="run">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">[ <b>run</b> ]</span>
+      <h2>Run it, check it, share it.</h2>
+      <p class="lead">Sign each harness into its account, then start the team and its rooms together. <a href="/guides/teams/#compile-the-homepage-team">Set up the example team</a>.</p>
+    </div>
+    <Panel lang="shell" code={RUN} />
+  </div>
+</section>

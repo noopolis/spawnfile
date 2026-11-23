@@ -1,0 +1,8 @@
+---
+// Replaces Starlight's ThemeProvider: the docs ship dark only, so the palette in
+// styles/custom.css is the one every visitor sees.
+---
+<script is:inline>
+  document.documentElement.dataset.theme = 'dark';
+  window.StarlightThemeProvider = { updatePickers() {} };
+</script>

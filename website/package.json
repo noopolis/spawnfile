@@ -3,17 +3,25 @@
   "type": "module",
   "version": "0.1.0",
   "private": true,
-  "description": "Spawnfile documentation and landing page.",
+  "description": "Spawnfile landing page and documentation.",
   "license": "MIT",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build && node scripts/generate-llms-txt.mjs",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "images": "node scripts/generate-images.mjs",
+    "test:homepage": "node --experimental-strip-types --test src/components/landing/*.test.ts"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",
     "@astrojs/starlight": "^0.41.7",
-    "astro": "^7.2.2",
+    "astro": "^7.3.8",
+    "js-yaml": "4.3.2",
     "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "4.0.9",
+    "parse5": "7.3.0",
+    "playwright-core": "1.65.1"
   }
 }

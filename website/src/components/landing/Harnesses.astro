@@ -1,0 +1,22 @@
+---
+import { harnesses } from './harnesses';
+---
+<section class="sec" id="harnesses">
+  <div class="wrap">
+    <span class="tag">[ <b>harnesses</b> ]</span>
+    <h2>Pick a harness for each agent.</h2>
+    <table class="spec">
+      <thead><tr><th scope="col">Harness</th><th scope="col">Pinned version</th><th scope="col">Models or engines</th><th scope="col">Logins and keys</th></tr></thead>
+      <tbody>
+        {harnesses.map((h) => (
+          <tr data-harness={h.id}>
+            <td><a href={h.href}>{h.name}</a></td><td><code>{h.pin}</code></td>
+            <td><span class="mobile-label">Models or engines</span>{h.models}</td>
+            <td><span class="mobile-label">Logins and keys</span>{h.logins}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <p class="foot"><a href="/runtimes/overview/">Compare runtime features</a> or <a href="/contributing/adding-a-runtime/">connect your own harness</a>.</p>
+  </div>
+</section>

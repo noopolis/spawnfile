@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- Source of public/og.png. Render at 1200x630 with a headless browser after fonts load. -->
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:"Bricolage Grotesque";font-weight:400 800;font-stretch:75% 100%;src:url("../public/fonts/bricolage-grotesque-latin.woff2")}
+@font-face{font-family:Geist;font-weight:300 800;src:url("../public/fonts/geist-latin.woff2")}
+@font-face{font-family:"Geist Mono";font-weight:400 700;src:url("../public/fonts/geist-mono-latin.woff2")}
+*{margin:0;box-sizing:border-box}
+body{width:1200px;height:630px;background:#08090a;color:#eef1f4;font-family:Geist,sans-serif;padding:60px 72px;display:flex;flex-direction:column;justify-content:space-between}
+.mark{font:500 28px "Geist Mono",monospace;color:#5b636b}.mark b{color:#eef1f4;font-weight:500}
+h1{font:700 104px/.96 "Bricolage Grotesque",sans-serif;font-stretch:90%;letter-spacing:-.022em}
+p{margin-top:30px;font-size:31px;line-height:1.4;color:#b4bbc4;max-width:900px}
+p b{color:#eef1f4;font-weight:500}
+.foot{position:relative;display:flex;justify-content:space-between;padding:0 26px;font:24px/2.4 "Geist Mono",monospace;color:#8a929a}
+.foot::before,.foot::after{content:'';position:absolute;top:0;bottom:0;width:14px;border:1px solid #4f8cff}
+.foot::before{left:0;border-right:0}.foot::after{right:0;border-left:0}
+.foot b{color:#eef1f4;font-weight:400}.foot i{font-style:normal;color:#5b636b}
+</style></head><body>
+<div class="mark">[ <b>spawnfile</b> ]</div>
+<div>
+  <h1>The Dockerfile for<br>agentic organizations.</h1>
+  <p>Compile one Spawnfile for <b>Daimon</b>, <b>OpenClaw</b>, <b>PicoClaw</b>, <b>Hermes Agent</b>, and <b>OpenCode</b> and run the team in Docker.</p>
+</div>
+<div class="foot"><span><i>$</i> <b>spawnfile compile</b></span><span>spawnfile.com</span></div>
+</body></html>

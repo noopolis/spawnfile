@@ -1,0 +1,48 @@
+---
+import { excerpt, groups, roles, rooms, teamName } from './researchTeam';
+import { spawnfile } from './highlight';
+import StageRole from './StageRole.astro';
+---
+<section class="team-demo br" aria-label="Research team Spawnfile and Docker preview">
+  <fieldset class="example-views">
+    <legend>Example view</legend>
+    <input id="example-source-mode" name="example-view" type="radio" autocomplete="off" aria-controls="example-source" checked />
+    <label for="example-source-mode">Spawnfile</label>
+    <input id="example-team-mode" name="example-view" type="radio" autocomplete="off" aria-controls="example-team" aria-label="spawnfile up, preview the Docker team" />
+    <label for="example-team-mode"><span class="prompt-sign" aria-hidden="true">$</span>spawnfile up</label>
+  </fieldset>
+  <div class="demo-panels">
+    <div class="demo-file" id="example-source">
+      <div class="file-heading"><b>Spawnfile</b><small>Excerpt</small></div>
+      <pre aria-label="Excerpt from the research team Spawnfile">{excerpt.map(({ text, reference, peers }, i) => (
+        <span class="source-line" data-peer={peers} tabindex={peers ? 0 : undefined}><span class="n" aria-hidden="true">{i + 1}</span><Fragment set:html={spawnfile(text)} />{reference && <span class="source-ref" set:html={spawnfile(reference)} />}</span>
+      ))}</pre>
+      <a class="full-source" href="/research-org.spawnfile.txt">Full Spawnfile</a>
+    </div>
+    <div class="demo-docker" id="example-team">
+      <div class="demo-docker-header">
+        <span class="docker-kind"><b>Docker</b><small>1 container</small></span>
+        <button type="button" class="demo-command" aria-label="Replay the example startup" title="Replay the example startup"><span>$</span> spawnfile up</button>
+      </div>
+      <details class="demo-roster" open>
+        <summary class="demo-summary"><strong>{teamName}</strong><small>{roles.length} agents</small></summary>
+        <ul class="demo-roles">
+          {groups.map((group) => group.nested
+            ? <li class="field-group"><span>{group.id}</span><ul>{group.roles.map((role) => <StageRole role={role} />)}</ul></li>
+            : group.roles.map((role) => <StageRole role={role} />))}
+        </ul>
+      </details>
+      <ul class="demo-names" aria-label="Harnesses in this team">{roles.map(({ guide }) => <li>{guide.name}</li>)}</ul>
+      {rooms.map((room) => (
+        <div class="demo-room">
+          <b title="Moltnet room" aria-label={`Moltnet room ${room.id}`}>#{room.id}</b>
+          <small>{room.members.join(' · ')}</small>
+        </div>
+      ))}
+    </div>
+  </div>
+  <div class="demo-foot">
+    <a href="/guides/teams/#compile-the-homepage-team">Run this team</a>
+    <a href="/guides/compiling/#output-layout">Generated files</a>
+  </div>
+</section>

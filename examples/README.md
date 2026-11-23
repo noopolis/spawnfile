@@ -18,6 +18,7 @@ product code must not contain fixture-specific behavior.
 | `distribution-org` | Source-free image metadata, required/optional secrets, and managed Moltnet distribution |
 | `moltnet-team-chat` | Nested-team representatives communicating through parent and child Moltnet rooms |
 | `daimon-org` | One generated Daimon app with nested agents, shared files, and persistent Mneme recall |
+| `research-org` | The website’s five-harness research team with a coordinator, analyst, engineer and two field agents |
 | `mixed-runtime-org` | Daimon, OpenClaw, and PicoClaw sharing Moltnet and Mneme wiring |
 | `jungian-daimon-org` | Nested council topology, representative routing, and scoped memory bindings |
 

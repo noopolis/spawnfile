@@ -1,0 +1,21 @@
+spawnfile_version: "0.1"
+kind: team
+name: research-org
+mode: hierarchical
+lead: coordinator
+members:
+  - { id: coordinator, ref: ./daimon }
+  - { id: analyst, ref: ./openclaw }
+  - { id: engineer, ref: ./opencode }
+  - { id: field-team, ref: ./field }
+networks:
+  - id: lab
+    provider: moltnet
+    rooms:
+      - id: mission-control
+        members: [coordinator, analyst]
+    server:
+      mode: managed
+      listen: { bind: 127.0.0.1, port: 8787 }
+      store: { kind: memory }
+      auth: { mode: none }

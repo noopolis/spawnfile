@@ -3,15 +3,32 @@ title: Adding a Runtime
 description: How to add a new runtime adapter to Spawnfile.
 ---
 
-## Requirements
+## Bring your own harness
 
-A Spawnfile-compatible runtime must:
+Create an ESM module with a named `spawnfileAdapter` export. Its runtime name, container settings and config writer describe how Spawnfile builds your agent. The public `spawnfile/adapter` entry point exports types and the optional `RuntimeAdapterBase` class.
 
-1. Run as a long-lived service or daemon
-2. Use a markdown workspace as a first-class agent surface
-3. Expose a declarative config surface the compiler can emit to
+Declare each module once under `adapters` in the root Spawnfile. Each agent selects the name of its adapter. Packages and relative paths can be used in the same team.
 
-## Steps
+```yaml
+spawnfile_version: "0.1"
+kind: team
+name: harness-workshop
+adapters:
+  echo-harness: "@spawnfile-fixtures/echo-adapter"
+  word-count: ./word-count/adapter.mjs
+mode: swarm
+members:
+  - id: echo
+    runtime: { name: echo-harness }
+    workspace: { docs: { system: AGENTS.md } }
+  - id: counter
+    runtime: { name: word-count }
+    workspace: { docs: { system: AGENTS.md } }
+```
+
+The working example includes both modules and their project files. [Example team](https://github.com/noopolis/spawnfile/tree/main/fixtures/external-runtime-adapter) · [Typed adapter implementation](https://github.com/noopolis/spawnfile/blob/main/specs/RUNTIME_ADAPTERS.md#implement-an-adapter)
+
+## Contribute a bundled adapter
 
 ### 1. Add to the Registry
 
@@ -48,7 +65,7 @@ Create `src/runtime/myruntime/adapter.ts` implementing the `RuntimeAdapter` inte
 
 ### 4. Register
 
-Add the adapter to `src/runtime/registry.ts`.
+Register the adapter with the built-in runtime composition. Follow the existing adapter layout under `src/runtime/`.
 
 ### 5. Test
 

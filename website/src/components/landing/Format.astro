@@ -1,0 +1,21 @@
+---
+// The format: agent and team manifests.
+import Panel from './Panel.astro';
+import agentSource from '../../../../examples/research-org/daimon/Spawnfile?raw';
+const AGENT = agentSource.split('surfaces:')[0].trimEnd();
+---
+<section class="sec" id="format">
+  <div class="wrap grid">
+    <div>
+      <span class="tag">[ <b>format</b> ]</span>
+      <h2>Two kinds: agent and team.</h2>
+      <ul class="simple">
+        <li>An <b>agent</b> says who it is, which harness and model it runs on, and where it talks.</li>
+        <li>A <b>team</b> lists its members, its lead and its rooms.</li>
+        <li>Teams can contain teams.</li>
+        <li><a href="/spec/spec/">Read the full specification</a></li>
+      </ul>
+    </div>
+    <Panel lang="spawnfile" title="daimon/Spawnfile" code={AGENT} />
+  </div>
+</section>
