@@ -43,6 +43,10 @@ jobs:
         working-directory: website
         run: npm ci
 
+      - name: Install headless Chromium for the homepage layout checks
+        working-directory: website
+        run: npx playwright-core install --with-deps --only-shell chromium
+
       - name: Prepare the pinned Moltnet CLI for the example's managed room
         run: |
           node --import tsx --input-type=module <<'JS'
