@@ -105,7 +105,6 @@
   .demo-file pre { font-size: .875rem; }
 }
 @media (min-width: 90rem) and (min-height: 56rem) {
-  .hero .wrap { max-width: 83rem; }
   .hero h1 { font-size: clamp(4.75rem, 6vw, 5.5rem); }
   .hero .intro { margin-top: clamp(1.1rem, 2.2vh, 1.8rem); }
   .team-demo { margin-top: clamp(1.8rem, 4.8vh, 4rem); }
@@ -207,7 +206,7 @@
 @media (width < 47rem), (height <= 39rem) {
   .source-line[data-peer] { padding-inline-start: 4ch; text-indent: -4ch; }
   .source-ref { white-space: nowrap; }
-  .example-views { display: flex; align-items: stretch; gap: .75rem; border-bottom: 1px solid var(--line-2); }
+  .example-views { display: flex; flex-wrap: wrap; align-items: stretch; gap: .75rem; border-bottom: 1px solid var(--line-2); }
   .file-heading, .demo-file .n, .demo-docker-header .demo-command { display: none; }
   .team-demo:has(#example-source-mode:checked) .demo-docker,
   .team-demo:has(#example-source-mode:checked) .demo-foot,
@@ -241,7 +240,6 @@
   .demo-docker { border-left: 0; padding-left: 0; }
 }
 @container landing (max-width: 19rem) {
-  .example-views { flex-wrap: wrap; }
   .example-views label { min-width: 0; overflow-wrap: anywhere; }
   .source-ref { white-space: normal; }
   .hero .wrap { display: block; }

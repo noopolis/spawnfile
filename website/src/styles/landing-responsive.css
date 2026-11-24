@@ -1,6 +1,5 @@
 /* Navigation and the sections below the landing example. */
 @media (max-width: 62rem) {
-  .top .wrap, .top nav { gap: .75rem; }
   .grid, .built .wrap, .org { grid-template-columns: minmax(0, 1fr); }
   .isnot { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
 }
@@ -26,9 +25,12 @@
   .spec td:first-child { white-space: normal; display: inline-block; margin-right: .6rem; font-size: 1.1rem; }
   .spec td:nth-child(2) { display: inline-block; }
 }
+@container masthead (max-width: 62rem) {
+  .top .wrap, .top nav { gap: .75rem; }
+}
 @container masthead (max-width: 44rem) {
-  .top nav, .top .grow { display: none; }
-  .top .wrap { justify-content: space-between; gap: .4rem; }
+  .top nav { display: none; }
+  .top .wrap { gap: .4rem; }
 }
 @container masthead (max-width: 17rem) {
   .top .wrap { flex-wrap: wrap; height: auto; min-height: var(--nav-content); }
