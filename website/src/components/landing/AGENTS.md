@@ -5,7 +5,7 @@ Styles live in `src/styles/landing-*.css`; behavior in `src/scripts/landing/`.
 
 - `LandingNav.astro`, `LandingFooter.astro`: page chrome.
 - `Hero.astro`: positioning headline, calls to action and the stage.
-- `Stage.astro` shows the research team or its engineer, their authored Spawnfile, generated Dockerfile and running roster. Both examples open on the Spawnfile.
+- `Stage.astro` shows the research team or its engineer, a Spawnfile excerpt linked to its GitHub source, and the running roster.
 - `Format.astro`, `Shared.astro`, `Compile.astro`, `Run.astro`, `Harnesses.astro`,
   `Boundaries.astro`, `Train.astro`, `Closing.astro`: sections below the hero.
 - `Showcase.astro`: "Built with Spawnfile" strip, one card per real organization.

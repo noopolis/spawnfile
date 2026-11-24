@@ -27,7 +27,7 @@ test('the landing and README switch between team and agent examples', async (t) 
   t.after(() => browser.close());
 
   for (const [width, height, single] of [
-    [320, 320, true], [390, 664, true], [844, 390, true], [744, 1133, true],
+    [320, 320, true], [320, 568, true], [390, 664, true], [844, 390, true], [744, 1133, true],
     [768, 1024, false], [1024, 768, false], [1440, 800, false], [1440, 896, false], [2560, 1440, false],
   ] as const) {
     await t.test(`${width} x ${height}`, async () => {
@@ -36,12 +36,13 @@ test('the landing and README switch between team and agent examples', async (t) 
         await page.route((url) => url.origin !== origin, (route) => route.abort());
         await page.goto(origin);
         await page.evaluate(() => document.fonts.ready);
-        const source = page.locator('.demo-file [data-scope="team"] .authored-file pre');
+        const source = page.locator('.demo-file [data-scope="team"] pre');
         const docker = page.locator('.demo-docker');
         const choose = (id: string) => page.locator(`label[for="${id}"]`).click();
         const switchTop = () => page.locator('.scope-switch').evaluate((el) => el.getBoundingClientRect().top + scrollY);
         const visibleCode = page.locator('.demo-file pre:visible');
-        const recipeLink = page.getByRole('link', { name: 'Full Dockerfile' });
+        const full = page.getByRole('link', { name: 'Full Spawnfile', exact: true });
+        assert.equal(await page.locator('#team-agent').getByText(/Dockerfile/).count(), 0);
         assert.ok(await page.getByRole('radio', { name: 'Team', exact: true }).isChecked());
         assert.ok(await source.isVisible(), 'the authored source is visible on first load');
         assert.ok(await page.locator('.source-line[data-peer="coordinator"]').isVisible(), 'the excerpt includes a member reference');
@@ -53,16 +54,12 @@ test('the landing and README switch between team and agent examples', async (t) 
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         assert.equal(await page.locator('label[for="example-team-mode"]').isVisible(), single);
         const initialTop = await switchTop();
-        await choose('example-recipe-mode');
-        assert.ok(Math.abs(await switchTop() - initialTop) <= 1, 'switching files keeps the controls in place');
-        assert.match(await visibleCode.innerText(), /com\.spawnfile\.project='research-org'/);
-        assert.equal(await recipeLink.getAttribute('href'), '/research-org.dockerfile.txt');
+        assert.equal(await full.getAttribute('href'), 'https://github.com/noopolis/spawnfile/blob/main/examples/research-org/Spawnfile');
         await choose('scope-agent');
         assert.ok(Math.abs(await switchTop() - initialTop) <= 1, 'switching examples keeps the controls in place');
-        assert.match(await visibleCode.innerText(), /FROM node:24-bookworm-slim/);
-        assert.equal(await recipeLink.getAttribute('href'), '/engineer.dockerfile.txt');
-        await choose('example-source-mode');
+        assert.equal(await full.getAttribute('href'), 'https://github.com/noopolis/spawnfile/blob/main/examples/research-org/opencode/Spawnfile');
         assert.match(await visibleCode.innerText(), /runtime: opencode/);
+        if (height > 464) assert.match(await visibleCode.innerText(), /primary: \{ … \}/);
         if (single) await choose('example-team-mode');
         assert.equal(await docker.locator('.demo-role a:visible').count(), 1);
         assert.equal(await docker.locator('.demo-role a:visible').innerText(), 'OpenCode');
@@ -78,8 +75,6 @@ test('the landing and README switch between team and agent examples', async (t) 
           assert.equal(await source.isVisible(), false);
           assert.ok(await docker.isVisible());
           assert.equal(await docker.locator('.demo-role a:visible').count(), 5);
-          await page.keyboard.press('ArrowLeft');
-          assert.ok(await page.getByRole('radio', { name: 'Dockerfile', exact: true }).isChecked());
           await page.keyboard.press('ArrowLeft');
           assert.ok(await fileMode.isChecked());
           assert.ok(await source.isVisible());
@@ -107,27 +102,28 @@ test('the landing and README switch between team and agent examples', async (t) 
       }
     });
   }
-  await t.test('the README plays the same four views and respects reduced motion', async () => {
+  await t.test('the README switches between the two Spawnfiles and respects reduced motion', async () => {
     const page = await browser.newPage({ reducedMotion: 'no-preference' });
     try {
       const response = await page.goto(origin + '/illustrations/spawnfile-hero.svg');
       assert.ok(response?.ok());
-      const activeFrames = () => page.locator('g.scope-team > g, g.scope-agent > g').evaluateAll((frames) =>
-        frames.filter((frame) => getComputedStyle(frame).opacity === '1' && getComputedStyle(frame.parentElement!).opacity === '1')
-          .map((frame) => [frame.parentElement!.getAttribute('class'), frame.getAttribute('class')]));
-      const frames = [['team', 'source'], ['team', 'docker'], ['agent', 'source'], ['agent', 'docker']];
-      for (const [i, [scope, view]] of frames.entries()) {
+      assert.equal(await page.locator('text').filter({ hasText: 'Dockerfile' }).count(), 0);
+      assert.match(await page.locator('.scope-agent').textContent() ?? '', /primary: \{ … \}/);
+      const visibleFiles = () => page.locator('.filename').evaluateAll((files) =>
+        files.filter((file) => getComputedStyle(file.parentElement!).opacity === '1').map((file) => file.textContent));
+      const files = ['research-org/Spawnfile', 'opencode/Spawnfile'];
+      for (const [i, file] of files.entries()) {
         await page.evaluate((step) => {
           for (const animation of document.getAnimations()) {
             animation.pause();
-            animation.currentTime = (step + .5) * Number(animation.effect!.getComputedTiming().duration) / 4;
+            animation.currentTime = (step + .5) * Number(animation.effect!.getComputedTiming().duration) / 2;
           }
         }, i);
-        assert.deepEqual(await activeFrames(), [[`scope-${scope}`, `view-${view}`]]);
+        assert.deepEqual(await visibleFiles(), [file]);
       }
       await page.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await page.evaluate(() => document.getAnimations().length), 0);
-      assert.deepEqual(await activeFrames(), [['scope-team', 'view-source']]);
+      assert.deepEqual(await visibleFiles(), [files[0]]);
     } finally {
       await page.close();
     }

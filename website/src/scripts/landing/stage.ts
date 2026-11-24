@@ -34,10 +34,4 @@ export function stage(): void {
   };
   demo.querySelector('.demo-command')?.addEventListener('click', replay);
   demo.querySelector('#example-team-mode')?.addEventListener('change', replay);
-  const wide = matchMedia('(min-width: 47rem) and (height > 39rem)');
-  wide.addEventListener('change', () => {
-    if (wide.matches && demo.querySelector('#example-team-mode:checked')) {
-      demo.querySelector<HTMLInputElement>('#example-source-mode')?.click();
-    }
-  });
 }

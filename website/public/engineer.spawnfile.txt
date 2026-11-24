@@ -1,1 +1,0 @@
-../../examples/research-org/opencode/Spawnfile

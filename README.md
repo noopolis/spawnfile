@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="website/public/illustrations/spawnfile-hero.svg" alt="The Team and Agent switch shows the Spawnfile and generated Dockerfile for five research agents, then for their OpenCode engineer." width="720" />
+  <img src="website/public/illustrations/spawnfile-hero.svg" alt="The Team and Agent switch shows the Spawnfile and running agents for a five-agent research team, then for its OpenCode engineer." width="720" />
 </p>
 
 Spawnfile is Compose for agent teams. Declare who your agents are, what they use, when they wake and where they talk, in Markdown and a little YAML. Spawnfile compiles that source into each harness's native configuration, runs the whole team in Docker, and can train its agents in place.

@@ -13,12 +13,11 @@ import StageRole from './StageRole.astro';
         <input id="scope-agent" type="radio" name="example-scope" value="agent" autocomplete="off" />
         <label for="scope-agent">Agent</label>
       </fieldset>
+      <span class="stage-file-title">Spawnfile</span>
       <fieldset class="example-views">
         <legend>Example view</legend>
         <input id="example-source-mode" name="example-view" type="radio" autocomplete="off" aria-controls="example-source" checked />
         <label for="example-source-mode">Spawnfile</label>
-        <input id="example-recipe-mode" name="example-view" type="radio" autocomplete="off" aria-controls="example-source" />
-        <label for="example-recipe-mode">Dockerfile</label>
         <input id="example-team-mode" name="example-view" type="radio" autocomplete="off" aria-controls="example-team" aria-label="spawnfile up, preview the running example" />
         <label for="example-team-mode">Run</label>
       </fieldset>
@@ -26,16 +25,10 @@ import StageRole from './StageRole.astro';
     <div class="demo-file" id="example-source">
       {stageExamples.map((example) => (
         <div data-scope={example.scope}>
-          <div class="authored-file">
-            <pre aria-label={'Spawnfile for ' + example.name}>{example.lines.map(({ text, reference, peers }, i) => (
-              <span class="source-line" data-peer={peers} tabindex={peers ? 0 : undefined}><span class="n" aria-hidden="true">{i + 1}</span><Fragment set:html={spawnfile(text)} />{reference && <span class="source-ref" set:html={spawnfile(reference)} />}</span>
-            ))}</pre>
-            <a class="full-source" href={'/' + example.file + '.spawnfile.txt'}>Full Spawnfile</a>
-          </div>
-          <div class="generated-file">
-            <pre class="docker-code" tabindex="0" aria-label={'Generated Dockerfile for ' + example.name}><code>{example.recipe.trimEnd()}</code></pre>
-            <a class="full-source" href={'/' + example.file + '.dockerfile.txt'}>Full Dockerfile</a>
-          </div>
+          <pre aria-label={'Spawnfile for ' + example.name}>{example.lines.map(({ text, reference, peers }, i) => (
+            <span class="source-line" data-peer={peers} tabindex={peers ? 0 : undefined}><span class="n" aria-hidden="true">{i + 1}</span><Fragment set:html={spawnfile(text)} />{reference && <span class="source-ref" set:html={spawnfile(reference)} />}</span>
+          ))}</pre>
+          <a class="full-source" href={example.sourceUrl}>Full Spawnfile</a>
         </div>
       ))}
     </div>

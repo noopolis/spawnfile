@@ -52,22 +52,22 @@ function panelElements(panel: string, scope: string) {
   return [...elements(example)];
 }
 
-function linkedFile(nodes: Html.Element[], label: string) {
-  const link = nodes.find((node) => node.tagName === 'a' && textOf(node) === label);
-  assert.ok(link);
-  const href = attr(link, 'href');
-  assert.ok(href);
-  return readFileSync(join(dist, href), 'utf8');
-}
-
 for (const [scope, project] of [['team', 'examples/research-org'], ['agent', 'examples/research-org/opencode']]) {
-  test(`the ${scope} example shows its authored Spawnfile, generated Dockerfile and compiled roster`, (context) => {
+  test(`the ${scope} excerpt links to its complete Spawnfile on GitHub and matches its compiled roster`, (context) => {
     const file = panelElements('demo-file', scope);
     const source = readFileSync(join(root, project, 'Spawnfile'), 'utf8');
     const lines = file.filter((node) => byClass(node, 'source-line')).map((node) =>
       node.childNodes.filter((child) => !('tagName' in child && byClass(child, 'n'))).map(textOf).join(''));
-    assert.equal(lines.join('\n'), source.split(/^networks:/m, 1)[0].trimEnd());
-    assert.equal(linkedFile(file, 'Full Spawnfile'), source);
+    const expected = source.split(/^networks:/m, 1)[0].trimEnd().split('\n');
+    if (scope === 'agent') {
+      const primary = expected.findIndex((line) => line.trimStart().startsWith('primary:'));
+      assert.ok(primary >= 0);
+      expected[primary] = '    primary: { … }';
+    }
+    assert.deepEqual(lines, expected);
+    const full = file.find((node) => node.tagName === 'a' && textOf(node) === 'Full Spawnfile');
+    assert.ok(full);
+    assert.equal(attr(full, 'href'), `https://github.com/noopolis/spawnfile/blob/main/${project}/Spawnfile`);
 
     const out = mkdtempSync(join(tmpdir(), 'spawnfile-homepage-'));
     context.after(() => rmSync(out, { recursive: true, force: true }));
@@ -78,11 +78,7 @@ for (const [scope, project] of [['team', 'examples/research-org'], ['agent', 'ex
       nodes: { kind: string; id: string; runtime: string }[];
       container: { dockerfile: string; moltnet?: { server_plans: { rooms: { id: string; members: string[] }[] }[] } };
     };
-    const recipe = readFileSync(join(out, report.container.dockerfile), 'utf8');
-    const code = file.find((node) => byClass(node, 'docker-code'));
-    assert.ok(code);
-    assert.equal(textOf(code), recipe.trimEnd());
-    assert.equal(linkedFile(file, 'Full Dockerfile'), recipe);
+    assert.ok(existsSync(join(out, report.container.dockerfile)));
 
     const docker = panelElements('demo-docker', scope);
     const roles = docker.filter((node) => byClass(node, 'demo-role'));

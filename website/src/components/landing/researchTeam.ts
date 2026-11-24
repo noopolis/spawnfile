@@ -1,8 +1,6 @@
 import { load } from 'js-yaml';
 import source from '../../../../examples/research-org/Spawnfile?raw';
 import engineerSource from '../../../../examples/research-org/opencode/Spawnfile?raw';
-import teamDockerfile from '../../../public/research-org.dockerfile.txt?raw';
-import agentDockerfile from '../../../public/engineer.dockerfile.txt?raw';
 import { harnesses } from './harnesses';
 
 type Runtime = string | { name: string };
@@ -54,18 +52,20 @@ const engineer = load(engineerSource) as {
 const agentGroup = {
   id: engineer.name, nested: false, roles: [role({ id: engineer.name, runtime: engineer.runtime })],
 };
+const researchOrgOnGitHub = 'https://github.com/noopolis/spawnfile/blob/main/examples/research-org';
 export const stageExamples = [
   {
     scope: 'team', name: team.name, groups, rooms: team.networks.flatMap((n) => n.rooms),
-    lines: teamLines, recipe: teamDockerfile, file: 'research-org', facts: [],
+    lines: teamLines, sourceUrl: `${researchOrgOnGitHub}/Spawnfile`, facts: [],
     guide: '/guides/teams/#compile-the-homepage-team', guideLabel: 'Run this team',
   },
   {
     scope: 'agent', name: engineer.name, groups: [agentGroup], rooms: [],
-    lines: engineerSource.trimEnd().split('\n').map((text) => ({
-      text, reference: undefined, peers: text.startsWith('runtime:') ? engineer.name : undefined,
+    lines: engineerSource.trimEnd().split('\n').map((line) => ({
+      text: line.replace(/^(\s*primary:)\s*\{.*\}$/, '$1 { … }'),
+      reference: undefined, peers: line.startsWith('runtime:') ? engineer.name : undefined,
     })),
-    recipe: agentDockerfile, file: 'engineer',
+    sourceUrl: `${researchOrgOnGitHub}/opencode/Spawnfile`,
     facts: [['Model', engineer.execution.model.primary.name], ['Instructions', engineer.workspace.docs.system]],
     guide: agentGroup.roles[0].guide.href, guideLabel: 'OpenCode setup',
   },

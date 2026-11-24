@@ -15,9 +15,9 @@
 .team-demo { margin-top: clamp(1.1rem, 3.4vh, 2.6rem); padding: .25rem 1.125rem; }
 .demo-panels { display: grid; grid-template-columns: minmax(0, 1fr); gap: .2rem; }
 .demo-file, .demo-docker { min-width: 0; font-family: var(--mono); }
-/* Overlapping file views reserve the same space and keep their controls in place. */
-.demo-file, .demo-file > [data-scope] { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; }
-.demo-file > [data-scope], .authored-file, .generated-file { grid-area: 1 / 1; min-width: 0; }
+/* Both excerpts share a grid cell so the scope switch stays in place. */
+.demo-file { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; }
+.demo-file > [data-scope] { grid-area: 1 / 1; min-width: 0; }
 .demo-docker-header {
   display: flex; min-height: 2.75rem; gap: .55rem; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--line-2); color: var(--ink); font-size: 1rem;
@@ -73,6 +73,7 @@
   min-width: 0; min-height: 2.75rem; border-bottom: 1px solid var(--line-2);
 }
 .scope-switch, .example-views { display: flex; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.stage-file-title { display: none; font: 500 .9375rem/1.3 var(--mono); }
 .scope-switch { padding: 2px; border: 1px solid var(--line-2); border-radius: 5px; background: var(--panel); }
 .scope-switch label {
   min-width: 3.5em; border-radius: 2px; padding: .24em .52em; text-align: center; color: var(--sub);
@@ -96,13 +97,7 @@
 .team-demo:has(#scope-team:checked) :is(.demo-docker, .demo-foot) [data-scope="agent"],
 .team-demo:has(#scope-agent:checked) :is(.demo-docker, .demo-foot) [data-scope="team"] { display: none; }
 .team-demo:has(#scope-team:checked) .demo-file [data-scope="agent"],
-.team-demo:has(#scope-agent:checked) .demo-file [data-scope="team"],
-.team-demo:not(:has(#example-recipe-mode:checked)) .generated-file,
-.team-demo:has(#example-recipe-mode:checked) .authored-file { visibility: hidden; }
-.demo-file pre.docker-code {
-  max-block-size: clamp(5rem, 24dvh, 17rem); overflow: auto; overscroll-behavior: contain;
-  white-space: pre; overflow-wrap: normal; line-height: 1.55; scrollbar-width: thin;
-}
+.team-demo:has(#scope-agent:checked) .demo-file [data-scope="team"] { visibility: hidden; }
 .agent-facts { margin: .45rem 0 0; border-top: 1px solid var(--line-2); font-size: .875rem; }
 .agent-facts div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .2rem .5rem; padding-top: .45rem; }
 .agent-facts dt { color: var(--sub); }
@@ -120,7 +115,8 @@
   .example-toolbar { grid-column: 1; grid-row: 1; }
   .demo-file { grid-column: 1; grid-row: 2; }
   .demo-docker { grid-column: 2; grid-row: 1 / span 2; border-left: 1px solid var(--line-2); padding-left: clamp(1rem, 2.5vw, 2rem); }
-  #example-team-mode, label[for="example-team-mode"] { display: none; }
+  .example-views { display: none; }
+  .stage-file-title { display: inline; }
 }
 @media (min-width: 47rem) and (max-width: 60rem) and (height > 39rem) {
   .team-demo { padding-inline: .75rem; }
@@ -242,10 +238,12 @@
   .demo-file pre { margin-block: .55rem .18rem; font-size: .875rem; line-height: 1.55; }
 }
 @media (height <= 43rem) {
-  .demo-file .source-line:nth-child(n+9) { display: none; }
+  .demo-file [data-scope="team"] .source-line:nth-child(n+9),
+  .demo-file [data-scope="agent"] .source-line:first-child { display: none; }
 }
 @media (height <= 36rem) {
-  .demo-file .source-line:first-child, .demo-file .source-line:nth-child(n+8) { display: none; }
+  .demo-file [data-scope="team"] .source-line:is(:first-child, :nth-child(n+8)),
+  .demo-file [data-scope="agent"] .source-line:is(:nth-child(5), :nth-child(6)) { display: none; }
 }
 @media (height <= 29rem) {
   .demo-file .source-line:nth-child(-n+3) { display: none; }
@@ -272,9 +270,8 @@
   .scope-switch label { font-size: .8rem; }
 }
 @media (height <= 29rem) {
-  .demo-file pre.docker-code { max-block-size: 4.3rem; }
-  .demo-file [data-scope="agent"] .authored-file .source-line { display: none; }
-  .demo-file [data-scope="agent"] .authored-file .source-line:nth-child(n+2):nth-child(-n+4) { display: block; }
+  .demo-file [data-scope="agent"] .source-line { display: none; }
+  .demo-file [data-scope="agent"] .source-line:nth-child(n+2):nth-child(-n+4) { display: block; }
 }
 @container landing (max-width: 19rem) {
   .example-views label { min-width: 0; overflow-wrap: anywhere; }
