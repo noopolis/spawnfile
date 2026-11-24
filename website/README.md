@@ -17,3 +17,5 @@ npm run images   # favicon PNGs from public/favicon.svg
   headless browser after changing the share copy.
 
 With root and website dependencies installed and the Moltnet CLI on your path, run `npx playwright-core install --only-shell chromium`, `npm run build` and `npm run test:homepage` in `website/`. The tests compare both Spawnfile excerpts with their sources, check the GitHub links and verify the Docker rosters against real compiles. Headless Chromium exercises the Team and Agent switch, first-screen layout and README animation.
+
+After editing `public/illustrations/spawnfile-hero.svg`, run `npm run images:readme` with headless Chromium installed to regenerate the README GIF from the full loop.

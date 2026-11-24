@@ -38,6 +38,7 @@
     "examples",
     "moltnet-releases.json",
     "runtimes.yaml",
+    "website/public/illustrations/spawnfile-hero.gif",
     "website/public/illustrations/spawnfile-hero.svg"
   ],
   "engines": {

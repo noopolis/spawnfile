@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { load } from 'js-yaml';
 import { parse, serialize, type DefaultTreeAdapterTypes as Html } from 'parse5';
+import sharp from 'sharp';
 
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 const dist = join(root, 'website/dist');
@@ -20,6 +21,27 @@ function* elements(node: Html.Node): Generator<Html.Element> {
 
 const attr = (element: Html.Element, name: string) => element.attrs.find((entry) => entry.name === name)?.value;
 const homepage = [...elements(parse(readFileSync(join(dist, 'index.html'), 'utf8')))];
+
+test('the README embeds the complete looping GIF and provides a reduced-motion image', async () => {
+  const readme = parse(readFileSync(join(root, 'README.md'), 'utf8'));
+  const picture = [...elements(readme)].find((node) => node.tagName === 'picture');
+  assert.ok(picture);
+  const content = [...elements(picture)];
+  const image = content.find((el) => el.tagName === 'img');
+  const still = content.find((el) => el.tagName === 'source' && attr(el, 'media') === '(prefers-reduced-motion: reduce)');
+  assert.ok(image && still);
+  const asset = 'website/public/illustrations/spawnfile-hero';
+  assert.equal(attr(image, 'src'), asset + '.gif');
+  assert.equal(attr(still, 'srcset'), asset + '.svg');
+  const gif = readFileSync(join(root, asset + '.gif'));
+  const { format, pages, delay, loop } = await sharp(gif, { animated: true }).metadata();
+  assert.equal(format, 'gif');
+  assert.equal(pages, 2);
+  assert.deepEqual(delay, [6000, 6000]);
+  assert.equal(loop, 0);
+  const [team, agent] = await Promise.all([0, 1].map((page) => sharp(gif, { page }).raw().toBuffer()));
+  assert.ok(!team.equals(agent), 'Team and Agent must have distinct frames');
+});
 
 test('every active harness has a linked guide and its published install pin on the homepage', () => {
   const registry = load(readFileSync(join(root, 'runtimes.yaml'), 'utf8')) as {
