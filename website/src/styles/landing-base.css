@@ -52,7 +52,7 @@ h2 { margin: 0; font: 650 clamp(1.9rem, 3.4vw, 3rem)/1.02 var(--display); font-s
 
 /* code samples */
 .panel { font: 400 .8125rem/1.9 var(--mono); padding-top: .35rem; padding-bottom: .5rem; }
-.panel .bar { display: block; height: 2.4rem; line-height: 2.4rem; margin-bottom: .5rem; border-bottom: 1px solid var(--line); color: var(--mute); }
+.panel .bar { display: flex; align-items: center; min-height: 2.4rem; line-height: 1.5; overflow-wrap: anywhere; margin-bottom: .5rem; border-bottom: 1px solid var(--line); color: var(--mute); }
 .panel pre { margin: 0; color: var(--ink); overflow-x: auto; }
 .k, .out { color: var(--mute); }
 .p { color: var(--faint); }

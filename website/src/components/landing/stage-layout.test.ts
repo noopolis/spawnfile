@@ -73,6 +73,9 @@ test('the first screen shows the Spawnfile and ends where Format begins', async 
           window.scrollTo({ top: document.getElementById('format')!.offsetTop, behavior: 'instant' });
         });
         await assertAlignedEdges(page);
+        const filenameFits = await page.locator('#format .panel .bar').evaluate((bar) =>
+          bar.scrollWidth <= bar.clientWidth + 1 && bar.scrollHeight <= bar.clientHeight + 1);
+        assert.ok(filenameFits, 'the enlarged filename fits inside its title bar');
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'enlarged text fits horizontally');
       } finally {
         await page.close();
