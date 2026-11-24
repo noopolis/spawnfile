@@ -37,7 +37,8 @@
     "dist",
     "examples",
     "moltnet-releases.json",
-    "runtimes.yaml"
+    "runtimes.yaml",
+    "website/public/illustrations/spawnfile-hero.svg"
   ],
   "engines": {
     "node": ">=22.19.0"

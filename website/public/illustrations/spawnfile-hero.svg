@@ -1,50 +1,121 @@
-<svg xml:space="preserve" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 520" role="img" aria-label="Research team using Daimon, OpenClaw, OpenCode, Hermes Agent and PicoClaw, with a Moltnet room for the coordinator and analyst">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 520" role="img" aria-labelledby="title desc">
+<title id="title">A team or a single agent, from Spawnfile to Docker</title>
+<desc id="desc">The example cycles through the authored Spawnfile and generated Dockerfile for a five-agent research team, then for its OpenCode engineer. Each runs in one container.</desc>
 <style>
-text{white-space:pre}
-.l{opacity:0;animation:show 12s infinite}
-@keyframes show{0%{opacity:0}4%{opacity:1}88%{opacity:1}94%{opacity:0}100%{opacity:0}}
-.p{animation:fly 12s infinite}
-@keyframes fly{0%{transform:translateX(0);opacity:1}8%{transform:translateX(128px);opacity:1}9%,100%{opacity:0}}
-@media (prefers-reduced-motion:reduce){.l{animation:none;opacity:1}.p{animation:none;opacity:0}}
+  text { font: 19px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #eef1f4; white-space: pre; }
+  .switch { font: 600 21px system-ui, sans-serif; text-anchor: middle; }
+  .tab { font-size: 19px; text-anchor: middle; }
+  .selected { fill: #08090a; }
+  .filename, .line-number, .quiet { fill: #9aa1a9; }
+  .filename, .line-number { font-size: 17px; }
+  .code-key { fill: #9ab9ee; }
+  .name { font: 600 28px system-ui, sans-serif; }
+  .right { text-anchor: end; }
+  .scope-agent, .view-docker { opacity: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .scope-team { animation: team 18s steps(1, end) infinite; }
+    .scope-agent { animation: agent 18s steps(1, end) infinite; }
+    .view-source { animation: source 18s steps(1, end) infinite; }
+    .view-docker { animation: docker 18s steps(1, end) infinite; }
+  }
+  @keyframes team { 0%, 100% { opacity: 1 } 50% { opacity: 0 } }
+  @keyframes agent { 0%, 100% { opacity: 0 } 50% { opacity: 1 } }
+  @keyframes source { 0%, 50%, 100% { opacity: 1 } 25%, 75% { opacity: 0 } }
+  @keyframes docker { 0%, 50%, 100% { opacity: 0 } 25%, 75% { opacity: 1 } }
 </style>
 <rect width="1280" height="520" rx="20" fill="#08090a"/>
-<rect x="40" y="40" width="500" height="440" rx="14" fill="#050607" stroke="#2b3036"/>
-<line x1="40" y1="80" x2="540" y2="80" stroke="#1e2226"/>
-<circle cx="62" cy="60" r="5.5" fill="#262b30"/>
-<circle cx="80" cy="60" r="5.5" fill="#262b30"/>
-<circle cx="98" cy="60" r="5.5" fill="#262b30"/>
-<text x="124" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4">research-org/Spawnfile</text>
-<rect x="428" y="49" width="96" height="22" rx="5" fill="none" stroke="#9aa1a9"/><text x="476" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#9aa1a9" text-anchor="middle">you write</text>
-<text x="68" y="112" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">kind:</tspan><tspan fill="#eef1f4"> team</tspan></text>
-<text x="68" y="141" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">name:</tspan><tspan fill="#eef1f4"> research-org</tspan></text>
-<text x="68" y="170" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">mode:</tspan><tspan fill="#eef1f4"> hierarchical</tspan></text>
-<text x="68" y="199" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">lead:</tspan><tspan fill="#eef1f4"> coordinator</tspan></text>
-<text x="68" y="228" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">members:</tspan><tspan fill="#eef1f4"></tspan></text>
-<text x="68" y="257" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: coordinator, ref: ./daimon }</tspan></text>
-<text x="68" y="286" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: analyst, ref: ./openclaw }</tspan></text>
-<text x="68" y="315" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: engineer, ref: ./opencode }</tspan></text>
-<text x="68" y="344" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - </tspan><tspan fill="#eef1f4">{ id: field-team, ref: ./field }</tspan></text>
-<text x="68" y="373" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">networks:</tspan><tspan fill="#eef1f4"></tspan></text>
-<text x="68" y="402" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">  - id:</tspan><tspan fill="#eef1f4"> lab</tspan></text>
-<text x="68" y="431" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#8a929a">    provider:</tspan><tspan fill="#eef1f4"> moltnet</tspan></text>
-<text x="640" y="250" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#1e3a70" text-anchor="middle">··············</text>
-<text class="p" x="566" y="251" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" fill="#4f8cff">■</text>
-<text x="640" y="285" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4" text-anchor="middle">spawnfile up</text>
-<text x="640" y="306" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#8a929a" text-anchor="middle">compile · build · start</text>
-<rect x="740" y="40" width="500" height="440" rx="14" fill="#050607" stroke="#2b3036"/>
-<line x1="740" y1="80" x2="1240" y2="80" stroke="#1e2226"/>
-<circle cx="762" cy="60" r="5.5" fill="#262b30"/>
-<circle cx="780" cy="60" r="5.5" fill="#262b30"/>
-<circle cx="798" cy="60" r="5.5" fill="#262b30"/>
-<text x="824" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#eef1f4">zsh ~/research-org</text>
-<rect x="1128" y="49" width="96" height="22" rx="5" fill="none" stroke="#3ddc84"/><text x="1176" y="65" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#3ddc84" text-anchor="middle">docker</text>
-<text class="l" style="animation-delay:1.20s" x="768" y="120" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84"></tspan><tspan fill="#eef1f4">$ spawnfile up . --detach</tspan></text>
-<text class="l" style="animation-delay:1.75s" x="768" y="157" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">coordinator   Daimon</tspan></text>
-<text class="l" style="animation-delay:2.30s" x="768" y="194" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">analyst       OpenClaw</tspan></text>
-<text class="l" style="animation-delay:2.85s" x="768" y="231" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">engineer      OpenCode</tspan></text>
-<text class="l" style="animation-delay:3.40s" x="768" y="268" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">scout         Hermes Agent</tspan></text>
-<text class="l" style="animation-delay:3.95s" x="768" y="305" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">✓ </tspan><tspan fill="#eef1f4">observer      PicoClaw</tspan></text>
-<text class="l" style="animation-delay:4.50s" x="768" y="342" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84">● </tspan><tspan fill="#eef1f4">research-org running</tspan></text>
-<text class="l" style="animation-delay:5.05s" x="768" y="379" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84"># </tspan><tspan fill="#eef1f4">mission-control</tspan></text>
-<text class="l" style="animation-delay:5.60s" x="768" y="416" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16.5"><tspan fill="#3ddc84"></tspan><tspan fill="#eef1f4">coordinator · analyst</tspan></text>
+<g fill="#0e1012" stroke="#2b3036">
+  <rect x="28" y="32" width="620" height="456" rx="12"/>
+  <rect x="812" y="32" width="440" height="456" rx="12"/>
+  <path d="M28 94H648 M812 94H1252"/>
+  <rect x="52" y="46" width="158" height="36" rx="6" fill="#14171a"/>
+</g>
+<g class="scope-team">
+  <rect x="55" y="49" width="75" height="30" rx="4" fill="#f4f5f6"/>
+  <text x="92" y="71" class="switch selected">Team</text><text x="169" y="71" class="switch quiet">Agent</text>
+</g>
+<g class="scope-agent">
+  <rect x="131" y="49" width="76" height="30" rx="4" fill="#f4f5f6"/>
+  <text x="92" y="71" class="switch quiet">Team</text><text x="169" y="71" class="switch selected">Agent</text>
+</g>
+<g class="view-source">
+  <text x="419" y="71" class="tab">Spawnfile</text><text x="556" y="71" class="tab quiet">Dockerfile</text>
+  <path d="M362 93H476" stroke="#86b0ff" stroke-width="3"/>
+</g>
+<g class="view-docker">
+  <text x="419" y="71" class="tab quiet">Spawnfile</text><text x="556" y="71" class="tab">Dockerfile</text>
+  <path d="M493 93H619" stroke="#86b0ff" stroke-width="3"/>
+</g>
+<g class="scope-team">
+  <g class="view-source">
+    <text x="57" y="126" class="filename">research-org/Spawnfile</text>
+    <text x="75" y="167"><tspan class="line-number" text-anchor="end">2</tspan><tspan x="97" class="code-key">kind:</tspan> team</text>
+    <text x="75" y="199"><tspan class="line-number" text-anchor="end">3</tspan><tspan x="97" class="code-key">name:</tspan> research-org</text>
+    <text x="75" y="231"><tspan class="line-number" text-anchor="end">4</tspan><tspan x="97" class="code-key">mode:</tspan> hierarchical</text>
+    <text x="75" y="263"><tspan class="line-number" text-anchor="end">5</tspan><tspan x="97" class="code-key">lead:</tspan> coordinator</text>
+    <text x="75" y="295"><tspan class="line-number" text-anchor="end">6</tspan><tspan x="97" class="code-key">members:</tspan></text>
+    <text x="75" y="327"><tspan class="line-number" text-anchor="end">7</tspan><tspan x="97" class="code-key">  - </tspan>{ id: coordinator, ref: ./daimon }</text>
+    <text x="75" y="359"><tspan class="line-number" text-anchor="end">8</tspan><tspan x="97" class="code-key">  - </tspan>{ id: analyst, ref: ./openclaw }</text>
+    <text x="75" y="391"><tspan class="line-number" text-anchor="end">9</tspan><tspan x="97" class="code-key">  - </tspan>{ id: engineer, ref: ./opencode }</text>
+    <text x="75" y="423"><tspan class="line-number" text-anchor="end">10</tspan><tspan x="97" class="code-key">  - </tspan>{ id: field-team, ref: ./field }</text>
+  </g>
+  <g class="view-docker">
+    <text x="57" y="126" class="filename">Generated Dockerfile · selected lines</text>
+    <text x="75" y="167"><tspan class="line-number" text-anchor="end">2</tspan><tspan x="97" class="code-key">USER </tspan>root</text>
+    <text x="75" y="199"><tspan class="line-number" text-anchor="end">4</tspan><tspan x="97" class="code-key">WORKDIR </tspan>/opt/spawnfile</text>
+    <text x="75" y="231"><tspan class="line-number" text-anchor="end">9</tspan><tspan x="97" class="code-key">COPY </tspan>moltnet-bin/ /usr/local/bin/</text>
+    <text x="75" y="263"><tspan class="line-number" text-anchor="end">10</tspan><tspan x="97" class="code-key">RUN </tspan>chmod +x /usr/local/bin/moltnet</text>
+    <text x="75" y="295"><tspan class="line-number" text-anchor="end">34</tspan><tspan x="97" class="code-key">COPY </tspan>container/rootfs/ /</text>
+    <text x="75" y="327"><tspan class="line-number" text-anchor="end">37</tspan><tspan x="97" class="code-key">COPY </tspan>entrypoint.sh /opt/spawnfile/entrypoint.sh</text>
+    <text x="75" y="359"><tspan class="line-number" text-anchor="end">49</tspan><tspan x="97" class="code-key">LABEL </tspan>com.spawnfile.project=&#x27;research-org&#x27;</text>
+    <text x="75" y="391"><tspan class="line-number" text-anchor="end">53</tspan><tspan x="97" class="code-key">USER </tspan>root</text>
+  </g>
+</g>
+<g class="scope-agent">
+  <g class="view-source">
+    <text x="57" y="126" class="filename">opencode/Spawnfile</text>
+    <text x="75" y="167"><tspan class="line-number" text-anchor="end">1</tspan><tspan x="97" class="code-key">spawnfile_version:</tspan> &quot;0.1&quot;</text>
+    <text x="75" y="199"><tspan class="line-number" text-anchor="end">2</tspan><tspan x="97" class="code-key">kind:</tspan> agent</text>
+    <text x="75" y="231"><tspan class="line-number" text-anchor="end">3</tspan><tspan x="97" class="code-key">name:</tspan> engineer</text>
+    <text x="75" y="263"><tspan class="line-number" text-anchor="end">4</tspan><tspan x="97" class="code-key">runtime:</tspan> opencode</text>
+    <text x="75" y="295"><tspan class="line-number" text-anchor="end">5</tspan><tspan x="97" class="code-key">workspace:</tspan></text>
+    <text x="75" y="327"><tspan class="line-number" text-anchor="end">6</tspan><tspan x="97" class="code-key">  docs:</tspan> { system: AGENTS.md }</text>
+    <text x="75" y="359"><tspan class="line-number" text-anchor="end">7</tspan><tspan x="97" class="code-key">execution:</tspan></text>
+    <text x="75" y="391"><tspan class="line-number" text-anchor="end">8</tspan><tspan x="97" class="code-key">  model:</tspan></text>
+    <text x="75" y="423"><tspan class="line-number" text-anchor="end">9</tspan><tspan x="97" class="code-key">    primary:</tspan> { provider: openai, name: gpt-5.4,</text>
+    <text x="97" y="455">               auth: { method: codex } }</text>
+  </g>
+  <g class="view-docker">
+    <text x="57" y="126" class="filename">Generated Dockerfile · selected lines</text>
+    <text x="75" y="167"><tspan class="line-number" text-anchor="end">1</tspan><tspan x="97" class="code-key">FROM </tspan>node:24-bookworm-slim</text>
+    <text x="75" y="199"><tspan class="line-number" text-anchor="end">2</tspan><tspan x="97" class="code-key">USER </tspan>root</text>
+    <text x="75" y="231"><tspan class="line-number" text-anchor="end">4</tspan><tspan x="97" class="code-key">WORKDIR </tspan>/opt/spawnfile</text>
+    <text x="75" y="263"><tspan class="line-number" text-anchor="end">14</tspan><tspan x="97" class="code-key">COPY </tspan>container/rootfs/ /</text>
+    <text x="75" y="295"><tspan class="line-number" text-anchor="end">16</tspan><tspan x="97" class="code-key">COPY </tspan>entrypoint.sh /opt/spawnfile/entrypoint.sh</text>
+    <text x="75" y="327"><tspan class="line-number" text-anchor="end">22</tspan><tspan x="97" class="code-key">LABEL </tspan>com.spawnfile.project=&#x27;engineer&#x27;</text>
+    <text x="75" y="359"><tspan class="line-number" text-anchor="end">25</tspan><tspan x="97" class="code-key">USER </tspan>spawnfile</text>
+    <text x="75" y="391"><tspan class="line-number" text-anchor="end">26</tspan><tspan x="97" class="code-key">ENTRYPOINT </tspan>[&quot;/opt/spawnfile/entrypoint.sh&quot;]</text>
+  </g>
+</g>
+<path d="M669 254H789l-8 -7m8 7-8 7" fill="none" stroke="#4f8cff" stroke-width="2"/>
+<text x="730" y="287" text-anchor="middle" style="font-size:17px">spawnfile up</text>
+<text x="838" y="73" class="name">Docker</text><text x="1225" y="71" class="quiet right">1 container</text>
+<g class="scope-team">
+  <text x="838" y="145" class="name">research-org</text><text x="1225" y="143" class="quiet right">5 agents</text>
+  <circle cx="845" cy="187" r="4" fill="#86b0ff"/><text x="862" y="193">coordinator</text><text x="1225" y="193" class="quiet right">Daimon</text>
+  <circle cx="845" cy="229" r="4" fill="#86b0ff"/><text x="862" y="235">analyst</text><text x="1225" y="235" class="quiet right">OpenClaw</text>
+  <circle cx="845" cy="271" r="4" fill="#86b0ff"/><text x="862" y="277">engineer</text><text x="1225" y="277" class="quiet right">OpenCode</text>
+  <circle cx="845" cy="313" r="4" fill="#86b0ff"/><text x="862" y="319">scout</text><text x="1225" y="319" class="quiet right">Hermes Agent</text>
+  <circle cx="845" cy="355" r="4" fill="#86b0ff"/><text x="862" y="361">observer</text><text x="1225" y="361" class="quiet right">PicoClaw</text>
+  <path d="M838 390H1225" stroke="#2b3036"/>
+  <text x="838" y="424" style="fill:#86b0ff">#mission-control</text>
+  <text x="838" y="454" class="quiet">coordinator · analyst</text>
+</g>
+<g class="scope-agent">
+  <text x="838" y="145" class="name">engineer</text><text x="1225" y="143" class="quiet right">1 agent</text>
+  <circle cx="845" cy="187" r="4" fill="#86b0ff"/><text x="862" y="193">engineer</text><text x="1225" y="193" class="quiet right">OpenCode</text>
+  <path d="M838 225H1225" stroke="#2b3036"/>
+  <text x="838" y="265" class="quiet">Model</text><text x="1225" y="265" class="right">gpt-5.4</text>
+  <text x="838" y="306" class="quiet">Instructions</text><text x="1225" y="306" class="right">AGENTS.md</text>
+</g>
 </svg>

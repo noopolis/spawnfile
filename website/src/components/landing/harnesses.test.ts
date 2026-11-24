@@ -44,43 +44,66 @@ const textOf = (node: Html.Node): string => {
   return 'childNodes' in node ? node.childNodes.map(textOf).join('') : '';
 };
 
-test('the file excerpt and the full-file link show the authored research team', () => {
-  const source = readFileSync(join(root, 'examples/research-org/Spawnfile'), 'utf8');
-  const lines = homepage.filter((node) => byClass(node, 'source-line')).map((node) =>
-    node.childNodes.filter((child) => !('tagName' in child && byClass(child, 'n'))).map(textOf).join(''));
-  assert.equal(lines.join('\n'), source.split(/^networks:/m, 1)[0].trimEnd());
-  const full = homepage.find((node) => byClass(node, 'full-source'));
-  assert.ok(full);
-  const href = attr(full, 'href');
-  assert.ok(href);
-  assert.equal(readFileSync(join(dist, href), 'utf8'), source);
-});
+function panelElements(panel: string, scope: string) {
+  const container = homepage.find((node) => byClass(node, panel));
+  assert.ok(container);
+  const example = [...elements(container)].find((node) => attr(node, 'data-scope') === scope);
+  assert.ok(example);
+  return [...elements(example)];
+}
 
-test('the Docker preview matches the agents, runtime guides and managed rooms from a real compile', (context) => {
-  const out = mkdtempSync(join(tmpdir(), 'spawnfile-homepage-'));
-  context.after(() => rmSync(out, { recursive: true, force: true }));
-  execFileSync(process.execPath, ['--import', 'tsx', 'src/cli/index.ts', 'compile', 'examples/research-org', '-o', out], { cwd: root });
-  const report = JSON.parse(readFileSync(join(out, 'spawnfile-report.json'), 'utf8')) as {
-    nodes: { kind: string; id: string; runtime: string }[];
-    container: { dockerfile: string; moltnet: { server_plans: { rooms: { id: string; members: string[] }[] }[] } };
-  };
-  assert.ok(existsSync(join(out, report.container.dockerfile)));
-  const roles = homepage.filter((node) => byClass(node, 'demo-role'));
-  const listed = homepage.flatMap((el) => attr(el, 'data-harness') ?? []);
-  assert.deepEqual(roles.map((el) => attr(el, 'data-runtime')).sort(), listed.sort());
-  const agents = report.nodes.filter((node) => node.kind === 'agent');
-  assert.equal(roles.length, agents.length);
-  for (const { id, runtime } of agents) {
-    const name = id.slice('agent:'.length);
-    const row = roles.find((el) => attr(el, 'data-peer') === name);
-    assert.ok(row && attr(row, 'data-runtime') === runtime, `missing ${id}`);
-    assert.ok([...elements(row)].some((el) => attr(el, 'href') === `/runtimes/${runtime}/`));
-    assert.ok(existsSync(join(out, 'runtimes', runtime, 'agents', name)), `missing workspace for ${id}`);
-  }
-  const rooms = report.container.moltnet.server_plans.flatMap((server) => server.rooms);
-  const shown = homepage.filter((node) => byClass(node, 'demo-room')).map((node) => {
-    const [name, members] = node.childNodes.filter((child) => 'tagName' in child).map(textOf);
-    return { id: name.slice(1), members: members.split(' · ').sort() };
+function linkedFile(nodes: Html.Element[], label: string) {
+  const link = nodes.find((node) => node.tagName === 'a' && textOf(node) === label);
+  assert.ok(link);
+  const href = attr(link, 'href');
+  assert.ok(href);
+  return readFileSync(join(dist, href), 'utf8');
+}
+
+for (const [scope, project] of [['team', 'examples/research-org'], ['agent', 'examples/research-org/opencode']]) {
+  test(`the ${scope} example shows its authored Spawnfile, generated Dockerfile and compiled roster`, (context) => {
+    const file = panelElements('demo-file', scope);
+    const source = readFileSync(join(root, project, 'Spawnfile'), 'utf8');
+    const lines = file.filter((node) => byClass(node, 'source-line')).map((node) =>
+      node.childNodes.filter((child) => !('tagName' in child && byClass(child, 'n'))).map(textOf).join(''));
+    assert.equal(lines.join('\n'), source.split(/^networks:/m, 1)[0].trimEnd());
+    assert.equal(linkedFile(file, 'Full Spawnfile'), source);
+
+    const out = mkdtempSync(join(tmpdir(), 'spawnfile-homepage-'));
+    context.after(() => rmSync(out, { recursive: true, force: true }));
+    execFileSync(process.execPath, ['--import', 'tsx', 'src/cli/index.ts', 'compile', project, '-o', out], {
+      cwd: root, env: { ...process.env, SPAWNFILE_MOLTNET_TARGET_ARCH: 'amd64' },
+    });
+    const report = JSON.parse(readFileSync(join(out, 'spawnfile-report.json'), 'utf8')) as {
+      nodes: { kind: string; id: string; runtime: string }[];
+      container: { dockerfile: string; moltnet?: { server_plans: { rooms: { id: string; members: string[] }[] }[] } };
+    };
+    const recipe = readFileSync(join(out, report.container.dockerfile), 'utf8');
+    const code = file.find((node) => byClass(node, 'docker-code'));
+    assert.ok(code);
+    assert.equal(textOf(code), recipe.trimEnd());
+    assert.equal(linkedFile(file, 'Full Dockerfile'), recipe);
+
+    const docker = panelElements('demo-docker', scope);
+    const roles = docker.filter((node) => byClass(node, 'demo-role'));
+    const agents = report.nodes.filter((node) => node.kind === 'agent');
+    assert.equal(roles.length, agents.length);
+    for (const { id, runtime } of agents) {
+      const name = id.slice('agent:'.length);
+      const row = roles.find((el) => attr(el, 'data-peer') === name);
+      assert.ok(row && attr(row, 'data-runtime') === runtime, `missing ${id}`);
+      assert.ok([...elements(row)].some((el) => attr(el, 'href') === `/runtimes/${runtime}/`));
+      assert.ok(existsSync(join(out, 'runtimes', runtime, 'agents', name)), `missing workspace for ${id}`);
+    }
+    if (scope === 'team') {
+      const listed = homepage.flatMap((el) => attr(el, 'data-harness') ?? []);
+      assert.deepEqual(roles.map((el) => attr(el, 'data-runtime')).sort(), listed.sort());
+    }
+    const rooms = report.container.moltnet?.server_plans.flatMap((server) => server.rooms) ?? [];
+    const shown = docker.filter((node) => byClass(node, 'demo-room')).map((node) => {
+      const [name, members] = node.childNodes.filter((child) => 'tagName' in child).map(textOf);
+      return { id: name.slice(1), members: members.split(' · ').sort() };
+    });
+    assert.deepEqual(shown, rooms.map(({ id, members }) => ({ id, members: [...members].sort() })));
   });
-  assert.deepEqual(shown, rooms.map(({ id, members }) => ({ id, members: [...members].sort() })));
-});
+}

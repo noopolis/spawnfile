@@ -16,4 +16,4 @@ npm run images   # favicon PNGs from public/favicon.svg
 - `scripts/og-card.html`: source of `public/og.png`; render it at 1200x630 with a
   headless browser after changing the share copy.
 
-With root and website dependencies installed and the Moltnet CLI on your path, run `npx playwright-core install --only-shell chromium`, `npm run build` and `npm run test:homepage` in `website/`. The tests compare the homepage with a fresh compile of `examples/research-org` and check the first screen, file link and view switch in headless Chromium.
+With root and website dependencies installed and the Moltnet CLI on your path, run `npx playwright-core install --only-shell chromium`, `npm run build` and `npm run test:homepage` in `website/`. The homepage tests compile the research team and its OpenCode engineer for Linux amd64 and check the displayed Dockerfiles against those builds. They also exercise the Team and Agent switch, file links and first-screen layout in headless Chromium.
