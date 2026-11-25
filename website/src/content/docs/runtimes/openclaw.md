@@ -1,11 +1,48 @@
 ---
-title: OpenClaw
-description: OpenClaw runtime adapter details -- config shape, workspace layout, model format, MCP handling, and what the adapter emits.
+title: How to run OpenClaw in Docker
+description: Start an OpenClaw agent in Docker with a Spawnfile. Build the image, check the running gateway, and configure the agent’s model, workspace and chat channels.
 ---
 
-OpenClaw is an active Spawnfile runtime with a JSON config file and a rich markdown workspace layout. It supports multi-agent operation through native sessions, but Spawnfile v0.1 does not inject its own team router.
+Spawnfile builds a Docker image for your OpenClaw agent and starts its gateway. The starter project uses Claude Opus 4.6 and gives you three Markdown files to edit the agent’s identity, personality and instructions.
 
-**Status:** Active
+## Start an OpenClaw agent
+
+Start Docker and export your Anthropic API key as `ANTHROPIC_API_KEY` in a shell with Node.js 22.19 or newer. Run these commands from the directory where you want to create the project.
+
+```sh
+npm install -g spawnfile
+spawnfile init ./openclaw-agent --runtime openclaw
+spawnfile up ./openclaw-agent --context "$(docker context show)" --detach
+spawnfile status ./openclaw-agent --live --watch
+```
+
+`up` builds the image and starts OpenClaw on your active Docker engine. The status view refreshes every five seconds while the gateway starts. When the container is running and the summary shows `0 error`, press Ctrl+C to leave the view.
+
+To stop the deployment, run `spawnfile down ./openclaw-agent --deployment default --export-to ./openclaw-export`.
+
+## The starter Spawnfile
+
+`init` creates this `Spawnfile` alongside the workspace files it names. Edit `AGENTS.md` to change what the agent should do.
+
+```yaml title="Spawnfile"
+spawnfile_version: "0.1"
+kind: agent
+name: my-agent
+
+runtime: openclaw
+
+execution:
+  model:
+    primary:
+      provider: anthropic
+      name: claude-opus-4-6
+
+workspace:
+  docs:
+    identity: IDENTITY.md
+    soul: SOUL.md
+    system: AGENTS.md
+```
 
 ## Config Shape
 
@@ -95,7 +132,7 @@ The adapter maps `workspace.docs`, `workspace.resources`, and `execution.sandbox
 ## Teams
 
 OpenClaw does not have a native team manifest. What it has:
-- Multi-agent sessions
+- Multi-agent sessions routed by OpenClaw
 - Agent-to-agent session tools
 
 The adapter lowers Spawnfile team members into runtime-native agents/sessions where possible and reports degradation when native semantics do not preserve Spawnfile representatives, context artifacts, or team networks.
