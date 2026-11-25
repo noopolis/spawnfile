@@ -9,7 +9,7 @@ Site-wide CSS only.
 - `custom.css`: Starlight docs theme built on the tokens.
 - `landing.css`: entry for the landing page; imports the `landing-*.css` files.
 - `landing-base.css`: nav, headings, buttons, the `[ ]` bracket frame, code samples, footer, toast.
-- `landing-hero.css`: first-screen layout, source excerpt, Docker roster and native mobile view switch.
+- `landing-hero.css` controls the first screen, Team and Agent switch, Spawnfile excerpt and Docker roster.
 - `landing-sections.css`: sections, harness table, closing and showcase.
 - `landing-responsive.css`: navigation and lower sections at narrow widths and enlarged text.
 

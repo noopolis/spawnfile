@@ -17,15 +17,18 @@ export function stage(): void {
   demo.addEventListener('focusin', (event) => highlight(event.target));
   demo.addEventListener('focusout', (event) => highlight(event.relatedTarget));
 
-  const roster = demo.querySelector<HTMLDetailsElement>('.demo-roster');
-  const outputs = [...demo.querySelectorAll<HTMLElement>('.demo-role, .demo-room')];
   const replay = () => {
+    const scope = demo.querySelector<HTMLInputElement>('[name="example-scope"]:checked')?.value;
+    const output = demo.querySelector<HTMLElement>(`.demo-docker [data-scope="${scope}"]`);
+    if (!output) return;
+    const roster = output.querySelector<HTMLDetailsElement>('.demo-roster');
     if (roster) roster.open = true;
+    const outputs = output.querySelectorAll<HTMLElement>('.demo-role, .demo-room');
     const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    for (const [i, output] of outputs.entries()) {
-      output.getAnimations().forEach((animation) => animation.cancel());
+    for (const [i, row] of outputs.entries()) {
+      row.getAnimations().forEach((animation) => animation.cancel());
       if (!reduceMotion) {
-        output.animate([{ opacity: .2 }, { opacity: 1 }], { duration: 270, delay: i * 80, fill: 'backwards' });
+        row.animate([{ opacity: .2 }, { opacity: 1 }], { duration: 270, delay: i * 80, fill: 'backwards' });
       }
     }
   };

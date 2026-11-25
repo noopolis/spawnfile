@@ -1,5 +1,6 @@
 import { load } from 'js-yaml';
 import source from '../../../../examples/research-org/Spawnfile?raw';
+import engineerSource from '../../../../examples/research-org/opencode/Spawnfile?raw';
 import { harnesses } from './harnesses';
 
 type Runtime = string | { name: string };
@@ -24,19 +25,15 @@ function role({ id, runtime }: Member) {
 }
 
 export type ResearchRole = ReturnType<typeof role>;
-export const groups = team.members.map(({ id, ref }) => {
+const groups = team.members.map(({ id, ref }) => {
   const directory = ref.replace(/^\.\//, '');
   const project = load(projects[`../../../../examples/research-org/${directory}/Spawnfile`]) as Project;
   const nested = project.kind === 'team';
   const roles = nested ? project.members.map(role) : [role({ id, runtime: project.runtime })];
   return { id, nested, roles };
 });
-export const teamName = team.name;
-export const roles = groups.flatMap((group) => group.roles);
-export const rooms = team.networks.flatMap((network) => network.rooms);
-
 // Keep each authored reference together when a line wraps on a phone.
-export const excerpt = source.split(/^networks:/m, 1)[0].trimEnd().split('\n').map((line) => {
+const teamLines = source.split(/^networks:/m, 1)[0].trimEnd().split('\n').map((line) => {
   const match = /^(.*?\bid:\s*([\w-]+),\s*)(ref:.*)$/.exec(line);
   const group = groups.find(({ id }) => id === match?.[2]);
   return {
@@ -45,3 +42,31 @@ export const excerpt = source.split(/^networks:/m, 1)[0].trimEnd().split('\n').m
     peers: group?.roles.map(({ id }) => id).join(' '),
   };
 });
+
+const engineer = load(engineerSource) as {
+  name: string;
+  runtime: Runtime;
+  execution: { model: { primary: { name: string } } };
+  workspace: { docs: { system: string } };
+};
+const agentGroup = {
+  id: engineer.name, nested: false, roles: [role({ id: engineer.name, runtime: engineer.runtime })],
+};
+const researchOrgOnGitHub = 'https://github.com/noopolis/spawnfile/blob/main/examples/research-org';
+export const stageExamples = [
+  {
+    scope: 'team', name: team.name, groups, rooms: team.networks.flatMap((n) => n.rooms),
+    lines: teamLines, sourceUrl: `${researchOrgOnGitHub}/Spawnfile`, facts: [],
+    guide: '/guides/teams/#compile-the-homepage-team', guideLabel: 'Run this team',
+  },
+  {
+    scope: 'agent', name: engineer.name, groups: [agentGroup], rooms: [],
+    lines: engineerSource.trimEnd().split('\n').map((line) => ({
+      text: line.replace(/^(\s*primary:)\s*\{.*\}$/, '$1 { … }'),
+      reference: undefined, peers: line.startsWith('runtime:') ? engineer.name : undefined,
+    })),
+    sourceUrl: `${researchOrgOnGitHub}/opencode/Spawnfile`,
+    facts: [['Model', engineer.execution.model.primary.name], ['Instructions', engineer.workspace.docs.system]],
+    guide: agentGroup.roles[0].guide.href, guideLabel: 'OpenCode setup',
+  },
+];

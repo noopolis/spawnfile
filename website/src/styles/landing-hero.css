@@ -15,6 +15,9 @@
 .team-demo { margin-top: clamp(1.1rem, 3.4vh, 2.6rem); padding: .25rem 1.125rem; }
 .demo-panels { display: grid; grid-template-columns: minmax(0, 1fr); gap: .2rem; }
 .demo-file, .demo-docker { min-width: 0; font-family: var(--mono); }
+/* Both excerpts share a grid cell so the scope switch stays in place. */
+.demo-file { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; }
+.demo-file > [data-scope] { grid-area: 1 / 1; min-width: 0; }
 .demo-docker-header {
   display: flex; min-height: 2.75rem; gap: .55rem; align-items: center; justify-content: space-between;
   border-bottom: 1px solid var(--line-2); color: var(--ink); font-size: 1rem;
@@ -65,9 +68,21 @@
 .demo-foot a { display: inline-flex; align-items: center; min-height: 1.55rem; }
 .demo-highlight { background: var(--sig-soft); box-shadow: inset 2px 0 0 var(--sig); }
 
-/* A single available panel opens on the actual file. The result is a second view. */
-.example-views { display: none; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
-.example-views legend, .example-views input {
+.example-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: .3rem .7rem; flex-wrap: wrap;
+  min-width: 0; min-height: 2.75rem; border-bottom: 1px solid var(--line-2);
+}
+.scope-switch, .example-views { display: flex; min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+.stage-file-title { display: none; font: 500 .9375rem/1.3 var(--mono); }
+.scope-switch { padding: 2px; border: 1px solid var(--line-2); border-radius: 5px; background: var(--panel); }
+.scope-switch label {
+  min-width: 3.5em; border-radius: 2px; padding: .24em .52em; text-align: center; color: var(--sub);
+  cursor: pointer; font: 550 .875rem/1.35 var(--sans);
+}
+.scope-switch input:checked + label { color: var(--on-accent); background: var(--accent); }
+.scope-switch input:focus-visible + label { outline: 2px solid var(--sig); outline-offset: 1px; }
+.scope-switch label:hover, .example-views label:hover { color: var(--ink); }
+.example-toolbar legend, .example-toolbar input {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
@@ -76,15 +91,17 @@
   cursor: pointer; border-bottom: 2px solid transparent; color: var(--sub);
   font: 500 .9375rem/1.3 var(--mono);
 }
-.example-views label:last-child { margin-left: auto; }
-.example-views .prompt-sign { color: var(--sig-hi); margin-right: .4em; }
+.example-views { align-items: center; flex-wrap: wrap; column-gap: .5rem; }
 .example-views input:checked + label { color: var(--ink); border-bottom-color: var(--sig-hi); }
 .example-views input:focus-visible + label { outline: 2px solid var(--sig-hi); outline-offset: -2px; }
-.file-heading {
-  display: flex; align-items: center; justify-content: space-between; min-height: 2.75rem;
-  border-bottom: 1px solid var(--line-2); color: var(--ink);
-}
-.file-heading small { font-size: .875rem; color: var(--sub); }
+.team-demo:has(#scope-team:checked) :is(.demo-docker, .demo-foot) [data-scope="agent"],
+.team-demo:has(#scope-agent:checked) :is(.demo-docker, .demo-foot) [data-scope="team"] { display: none; }
+.team-demo:has(#scope-team:checked) .demo-file [data-scope="agent"],
+.team-demo:has(#scope-agent:checked) .demo-file [data-scope="team"] { visibility: hidden; }
+.agent-facts { margin: .45rem 0 0; border-top: 1px solid var(--line-2); font-size: .875rem; }
+.agent-facts div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .2rem .5rem; padding-top: .45rem; }
+.agent-facts dt { color: var(--sub); }
+.agent-facts dd { margin: 0; color: var(--ink); }
 .full-source {
   display: inline-flex; align-items: center; min-height: 1.75rem; margin-bottom: .16rem;
   color: var(--sub); font: 400 .845rem/1.35 var(--mono);
@@ -94,8 +111,12 @@
 
 /* Tablets in portrait have room for both sides of the example. */
 @media (min-width: 47rem) and (height > 39rem) {
-  .demo-panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); column-gap: clamp(1rem, 2.5vw, 2rem); }
-  .demo-docker { border-left: 1px solid var(--line-2); padding-left: clamp(1rem, 2.5vw, 2rem); }
+  .demo-panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); grid-template-rows: auto 1fr; column-gap: clamp(1rem, 2.5vw, 2rem); }
+  .example-toolbar { grid-column: 1; grid-row: 1; }
+  .demo-file { grid-column: 1; grid-row: 2; }
+  .demo-docker { grid-column: 2; grid-row: 1 / span 2; border-left: 1px solid var(--line-2); padding-left: clamp(1rem, 2.5vw, 2rem); }
+  .example-views { display: none; }
+  .stage-file-title { display: inline; }
 }
 @media (min-width: 47rem) and (max-width: 60rem) and (height > 39rem) {
   .team-demo { padding-inline: .75rem; }
@@ -206,18 +227,23 @@
 @media (width < 47rem), (height <= 39rem) {
   .source-line[data-peer] { padding-inline-start: 4ch; text-indent: -4ch; }
   .source-ref { white-space: nowrap; }
-  .example-views { display: flex; flex-wrap: wrap; align-items: stretch; gap: .75rem; border-bottom: 1px solid var(--line-2); }
-  .file-heading, .demo-file .n, .demo-docker-header .demo-command { display: none; }
-  .team-demo:has(#example-source-mode:checked) .demo-docker,
-  .team-demo:has(#example-source-mode:checked) .demo-foot,
+  .example-toolbar { min-height: 2.45rem; gap: .12rem .35rem; }
+  .example-views { column-gap: .28rem; }
+  .example-views label { font-size: .81rem; min-height: 2.4rem; }
+  .scope-switch label { min-width: 0; padding-inline: .52em; }
+  .demo-file .n, .demo-docker-header .demo-command { display: none; }
+  .team-demo:not(:has(#example-team-mode:checked)) .demo-docker,
+  .team-demo:not(:has(#example-team-mode:checked)) .demo-foot,
   .team-demo:has(#example-team-mode:checked) .demo-file { display: none; }
   .demo-file pre { margin-block: .55rem .18rem; font-size: .875rem; line-height: 1.55; }
 }
 @media (height <= 43rem) {
-  .demo-file .source-line:nth-child(n+9) { display: none; }
+  .demo-file [data-scope="team"] .source-line:nth-child(n+9),
+  .demo-file [data-scope="agent"] .source-line:first-child { display: none; }
 }
 @media (height <= 36rem) {
-  .demo-file .source-line:first-child, .demo-file .source-line:nth-child(n+8) { display: none; }
+  .demo-file [data-scope="team"] .source-line:is(:first-child, :nth-child(n+8)),
+  .demo-file [data-scope="agent"] .source-line:is(:nth-child(5), :nth-child(6)) { display: none; }
 }
 @media (height <= 29rem) {
   .demo-file .source-line:nth-child(-n+3) { display: none; }
@@ -238,6 +264,14 @@
 @container landing (max-width: 40rem) {
   .demo-panels { grid-template-columns: minmax(0, 1fr); }
   .demo-docker { border-left: 0; padding-left: 0; }
+}
+@media (width < 23rem), (min-width: 30rem) and (max-width: 40rem) and (max-height: 31rem) {
+  .example-views label { font-size: .75rem; padding-inline: .1rem; }
+  .scope-switch label { font-size: .8rem; }
+}
+@media (height <= 29rem) {
+  .demo-file [data-scope="agent"] .source-line { display: none; }
+  .demo-file [data-scope="agent"] .source-line:nth-child(n+2):nth-child(-n+4) { display: block; }
 }
 @container landing (max-width: 19rem) {
   .example-views label { min-width: 0; overflow-wrap: anywhere; }
