@@ -1,9 +1,9 @@
 ---
-title: Spawnfile Specification
-description: The canonical Spawnfile v0.1 specification -- manifest schema, portable surfaces, agent and team schemas, policy, CLI, and environment variable substitution.
+title: Spawnfile format reference for agents and teams
+description: Write a Spawnfile v0.1 manifest for an AI agent or team. Look up required fields, model settings, workspace files, skills and team member declarations.
 ---
 
-# Spawnfile Specification
+<p id="spawnfile-specification">Use the <a href="#3-agent-schema">agent schema</a> to configure one AI agent. Use the <a href="#4-team-schema">team schema</a> to declare a team’s members and shared settings.</p>
 
 **Version:** 0.1 (draft)
 **Status:** Work in progress
